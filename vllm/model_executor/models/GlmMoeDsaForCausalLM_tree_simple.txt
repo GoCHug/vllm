@@ -1,0 +1,193 @@
+# GlmMoeDsaForCausalLM 架构树状图
+
+# ───────────────────────────────────────────────────────────────────────
+# 完整架构
+# ───────────────────────────────────────────────────────────────────────
+
+├── GlmMoeDsaForCausalLM (模型入口/别名类)
+│   └── DeepseekV2ForCausalLM
+│       ├── model: DeepseekV2Model
+│       │   ├── embed_tokens (VocabParallelEmbedding)
+│       │   ├── layers[]: DeepseekV2DecoderLayer × N
+│       │   │   ├── input_layernorm (RMSNorm)
+│       │   │   ├── self_attn: DeepseekV2MLAAttention
+│       │   │   ├── post_attention_layernorm (RMSNorm)
+│       │   │   └── mlp: DeepseekV2MLP / DeepseekV2MoE
+│       │   └── norm (RMSNorm)
+│       ├── lm_head (ParallelLMHead)
+│       └── logits_processor
+
+
+# ───────────────────────────────────────────────────────────────────────
+# DeepseekV2MLAAttention 架构
+# ───────────────────────────────────────────────────────────────────────
+
+├── DeepseekV2MLAAttention                                          # vllm\vllm\model_executor\models\deepseek_v2.py
+│   ├── ═══════════════
+│   │   1、初始化过程
+│   │   ═══════════════
+│   ├── self.mla_attn = AscendMultiHeadLatentAttention(MultiHeadLatentAttentionWrapper)() # vllm-ascend\vllm_ascend\ops\mla.py
+│   │   └── self.mla_attn = MLAAttention()                          # vllm\vllm\model_executor\layers\attention\mla_attention.py
+│   │       ├── self.attn_backend = get_attn_backend()              # vllm\vllm\v1\attention\selector.py
+│   │       │   └── return _cached_get_attn_backend()               # vllm\vllm\v1\attention\selector.py
+│   │       │       └── return resolve_obj_by_qualname(current_platform.get_attn_backend_cls)
+│   │       │           ├── (use_mla=True, use_sparse=False) return "vllm_ascend.attention.mla_v1.AscendMLABackend"
+│   │       │           └── (use_mla=True, use_sparse=True) return "vllm_ascend.attention.sfa_v1.AscendSFABackend"
+│   │       └── self.impl = self.attn_backend.get_impl_cls()        # 通过attn后端获得impl实例
+│   │           ├── AscendMLAImpl                                   # vllm-ascend\vllm_ascend\attention\mla_v1.py
+│   │           └── AscendSFAImpl                                   # vllm-ascend\vllm_ascend\attention\sfa_v1.py
+│   ├── ═══════════════
+│   │   2.1 Cuda forward过程
+│   │   ═══════════════
+│   └── self.mla_attn(positions, hidden_states, llama_4_scaling)
+│       └── self.mla_attn(q, kv_c_normed, k_pe, output_shape)
+│           ├── self.impl.forward_mha(...)                          # Prefill阶段
+│           └── self.impl.forward_mqa(...)                          # Decode阶段
+│   ├── ═══════════════
+│   │   2.2 Npu forward过程
+│   │   ═══════════════
+│   └── self.mla_attn(positions, hidden_states, llama_4_scaling)
+│       └── torch.ops.vllm.mla_forward(hidden_states, need_gather_q_kv, output, self.prefix)
+│           └── self.mla_attn.impl.forward(layer_name, hidden_states, kv_cache, attn_metadata, need_gather_q_kv, output) # Prefill阶段/Decode阶段
+
+
+# ───────────────────────────────────────────────────────────────────────
+# AscendSFAImpl 前向过程详解
+# ───────────────────────────────────────────────────────────────────────
+
+├── AscendSFAImpl.forward()
+│   ├── 1. 输入预处理分支
+│   │   ├── 分支A: MLAPO融合算子路径 (enable_mlapo && num_tokens <= 8192)
+│   │   │   └── hidden_states, ql_nope, q_pe, q_c = self._sfa_preprocess_with_mlapo()
+│   │   │       └── torch.ops._C_ascend.mla_preprocess()
+│   │   └── 分支B: 原生预处理路径
+│   │       └── qkv_lora = self.fused_qkv_a_proj(hidden_states)
+│   │           ├── q_c, kv_no_split = qkv_lora.split([...])
+│   │           └── ql_nope, q_pe = self._q_proj_and_k_up_proj(q_c)
+│   ├── 2. Indexer K预处理
+│   │   └── k_li, k_li_scale = self.indexer_select_pre_process(hidden_states, cos, sin)
+│   │       ├── k_li = rope_forward_triton_siso()
+│   │       └── k_li_scale = None [not use_sparse_c8_indexer]
+│   ├── 3. KV缓存更新 (kv_cache[2]存k_li，kv_cache[3]存k_li_scale)
+│   │   ├── torch_npu.npu_scatter_nd_update_(kv_cache[2], slot_mapping, k_li)
+│   │   └── torch_npu.npu_scatter_nd_update_(kv_cache[3], slot_mapping, k_li_scale) [use_sparse_c8_indexer]
+│   ├── 4. TopK稀疏索引选择
+│   │   └── topk_indices = self.indexer_select_post_process(x, q_c, kv_cache, ...)
+│   │       ├── q_li = rope_forward_triton_siso(q_li, cos, sin, qk_rope_head_dim, is_rope_neox_style)
+│   │       ├── torch_npu.npu_lightning_indexer / torch.ops._C_ascend.npu_lightning_indexer [现状]
+│   │       └── torch.ops._C_ascend.npu_lightning_indexer_quant [use_sparse_c8_indexer]
+│   ├── 5. 稀疏Flash注意力计算
+│   │   └── attn_output = self._execute_sparse_flash_attention_process()
+│   │       └── torch.ops._C_ascend.npu_sparse_flash_attention(query=ql_nope, key=kv, value=kv, sparse_indices=topk_indices, ...)
+│   ├── 6. V上投影
+│   │   └── attn_output = self._v_up_proj(attn_output)
+│   ├── 7. o_proj输出投影
+│   │   └── output[...] = self.o_proj(attn_output)[0]
+│   └── 8. KV连接器保存kv_cache
+│       └── maybe_save_kv_layer_to_connector(layer_name, list(kv_cache)) 保存KV层供后续使用
+
+
+
+# ───────────────────────────────────────────────────────────────────────
+# DeepseekV2MLP 架构
+# ───────────────────────────────────────────────────────────────────────
+
+├── DeepseekV2MLP
+│   ├── ═══════════════
+│   │   1、初始化过程
+│   │   ═══════════════
+│   │   ├── self.gate_up_proj = MergedColumnParallelLinear()
+│   │   └── self.act_fn = SiluAndMul()
+│   │   └── self.down_proj = RowParallelLinear()
+│   ├── ═══════════════
+│   │   2、forward过程
+│   │   ═══════════════
+│       ├── gate_up = gate_up_proj(x)
+│       ├── x = act_fn(gate_up)
+│       └── x = down_proj(x)
+
+# ───────────────────────────────────────────────────────────────────────
+# DeepseekV2MoE 架构
+# ───────────────────────────────────────────────────────────────────────
+
+├── DeepseekV2MoE
+│   ├── ═══════════════
+│   │   1、初始化过程
+│   │   ═══════════════
+│   │   ├── self.gate = GateLinear()  # 路由机制
+│   │   └── self.experts = AscendFusedMoE(FusedMoE)()  # 专家网络
+│   │       └── self.runner = AscendMoERunner(MoERunner)()
+│   │           └── _forward_entry = self._select_forward()
+│   ├── ═══════════════
+│   │   2、forward过程
+│   │   ═══════════════
+│       ├── router_logits, _ = self.gate(hidden_states)
+│       ├── final_hidden_states = self.experts(hidden_states, router_logits)
+│       │   └── return self.runner.forward(hidden_states, router_logits, input_ids)
+│       │       └── result = self._forward_entry(...)
+│       │           └── return torch.ops.vllm.moe_forward/moe_forward_shared → _moe_forward/_moe_forward_shared # 算子返回函数对象
+│       │           └── return layer.runner._forward_impl() -> return self.forward_impl # AscendMoERunner._forward_impl()
+│       │               ├── result = layer.forward_impl(hidden_states, router_logits) [self.shared_experts is None]
+│       │               |   ├── fused_experts_results: FusedExpertsResult = self.quant_method.apply()
+│       │               |   ├── routed_out = _EXTRA_CTX.moe_comm_method.finalize()
+│       │               └── result = layer.shared_forward_impl(hidden_states, router_logits)
+│       └── return final_hidden_states[:num_tokens]
+
+
+
+
+# ───────────────────────────────────────────────────────────────────────
+# AscendFusedMoE (NPU路径) - 继承自FusedMoE
+# ───────────────────────────────────────────────────────────────────────
+
+├── AscendFusedMoE(FusedMoE)  [vllm_ascend/ops/fused_moe/fused_moe.py#L334]
+│   ├── ═════════════════════════════════
+│   │   1. NPU初始化过程
+│   │   ═════════════════════════════════
+│   ├── 继承父类 FusedMoE 的所有属性
+│   ├── self.quant_method = AscendUnquantizedFusedMoEMethod  # NPU量化方法
+│   ├── self.runner = AscendMoERunner  # NPU Runner
+│   ├── self.global_expert_map, self._expert_map, self.log2phy = init_eplb_config()  # EPLB配置
+│   ├── self.moe_config.{tp_group, dp_group, ep_group, mc2_group}  # 并行配置
+│   ├── self.quant_type = self._get_quant_type()  # 量化类型
+│   └── setup_moe_comm_method()  # MoE通信方法设置
+│   │
+│   ├── forward(hidden_states, router_logits)
+│   │   └── return self.runner.forward(hidden_states, router_logits)
+│   │
+│   └── forward_impl  [fused_moe.py#L580-]
+│       ├── ═════════════════════════════════
+│       │   2. NPU前向过程 (forward_impl)
+│       │   ═════════════════════════════════
+│       ├── [可选] shared_expert计算 (multistream_overlap_gate分支)
+│       │   └── shared_out = fc3_context.shared_experts(hidden_states)
+│       ├── topk_weights, topk_ids = select_experts()  [experts_selector.py]
+│       │   ├── check_npu_moe_gating_top_k()  # 判断是否使用NPU融合算子
+│       │   ├── [融合路径] _select_experts_with_fusion_ops()
+│       │   │   └── torch.ops._C_ascend.moe_gating_top_k_hash()  # NPU硬件加速
+│       │   └── [原生路径] _native_select_experts()  # 回退方案
+│       ├── prepare_output = moe_comm_method.prepare()  # 通信准备
+│       │   └── 处理 hidden_states, router_logits, mc2_mask等
+│       ├── fused_experts_results = self.quant_method.apply()  # 专家计算
+│       │   └── AscendUnquantizedFusedMoEMethod.apply()
+│       └── return FusedMoEResult(routed_out, ...)
+
+
+# ───────────────────────────────────────────────────────────────────────
+# AscendUnquantizedFusedMoEMethod (NPU量化方法)
+# ───────────────────────────────────────────────────────────────────────
+
+├── AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod)
+│   ├── apply(layer, x, ...)
+│   │   └── 调用 NPU 融合专家 kernel
+│   └── supports_eplb = True
+
+
+# ───────────────────────────────────────────────────────────────────────
+# AscendMoERunner (NPU Runner)
+# ───────────────────────────────────────────────────────────────────────
+
+├── AscendMoERunner(MoERunner)  [fused_moe.py#L264]
+│   ├── _fused_output_is_reduced = False  # MC2/ALLTOALL已包含TP all-reduce
+│   ├── _maybe_reduce_shared_expert_output()  # 跳过额外reduce
+│   └── forward_impl()  # 使用NPU特定实现
