@@ -1,134 +1,1168 @@
 # vLLM V1 KV Cache 管理机制详解
 
 > 基于源码 `vllm/vllm/v1/core/` 目录，深入解析 vLLM V1 架构中 KV Cache 的管理机制。
+>
+> **生活化类比**：把 KV Cache 想象成**图书馆的读书笔记系统**。
+> - 每本书（请求）都有自己的读书笔记（KV Cache）
+> - 读书笔记按章节（block）分页管理
+> - 如果很多人读同一本书的前几章，大家可以共享相同的笔记页（前缀缓存共享）
+> - 图书管理员（BlockPool）负责管理书架上的所有笔记页
+> - 当书架不够用时，最久没人看的笔记页会被收走（LRU 驱逐）
+
+---
+
+## 目录
+
+1. [整体架构概览](#1-整体架构概览)
+2. [核心数据结构](#2-核心数据结构)
+3. [分层管理架构](#3-分层管理架构)
+4. [核心工作流程](#4-核心工作流程)
+5. [多类型注意力支持](#5-多类型注意力支持)
+6. [高级特性](#6-高级特性)
+7. [完整生命周期示例](#7-完整生命周期示例)
+8. [设计要点总结](#8-设计要点总结)
 
 ---
 
 ## 1. 整体架构概览
 
-vLLM V1 的 KV Cache 管理采用**分层设计**，核心由以下几个组件构成：
+vLLM V1 的 KV Cache 管理采用**四层分层设计**，每一层职责清晰、接口明确：
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                     Scheduler                             │
+│                    Scheduler (调度器)                     │
 │                        │                                  │
-│                KVCacheManager                             │
-│         (对外统一接口, 隐藏内部结构)                        │
+├──────────────────────────────────────────────────────────┤
+│                KVCacheManager (顶层接口)                   │
+│         (对外统一接口, 隐藏内部结构复杂性)                  │
 │                        │                                  │
-│              KVCacheCoordinator                           │
-│      (协调多个 KV Cache Group 的协作)                       │
+├──────────────────────────────────────────────────────────┤
+│              KVCacheCoordinator (协调器)                   │
+│      (协调多个 KV Cache Group 的协作与一致性)               │
 │           ┌────────┴────────┐                             │
 │    SingleTypeKVCacheManager  SingleTypeKVCacheManager     │
-│   (FullAttentionManager)    (SlidingWindowManager)  ...  │
+│   (FullAttentionManager)    (SlidingWindowManager)  ...   │
 │              │                   │                        │
-│           BlockPool (共享的底层块池)                        │
-│        ┌─────┴──────┐                                   │
-│   FreeKVCacheBlock   BlockHashToBlockMap                  │
-│    Queue (LRU)         (前缀缓存哈希表)                    │
+├──────────────────────────────────────────────────────────┤
+│              BlockPool (底层块池)                          │
+│        (物理 block 的分配、释放、缓存、驱逐)                │
+│     ┌─────────────┴─────────────┐                        │
+│  FreeKVCacheBlockQueue   BlockHashToBlockMap              │
+│   (LRU 空闲块队列)         (前缀缓存哈希表)                 │
 └──────────────────────────────────────────────────────────┘
 ```
 
-### 核心文件职责
+### 1.1 核心文件职责
 
-| 文件                                | 职责                                                                                 |
-| ----------------------------------- | ------------------------------------------------------------------------------------ |
-| `kv_cache_manager.py`             | **顶层管理器**，对 Scheduler 暴露统一接口                                      |
-| `kv_cache_coordinator.py`         | **协调器**，管理多类型 KV Cache Group 的协作                                   |
-| `block_pool.py`                   | **块池**，底层物理 block 的分配、释放、缓存、驱逐                              |
-| `kv_cache_utils.py`               | **核心数据结构**：`KVCacheBlock`、`FreeKVCacheBlockQueue`、block hash 计算 |
-| `single_type_kv_cache_manager.py` | **单类型管理器**，按注意力类型(Full/SWA/Chunked等)管理分配逻辑                 |
-| `kv_cache_metrics.py`             | **指标收集**，采样跟踪 block 生命周期指标                                      |
+| 文件                                | 职责                                                                                 | 对应层次       |
+| ----------------------------------- | ------------------------------------------------------------------------------------ | -------------- |
+| `kv_cache_manager.py`             | **顶层管理器**，对 Scheduler 暴露统一接口，封装所有内部细节                        | 第 2 层        |
+| `kv_cache_coordinator.py`         | **协调器**，管理多类型 KV Cache Group 的协作，确保缓存命中一致性                   | 第 3 层        |
+| `single_type_kv_cache_manager.py` | **单类型管理器**，按注意力类型(Full/SWA/Mamba等)管理具体分配逻辑                    | 第 3 层        |
+| `block_pool.py`                   | **块池**，底层物理 block 的分配、释放、缓存、驱逐                                  | 第 4 层        |
+| `kv_cache_utils.py`               | **工具与数据结构**：`KVCacheBlock`、`FreeKVCacheBlockQueue`、block hash 计算等    | 第 4 层支撑    |
+| `kv_cache_metrics.py`             | **指标收集**，采样跟踪 block 生命周期指标                                          | 监控层         |
 
 ---
 
 ## 2. 核心数据结构
 
+> **贯穿本章的例子**
+>
+> 假设有两个用户的提问：
+> - **请求A**："什么是大语言模型？请详细解释一下它的工作原理。"（20 个 token）
+> - **请求B**："什么是大语言模型？请用通俗的语言解释。"（18 个 token）
+>
+> 假设 **block_size = 8**（每个 block 存储 8 个 token），GPU 共有 **10 个 KV block**（block_id: 0~9）。
+>
+> 两个请求前 8 个 token 完全相同：`什么是大语言模型？请` → 这是它们的**公共前缀**。
+>
+> 下面我们用这个例子，一步步讲解每个数据结构是如何工作的。
+
+---
+
 ### 2.1 KVCacheBlock — 最小管理单元
 
-定义于 `kv_cache_utils.py:118`，是 KV Cache 的最小分配单位：
+**定义位置**：`kv_cache_utils.py:117`
+
+**生活化类比**：一张读书笔记页，每页写 8 行内容（对应 block_size=8）。每一页有自己的编号（block_id），可以被多个人同时借阅（ref_cnt）。
+
+#### 2.1.1 源码定义
 
 ```python
 @dataclass(slots=True)
 class KVCacheBlock:
-    block_id: int          # 物理块 ID [0, num_gpu_blocks-1]
-    ref_cnt: int = 0       # 引用计数，跟踪有多少请求共享此 block
-    _block_hash: BlockHashWithGroupId | None = None  # 前缀缓存哈希（仅满块有）
-    _block_hash_num_tokens: int | None = None         # 哈希覆盖的 token 数
-    prev_free_block: KVCacheBlock | None = None  # 双向链表前驱
-    next_free_block: KVCacheBlock | None = None  # 双向链表后继
-    is_null: bool = False  # null block 占位符（滑窗/分块中跳过的块）
+    # 物理块 ID，范围 [0, num_gpu_blocks - 1]
+    block_id: int
+    
+    # 引用计数：跟踪有多少个请求正在使用这个 block
+    ref_cnt: int = 0
+    
+    # 前缀缓存哈希（仅当 block 填满时才有）
+    # bytes 类型，实际 = block_hash + group_id（4字节）
+    _block_hash: BlockHashWithGroupId | None = None
+    
+    # 哈希覆盖的 token 数
+    # - 完整块：= block_size（如 8）
+    # - 部分块（partial tail）：< block_size（如 3）
+    _block_hash_num_tokens: int | None = None
+    
+    # 双向链表指针（空闲队列用）
+    prev_free_block: "KVCacheBlock | None" = None
+    next_free_block: "KVCacheBlock | None" = None
+    
+    # 是否为 null block（占位符，不实际存储 KV）
+    is_null: bool = False
 ```
 
-**关键设计：**
+#### 2.1.2 关键方法解析
 
-- `ref_cnt`：引用计数法实现 block 共享。多个请求命中同一前缀时共享同一物理 block，仅当 `ref_cnt` 归零才回收到空闲队列。
-- `_block_hash`：block 的内容哈希，仅当 block **填满** 时才设置，用于前缀缓存查找。
-- 双向链表指针：用于 `FreeKVCacheBlockQueue` 中 O(1) 的插入/删除操作。
+**`set_block_hash()` — 给块盖戳** (`kv_cache_utils.py:148`)
+
+```python
+def set_block_hash(self, block_hash, num_tokens=None):
+    assert self.block_hash is None, "已有哈希，不能重复设置"
+    self._block_hash = block_hash
+    self._block_hash_num_tokens = num_tokens
+```
+
+> 什么时候调用？当一个 block 被**填满**并且内容被确定时。
+>
+> 就像笔记本写完一页，盖上"已完成"的印章，之后这页内容就不能改了。
+
+**`reset_hash()` — 擦除印章** (`kv_cache_utils.py:159`)
+
+```python
+def reset_hash(self):
+    self._block_hash = None
+    self._block_hash_num_tokens = None
+```
+
+> 什么时候调用？当 block 被驱逐（evict）时，旧的哈希失效了。
+
+#### 2.1.3 示例：请求A 分配过程
+
+初始状态：10 个 block 全空闲（block 0~9）
+
+```
+空闲块：[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]  ← 全部在空闲队列
+```
+
+**步骤 1：请求A 来了，需要 20 个 token → 需要 ceil(20/8) = 3 个 block**
+
+从空闲队列弹出 3 个 block：0、1、2
+
+```
+请求A 的 block_table = [block_0, block_1, block_2]
+
+block_0: ref_cnt=1, block_hash=None (还没填满)
+block_1: ref_cnt=1, block_hash=None
+block_2: ref_cnt=1, block_hash=None
+```
+
+**步骤 2：请求A 计算完成前 16 个 token（block_0 和 block_1 填满了）**
+
+```
+block_0: ref_cnt=1, block_hash=H0 (8个token的哈希) ← 满了，有哈希
+block_1: ref_cnt=1, block_hash=H1 (8个token的哈希) ← 满了，有哈希
+block_2: ref_cnt=1, block_hash=None (只填了4个，还没满)
+```
+
+**步骤 3：请求B 来了，前 8 个 token 和请求A 一样**
+
+查找前缀缓存 → 发现 block_0 的哈希 H0 匹配！
+
+```
+请求B 不需要分配新的 block_0，直接共享 block_0：
+block_0: ref_cnt=2  ← 从 1 变成 2，两个请求共享！
+
+请求B 还需要 block_3、block_4（18个token需要3个block，第1个共享了）
+block_3: ref_cnt=1, block_hash=None
+block_4: ref_cnt=1, block_hash=None
+```
+
+这就是 **引用计数 `ref_cnt` 的意义**：
+- `ref_cnt = 0` → 没人用，可以回收
+- `ref_cnt = 1` → 一个请求在用
+- `ref_cnt > 1` → 多个请求共享（前缀缓存命中）
+
+#### 2.1.4 `_block_hash_num_tokens` 的妙用
+
+这个字段看起来不起眼，但它是理解 vLLM 前缀缓存机制的关键。
+
+> **首先澄清一个常见误解**：
+>
+> ✅ **默认情况**：只有**满块**才会算 hash、存缓存。不满的 block（比如 prompt 结尾剩 3 个 token）是没有 hash 的。
+>
+> ⚠️ **特殊情况**：当启用了**细粒度前缀缓存**（`hash_block_size` < `block_size`）时，部分尾巴也可以有 hash。
+
+下面分两种情况详细讲解：
+
+---
+
+##### 情况一：标准模式（默认）— 只有满块有 hash
+
+源码位置：`single_type_kv_cache_manager.py:446`
+
+```python
+num_full_blocks = num_tokens // self.block_size
+if num_cached_blocks >= num_full_blocks:
+    return  # 不满一个 block 的部分直接跳过，不缓存
+```
+
+```
+假设 block_size = 16，某个请求有 20 个 token：
+
+物理 block_0: [ t0  t1  ... t15 ]  ← 16 个 token，满了 ✅
+物理 block_1: [ t16 t17 t18 t19 ...... ]  ← 只有 4 个 token，没满 ❌
+                                      （剩下 12 个位置空着）
+```
+
+这种情况下：
+- `block_0._block_hash` = H_16（有哈希）
+- `block_0._block_hash_num_tokens` = 16（覆盖 16 个 token）
+- `block_1._block_hash` = None（没哈希）
+- `block_1._block_hash_num_tokens` = None
+
+这是最常见的情况，也是你印象中"不满的块不算 hash"的来源。
+
+---
+
+##### 情况二：细粒度模式 — 尾巴也能缓存
+
+当配置了 **`hash_block_size`**（哈希粒度），并且它 **小于** `block_size`（物理块大小）时，就可以缓存尾巴上的部分内容。
+
+```
+假设：
+  block_size = 16      （物理块大小）
+  hash_block_size = 4  （哈希粒度，可以理解为"虚拟块"大小）
+
+某个请求有 20 个 token：
+
+物理 block_0: [ t0~t15 ]  ← 满块 ✅ 有哈希，_block_hash_num_tokens = 16
+物理 block_1: [ t16~t19 ...... ]  ← 没满，但尾巴刚好是 4 个 token
+                                     （1 个 hash_block_size）
+                                     ✅ 也可以有哈希！
+                                     _block_hash_num_tokens = 4
+```
+
+源码位置：`block_pool.py:487-491`（`register_partial_tail_entry` 函数）
+
+```python
+assert block_size > self.hash_block_size          # 物理块 > 哈希粒度
+assert block_size % self.hash_block_size == 0     # 必须整除
+assert num_tokens % block_size != 0               # 必须是非满块（尾巴）
+
+block_hash = self._get_partial_block_hash(request, num_tokens)
+num_hash_blocks = num_tokens // self.hash_block_size
+# _block_hash_num_tokens = num_hash_blocks * hash_block_size
+```
+
+**为什么要这么设计？**
+
+为了提高前缀缓存命中率。考虑这个场景：
+- 请求A："什么是大语言模型？"（10 个 token，1 个满块都不到）
+- 请求B："什么是大语言模型？请解释一下。"（18 个 token）
+
+如果只缓存满块：
+- 请求A 一个满块都没有 → 完全不缓存
+- 请求B 来了也命中不了任何东西
+
+如果启用细粒度缓存（hash_block_size=4）：
+- 请求A 有 10 个 token → 8 个 token 的前缀可以缓存（2 个 hash_block_size）
+- 请求B 来了 → 前 8 个 token 命中！
+- 命中率从 0% 提升到 44%
+
+---
+
+##### 为什么需要 `_block_hash_num_tokens` 这个字段？
+
+因为 **哈希值本身不包含长度信息**。
+
+光看一个哈希值 `H_abc123`，你不知道它对应的是：
+- 16 个 token 的满块哈希？
+- 4 个 token 的尾巴哈希？
+- 还是 8 个 token 的哈希？
+
+查找前缀缓存时，需要知道"这个哈希对应的前缀有多长"，才能和请求的 token 数做比较：
+- 请求有 20 个 token
+- 找到哈希 H1，`_block_hash_num_tokens = 16` → 命中前 16 个，继续找
+- 找到哈希 H2，`_block_hash_num_tokens = 4` → 又命中 4 个，总共 20 个！
+
+可以把它理解为：**哈希的"长度标签"** —— 光看书名（哈希）不够，还得看页数（num_tokens），确认是不是你要的那本书。
+
+---
+
+##### 部分块升级为满块
+
+当请求继续生成 token，原来的尾巴 block 被填满时，会发生"升级"：
+
+源码位置：`block_pool.py:284-293`
+
+```python
+if blk.block_hash is not None:
+    # 同一个 block 之前有 partial hash，现在填满了，要升级
+    assert blk.block_hash_num_tokens < num_hash_tokens
+    
+    # 步骤1：删掉旧的 partial 哈希
+    removed_hashes = self._remove_cached_block_hashes(blk)
+    
+    # 步骤2：插入新的 full 哈希
+    self._insert_block_hash(block_hash_with_group_id, blk, num_tokens=num_hash_tokens)
+```
+
+```
+升级过程：
+
+之前（partial）：
+  block_1._block_hash = H_20（20个token的哈希）
+  block_1._block_hash_num_tokens = 4（在这个 block 内覆盖了4个）
+
+后来又生成了 12 个 token，填满了：
+  → 先删掉 H_20
+  → 再插入 H_32（32个token的哈希）
+  → block_1._block_hash_num_tokens = 16（满了！）
+```
+
+---
+
+##### 四种状态对照表
+
+| 模式 | block 状态 | 有 hash 吗？ | `_block_hash_num_tokens` |
+|------|-----------|-------------|--------------------------|
+| 标准模式（默认） | 满块 | ✅ 有 | = `block_size` |
+| 标准模式（默认） | 非满块 | ❌ 无 | `None` |
+| 细粒度模式 | 满块 | ✅ 有 | = `block_size` |
+| 细粒度模式 | 部分尾巴 | ✅ 有 | = `n * hash_block_size`（< block_size） |
+
+#### 2.1.5 设计要点总结
+
+| 字段 | 作用 | 类比 |
+|------|------|------|
+| `block_id` | 物理位置标识 | 书架编号 |
+| `ref_cnt` | 共享计数 | 借阅人数 |
+| `_block_hash` | 前缀缓存键 | 图书 ISBN 号 |
+| `_block_hash_num_tokens` | 哈希覆盖长度 | 图书页数（判断是不是你要的那本） |
+| `prev/next_free_block` | 空闲链表指针 | 书架上的前后位置 |
+| `is_null` | 占位标记 | 空白页（跳过不看） |
+
+---
 
 ### 2.2 FreeKVCacheBlockQueue — LRU 空闲块队列
 
-定义于 `kv_cache_utils.py:179`，使用双向链表实现 LRU 空闲块队列：
+**定义位置**：`kv_cache_utils.py:184`
+
+**生活化类比**：图书馆的空闲书架，书按"最近最少使用"从左到右排列。左边的书最久没人碰，有人来借书先拿左边的。
+
+#### 2.2.1 设计背景：为什么不用 deque？
+
+源码注释说得很清楚（`kv_cache_utils.py:185-191`）：
+
+> 不用 Python 内置的 `deque`，因为我们需要 **O(1) 从中间删除** 一个 block。
+>
+> 场景：一个 block 在空闲队列里（可以被驱逐），突然有个新请求命中了它的前缀缓存 → 要把它从空闲队列中间拿走。
+>
+> deque 做不到 O(1) 中间删除，所以自己用双向链表实现。
+
+---
+
+#### 2.2.2 数据结构总览
+
+**整体结构图解：**
 
 ```
-[fake_head] -> [block_3] -> [block_7] -> [block_1] -> [fake_tail]
-                 ↑ 最旧(最先被驱逐)              ↑ 最新(最后被驱逐)
+fake_head (哨兵)                            fake_tail (哨兵)
+    │                                            ▲
+    ▼                                            │
+  [block_3] → [block_7] → [block_1] → [block_5] →
+  ←          ←          ←          ←
+    │                                            ▲
+    └──────────── 最旧，最先被驱逐 ───────────────┘
+                 最新，最后被驱逐
 ```
 
-**驱逐顺序规则：**
+**两个哨兵节点**（fake_head 和 fake_tail）：
+- 不存实际数据，只是为了简化边界判断
+- 所有操作都不用考虑"空队列""只有一个元素"等特殊情况
+- 代码里少了很多 `if` 分支，更快更简洁
 
-1. **LRU 优先**：最近最少使用的 block 在队头，优先被驱逐。
-2. **同批逆序释放**：释放请求占用的 blocks 时按逆序释放，使同一请求中**尾部 block（更多 hash tokens）排在队头**，优先被驱逐。这通过 `free()` 中的 `reversed()` 实现（`single_type_kv_cache_manager.py:409`）。
-3. **无哈希优先驱逐**：没有 block_hash 的 block 通过 `prepend_n` 插到队头之前，比有哈希的 block 更先被驱逐（`block_pool.py:633-635`）。
+源码验证（`kv_cache_utils.py:222-234`）：
+```python
+self.fake_free_list_head = KVCacheBlock(block_id=-1)
+self.fake_free_list_tail = KVCacheBlock(block_id=-1)
+# 连接 fake_head ↔ blocks ↔ fake_tail
+```
 
-**关键方法：**
+**核心字段：**
 
-- `popleft()` / `popleft_n(n)`：从队头弹出 block（分配时使用）
-- `append(block)` / `append_n(blocks)`：回收到队尾
-- `remove(block)`：O(1) 从中间移除（被 touch 命中时使用）
-- `prepend_n(blocks)`：插到队头（无哈希 block 优先驱逐）
+| 字段 | 类型 | 作用 |
+|------|------|------|
+| `num_free_blocks` | `int` | 当前空闲 block 数量 |
+| `fake_free_list_head` | `KVCacheBlock` | 哨兵头节点（block_id=-1） |
+| `fake_free_list_tail` | `KVCacheBlock` | 哨兵尾节点（block_id=-1） |
+
+---
+
+#### 2.2.3 初始化全流程详解
+
+`FreeKVCacheBlockQueue` 不是孤立存在的，它是 `BlockPool` 的一部分。让我们从最上层开始，一步步看它是怎么被创建出来的。
+
+##### 2.2.3.1 步骤一：BlockPool 创建所有 KVCacheBlock
+
+源码位置：`block_pool.py:174-177`
+
+```python
+class BlockPool:
+    def __init__(self, num_gpu_blocks, enable_caching, hash_block_size, ...):
+        # ...
+        self.blocks: list[KVCacheBlock] = [
+            KVCacheBlock(idx) for idx in range(num_gpu_blocks)
+        ]
+```
+
+假设 GPU 有 **10 个 block**（`num_gpu_blocks = 10`）：
+
+```
+创建 10 个 KVCacheBlock 对象，block_id 从 0 到 9：
+  [block_0, block_1, block_2, block_3, block_4, block_5, block_6, block_7, block_8, block_9]
+
+每个 block 初始状态：
+  ref_cnt = 0
+  block_hash = None
+  prev_free_block = None
+  next_free_block = None
+```
+
+这时它们就是 10 个孤立的对象，互相之间没有联系。
+
+---
+
+##### 2.2.3.2 步骤二：传给 FreeKVCacheBlockQueue 构造函数
+
+源码位置：`block_pool.py:181`
+
+```python
+self.free_block_queue = FreeKVCacheBlockQueue(self.blocks)
+```
+
+把这 10 个 block 传给 `FreeKVCacheBlockQueue.__init__`。
+
+---
+
+##### 2.2.3.3 步骤三：建立双向链表
+
+源码位置：`kv_cache_utils.py:206-214`
+
+```python
+def __init__(self, blocks: list[KVCacheBlock]) -> None:
+    self.num_free_blocks = len(blocks)  # = 10
+
+    # 初始化连续 blocks 的双向指针
+    for i in range(self.num_free_blocks):
+        if i > 0:
+            blocks[i].prev_free_block = blocks[i - 1]
+        if i < self.num_free_blocks - 1:
+            blocks[i].next_free_block = blocks[i + 1]
+```
+
+执行完后，10 个 block 连成了一条链：
+
+```
+block_0 ↔ block_1 ↔ block_2 ↔ block_3 ↔ ... ↔ block_9
+```
+
+注意：**初始顺序就是 block_id 的顺序**（0, 1, 2, ... 9）。
+源码注释也提到了：`The queue is ordered by block ID in the beginning.`（`kv_cache_utils.py:193`）
+
+---
+
+##### 2.2.3.4 步骤四：创建哨兵节点
+
+源码位置：`kv_cache_utils.py:222-223`
+
+```python
+self.fake_free_list_head = KVCacheBlock(block_id=-1)  # 哨兵头，block_id=-1
+self.fake_free_list_tail = KVCacheBlock(block_id=-1)  # 哨兵尾，block_id=-1
+```
+
+两个特殊的 block，`block_id = -1`，不存实际数据，纯纯的工具人。
+
+> **为什么叫 fake？** 因为它们不是真正的空闲块，永远不会被分配出去。
+> 它们的存在是为了简化边界判断 —— 不管链表是空的、只有一个元素、还是有很多元素，操作逻辑都一样。
+
+---
+
+##### 2.2.3.5 步骤五：把哨兵和真实 blocks 连起来
+
+源码位置：`kv_cache_utils.py:224-234`
+
+```python
+if self.num_free_blocks > 0:
+    # 非空队列：fake_head 连第一个，fake_tail 连最后一个
+    self.fake_free_list_head.next_free_block = blocks[0]
+    blocks[0].prev_free_block = self.fake_free_list_head
+    self.fake_free_list_tail.prev_free_block = blocks[-1]
+    blocks[-1].next_free_block = self.fake_free_list_tail
+else:
+    # 空队列：fake_head 和 fake_tail 直接互连
+    self.fake_free_list_head.next_free_block = self.fake_free_list_tail
+    self.free_free_list_tail.prev_free_block = self.fake_free_list_head
+```
+
+对于我们的 10 个 block 的例子，最终的链表是这样的：
+
+```
+  fake_head                                                   fake_tail
+  (id=-1)                                                     (id=-1)
+      │                                                           ▲
+      ▼                                                           │
+  [block_0] ↔ [block_1] ↔ [block_2] ↔ ... ↔ [block_8] ↔ [block_9]
+      │                                                           ▲
+      └────────────── 队头（最先被分配）  队尾（最后被分配） ────────┘
+```
+
+**初始状态的驱逐顺序**：block_0 最先被分配，block_9 最后被分配。
+（因为初始是按 block_id 顺序排列的）
+
+---
+
+##### 2.2.3.6 步骤六：null_block 占位符
+
+源码位置：`block_pool.py:187-191`
+
+```python
+# To represent a placeholder block with block_id=0.
+# The ref_cnt of null_block is not maintained, needs special care to
+# avoid freeing it.
+self.null_block = self.free_block_queue.popleft()
+self.null_block.is_null = True
+```
+
+> **等一下！** 不是说 block_0 是第一个吗？怎么被拿走了？
+>
+> 没错，初始化完成后，`BlockPool` 立刻 `popleft()` 拿走了第一个 block（block_0），
+> 把它标记为 `null_block`（占位符）。
+
+所以实际可用的空闲 block 是 **9 个**（block_1 ~ block_9），而不是 10 个。
+
+```
+初始化完成后的最终状态：
+
+  fake_head                                       fake_tail
+      │                                               ▲
+      ▼                                               │
+  [block_1] ↔ [block_2] ↔ ... ↔ [block_8] ↔ [block_9]
+
+  block_0：已被拿走，标记为 null_block（不参与空闲队列）
+
+  num_free_blocks = 9
+```
+
+---
+
+##### 2.2.3.7 完整初始化流程图
+
+```
+BlockPool.__init__(num_gpu_blocks=10)
+    │
+    ├── 1. 创建 10 个 KVCacheBlock (id 0~9)
+    │       初始都是孤立的，没有链表关系
+    │
+    ├── 2. FreeKVCacheBlockQueue(blocks)
+    │       │
+    │       ├── 2.1 num_free_blocks = 10
+    │       ├── 2.2 遍历建立双向链表：0↔1↔2↔...↔9
+    │       ├── 2.3 创建 fake_head (id=-1) 和 fake_tail (id=-1)
+    │       └── 2.4 连接哨兵：fake_head ↔ 0 ↔ 1 ↔ ... ↔ 9 ↔ fake_tail
+    │
+    ├── 3. 创建 BlockHashToBlockMap（缓存表）
+    │
+    └── 4. popleft() 拿走 block_0 当 null_block
+            is_null = True
+            最终可用空闲块：9 个（1~9）
+```
+
+---
+
+##### 2.2.3.8 空队列的边界情况
+
+如果 `num_gpu_blocks = 0`（虽然现实中不可能，但代码做了防御性处理）：
+
+```
+fake_head ↔ fake_tail
+    ↑ 它们俩直接连
+    num_free_blocks = 0
+```
+
+这时候调用 `popleft()` 会报 `ValueError("No free blocks available")`。
+
+怎么判断队列空不空？看 `fake_head.next_free_block` 是不是 `fake_tail`：
+
+源码位置：`kv_cache_utils.py:242-244`
+
+```python
+if (
+    self.fake_free_list_head.next_free_block is self.fake_free_list_tail
+    or self.fake_free_list_head.next_free_block is None
+):
+    # 空队列！
+    raise ValueError("No free blocks available")
+```
+
+> 有了哨兵节点，判断"空"就这么简单 —— 看看头的下一个是不是尾就行。
+> 不用考虑 `None`、不用考虑只有一个元素的特殊情况。
+
+---
+
+#### 2.2.4 null_block 深入解析
+
+**一句话**：为了让 request 的 `block_table` 始终是"连续"的，即使某些位置没有实际的 KV 缓存。
+
+##### 2.2.4.1 为什么需要占位符？
+
+每个请求都有一个 `block_table`（block 列表），索引 `i` 对应第 `i` 个 block 位置的 KV 数据。
+但有些注意力机制（比如滑动窗口 SWA）不需要保存所有历史 token 的 KV —— 窗口外的可以丢掉。
+
+**问题来了**：窗口外的位置放什么？
+
+| 方案 | 优点 | 缺点 |
+|------|------|------|
+| 放 `None` | 不占内存 | 到处都要 `if block is not None` 判断，容易漏，还慢 |
+| 直接缩短 block_table | 省空间 | 索引和 token 位置对不齐，逻辑很绕 |
+| **放 null_block（占位符）** | 统一类型，代码简洁，少分支 | 浪费 1 个 block 的内存（几乎可忽略） |
+
+vLLM 选择了第三种方案 —— 用一个全局共享的占位符 block，让 block_table 保持结构完整。
+
+---
+
+##### 2.2.4.2 三大使用场景
+
+**场景 1：滑动窗口（SWA）— 窗口外的 block 用 null 填充**
+
+假设 `block_size = 16`，滑动窗口 = 32（只保留最近 32 个 token），请求已经生成了 80 个 token：
+
+```
+FullAttention（全注意力）：
+  block_table = [block_0, block_1, block_2, block_3, block_4]
+                 ↑ 16个    ↑ 16个    ↑ 16个    ↑ 16个    ↑ 16个
+                 全部都有实际 KV 数据
+
+SlidingWindow（滑动窗口）：
+  block_table = [null_block, null_block, null_block, block_3, block_4]
+                 ↑ 占位符    ↑ 占位符    ↑ 占位符    ↑ 真实的   ↑ 真实的
+                 窗口外，不要了          窗口内，保留
+```
+
+源码位置：`single_type_kv_cache_manager.py:615-620`
+
+```python
+# 把不需要的 block 替换成 null_block，然后释放真实 block
+if blocks[i] == self._null_block:
+    break
+freed.append(blocks[i])
+blocks[i] = self._null_block  # 替换成占位符
+if freed:
+    self.block_pool.free_blocks(freed)  # 释放真实 block
+```
+
+**场景 2：前缀缓存查找时 —— 跳过的 block 用 null 填充**
+
+滑动窗口的前缀缓存查找是"稀疏"的 —— 只找窗口内的部分，窗口外的位置用 null_block 填上。
+
+源码位置：`single_type_kv_cache_manager.py:276`
+
+```python
+# 前面跳过的 block 用 null_block 填充
+req_blocks.extend([self._null_block] * num_skipped_blocks)
+# 后面接上真正命中的 computed blocks
+req_blocks.extend(new_computed_blocks)
+```
+
+**场景 3：Mamba / 其他不需要完整 KV 的机制**
+
+有些注意力变体（比如 Mamba）不需要传统的 KV cache，或者只需要部分位置有 KV。不需要的位置也用 null_block 填充。
+
+---
+
+##### 2.2.4.3 为什么全局只需要一个？
+
+因为它不存实际数据，所有请求共享同一个完全没问题 —— 就像一个"空指针"的替代品。
+
+```
+所有请求的 block_table 里的 null_block 都是同一个对象：
+
+请求A: [..., null_block, ...]
+                    ↓
+请求B: [..., null_block, ...]
+                    ↓
+              同一个对象（block_id=0）
+```
+
+> 源码注释提醒：`The ref_cnt of null_block is not maintained, needs special care to avoid freeing it.`
+>
+> null_block 的 ref_cnt 不维护，释放的时候要特别小心别把它给释放了。
+
+所以你会在代码里看到很多 `if not block.is_null` 的判断 —— 释放时要跳过 null_block。
+
+---
+
+##### 2.2.4.4 为什么用 popleft() 拿第一个？
+
+没有特殊含义，就是因为方便：
+- 需要一个真实的 `KVCacheBlock` 对象当占位符
+- 从空闲队列里拿一个出来用就行
+- 拿第一个（block_id=0）最简单，顺手就拿了
+
+拿出来之后：
+- 它从 `free_block_queue` 中移除了（不在空闲链表⾥了）
+- 标记 `is_null = True`
+- 永远不会被释放、不会被分配、不会有哈希
+- 全局唯一，所有请求共享
+
+---
+
+#### 2.2.5 驱逐优先级（三层规则）
+
+**优先级从高到低（越先被驱逐）：**
+
+```
+第一层：无哈希的 block（最优先驱逐）
+    │
+    └── 原因：这些 block 没有缓存价值，丢了就丢了
+        （通过 prepend_n 插到队头）
+
+第二层：有哈希的 block，按 LRU 顺序
+    │
+    └── 原因：越久没被用的，越可能以后也用不到
+        （队头最旧，队尾最新）
+
+第三层：同批释放时，尾部 block 排在前面
+    │
+    └── 原因：尾部 block 的 hash 链更长，被复用的概率更低
+        （释放时逆序 append）
+```
+
+**示例：释放请求A 的 3 个 block**
+
+请求A 完成了，释放 [block_0, block_1, block_2]
+
+- block_0：有哈希（8 token）→ 尾部块？不，它是第一个
+- block_1：有哈希（8 token）
+- block_2：没哈希（只填了4个）
+
+按规则：
+1. block_2 无哈希 → 用 `prepend_n` 插到队头 → 最先被驱逐
+2. block_1、block_0 有哈希 → 逆序 append → block_1 在前，block_0 在后
+
+```
+释放后空闲队列（从队头到队尾）：
+  [block_2(无hash)] → ... → [block_1] → [block_0]
+       ↑ 最先驱逐                  ↑ 最后驱逐
+```
+
+> 为什么尾部 block 先驱逐？
+> 因为前缀缓存的特性：第 0 个 block 的哈希被很多请求共享的概率最高，
+> 越靠后的 block，哈希越特殊，被复用的概率越低。
+> 所以先驱逐后面的，保留前面的。
+
+#### 2.2.6 核心方法源码解析
+
+**`popleft()` — 从队头拿一个** (`kv_cache_utils.py:236`)
+
+```python
+def popleft(self) -> KVCacheBlock:
+    first_block = self.fake_free_list_head.next_free_block
+    
+    # 把 first_block 从链表中摘出来
+    self.fake_free_list_head.next_free_block = first_block.next_free_block
+    first_block.next_free_block.prev_free_block = self.fake_free_list_head
+    
+    # 清理指针
+    first_block.prev_free_block = first_block.next_free_block = None
+    
+    self.num_free_blocks -= 1
+    return first_block
+```
+
+操作示意：
+```
+之前: fake_head → A → B → ...
+      fake_head ← A ← B ← ...
+
+之后: fake_head → B → ...
+      fake_head ← B ← ...
+            A（被弹出，指针清空）
+```
+
+**`remove(block)` — 从中间删除** (`kv_cache_utils.py:306`)
+
+```python
+def remove(self, block: KVCacheBlock) -> None:
+    # 把前后连起来，跳过当前 block
+    block.prev_free_block.next_free_block = block.next_free_block
+    block.next_free_block.prev_free_block = block.prev_free_block
+    
+    # 清理指针
+    block.prev_free_block = block.next_free_block = None
+    
+    self.num_free_blocks -= 1
+```
+
+> **典型场景**：一个 block 在空闲队列里躺着（可以被驱逐），
+> 突然有新请求命中了它的前缀缓存 → 需要把它从空闲队列中拿出来用。
+> 这时候就用 `remove()`，O(1) 搞定。
+
+**`append(block)` — 回收到队尾** (`kv_cache_utils.py:326`)
+
+```python
+def append(self, block: KVCacheBlock) -> None:
+    last_block = self.fake_free_list_tail.prev_free_block
+    # 插到 last_block 和 fake_tail 之间
+    last_block.next_free_block = block
+    block.prev_free_block = last_block
+    block.next_free_block = self.fake_free_list_tail
+    self.fake_free_list_tail.prev_free_block = block
+    self.num_free_blocks += 1
+```
+
+**`prepend_n(blocks)` — 插到队头（最优先驱逐）** (`kv_cache_utils.py:349`)
+
+```python
+def prepend_n(self, blocks: list[KVCacheBlock]) -> None:
+    # 把 blocks 整体插到 fake_head 和 first_block 之间
+    first_block = self.fake_free_list_head.next_free_block
+    prev_block = self.fake_free_list_head
+    for block in blocks:
+        block.prev_free_block = prev_block
+        prev_block.next_free_block = block
+        prev_block = block
+    prev_block.next_free_block = first_block
+    first_block.prev_free_block = prev_block
+    self.num_free_blocks += len(blocks)
+```
+
+> 用于释放**没有哈希**的 block —— 这些 block 没有缓存价值，应该最先被重用。
+
+#### 2.2.7 方法对照表
+
+| 方法 | 操作位置 | 用途 | 类比 |
+|------|----------|------|------|
+| `popleft()` | 队头 | 分配 block | 有人借书，从最旧的那本开始拿 |
+| `popleft_n(n)` | 队头 | 批量分配 | 一次借 n 本 |
+| `append(block)` | 队尾 | 释放有哈希的 block | 还书，放到最新的位置 |
+| `append_n(blocks)` | 队尾 | 批量释放有哈希的 | 一次还多本 |
+| `prepend_n(blocks)` | 队头前 | 释放无哈希的 block | 书的内容过时了，直接放最前面优先处理 |
+| `remove(block)` | 任意位置 | 命中缓存时取出 | 有人预约了某本旧书，直接拿给他 |
+
+---
 
 ### 2.3 BlockHashToBlockMap — 前缀缓存哈希表
 
-定义于 `block_pool.py:34`，维护 `BlockHashWithGroupId -> KVCacheBlock` 的映射：
+**定义位置**：`block_pool.py:33`
 
-```python
-class BlockHashToBlockMap:
-    self._cache: dict[BlockHashWithGroupId, KVCacheBlock | dict[int, KVCacheBlock]]
+**生活化类比**：图书馆的**书名索引卡**。你告诉图书管理员书名（哈希），他立刻就能找到对应的书（block）放在哪。
+
+#### 2.3.1 设计思路
+
+```
+哈希表 key = BlockHashWithGroupId（block 哈希 + group_id）
+哈希表 value = 单个 KVCacheBlock 或者 dict[int, KVCacheBlock]
 ```
 
-**支持两种查找模式：**
+**为什么 value 有两种类型？**（`block_pool.py:52-53`）
 
-- **单映射**：一个 hash 对应一个 block（常见情况）
-- **多映射**：一个 hash 对应多个 block（partial caching 场景，通过 `dict[int, KVCacheBlock]` 存储）
+> 绝大多数情况下，一个哈希只对应一个 block → 直接存 `KVCacheBlock` 对象，省内存，少 GC。
+>
+> 少数情况下（partial caching），一个哈希可能对应多个 block → 用 `dict[int, KVCacheBlock]`。
+
+**什么情况下一个哈希对应多个 block？**
+
+比如两个不同的请求：
+- 请求C：前 8 个 token 刚好填满一个 block → block_5，哈希 = H
+- 请求D：前 8 个 token 也是一样的 → block_7，哈希 = H
+
+这时候 hash=H 对应两个 block（5 和 7），就需要用 dict 存。
+
+> 为什么不去重？源码注释 NOTE #1 说了（`block_pool.py:47-51`）：
+> 为了保证 block_id 不变（block table 是 append-only 的），即使内容一样，也各自用各自的 block。
+> 不然如果把请求D的 block_5 换成 block_7，block table 里的 ID 就变了，很麻烦。
+
+#### 2.3.2 核心方法源码解析
+
+**`insert()` — 插入缓存** (`block_pool.py:88`)
+
+```python
+def insert(self, key, block):
+    blocks = self._cache.get(key)
+    if blocks is None:
+        # 第一次见这个 hash → 直接存单个 block
+        self._cache[key] = block
+    elif isinstance(blocks, KVCacheBlock):
+        # 已经有一个了，现在又来一个 → 升级成 dict
+        self._cache[key] = {blocks.block_id: blocks, block.block_id: block}
+    elif isinstance(blocks, dict):
+        # 已经是 dict 了 → 直接加进去
+        blocks[block.block_id] = block
+```
+
+状态变化图：
+```
+第一次插入：key → block_A (单值)
+
+第二次插入：key → {0: block_A, 5: block_B} (升级为 dict)
+
+第三次插入：key → {0: block_A, 5: block_B, 7: block_C} (dict 追加)
+```
+
+**`get_one_block()` — 随便拿一个** (`block_pool.py:61`)
+
+```python
+def get_one_block(self, key):
+    blocks = self._cache.get(key)
+    if blocks is not None:
+        if isinstance(blocks, KVCacheBlock):
+            return blocks          # 单值 → 直接返回
+        if isinstance(blocks, dict):
+            return next(iter(blocks.values()))  # dict → 拿第一个
+    return None
+```
+
+> 为什么只要一个就够了？
+> 因为前缀缓存查找是一个 block 一个 block 顺着找的，
+> 只要找到一个匹配的 block，就能拿它的哈希继续找下一个。
+> 多个相同哈希的 block，内容是一样的，随便用哪个都行。
+
+**`pop()` — 从缓存中移除** (`block_pool.py:106`)
+
+```python
+def pop(self, key, block_id):
+    blocks = self._cache.pop(key, None)
+    if isinstance(blocks, KVCacheBlock):
+        if blocks.block_id == block_id:
+            return blocks                          # 对的上，直接返回
+        self._cache[key] = blocks                  # 对不上，放回去
+        return None
+    if isinstance(blocks, dict):
+        block = blocks.pop(block_id, None)
+        if len(blocks) > 0:
+            self._cache[key] = blocks              # 还有剩余，放回去
+        return block
+    return None
+```
+
+> 什么时候 pop？当 block 被驱逐（evict）时，它的哈希就无效了，
+> 需要从缓存表里删掉。
+
+#### 2.3.3 示例：前缀查找过程
+
+继续用本章开头的例子：
+
+**请求A 计算完成后，缓存了两个完整 block：**
+- block_0，哈希 = H0（8 个 token："什么是大语言模型？请"）
+- block_1，哈希 = H1（接下来 8 个 token："详细解释一下它的"）
+
+```
+BlockHashToBlockMap = {
+    H0: block_0,     ← 单值
+    H1: block_1      ← 单值
+}
+```
+
+**请求B 来了，开始前缀查找：**
+
+```
+第 1 个 block（token 0~7）：
+  计算哈希 = H0
+  查 map → 找到 block_0！✅ 命中
+  用 block_0 的哈希继续找下一个
+
+第 2 个 block（token 8~15）：
+  请求B 的 token 8~15 = "用通俗的语言解释"
+  计算哈希 = H2（和请求A 的 H1 不一样！）
+  查 map → 没找到 ❌ 未命中
+  停止查找
+```
+
+**结果**：请求B 命中了 1 个 block（8 个 token），剩下的 10 个 token 需要自己算。
+
+这就是**链式前缀匹配**——顺着哈希链一个一个找，找到第一个不匹配的就停。
+
+---
 
 ### 2.4 BlockHash 与哈希链
 
+#### 2.4.1 类型定义
+
 ```python
+# 单个 block 的哈希（bytes 类型）
 BlockHash = NewType("BlockHash", bytes)
+
+# 加上 group_id 的哈希（block_hash + 4字节 group_id）
 BlockHashWithGroupId = NewType("BlockHashWithGroupId", bytes)
 ```
 
-**哈希链机制**（`kv_cache_utils.py:577`）：
+**为什么有两种类型？**
+
+因为 vLLM 支持**多 KV cache group**（比如 FullAttention + SlidingWindow 混合）。
+不同 group 的 block 即使 token 内容一样，也不能共享（因为注意力类型不同，KV 的形状可能不一样）。
+所以用 group_id 来隔离。
+
+源码验证（`kv_cache_utils.py:57-76`）：
+```python
+def make_block_hash_with_group_id(block_hash, group_id):
+    # 把 group_id 编码成 4 字节 big-endian，拼到哈希后面
+    return BlockHashWithGroupId(block_hash + group_id.to_bytes(4, "big"))
+
+def get_block_hash(key):
+    return BlockHash(key[:-4])  # 去掉最后 4 字节
+
+def get_group_id(key):
+    return int.from_bytes(key[-4:], "big")  # 最后 4 字节是 group_id
+```
+
+> 为什么用字节拼接而不是 tuple？
+> 因为 bytes 作为 dict 的 key 更快，内存也更小。
+
+#### 2.4.2 哈希链是怎么生成的？
+
+**核心函数**：`hash_block_tokens()`
 
 ```python
 def hash_block_tokens(hash_function, parent_block_hash, curr_block_token_ids, extra_keys):
     if not parent_block_hash:
-        parent_block_hash = NONE_HASH
+        parent_block_hash = NONE_HASH  # 第一个 block 的"父哈希"
     return BlockHash(hash_function((parent_block_hash, curr_block_token_ids, extra_keys)))
 ```
 
-每个 block 的哈希 = `hash(父block哈希 + 当前block的token_ids + 额外键)`，形成**链式哈希**。这意味着：
+**链式关系**：
+```
+block_0 的哈希 = H(NONE_HASH, token_0~7, extra_keys)
+block_1 的哈希 = H(block_0_hash, token_8~15, extra_keys)
+block_2 的哈希 = H(block_1_hash, token_16~23, extra_keys)
+...
+```
 
-- 相同的前缀必然产生相同的哈希链
-- 任何 token 的改变都会导致后续所有 block 哈希不同
-- 天然支持前缀缓存匹配
+就像区块链一样，每个 block 的哈希都包含了前面所有 block 的信息。
 
-**额外键**（`extra_keys`）来源：
+#### 2.4.3 链式哈希的三大特性
 
-- **多模态输入**：`(mm_identifier, offset)` 确保不同位置的相同 MM item 不会冲突
-- **LoRA**：LoRA name 隔离不同 adapter
-- **cache_salt**：用户自定义盐值
-- **prompt_embeds**：prompt 嵌入的哈希
+✅ **特性 1：相同前缀 → 相同哈希链**
+```
+请求A: [P0][P1][P2][A3][A4]...
+请求B: [P0][P1][P2][B3][B4]...
+         ↑  ↑  ↑
+       这三个 block 的哈希完全一样！
+```
+
+因为前三个 block 的 token 一样，父哈希也一样，所以结果一定一样。
+
+✅ **特性 2：修改一处，全链变化**
+```
+原来的链: H0 → H1 → H2 → H3
+修改第 1 个 block 的 token: H0' → H1' → H2' → H3'
+                            全变了！
+```
+
+这保证了：只要前缀有任何不同，后面所有哈希都不一样，不会误匹配。
+
+✅ **特性 3：天然支持前缀匹配**
+```
+请求:  [P0][P1][P2][X3][X4]
+缓存:  [P0][P1][P2][Q3][Q4]
+         ✓   ✓   ✓   ✗
+              到这就停了，后面不用看了
+```
+
+从第一个 block 开始，顺着链找，第一个不匹配的后面肯定都不匹配，直接停止。
+
+#### 2.4.4 `NONE_HASH` — 链的起点
+
+```python
+# 第一个 block 没有父哈希，用这个作为起点
+NONE_HASH: BlockHash
+```
+
+初始化（`kv_cache_utils.py:99`）：
+```python
+def init_none_hash(hash_fn):
+    global NONE_HASH
+    hash_seed = os.getenv("PYTHONHASHSEED")
+    if hash_seed is None:
+        NONE_HASH = BlockHash(os.urandom(32))  # 随机 32 字节
+    else:
+        NONE_HASH = BlockHash(hash_fn(hash_seed))  # 基于环境变量
+```
+
+> 为什么默认用随机值？为了防止哈希碰撞攻击。
+>
+> 但如果你需要**跨进程可复现**的哈希（比如 P/D 分离，两个进程要算出一样的哈希），
+> 就要设置 `PYTHONHASHSEED` 环境变量，让两边的 NONE_HASH 一样。
+
+#### 2.4.5 额外键（extra_keys）
+
+哈希不止包含 token，还包含一些额外信息，用于隔离不同场景：
+
+| 额外键 | 来源 | 作用 |
+|--------|------|------|
+| 多模态标识 | `mm_identifier + offset` | 同一张图片出现在不同位置，哈希不同 |
+| LoRA 名称 | `lora_request` | 不同 adapter 的 KV 不共享 |
+| cache_salt | 用户自定义 | 用户手动隔离不同请求的缓存 |
+| prompt_embeds 哈希 | `prompt_embeds` | 自定义嵌入的情况 |
+
+源码位置：`kv_cache_utils.py:430` 的 `need_extra_keys()` 函数。
+
+---
+
+### 2.5 综合示例：完整生命周期
+
+把上面四个数据结构串起来，看请求A 和 请求B 的完整故事：
+
+```
+【初始状态】
+  GPU 有 10 个 block（0~9），全部空闲
+  FreeKVCacheBlockQueue: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  BlockHashToBlockMap: {} (空)
+
+【步骤 1：请求A 到达】
+  - 请求A: 20 个 token，需要 3 个 block
+  - popleft_n(3) → 拿出 block_0, block_1, block_2
+  - 请求A.block_table = [0, 1, 2]
+  - 三个 block 的 ref_cnt 都 = 1
+
+【步骤 2：请求A 前 16 个 token 计算完成】
+  - block_0 填满了 → set_block_hash(H0, 8)
+  - block_1 填满了 → set_block_hash(H1, 8)
+  - block_2 只填了 4 个 → 还没有哈希
+  - BlockHashToBlockMap 插入:
+      H0 → block_0
+      H1 → block_1
+
+【步骤 3：请求B 到达】
+  - 请求B: 18 个 token
+  - 前缀缓存查找:
+      第 1 个 block → H0 命中！(block_0)
+      第 2 个 block → H2 不命中
+      命中 1 个 block（8 个 token）
+  - block_0.ref_cnt += 1 → 变成 2（共享！）
+  - 还需要 2 个新 block → popleft_n(2) → block_3, block_4
+
+【步骤 4：请求A 完成，释放】
+  - 请求A.block_table = [0, 1, 2]
+  - 释放时逆序处理: 2, 1, 0
+  - block_2.ref_cnt-- → 0 → prepend_n 插到队头（无哈希，优先驱逐）
+  - block_1.ref_cnt-- → 0 → append 到队尾（有哈希）
+  - block_0.ref_cnt-- → 1（还被请求B 用着，不释放！）
+
+【最终状态】
+  运行中: 请求B（共享 block_0，拥有 block_3, block_4）
+  空闲队列: [block_2, ...(其他), block_1]
+            ↑ 最先驱逐        ↑ 最后驱逐
+  缓存表:
+    H0 → block_0 (ref_cnt=1, 不在空闲队列)
+    H1 → block_1 (ref_cnt=0, 在空闲队列，可以被驱逐)
+```
+
+这就是四个核心数据结构如何协同工作的完整画面。
 
 ---
 
@@ -136,7 +1170,11 @@ def hash_block_tokens(hash_function, parent_block_hash, curr_block_token_ids, ex
 
 ### 3.1 KVCacheManager — 顶层接口
 
-定义于 `kv_cache_manager.py:110`，是 Scheduler 唯一直接交互的对象：
+**定义位置**：`kv_cache_manager.py:117`
+
+**职责**：作为 Scheduler 唯一直接交互的对象，封装所有内部复杂性。
+
+**生活化类比**：图书馆前台接待员，你只需要告诉她你要什么书，她帮你搞定所有内部流程。
 
 ```python
 class KVCacheManager:
@@ -147,20 +1185,62 @@ class KVCacheManager:
         self.watermark_blocks = int(watermark * kv_cache_config.num_blocks)
 ```
 
-**核心方法：**
+**核心方法一览：**
 
-| 方法                                             | 功能                                         |
-| ------------------------------------------------ | -------------------------------------------- |
-| `get_computed_blocks(request)`                 | 查找请求的前缀缓存命中                       |
-| `allocate_slots(request, num_new_tokens, ...)` | 为请求分配新 block 槽位                      |
-| `free(request)`                                | 释放请求占用的所有 block                     |
-| `cache_blocks(request, num_tokens)`            | 将已计算的 block 存入前缀缓存                |
-| `take_new_block_ids()`                         | 获取新分配的 block ID（用于 GPU 端 zeroing） |
-| `get_num_common_prefix_blocks()`               | 计算共享前缀长度（用于 cascade attention）   |
+| 方法                                             | 功能                                            |
+| ------------------------------------------------ | ----------------------------------------------- |
+| `get_computed_blocks(request)`                 | 查找请求的前缀缓存命中                          |
+| `get_computed_blocks_for_connector(request)`   | 为 KV connector 做本地前缀查找（混合模型专用） |
+| `allocate_slots(request, num_new_tokens, ...)` | 为请求分配新 block 槽位                         |
+| `free(request)`                                | 释放请求占用的所有 block                        |
+| `cache_blocks(request, num_tokens)`            | 将已计算的 block 存入前缀缓存                   |
+| `take_new_block_ids()`                         | 获取新分配的 block ID（用于 GPU 端 zeroing）   |
+| `get_num_common_prefix_blocks(running_req_id)` | 计算共享前缀长度（用于 cascade attention）     |
+| `take_kv_cache_block_copies()`                 | 获取待执行的 CoW 拷贝任务                       |
+| `take_partial_tail_offloads()`                 | 获取 producer 的 partial tail 卸载任务         |
+| `reset_prefix_cache()`                         | 重置前缀缓存（RLHF / benchmark 用）            |
+| `evict_blocks(block_ids)`                      | 按 ID 驱逐指定 block                            |
 
-### 3.2 KVCacheCoordinator — 多类型协调器
+**关键属性：**
 
-定义于 `kv_cache_coordinator.py:61`，根据模型注意力类型选择不同的协调器：
+- `watermark_blocks`：预留水位线块数，防止频繁抢占
+- `empty_kv_cache_blocks`：预构造的空 KVCacheBlocks，避免频繁 GC
+- `_partial_tail_pins`：partial tail offload 的 pin 管理
+
+### 3.2 KVCacheBlocks — 调度接口数据结构
+
+**定义位置**：`kv_cache_manager.py:32`
+
+```python
+@dataclass
+class KVCacheBlocks:
+    blocks: tuple[Sequence[KVCacheBlock], ...]
+```
+
+**设计目的**：作为 Scheduler 和 KVCacheManager 之间的接口，隐藏内部数据结构。
+
+- `blocks[i][j]`：第 i 个 kv_cache_group 的第 j 个 block
+- 外层用 tuple 是因为 group 数量固定
+- 内层用 Sequence 是为了兼容 list 和 tuple
+
+**常用方法：**
+
+| 方法                              | 功能                                          |
+| --------------------------------- | --------------------------------------------- |
+| `get_block_ids(allow_none=False)` | 转换为 block_ids 元组                          |
+| `get_unhashed_block_ids()`        | 获取未哈希的 block IDs（用于 zeroing）        |
+| `new_empty()`                     | 创建同结构的空 KVCacheBlocks                  |
+| `__add__`                         | 两个 KVCacheBlocks 拼接                       |
+
+### 3.3 KVCacheCoordinator — 多类型协调器
+
+**定义位置**：`kv_cache_coordinator.py:60`
+
+**职责**：协调不同 KV Cache Group 之间的协作，确保缓存命中一致性。
+
+**生活化类比**：图书馆的部门协调员，确保不同部门（小说区、科技区等）的借阅政策一致。
+
+#### 3.3.1 三种协调器实现
 
 ```
 get_kv_cache_coordinator()
@@ -169,19 +1249,15 @@ get_kv_cache_coordinator()
     └── 多 KV Cache Group   → HybridKVCacheCoordinator
 ```
 
-**三种实现：**
+| 协调器类型                     | 适用场景                           | 特点                                           |
+| ------------------------------ | ---------------------------------- | ---------------------------------------------- |
+| `KVCacheCoordinatorNoPrefixCache` | 禁用前缀缓存时                   | 支持任意数量 Group（包括 0 个），无缓存功能    |
+| `UnitaryKVCacheCoordinator`      | 单一注意力类型（如全注意力）     | 直接委托给唯一的 manager，最简单高效           |
+| `HybridKVCacheCoordinator`       | 混合注意力（如 Full + SWA）       | 迭代不动点算法，取所有组的交集命中长度         |
 
-#### (1) KVCacheCoordinatorNoPrefixCache
+#### 3.3.2 HybridKVCacheCoordinator — 混合注意力协调
 
-禁用前缀缓存时使用。`find_longest_cache_hit()` 直接返回空，不执行任何缓存查找。支持任意数量的 KV Cache Group（包括 0 个）。
-
-#### (2) UnitaryKVCacheCoordinator
-
-单一注意力类型模型使用（如全部 Full Attention）。直接委托给唯一的 `SingleTypeKVCacheManager`。
-
-#### (3) HybridKVCacheCoordinator
-
-混合注意力模型使用（如 Full Attention + Sliding Window）。核心是 `find_longest_cache_hit()` 使用**迭代不动点算法**：
+**核心算法：迭代不动点算法**
 
 ```python
 while True:
@@ -195,57 +1271,167 @@ while True:
     hit_length = curr_hit_length
 ```
 
-**算法原理：** 不同注意力类型的缓存命中长度可能不同（如 Full Attention 可以命中更多 block，但 Sliding Window 由于窗口限制只能命中尾部 block）。取所有类型的**交集长度**作为最终命中长度，迭代直到收敛。
+**算法原理**：
 
-### 3.3 SingleTypeKVCacheManager — 单类型管理器
+不同注意力类型的缓存命中长度可能不同。例如：
+- Full Attention：可以命中全部前缀 block
+- Sliding Window：由于窗口限制，只能命中尾部部分 block
 
-定义于 `single_type_kv_cache_manager.py:32`，按注意力类型管理 block 分配逻辑。主要子类：
+取所有类型的**交集长度**作为最终命中长度，迭代直到收敛。
 
-| 管理器                           | 对应 Spec                     | 特点                                  |
-| -------------------------------- | ----------------------------- | ------------------------------------- |
-| `FullAttentionManager`         | `FullAttentionSpec`         | 全注意力，所有 token 都需要 KV Cache  |
-| `SlidingWindowManager`         | `SlidingWindowSpec`         | 滑动窗口，窗口外的 block 用 null 填充 |
-| `ChunkedLocalAttentionManager` | `ChunkedLocalAttentionSpec` | 分块局部注意力                        |
-| `MambaManager`                 | `MambaSpec`                 | Mamba 状态空间模型                    |
-| `CrossAttentionManager`        | `CrossAttentionSpec`        | 交叉注意力（编码器-解码器）           |
+**优化点：**
 
-**每个请求的 block 跟踪：**
+1. **Full Attention 优先**：Full Attention 组放在第一个，其高效的从左到右扫描提供更紧的初始上界
+2. **简单混合快速路径**：1 个 Full Attention + 1 个其他类型 → 只需一次迭代
+3. **EAGLE 验证机制**：每个 eagle group 在每个候选长度只 drop 一次，避免重复 drop
+
+**uncached common prefix 检测**：
+
+当某些组（如 Mamba）缓存了比最终收敛长度更长的前缀时，差值就是"未缓存的共享前缀"。这些前缀在请求间共享，但稀疏保留的组还没缓存到。
+
+### 3.4 SingleTypeKVCacheManager — 单类型管理器
+
+**定义位置**：`single_type_kv_cache_manager.py:36`
+
+**职责**：按注意力类型管理具体的 block 分配逻辑。
+
+**继承体系：**
+
+```
+SingleTypeKVCacheManager (抽象基类)
+    ├── FullAttentionManager
+    │   ├── RSWAManager
+    │   └── SinkFullAttentionManager
+    ├── SlidingWindowManager
+    ├── ChunkedLocalAttentionManager
+    ├── MambaManager
+    └── CrossAttentionManager
+```
+
+**各管理器对比：**
+
+| 管理器                       | 对应 Spec                     | 缓存策略       | hit 方向 | 特点                                              |
+| ---------------------------- | ----------------------------- | -------------- | -------- | ------------------------------------------------- |
+| `FullAttentionManager`     | `FullAttentionSpec`         | 密集缓存       | 从左到右 | 全注意力，所有 token 都需要 KV Cache              |
+| `RSWAManager`              | `RSWASpec`                  | 密集缓存       | 从左到右 | 参考滑动窗口，释放中间 gap 块                     |
+| `SinkFullAttentionManager` | `SinkFullAttentionSpec`     | 密集缓存       | 从左到右 | 有固定 sink 块                                   |
+| `SlidingWindowManager`     | `SlidingWindowSpec`         | 稀疏边界缓存   | 从右到左 | 滑动窗口，窗口外用 null 填充                      |
+| `ChunkedLocalAttentionManager` | `ChunkedLocalAttentionSpec` | 密集缓存    | 从左到右 | 分块局部注意力                                    |
+| `MambaManager`             | `MambaSpec`                 | 稀疏边界快照   | 从右到左 | Mamba 状态空间，支持 align 模式的细粒度命中      |
+| `CrossAttentionManager`    | `CrossAttentionSpec`        | 不缓存         | -        | 交叉注意力，编码器状态唯一，无需共享              |
+
+**每个请求的跟踪数据：**
 
 ```python
 self.req_to_blocks: defaultdict[str, list[KVCacheBlock]] = defaultdict(list)
 self.num_cached_block: dict[str, int] = {}  # 已缓存的 block 数
 ```
 
+### 3.5 BlockPool — 底层块池
+
+**定义位置**：`block_pool.py:143`
+
+**职责**：管理所有物理 KV Cache block，提供分配、释放、缓存、驱逐功能。
+
+**生活化类比**：图书馆的书库管理员，负责所有书籍的存取和整理。
+
+**核心数据结构：**
+
+```python
+class BlockPool:
+    self.blocks: list[KVCacheBlock]              # 所有物理 block
+    self.free_block_queue: FreeKVCacheBlockQueue  # 空闲块队列（LRU）
+    self.cached_block_hash_to_block: BlockHashToBlockMap  # 前缀缓存哈希表
+    self.cached_block_hashes_by_block: dict[int, set[BlockHashWithGroupId]]  # 反向索引
+    self.null_block: KVCacheBlock                # null 占位块
+    self.kv_event_queue: list[KVCacheEvent]      # KV 事件队列
+```
+
+**核心方法：**
+
+| 方法                                  | 功能                                          |
+| ------------------------------------- | --------------------------------------------- |
+| `get_new_blocks(num_blocks)`        | 分配新 blocks（可能驱逐缓存）                 |
+| `free_blocks(blocks)`                | 释放 blocks 回空闲队列                        |
+| `touch(blocks)`                      | 命中缓存，增加 ref_cnt，从空闲队列移除       |
+| `get_cached_block(block_hash, ...)`  | 按哈希查找缓存 block                          |
+| `cache_full_blocks(...)`             | 将满块存入前缀缓存                            |
+| `cache_partial_block(...)`           | 将部分块存入前缀缓存（细粒度命中用）          |
+| `evict_blocks(block_ids)`            | 驱逐指定 block                                |
+| `reset_prefix_cache()`               | 重置所有前缀缓存                              |
+| `take_events()`                      | 取出待发送的 KV 事件                          |
+
 ---
 
 ## 4. 核心工作流程
 
-### 4.1 前缀缓存查找 — `get_computed_blocks`
+### 4.1 前缀缓存查找 — get_computed_blocks
 
-当请求进入调度器时，首先查找已有的前缀缓存命中：
+**触发时机**：请求进入调度器时，首先查找已有的前缀缓存命中。
 
 ```
 KVCacheManager.get_computed_blocks(request)
+    │
+    ├── 前置检查：prefix caching 禁用 or 请求跳过缓存? → 返回空
     │
     ├── max_cache_hit_length = request.num_tokens - 1
     │   (所有 token 都命中时需重算最后一个 token 的 logits)
     │
     └── coordinator.find_longest_cache_hit(request.block_hashes, max_cache_hit_length)
         │
-        ├── [Unitary] 委托给唯一的 manager.find_longest_cache_hit()
-        └── [Hybrid]  迭代不动点算法，取所有注意力类型的交集
+        ├── [NoPrefixCache] → 直接返回空
+        ├── [Unitary] → 委托给唯一的 manager.find_longest_cache_hit()
+        └── [Hybrid]  → 迭代不动点算法，取所有注意力类型的交集
             │
-            └── FullAttentionManager.find_longest_cache_hit()
-                ├── 从左到右遍历 block_hashes
-                ├── 在 BlockPool.get_cached_block() 中查找
-                └── 遇到 miss 即 break（链式哈希保证后续必 miss）
+            └── 各 manager 的 find_longest_cache_hit():
+                ├── FullAttention: 从左到右遍历，遇到 miss 即 break
+                ├── SlidingWindow: 从右到左找连续命中的窗口块
+                ├── Mamba: 从右到左找最近的状态快照
+                └── ...
 ```
 
-**返回值：** `(KVCacheBlocks, num_computed_tokens)` — 命中的 block 列表和对应的 token 数。
+**返回值**：`(KVCacheBlocks, num_computed_tokens, shared_prefix_boundary)`
 
-### 4.2 Block 分配 — `allocate_slots`
+- `KVCacheBlocks`：命中的 block 列表
+- `num_computed_tokens`：对应的 token 数
+- `shared_prefix_boundary`：共享前缀边界（混合模型中稀疏保留组还没缓存到的位置）
 
-这是最核心的方法，为请求分配新的 block 槽位。完整流程：
+### 4.2 Block 分配 — allocate_slots
+
+这是最核心的方法，为请求分配新的 block 槽位。
+
+**Block 布局图：**
+
+```
+----------------------------------------------------------------------
+| < comp > | < new_comp > | < ext_comp >  | < new >  | < lookahead > |
+----------------------------------------------------------------------
+                                          |   < to be computed >     |
+----------------------------------------------------------------------
+                          |            < to be allocated >           |
+----------------------------------------------------------------------
+                          | < to be cached (roughly, |
+                          | details below)>          |
+----------------------------------------------------------------------
+| Prefix-cached tokens from either vLLM   |
+| or connector. Can be safely removed if  |
+| they are outside sliding window.        |
+----------------------------------------------------------------------
+|   < cached by vLLM >    | not cached by |
+                          | vLLM, but     |
+| ref_cnt  | ref_cnt not  | cached by     |
+| increased| increased yet| connector     |
+----------------------------------------------------------------------
+```
+
+**缩略说明：**
+- `comp` = 已计算 tokens（之前 step 的）
+- `new_comp` = 本次新命中前缀缓存的 tokens
+- `ext_comp` = 外部连接器缓存的 tokens
+- `new` = 本次需要新计算的 tokens
+- `lookahead` = 推测解码的 lookahead tokens
+
+**完整分配流程：**
 
 ```
 allocate_slots(request, num_new_tokens, new_computed_blocks, ...)
@@ -254,7 +1440,7 @@ allocate_slots(request, num_new_tokens, new_computed_blocks, ...)
     │      num_local_computed = request.num_computed + num_new_computed
     │      total_computed = min(local + external, max_model_len)
     │
-    ├── 2. 计算 watermark（仅对 WAITING/PREEMPTED 请求）
+    ├── 2. 计算 watermark（仅对 WAITING/PREEMPTED 请求且已有 running 请求时）
     │
     ├── 3. [可选] full_sequence_must_fit 检查
     │      预检查完整序列能否容纳，防止 chunked prefill 过度准入
@@ -269,51 +1455,45 @@ allocate_slots(request, num_new_tokens, new_computed_blocks, ...)
     ├── 6. 容量检查
     │      required > available_blocks → return None (无法调度)
     │
-    ├── 7. allocate_new_computed_blocks()
-    │      ├── add_local_computed_blocks(): touch 命中的缓存块（ref_cnt++）
-    │      └── allocate_external_computed_blocks(): 外部 KV 的 block 分配
+    ├── 7. allocate_new_computed_blocks()  ★ 两阶段分配
+    │      ├── 第一阶段：所有 group 的 add_local_computed_blocks()
+    │      │   → touch 命中的缓存块（ref_cnt++）
+    │      │   → 防止后续组的外部分配驱逐本组的缓存命中
+    │      └── 第二阶段：所有 group 的 allocate_external_computed_blocks()
+    │          → 外部 KV 的 block 分配
     │
     ├── 8. allocate_new_blocks()
     │      从 BlockPool 获取新 block，追加到 req_to_blocks
+    │      ├── [Partial Hit] CoW 重定向：部分命中时需要写时复制
+    │      └── 普通分配：直接从 free queue 取
     │
-    └── 9. cache_blocks()
+    └── 9. cache_blocks()（如启用缓存且非 delay 模式）
            将填满的 block 计算哈希并存入前缀缓存
 ```
 
-**分配的 block 布局（`allocate_slots` 文档中的图）：**
+**两阶段分配（Two-phase Allocation）**：
 
-```
-| < comp > | < new_comp > | < ext_comp >  | < new >  | < lookahead > |
-                                                      | < to be computed >    |
-                                  |          < to be allocated >          |
-| < cached by vLLM >    | not cached by |
-| ref_cnt  | ref_cnt not  | vLLM, but     |
-| increased| increased yet| cached by     |
-                         | connector     |
-```
+这是一个重要的设计细节，解决了 issue #33775 中的问题：
 
-其中：
+- **问题**：如果先给 A 组分配外部 block，可能会驱逐 B 组还没 touch 的缓存命中块
+- **解决**：先让所有组 touch 完本地缓存命中块，再分配外部 block
 
-- `comp` = 已计算 tokens（之前 step 的）
-- `new_comp` = 本次新命中前缀缓存的 tokens
-- `ext_comp` = 外部连接器缓存的 tokens
-- `new` = 本次需要新计算的 tokens
-- `lookahead` = 推测解码的 lookahead tokens
+### 4.3 前缀缓存存储 — cache_blocks
 
-### 4.3 前缀缓存存储 — `cache_blocks` / `cache_full_blocks`
-
-当一个 block 填满后，计算其哈希并存入缓存：
+当一个 block 填满后，计算其哈希并存入缓存。
 
 ```
 SingleTypeKVCacheManager.cache_blocks(request, num_tokens)
     │
     ├── num_full_blocks = num_tokens // block_size
+    ├── 已有缓存数 >= 满块数? → 直接返回
+    │
     ├── reachable_block_mask() → 确定哪些 block 值得缓存
-    │      (SWA 中只有可被命中的 block 才缓存)
+    │      (SWA/Mamba 中只有可被命中的 block 才缓存)
     │
     └── BlockPool.cache_full_blocks(request, blocks, num_cached, num_full, ...)
         │
-        └── 对每个 new_full_block:
+        └── 对每个 new_full_block (且 mask 为 True):
             ├── block_hash = request.block_hashes[i]  (hash_block_size 粒度)
             ├── block_hash_with_group_id = pack(block_hash, group_id)
             ├── 如果 block 已有部分哈希 → 移除旧哈希（partial→full 提升）
@@ -322,29 +1502,56 @@ SingleTypeKVCacheManager.cache_blocks(request, num_tokens)
                 → 记录到 cached_block_hashes_by_block
 ```
 
-**partial block caching**（`cache_partial_block`）：
+**Partial Block Caching（部分块缓存）**：
 
-- 当不同 KV Cache Group 有不同 block_size 时，较细粒度（`hash_block_size`）的边界需要部分缓存
-- 允许从 block 内部的细粒度前缀边界命中
+当不同 KV Cache Group 有不同 `block_size` 时，较细粒度（`hash_block_size`）的边界需要部分缓存。允许从 block 内部的细粒度前缀边界命中。
 
-### 4.4 Block 释放与驱逐
+例如：Full Attention block_size=16，Mamba align block_size=64，hash_block_size=16 → Mamba 的 block 内部有 4 个细粒度边界可以命中。
+
+### 4.4 Copy-on-Write (CoW) — 部分命中的写时复制
+
+**触发场景**：前缀缓存命中结束在一个 block 的内部（不是整 block 对齐）。
+
+**问题**：如果多个请求共享同一个部分命中的 tail block，其中一个请求要继续写这个 block，会影响其他请求。
+
+**解决**：Copy-on-Write —— 为新请求分配一个私有 CoW block，把共享 block 的内容拷贝过去，然后新请求在自己的私有 block 上继续写。
+
+```
+分配前：
+  请求A: [..., Block_X (共享, 部分填充)]
+  请求B: [..., Block_X (共享, 部分填充)]  ← 新命中
+
+CoW 后：
+  请求A: [..., Block_X (共享, 部分填充)]
+  请求B: [..., Block_Y (私有, 从 Block_X 拷贝)]  ← 独立写
+```
+
+**CoW 的生命周期管理**：
+
+- `_partial_hit_reqs`：记录待 CoW 的请求
+- `_pending_cow_copies`：待 worker 执行的拷贝任务
+- 拷贝的两个端点都额外持有引用，防止同一步的 free 回收它们
+
+### 4.5 Block 释放与驱逐
 
 **释放流程：**
 
 ```
 KVCacheManager.free(request)
+    ├── 释放 partial tail pins
     └── coordinator.free(request_id)
         └── for each manager:
             manager.free(request_id)
                 └── block_pool.free_blocks(reversed(req_blocks))
                     │                    ↑ 逆序：尾部先释放（先被驱逐）
                     │
-                    ├── ref_cnt -= 1
-                    ├── if ref_cnt == 0 and not is_null:
-                    │     if block_hash is None:
-                    │         blocks_without_hash.append(block)
-                    │     else:
-                    │         blocks_with_hash.append(block)
+                    ├── 对每个 block:
+                    │   ├── ref_cnt -= 1
+                    │   └── if ref_cnt == 0 and not is_null:
+                    │         if block_hash is None:
+                    │             blocks_without_hash.append(block)
+                    │         else:
+                    │             blocks_with_hash.append(block)
                     │
                     ├── free_block_queue.prepend_n(blocks_without_hash)
                     │     ↑ 无哈希的插到队头前（优先驱逐）
@@ -356,16 +1563,17 @@ KVCacheManager.free(request)
 
 ```
 BlockPool.get_new_blocks(num_blocks)
-    └── for each block from free_block_queue:
+    └── for each block from free_block_queue.popleft_n(n):
         ├── _maybe_evict_cached_block(block)
         │     ├── 如果 block 有 hash → 移除哈希映射
         │     └── 发出 BlockRemoved 事件
-        └── block.ref_cnt = 1
+        ├── block.ref_cnt = 1
+        └── [metrics] 记录驱逐事件
 ```
 
 当空闲 block 不足时，从队头弹出 block 进行分配。如果该 block 恰好有缓存的哈希，则先驱逐其缓存映射。
 
-### 4.5 Touch — 前缀缓存命中
+### 4.6 Touch — 前缀缓存命中
 
 当新请求命中已有前缀缓存时，通过 `touch()` 增加引用计数：
 
@@ -377,17 +1585,45 @@ def touch(self, blocks):
         block.ref_cnt += 1
 ```
 
-这使得被命中的 block 不再是驱逐候选，同时多个请求可以共享同一 block。
+**效果**：
+- 被命中的 block 不再是驱逐候选（从 free queue 移除）
+- 多个请求可以共享同一 block（ref_cnt > 1）
+- 只有最后一个使用者释放后，block 才回空闲队列
 
 ---
 
 ## 5. 多类型注意力支持
 
-### 5.1 Sliding Window Attention
+### 5.1 Full Attention（全注意力）
 
-**核心挑战：** 滑动窗口只关注最近 `sliding_window` 个 token，窗口外的 block 不再需要。
+**管理器**：`FullAttentionManager`
 
-**`get_num_skipped_tokens`**（`single_type_kv_cache_manager.py:770`）：
+**特点**：
+- 所有 token 都需要 KV Cache
+- 密集缓存：每个满块都存入前缀缓存
+- 命中查找：从左到右扫描，遇到 miss 即 break（链式哈希保证后续必 miss）
+- 支持细粒度 partial hit（不同 block_size 的混合模型中）
+- 支持 CoW（部分命中的写时复制）
+
+**细粒度命中（Fine-grained Hit）**：
+
+当 `alignment_tokens < block_size` 且 `block_size % alignment_tokens == 0` 时，支持 block 内部的细粒度前缀命中：
+
+```
+Block (block_size=64)
+┌─────────────────────────────────────────┐
+│ 16 tokens │ 16 tokens │ 16 tokens │ 16 tokens │
+└─────────────────────────────────────────┘
+  ↑ 每个 16-token 边界都有独立的 hash，可以独立命中
+```
+
+### 5.2 Sliding Window Attention（滑动窗口注意力）
+
+**管理器**：`SlidingWindowManager`
+
+**核心挑战**：滑动窗口只关注最近 `sliding_window` 个 token，窗口外的 block 不再需要。
+
+**get_num_skipped_tokens 计算**：
 
 ```
 sliding_window=4, num_computed=7
@@ -401,22 +1637,72 @@ Tokens: [0  1  2  3  4  5  6  7]
 get_num_skipped_tokens(7) = max(0, 7 - 4 + 1) = 4
 ```
 
-**`find_longest_cache_hit`** 特殊逻辑（`single_type_kv_cache_manager.py:620`）：
+**find_longest_cache_hit 特殊逻辑**：
 
 - 从右到左搜索，找到**连续命中**的 block 组
 - 需要至少 `sliding_window_contiguous_blocks` 个连续命中才算有效
 - 窗口外的 block 用 `null_block` 填充
 
-**`remove_skipped_blocks`**：
+**稀疏缓存策略**：
 
-- 随着请求进度推进，窗口外的 block 被释放（替换为 null_block）
-- 这使得滑动窗口模型可以处理远超 `sliding_window` 长度的序列
+不是每个 block 都缓存，只缓存对齐边界附近的 block：
+- `retention_interval = None`：密集缓存（每个对齐边界都缓存）
+- `retention_interval = 0`：仅保留最近的重放边界
+- `retention_interval > 0`：每 `retention_interval` 个 token 保留一次检查点
 
-### 5.2 Chunked Local Attention
+### 5.3 R-SWA（Reference Sliding Window Attention）
+
+**管理器**：`RSWAManager`（继承自 `FullAttentionManager`）
+
+**特点**：
+- 前缀（prompt）部分全保留
+- decode 部分用滑动窗口
+- 中间 gap 的 block 被释放，用 null_block 填充
+
+**gap 计算**：
+
+```
+Gap = blocks entirely within
+    [ceil(prefix_len / block_size) * block_size,
+     max(prefix_len, processed_computed_tokens - rswa_window))
+```
+
+**内存优势**：每请求 KV 内存从 O(序列长度) 降到 O(前缀长度 + 窗口大小)。
+
+### 5.4 Chunked Local Attention（分块局部注意力）
+
+**管理器**：`ChunkedLocalAttentionManager`
 
 类似滑动窗口，但按固定的 `attention_chunk_size` 分块。每个 chunk 内做局部注意力，chunk 外的 token 不参与计算。
 
-### 5.3 Hybrid Models（混合注意力）
+### 5.5 Mamba（状态空间模型）
+
+**管理器**：`MambaManager`
+
+**特点**：
+- 不是传统的 KV Cache，而是 Mamba 状态快照
+- 从右到左找最近的状态快照（只需最后一个命中点）
+- 支持 `mamba_cache_mode = "align"` 模式，与 Full Attention 对齐
+- 稀疏保留：只保留边界处的状态快照
+
+**align 模式的特殊机制**：
+- 细粒度 partial hit 支持（通过 CoW）
+- Partial tail offload：producer 注册的最后一个 prompt 边界部分 tail 可以卸载给 connector
+- 每步只需要 1 个新状态 block + N 个 speculative block
+
+**同步限制**：Mamba 不能依赖同一步中其他请求生成的 block（因为状态还没写进去）。如果命中的是同步新生成的 block，会推迟到下一步。
+
+### 5.6 Cross Attention（交叉注意力）
+
+**管理器**：`CrossAttentionManager`
+
+**特点**：
+- 用于编码器-解码器模型（如 Whisper）
+- 编码器状态是每个请求唯一的，没有共享前缀
+- **不使用前缀缓存**
+- 静态分配：根据 encoder token 数一次性分配
+
+### 5.7 Hybrid Models（混合注意力模型）
 
 如 Gemma2 等，同时使用 Full Attention 和 Sliding Window：
 
@@ -429,72 +1715,95 @@ get_num_skipped_tokens(7) = max(0, 7 - 4 + 1) = 4
 
 ## 6. 高级特性
 
-### 6.1 EAGLE/MTP 支持
+### 6.1 EAGLE/MTP 投机解码支持
 
-EAGLE 投机解码需要最后一个 block 的隐藏状态用于 draft head，因此需要**丢弃最后一个命中的 block** 强制重算：
+EAGLE 投机解码需要最后一个 block 的隐藏状态用于 draft head，因此需要**丢弃最后一个命中的 block** 强制重算。
 
-```python
-if drop_eagle_block and computed_blocks[0]:
-    for computed in computed_blocks:
-        computed.pop()
-```
+**实现方式**：
 
-在 `HybridKVCacheCoordinator` 中，EAGLE 的处理更复杂——需要匹配多一个 block 然后丢弃，且每次候选长度变化时需重新验证。
+- Full Attention：匹配时多匹配一个，然后 drop 掉最后一个
+- Sliding Window：增加需要的连续块数，然后 drop 掉最后一个
+- Mamba：不做 drop（draft 模型没有 Mamba 层）
 
-### 6.2 Context Parallelism
+**Hybrid 中的复杂处理**：EAGLE 的 drop 在每次候选长度变化时需重新验证，通过 `eagle_verified` 集合跟踪。
+
+### 6.2 Context Parallelism（上下文并行）
 
 支持 DCP（Decode Context Parallel）和 PCP（Prefill Context Parallel）：
 
 - `block_size *= dcp_world_size * pcp_world_size`
 - 每个 block 横跨多个 GPU shard
+- 混合模型中，DCP 仅支持 Full Attention + Mamba 组合
 
-### 6.3 External KV Cache（P/D Disaggregation）
+### 6.3 External KV Cache（P/D 分离架构）
 
 支持从外部 connector 加载 KV Cache（如 P/D 分离架构）：
 
 - `num_external_computed_tokens`：外部缓存的 token 数
 - `allocate_external_computed_blocks()`：为外部 token 分配新 block
 - `delay_cache_blocks=True`：暂不缓存，等待 KV 传输完成
+- `get_computed_blocks_for_connector()`：connector 专用的前缀查找（混合模型更准确）
 
-**两阶段分配**（issue #33775）：
+### 6.4 Partial Tail Offload（部分尾部卸载）
 
-1. 先 touch 所有 group 的本地缓存命中块
-2. 再分配外部 block
-   避免前组的外部分配驱逐后组还没 touch 的缓存命中块。
+**生产者（Producer）**：注册最后一个 prompt 边界的 partial tail，交给 KV connector 卸载。
 
-### 6.4 Watermark 机制
+**消费者（Consumer）**：通过细粒度前缀命中加载这些 partial tail。
+
+**适用场景**：P/D 分离架构中，producer 把 prompt 尾部的细粒度状态 offload 出去，让 disaggregated 的 consumer 能命中。
+
+**pin 管理**：offload 的 block 不直接在请求的 block table 里，由 `_partial_tail_pins` 单独管理 pin，直到请求释放。
+
+### 6.5 Watermark 机制（水位线）
 
 ```python
 self.watermark_blocks = int(watermark * kv_cache_config.num_blocks)
 ```
 
-- 仅对 WAITING/PREEMPTED 请求且已有 running 请求时生效
-- 在可用 block 数中保留 `watermark_blocks` 个不被新请求占用
-- 防止频繁的 preemption（抢占）
+**作用**：防止过度准入导致频繁抢占。
 
-### 6.5 KV Cache Events
+**生效条件**：
+- 仅对 WAITING/PREEMPTED 请求
+- 且已有 running 请求时
+- 在可用 block 数中保留 `watermark_blocks` 个不被新请求占用
+
+### 6.6 Prefix Cache Retention Interval（前缀缓存保留间隔）
+
+**环境变量**：`VLLM_PREFIX_CACHE_RETENTION_INTERVAL`
+
+**作用**：控制 SWA/Mamba 的稀疏检查点粒度。
+
+| 值     | 含义                                                   |
+| ------ | ------------------------------------------------------ |
+| `None` | 密集缓存（每个 alignment 边界都缓存）                  |
+| `0`    | 仅保留最近的重放边界 + 共享前缀边界                    |
+| 正整数 | 每 `retention_interval` 个 token 保留一次检查点        |
+
+**仅适用于**：Sliding Window 和 Mamba 类型的稀疏保留组。
+
+### 6.7 KV Cache Events（事件机制）
 
 当 `enable_kv_cache_events=True` 时，BlockPool 会发出事件：
 
-- `BlockStored`：block 被存入缓存
-- `BlockRemoved`：block 被驱逐
-- `AllBlocksCleared`：所有缓存被清除
+| 事件             | 触发时机                     | 用途                                 |
+| ---------------- | ---------------------------- | ------------------------------------ |
+| `BlockStored`  | block 被存入缓存             | P/D 分离、KV offload 追踪缓存状态  |
+| `BlockRemoved` | block 被驱逐                 | 外部系统同步缓存状态                 |
+| `AllBlocksCleared` | 所有缓存被清除           | 重置通知                             |
 
-这些事件用于 P/D 分离、KV offload 等外部系统追踪缓存状态。
+**report mode**：
+- `incremental`（默认）：只报告新增的
+- `full`：重用前缀缓存时也补发 `BlockStored` 事件
 
-### 6.6 Prefix Cache Retention
+### 6.8 Cascade Attention（级联注意力）
 
-```python
-retention_interval = envs.VLLM_PREFIX_CACHE_RETENTION_INTERVAL
-```
+**`get_num_common_prefix_blocks()`**：计算所有请求共享的前缀 block 数。
 
-控制 SWA 的稀疏检查点粒度：
+用于 cascade attention 优化——所有请求共享的前缀只需要计算一次。
 
-- `None`：密集缓存（每个 alignment 边界都缓存）
-- `0`：仅保留最近的重放边界
-- 正整数：每 `retention_interval` 个 token 保留一次检查点
+**注意**：只有 Full Attention 能准确计算，SWA/Mamba/CrossAttention 返回 0。
 
-### 6.7 Metrics 采样
+### 6.9 Metrics 采样
 
 `KVCacheMetricsCollector` 以采样率（默认 1%）跟踪 block 生命周期：
 
@@ -505,11 +1814,17 @@ retention_interval = envs.VLLM_PREFIX_CACHE_RETENTION_INTERVAL
 
 驱逐时生成 `KVCacheEvictionEvent`，用于分析缓存效率。
 
+### 6.10 Sink Attention
+
+**管理器**：`SinkFullAttentionManager`
+
+开头固定几个 sink block 常驻，不参与驱逐。用于 StreamingLLM 等场景。
+
 ---
 
-## 7. 完整生命周期
+## 7. 完整生命周期示例
 
-以一个请求的完整生命周期为例：
+以一个 Full Attention 请求的完整生命周期为例：
 
 ```
 1. 请求到达 Scheduler
@@ -519,7 +1834,7 @@ retention_interval = envs.VLLM_PREFIX_CACHE_RETENTION_INTERVAL
 
 2. 调度准入检查
    └── allocate_slots(request, num_new_tokens, new_computed_blocks, ...)
-       ├── remove_skipped_blocks() → 释放滑窗外 block
+       ├── remove_skipped_blocks() → 释放滑窗外 block（Full Attention: 无操作）
        ├── get_num_blocks_to_allocate() → 需要分配 M 个
        └── 容量检查 → 通过
 
@@ -528,9 +1843,11 @@ retention_interval = envs.VLLM_PREFIX_CACHE_RETENTION_INTERVAL
    │   ├── add_local_computed_blocks() → touch 命中块 (ref_cnt++)
    │   └── allocate_external_computed_blocks() (如有外部 KV)
    └── allocate_new_blocks() → 从 free_block_queue 分配 M 个新块
+       └── [Partial Hit] 如需要 → CoW 重定向
 
 4. 模型计算
    └── GPU worker 使用分配的 block_ids 进行 attention 计算
+   └── [CoW] 如有待执行的 CoW → worker 执行拷贝
 
 5. 缓存新填满的 block
    └── cache_blocks(request, num_computed_tokens)
@@ -556,13 +1873,34 @@ retention_interval = envs.VLLM_PREFIX_CACHE_RETENTION_INTERVAL
 
 ## 8. 设计要点总结
 
-1. **PagedAttention**：KV Cache 按 block 分页管理，而非连续分配，避免内存碎片。
-2. **引用计数共享**：多个请求命中相同前缀时共享物理 block，通过 `ref_cnt` 管理。
-3. **链式哈希前缀缓存**：前缀匹配通过哈希链实现，确保前缀相同则 block 哈希相同。
-4. **LRU 驱逐策略**：空闲块按 LRU 排序，无哈希块优先驱逐，有哈希块保留更久。
-5. **分层管理**：Manager → Coordinator → SingleTypeManager → BlockPool，职责清晰。
-6. **多注意力类型支持**：通过不同的 Coordinator 和 Manager 支持混合注意力模型。
-7. **两阶段分配**：避免跨 group 的缓存命中块被提前驱逐。
-8. **Watermark 准入控制**：防止过度准入导致频繁抢占。
-9. **事件驱动**：KV Cache 事件支持 P/D 分离等外部系统。
-10. **延迟缓存**：P/D 场景下可延迟缓存，等待 KV 传输完成后再提交。
+### 8.1 核心设计思想
+
+1. **PagedAttention（分页注意力）**：KV Cache 按 block 分页管理，而非连续分配，避免内存碎片，提高利用率。
+
+2. **引用计数共享**：多个请求命中相同前缀时共享物理 block，通过 `ref_cnt` 管理，大幅节省内存。
+
+3. **链式哈希前缀缓存**：前缀匹配通过哈希链实现，确保前缀相同则 block 哈希相同，匹配高效可靠。
+
+4. **LRU 驱逐策略**：空闲块按 LRU 排序，无哈希块优先驱逐，有哈希块保留更久，权衡缓存命中率和分配效率。
+
+5. **分层管理架构**：Manager → Coordinator → SingleTypeManager → BlockPool，每层职责清晰，易于扩展。
+
+### 8.2 关键技术细节
+
+6. **多注意力类型支持**：通过不同的 Coordinator 和 Manager 支持混合注意力模型，使用迭代不动点算法保证一致性。
+
+7. **两阶段分配**：先 touch 所有组的本地缓存，再分配外部 block，避免跨 group 的缓存命中块被提前驱逐。
+
+8. **Copy-on-Write（写时复制）**：部分前缀命中时，共享 tail block 通过 CoW 隔离，保证数据安全的同时最大化共享。
+
+9. **稀疏缓存保留**：SWA/Mamba 等稀疏注意力类型只缓存边界块，在命中率和内存占用间取得平衡。
+
+### 8.3 可靠性与扩展性
+
+10. **Watermark 准入控制**：通过水位线预留一部分块，防止过度准入导致频繁抢占，提升系统稳定性。
+
+11. **事件驱动架构**：KV Cache 事件支持 P/D 分离、KV offload 等外部系统，松耦合设计。
+
+12. **延迟缓存机制**：P/D 场景下可延迟缓存，等待 KV 传输完成后再提交，保证数据一致性。
+
+13. **可注册的 Spec 体系**：通过 `KVCacheSpecRegistry` 支持自定义注意力类型，插件化扩展。
