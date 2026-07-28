@@ -825,6 +825,10 @@ def append(self, block: KVCacheBlock) -> None:
     self.num_free_blocks += 1
 ```
 
+> **典型场景**：一个有哈希的 block 用完了被释放。
+> 因为它有缓存价值（以后可能还有请求命中相同前缀），
+> 所以放到队尾 —— 越晚被驱逐越好，尽量保留缓存。
+
 **`prepend_n(blocks)` — 插到队头（最优先驱逐）** (`kv_cache_utils.py:349`)
 
 ```python
@@ -841,7 +845,11 @@ def prepend_n(self, blocks: list[KVCacheBlock]) -> None:
     self.num_free_blocks += len(blocks)
 ```
 
-> 用于释放**没有哈希**的 block —— 这些 block 没有缓存价值，应该最先被重用。
+> **典型场景 1**：释放**没有哈希**的 block（比如正在写的半满块、或者滑动窗口外被丢弃的块）。
+> 这些 block 没有缓存价值，丢了就丢了，所以插到队头，下次分配最先被拿走。
+>
+> **典型场景 2**：驱逐的时候，需要一批 block 来给新请求用。
+> 从队头弹出一批，分配出去 —— 这也是为什么叫 LRU（最近最少使用）。
 
 #### 2.2.7 方法对照表
 
