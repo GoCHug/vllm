@@ -1344,53 +1344,212 @@ def new_empty(self):
 
 #### 3.3.1 Scheduler 与 KVCacheManager 的交互节奏
 
-每个调度周期，Scheduler 和 KVCacheManager 之间遵循固定的交互模式：
+先理解两个核心概念：Scheduler 内部维护了两个请求队列。
+
+| 队列 | 里面是什么状态的请求 | 举个例子 |
+|------|----------------|---------|
+| **waiting 队列** | 新进来的请求、被抢占后重试的请求、等远程 KV 加载完成的请求 | 用户刚发了个「写一首唐诗」，请求还没跑过一次前向计算 |
+| **running 队列** | 已经被准入、正在连续生成 token 的请求 | 「写一首唐诗」已经写了「床前明月」，还在继续写 |
+
+每个调度周期（一步），Scheduler 调用 `schedule()` 一次，按 **先 running 后 waiting** 的固定顺序处理。下面把每个阶段讲清楚。
+
+**阶段 0：请求是怎么到 waiting 队列的？**
+
+当 Engine 收到一个新请求（用户发起 chat），Scheduler 把它加进 waiting 队列：
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     第 N 步开始                              │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  1. new_step_starts()  → 清理上一步的临时状态                 │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  2. 调度 Waiting 请求                                        │
-│     ① get_computed_blocks(request) → 查前缀缓存命中          │
-│     ② allocate_slots(request, ...)  → 分配新 block           │
-│        → 成功：加入 running 队列                              │
-│        → 失败（返回 None）：继续等待                           │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  3. 调度 Running 请求                                        │
-│     allocate_slots(request, ...) → 为新 token 分配 block     │
-│        → 失败：可能触发抢占（preempt）                         │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  4. 模型计算完成，收集输出                                    │
-│     ① cache_blocks(request, num_tokens) → 存前缀缓存         │
-│     ② free(request) → 释放完成的请求                          │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│  5. 准备发给 Worker                                          │
-│     ① take_new_block_ids()       → 新 block 要清零           │
-│     ② take_kv_cache_block_copies() → CoW 拷贝任务            │
-│     ③ take_partial_tail_offloads() → partial tail 卸载       │
-│     ④ get_num_common_prefix_blocks() → cascade attention    │
-└─────────────────────────────────────────────────────────────┘
+用户发起请求 → Engine.add_request()
+    │
+    ▼
+request.status = WAITING
+    │
+    ▼
+self.waiting.add_request(request)   ← 进 waiting 队尾
 ```
 
-> **记住这个节奏**：查 → 领 → 存 → 收
-> 所有复杂的东西都是在这四步里面加细节。
+**阶段 1：第 N 步开始 —— 清场**
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  new_step_starts()                                         │
+│  · 清空上一步留下的新 block ID、CoW 拷贝、partial tail 等      │
+│  · 这些临时数据只跟「上一步发给 Worker 的批次」有关，          │
+│    新的一步要重新开始收集                                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**阶段 2：先处理 running 队列 —— 正在跑的请求要继续跑**
+
+running 队列里的请求是「已经开始生成、每步要生成新 token 的请求。对它们来说：
+
+```
+遍历 running 队列（按顺序）:
+    │
+    ├── 对每个 request:
+    │     │
+    │     ├── 算一算这次要算多少个新 token（通常是 1 个 decode token + 投机的）
+    │     │
+    │     ▼
+    │   allocate_slots(request, num_new_tokens)   ← 只为「新增的 token 分配新 block
+    │     │
+    │     ├─✓ 成功 → 留下来，继续在 running 里
+    │     │         token_budget 扣掉这些 token
+    │     │
+    │     └─✗ 失败（KV 空间不够）
+    │           │
+    │           ▼
+    │         抢占一个低优先级的 running 请求
+    │           · 把它的 block 全 free 掉
+    │           · request.status = PREEMPTED
+    │           · 从 running 移除，插回 waiting 队头（下次优先重试）
+    │           · preempted_reqs.append(它)
+    │           │
+    │           ▼
+    │         再试一次 allocate_slots，直到成功或没有可抢占的
+    │
+    ▼
+结果：scheduled_running_reqs 列表（这一步哪些 running 请求被调度上了
+```
+
+**阶段 3：再处理 waiting 队列 —— 新请求争取准入
+
+waiting 队列里的请求还没跑过。想进 running，需要做的事更多：
+
+```
+前提：这一步没发生抢占，并且 token_budget 还有剩
+    │
+    ▼
+while waiting 队列不空 且 token_budget > 0：
+    │
+    ├── 从 waiting 队头拿一个 request（先到先得）
+    │
+    ├── 检查：running 队列满了没？（超过 max_num_running_reqs 就 break）
+    │
+    ├── ① get_computed_blocks(request)    ← 查前缀缓存
+    │        看看有没有别的请求留下的相同前缀可以复用
+    │        能省多少算多少
+    │
+    ├── ② 算 num_new_tokens = 总 token 数 − 缓存命中数
+    │
+    ├── ③ allocate_slots(request, num_new_tokens,
+    │                    new_computed_blocks=命中的块)
+    │     │
+    │     ├─✗ 失败（KV 不够）
+    │     │     · 把 request 塞回 waiting
+    │     │     · break，这一步不再准入新请求了
+    │     │       （因为 waiting 是 FCFS，前一个都装不下，后面的也别想了）
+    │     │
+    │     └─✓ 成功
+    │           │
+    │           ├── request 从 waiting 弹出
+    │           ├── self.running.append(request)    ← 进 running 队尾
+    │           ├── request.status = RUNNING
+    │           ├── token_budget 扣掉
+    │           └── scheduled_new_reqs.append(request) 记下来它是新来的
+    │
+    ▼
+继续取下一个 waiting 请求
+```
+
+**阶段 4：模型计算完了 —— 收尾**
+
+Worker 执行完前向计算，返回输出。Scheduler 做两件事：
+
+```
+① cache_blocks(request, num_tokens)
+   把这一步新填满的 block，计算哈希、存进前缀缓存
+   以后别的请求有相同前缀就能复用了
+
+② 对生成完（或被抢占、取消的请求）
+   free(request) → 释放所有 block，回空闲队列
+   从 running 移除
+```
+
+**阶段 5：准备下一批发给 Worker**
+
+```
+① take_new_block_ids()       拿到新分配的 block ID
+                              Worker 对这些 block 做 zeroing（清零旧数据）
+
+② take_kv_cache_block_copies()      如果有 partial hit → CoW 拷贝任务
+                                     Worker 把共享块拷贝一份
+
+③ take_partial_tail_offloads()     partial tail offload 给 KV Connector
+
+④ get_num_common_prefix_blocks()  算所有 running 请求共享的前缀多长
+                                    Cascade Attention 优化用
+```
+
+**总结：一个请求的完整生命周期**
+
+先说明：这个流程里有两个容易混淆的点。
+
+| 容易误解的地方 | 实际代码行为 | 证据 |
+|--------------|-----------|------|
+| waiting 准入失败会不会抢占 running？ | **不会**。waiting 分配失败直接 `break`，不踢任何人 | `scheduler.py:960-967` |
+| 什么时候会发生抢占？ | **running 调度时，某个 running 请求装不下新 token 时**。它自己会踢其他 running 请求腾位置 | `scheduler.py:565-606` |
+| 抢占后 num_computed_tokens 清零吗？ | **清零**。被抢占的请求下次重试要重新算（缓存帮你救回来） | `scheduler.py:1260` |
+| cache_blocks 在 schedule() 里调吗？ | **不在**。是在 schedule 结束、GPU 算完、`update_from_output` 阶段调的 | `scheduler.py:2614` |
+
+下面是修正后的生命周期（按代码真实顺序）：
+
+```
+用户发起请求
+   │
+   │  Engine.add_request()
+   │  request.status = WAITING
+   ▼
+ waiting 队尾 ←───────────────────────────────┐
+   │                                          │
+   │  每步 schedule():                        │
+   │  ┌───────────────────────────────────┐   │
+   │  │  ① 先调度 running（阶段 2）        │   │
+   │  │     对每个 running request：      │   │
+   │  │        allocate_slots(新token)    │   │
+   │  │        ├─✓ 成功 → 继续留在 running │   │
+   │  │        └─✗ 失败 → 抢占别的 running │   │
+   │  │                 request.free()    │   │
+   │  │                 status=PREEMPTED  │   │
+   │  │                 waiting.prepend() ─┘   │
+   │  │                 （num_computed=0，    │
+   │  │                  下次靠缓存救回来）    │
+   │  └───────────────────────────────────┘   │
+   │                                          │
+   │  ┌───────────────────────────────────┐   │
+   │  │  ② 再调度 waiting（阶段 3）        │   │
+   │  │  ⚠️ 只有没发生抢占时才走到这里      │   │
+   │  │                                    │   │
+   │  │  队头 request：                    │   │
+   │  │  ① get_computed_blocks → 查缓存    │   │
+   │  │  ② allocate_slots → 分配 KV 空间   │   │
+   │  │     ├─✗ 失败 → break，这一步不收新的 │
+   │  │     └─✓ 成功 →                    │
+   │  │           从 waiting 弹出           │
+   │  │           running.append(request)  │
+   │  │           status = RUNNING         │
+   └──────────►                            │
+              running 队列（FCFS 顺序）     │
+                │                          │
+                │  循环：① schedule() 跑一步 │
+                │        ② GPU 前向计算     │
+                │        ③ update_from_output(): │
+                │           · cache_blocks() → 存缓存 │
+                │           · 生成 EOS？ → free() 释放 │
+                │           · 用户取消？ → free() 释放 │
+                │           · 有无效 block？→ 调整/驱逐 │
+                ▼
+              请求结束：生成完 / 用户取消 / 超时
+                │
+                │  free(request)
+                │  所有 block 回空闲队列（无哈希插队头，
+                │  有哈希插队尾，保留更久）
+                ▼
+              生命结束
+```
+
+> **一句话记住节奏：先保老的，再收新的，老的装不下才踢更老的**
+> 「收不进来踢老的」是错的 —— 新请求装不下就先等着，不会为了收新请求去踢正在跑的。
+> 只有**老请求自己要继续跑但空间不够时**，才会牺牲另一个老请求腾位置。
 
 #### 3.3.2 初始化与关键属性
 
