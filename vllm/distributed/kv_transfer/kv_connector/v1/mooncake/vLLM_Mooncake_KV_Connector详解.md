@@ -301,51 +301,299 @@ Decoder (Consumer)                          Prefiller (Producer)
 
 ## 五、核心数据结构
 
-### 5.1 MooncakeXferMetadata：传输的"快递单"
+### 5.1 MooncakeXferMetadata：Decoder 发给 Producer 的「取件通知」
 
-每次 KV 传输都附带一张"快递单"，告诉对方传什么、传到哪：
+每次 KV 传输都由 Decoder 主动发起一张「取件通知」，告诉 Producer 三件事：
+**① 我是谁（D 端网络地址）② 要传哪些请求（用 transfer_id 做凭证）③ 把数据写到我（D）GPU 的哪些内存位置**。
 
-```python
-# mooncake_connector.py
-class MooncakeXferMetadata(msgspec.Struct, omit_defaults=True):
-    remote_hostname: str                    # 对端主机名
-    remote_port: int                        # 对端端口
-    remote_tp_size: int                     # 对端 TP 大小
-    remote_tp_rank: int                     # 对端 TP rank
-    req_blocks: dict[ReqId, tuple[TransferId, list[list[int]]]]
-    #                 请求ID → (传输ID, block ID 列表)
-    kv_caches_base_addr: list[int]          # KV Cache 基地址列表
-    block_lens: list[int]                   # 每个 block 的字节长度
-    registered_layer_names: list[str]       # 已注册的层名
-    registered_layer_indices: list[int]     # 已注册的层索引
+#### 👉 谁发给谁？
+
+```
+┌───────────────────────────┐         ZMQ (TCP)          ┌───────────────────────────┐
+│   Decoder (KV 接收方)      │   ──────────────────────▶  │   Producer (KV 发送方)      │
+│   Consumer / D Worker      │   发送 MooncakeXferMetadata │   Producer / P Worker      │
+│                           │                             │                           │
+│  构造位置：                │                             │  接收位置：                │
+│  receive_kv_from_single_  │                             │  send_kv_to_decode()       │
+│  worker()  L1825          │                             │  L1193                     │
+└───────────────────────────┘                             └───────────────────────────┘
 ```
 
-### 5.2 PullReqMeta：接收请求的"取件码"
+**结论**：`MooncakeXferMetadata` 是 **Decoder 发给 Producer** 的「取件通知」。
+Decoder 告诉 Producer："我是谁、我要哪些 blocks、你把 KV 数据推到我机器的哪个地址上。"
+
+#### 👉 `remote_xxx` 是相对谁来说的？
+
+这是最容易混淆的地方：
+
+- 字段命名是以**消息接收者（Producer）**的视角命名的——"对我（P）来说，remote = 对面那个 Decoder"
+- 所以 **Decoder 把自己的 hostname/port/tp_rank 填进字段名叫 `remote_hostname`**
+- Producer 收到后："哦，对端（Decoder）在 `remote_hostname:remote_port`，我把 KV 用 RDMA 推到这个地址"
+
+一句话总结：**`remote_xxx` = 构造者（D）自己的信息，字段名站在接收者（P）视角叫「对端」**。
+
+#### 👉 req_blocks 里存的是谁的 block_ids？
+
+**存的是 Decoder 侧的 block_ids**（告诉 P：你把数据推到我 D 的这些 block 槽位里）。
+Producer 侧自己要读哪些源 block，不是从这里拿——而是 P 通过 transfer_id 在自己本地的 `reqs_need_send` 字典里匹配 `SendBlockMeta.local_block_ids`。
+
+```
+    Decoder (D)                                            Producer (P)
+──────────────────                                   ──────────────────
+req_blocks[d_req_id] = ───── 通过 ZMQ 发过去 ──────▶  收到后叫 remote_block_ids_per_group
+  (transfer_id,                                        （对 P 来说是"远端 D 的 block id"）
+   D侧 block_ids )                                           │
+                                                            ▼
+                                              P 用 transfer_id 匹配自己的
+                                              reqs_need_send[transfer_id]
+                                                       │
+                                                       ▼
+                                              SendBlockMeta.local_block_ids
+                                              （P 侧自己要读的源 block id）
+```
 
 ```python
-# mooncake_connector.py
+# mooncake_connector.py:379
+class MooncakeXferMetadata(
+    msgspec.Struct,                 # 基于 msgspec 的高性能二进制序列化结构体
+    omit_defaults=True,             # 序列化时省略默认值（空列表等），减小网络包体积
+):
+    # ──────────────────────────────────────────────────────────────
+    # 第一组：D 端自身身份信息。对 P 来说就是「对端（remote）」的信息
+    # ──────────────────────────────────────────────────────────────
+    remote_hostname: str
+    #  Decoder 自己的主机名或 IP，Producer 的 Mooncake TransferEngine 用它找到 D
+    remote_port: int
+    #  Decoder 自己的 Mooncake RPC 监听端口，P 连到这个端口才能把 KV RDMA 推过来
+    remote_tp_size: int
+    #  Decoder 侧张量并行总大小，用于异构 TP（如 P 是 TP=8，D 是 TP=4）时做分片对齐
+    remote_tp_rank: int
+    #  Decoder 自己在 TP 组里的 rank，Producer 用 transfer_topo 判断要不要跟这个 D 配对
+
+    # ──────────────────────────────────────────────────────────────
+    # 第二组：本次要传哪些请求、写到 D 侧哪些 block 槽位
+    # ──────────────────────────────────────────────────────────────
+    req_blocks: dict[ReqId, tuple[TransferId, list[list[int]]]]
+    #  结构：Decoder 侧请求ID → (传输凭证ID, D侧 block ID 二维列表)
+    #
+    #  TransferId：Router 路由时生成的全局唯一凭证，P/D 两边各存一份，
+    #    P 靠它在自己的 reqs_need_send 里找到对应的源 blocks（SendBlockMeta.local_block_ids）
+    #
+    #  list[list[int]]（外层=KV缓存组，内层=该组内的 block 编号）：
+    #    这是 D 侧已分配好的 block 槽位号，告诉 P："你把第 i 组的 KV 数据顺序写
+    #    到我 D 侧 group=i 的这些 block 槽位上"。对 P 来说叫「remote_block_ids_per_group」
+
+    # ──────────────────────────────────────────────────────────────
+    # 第三组：D 侧 KV Cache 的内存布局（P 靠这些算 dst 指针）
+    #   由 D 侧 register_kv_caches() 时收集填充
+    # ──────────────────────────────────────────────────────────────
+    kv_caches_base_addr: list[int]
+    #  D 侧每层 / 每 KV 组 KV Cache 张量在自己 GPU 上的 data_ptr() 起始地址列表
+    block_lens: list[int]
+    #  D 侧每层 cache.stride(0) * cache.element_size()
+    #  = 沿 block 维度（第 0 维）跨到下一个 block 所需的字节数（跨步字节）
+    #  计算公式：某个 block 的起始地址 = base_addr + block_id × block_len
+    kv_block_lens: list[int]
+    #  D 侧每层"一个 KV block 中实际用于 KV 数据的字节量"：
+    #   · 普通注意力且 Blocks-First Layout 时：K 和 V 拼在一个张量，各占一半
+    #     → kv_block_len = block_len // 2  （见代码 L1699-L1702）
+    #   · MLA（多查询注意力变体）时：= layer_spec.page_size_bytes
+    #   · 其他情况（不拆分 K/V）：= block_len
+    #  用途：异构 TP 的分片拷贝（src_offset/transfer_len/dst_offset 都以它为上限）
+    #       以及 Blocks-First 下切分 K 区和 V 区（K=base_addr, V=base_addr + kv_block_len）
+
+    # ──────────────────────────────────────────────────────────────
+    # 第四组：D 侧已注册到 Mooncake 的层信息（可选，默认空列表时 omit）
+    # ──────────────────────────────────────────────────────────────
+    registered_layer_names: list[str] = msgspec.field(default_factory=list)
+    #  D 侧层名列表，如 ["model.layers.0.self_attn", "model.layers.1.self_attn", ...]
+    #  P/D 用层名 + 出现次数匹配 TransferRegion
+    registered_layer_indices: list[int] = msgspec.field(default_factory=list)
+    #  与 layer_names 一一对应的层序号索引，如 [0, 1, 2, ..., 31]
+    #  用于 PP（流水线并行）双方持有的层子集不同时做校验
+    registered_group_indices: list[int] = msgspec.field(default_factory=list)
+    #  与 layer_names 一一对应的 KV 缓存分组索引
+    #  GQA 分组或 Hybrid（注意力 + Mamba）场景下用它区分不同类型的缓存槽，默认全 0
+```
+
+### 5.2 PullReqMeta：Decoder 内部保存的「待取件清单」
+
+#### 👉 它是什么？存在哪？
+
+`PullReqMeta` 是 **Decoder（KV 接收方）内部**使用的数据结构，保存在 `MooncakeConnectorMetadata.reqs_to_recv` 字典中：
+
+```
+reqs_to_recv: dict[EngineId, dict[ReqId, PullReqMeta]]
+                ─────────┐  ────────┐  ───────────────┐
+                         │          │                 │
+              远程引擎ID  ┘    本地请求ID  ┘    待取件清单（本结构体）
+```
+
+本质上是 D 侧 Scheduler 开给 Worker 的一张「待取件清单」，上面写着：
+向哪个 Producer 去取、取件凭证（transfer_id）是什么、取到件后放到本地哪些 block 槽位。
+
+#### 👉 生命周期：从构造到消费
+
+```
+Scheduler (build_connector_meta L806)
+    │
+    │  用户请求进入 Decoder，Router 在 kv_transfer_params 中告诉它：
+    │  "这个请求的 KV 在 remote_engine_id 那里，凭证是 transfer_id"
+    │  D 侧已为该请求分配好本地 block（local_block_ids）
+    │
+    ▼
+PullReqMeta(add_new_req L458) 构造 → 存入 MooncakeConnectorMetadata.reqs_to_recv
+    │
+    ▼
+同步机制把 meta 从 Scheduler 进程发到 Worker 进程
+    │
+    ▼
+Worker 拿到后按 remote_engine_id 分组
+    │  同一个 P 的多个请求打包一次带走
+    │
+    ▼
+receive_kv_from_single_worker() (L1819)
+    │
+    ▼
+Pack 进 MooncakeXferMetadata.req_blocks (L1830-L1833)
+    │  key=d_req_id，val=(transfer_id, local_block_ids)
+    │
+    ▼
+ZMQ 发给 Producer → Producer RDMA 把 KV 推到 D 侧 GPU 的指定 block
+    │
+    ▼
+传输完成后从 reqs_to_recv 中移除 ✓
+```
+
+```python
+# mooncake_connector.py:416
 @dataclass
 class PullReqMeta:
-    d_req_id: ReqId                    # Decoder 侧请求 ID
-    transfer_id: TransferId            # 传输 ID
-    local_block_ids: list[list[int]]   # 本地 block ID 列表
-    remote_engine_id: EngineId         # 远程引擎 ID
-    remote_bootstrap_addr: str         # 远程引导服务器地址
-    expire_time: float = float("inf")  # 过期时间
-    pull_tasks_count: int = 0          # 拉取任务计数
+    # ── D 侧本地信息 ──
+    d_req_id: ReqId
+    #  Decoder 侧这个请求的本地请求 ID，就是 Scheduler 的 Request.request_id
+    #  用来关联调度上下文；同时也是 MooncakeXferMetadata.req_blocks 的 key
+
+    # ── 跨节点协调凭证 ──
+    transfer_id: TransferId
+    #  P/D 共享的传输唯一协调 ID。Router 路由时生成，
+    #  注入到两边请求的 kv_transfer_params。
+    #  Producer 收到后用它在 reqs_need_send 中找到自己这边对应请求的源 blocks。
+
+    # ── D 侧本地 block 分配 ──
+    local_block_ids: list[list[int]]
+    #  D 侧已为该请求在本地 KV Cache 中分配的 block ID 二维列表：
+    #  外层 list = KV 缓存组（GQA 分组 / Mamba 混合缓存），
+    #  内层 list = 这个分组下的 block 编号。
+    #  作用：PullReqMeta 打包进 MooncakeXferMetadata.req_blocks 时，
+    #  告诉 P "把数据写到我 D 的这些 block 槽位里"。
+
+    # ── 目标 Producer 的定位信息 ──
+    remote_engine_id: EngineId
+    #  远程 Producer 引擎的唯一标识（Router 给的），
+    #  用来在 Bootstrap 服务器里查 P 的真实 ZMQ 地址，也用来把同类请求打包进同一次 ZMQ 发送
+
+    remote_bootstrap_addr: str
+    #  远程引导服务器地址（host:port），首次建立连接时通过 HTTP /register 接口向它查询 P 的 ZMQ 监听地址
+
+    # ── 保护机制 ──
+    expire_time: float = float("inf")
+    #  请求过期时间戳（Unix 秒）。防止 P 挂掉 / 失联导致 D 无限等待卡住，
+    #  默认 inf（不过期），需要时上层填充触发时间
+
+    pull_tasks_count: int = 0
+    #  已发起的 pull 任务计数。用于「1 个 Decoder ↔ 多个 Producer」场景，
+    #  多个 P 分别推送各自 TP 分片，需所有分片到齐才算整个传输完成
 ```
 
-### 5.3 TransferRegion：传输区域的"地图"
+### 5.3 TransferRegion：每层 KV Cache 的「内存地址卡片」
+
+#### 👉 它描述的是什么？
+
+一张**单层 / 单 KV 缓存组**的 GPU 内存定位卡片，包含：
+- 归属信息（哪一层、哪一组）
+- 地址计算所需的三块要素：起始地址 + block 跨步大小 + 实际 KV 数据长度
+
+RDMA 读写某个具体 block 的地址时，公式是：
+```
+block 起始地址 = base_addr + block_id × block_len
+block 内实际有效长度校验上限 = kv_block_len
+```
+
+#### 👉 怎么用的？双边对齐
+
+P 和 D **各有一套** TransferRegion 列表（这套对齐逻辑跑在 P 侧的 `send_kv_to_decode()` 里）：
+
+| 端 | 等价称呼 | 来源 | 变量名 | 含义 |
+|---|---|---|---|---|
+| **P 侧** | Producer / Prefill | P 自己 `register_kv_caches()` 时生成（`self.kv_caches_base_addr` 等） | `local_regions` | P 侧 GPU 上每层 KV Cache 的位置 |
+| **D 侧** | Consumer / Decoder | 从 D 发来的 `MooncakeXferMetadata` 字段解出（`meta.kv_caches_base_addr` 等） | `remote_regions` | D 侧 GPU 上每层 KV Cache 的位置 |
+
+用 `_align_transfer_regions()` 逐对匹配，匹配键 = `(层名, 出现次数, group_index)` 三元组：
+- PP 分片下 P 和 D 可能持有不同层子集，不能用下标对齐
+- 同一层如果拆 K/V（Blocks-First）会有 2 个同名 region，用出现次数区分第 1 个（K 区）和第 2 个（V 区）
+
+```
+P 侧 local_regions          (层名, 次数, 组) 匹配          D 侧 remote_regions
+─────────────────         ─────────────────────         ────────────────────
+layers.0/occ=0/g=0     ───── match ────▶            layers.0/occ=0/g=0
+layers.1/occ=0/g=0     ───── match ────▶            layers.1/occ=0/g=0
+layers.2/occ=0/g=0     ───── match ────▶            layers.2/occ=0/g=0   ← K 区
+layers.2/occ=1/g=0     ───── match ────▶            layers.2/occ=1/g=0   ← V 区
+layers.2/occ=0/g=1     ───── match ────▶            layers.2/occ=0/g=1   ← 另一 KV 组（Mamba/GQA）
+    ...                                                      ...
+```
+
+对齐后通过 `zip(local_regions, remote_regions)` 一一对应做 RDMA 源 / 目地地址计算。
+
+#### 👉 block_len 与 kv_block_len 的分工
+
+两者都以「每个 block」为单位，但分工不同：
+
+| 量 | 计算方式（注册时） | 用途 |
+|---|---|---|
+| **block_len** | `cache.stride(0) * cache.element_size()` | 定位 block 起始地址：`addr = base_addr + block_id * block_len`（跨步跳跃） |
+| **kv_block_len** | 三种情形（见下方） | ① 异构 TP 分片：作为 `src_offset / dst_offset / transfer_len` 的上限和计算基准 ② Blocks-First 切 K/V：`V 区基址 = base_addr + kv_block_len` |
+
+kv_block_len 三种情况（代码 `register_kv_caches` L1697-L1704）：
+1. **MLA / SlidingWindowMLA** → `kv_block_len = layer_spec.page_size_bytes`（专用页大小）
+2. **Blocks-First 且非 Mamba** → `kv_block_len = block_len // 2`（K 一半，V 一半，拼在同一张量）
+3. **其他情况** → `kv_block_len = block_len`
 
 ```python
-# mooncake_connector.py
-@dataclass
+# mooncake_connector.py:88
+@dataclass(frozen=True)             # frozen=True → 不可变、可哈希、能当字典 key
 class TransferRegion:
-    """描述一次 KV Cache 传输的区域"""
-    base_addr: int        # 基地址
-    block_len: int        # 每个 block 的字节长度
-    num_layers: int       # 层数
-    num_blocks: int       # block 数量
+    """单层/单 KV 组 KV Cache 在 RDMA 传输中的内存区域描述卡片"""
+
+    # ── 归属信息 ────────────────────────────────────────────────
+    layer_name: str
+    #  层名，如 "model.layers.0.self_attn"、"model.layers.5.mla_k_pe"
+    #  _align_transfer_regions 通过（层名 + 出现次数 + group_index）做 P/D 两侧对齐
+
+    layer_index: int
+    #  层的全局序号（0..N-1）。PP 场景下 P 和 D 各自持有连续一段层，
+    #  这个字段做校验：两侧匹配上的同名 region 其 layer_index 必须相同
+
+    group_index: int = 0
+    #  KV 缓存分组索引：
+    #   · GQA 分组查询场景：不同 group_index = 不同 KV head 分组
+    #   · Hybrid（注意力 + Mamba）混合缓存：区分普通注意力 KV 和 Mamba 内部状态
+    #  默认 0 = 不分批
+
+    # ── 内存布局信息 ────────────────────────────────────────────
+    base_addr: int
+    #  该 region 对应 GPU 张量起始地址 data_ptr()
+
+    block_len: int
+    #  跨步字节长度 = cache.stride(0) * cache.element_size()
+    #  含义：沿第 0 维（block 维）跳到下一个 block 要跨多少字节。
+    #  寻址公式：第 block_id 个 block 的首地址 = base_addr + block_id * block_len
+
+    kv_block_len: int
+    #  单个 block 内「实际承载 KV 数据」的字节长度（见上文三种情形）
+    #  · 异构 TP 分片拷贝的 src_offset/dst_offset/transfer_len 不能超过它
+    #  · Blocks-First Layout 拆分 K / V 两个 region 时，V 区基址 = base_addr + kv_block_len
 ```
 
 ---
