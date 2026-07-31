@@ -1198,6 +1198,551 @@ def init_none_hash(hash_fn):
 
 ---
 
+### 2.6 KV Cache 显存申请与张量分配
+
+> **本节回答两个核心问题**：
+> 1. KV Cache 的物理显存**在哪里申请**？申请**多大**？
+> 2. 申请到的显存**存在哪个数据结构**里？
+>
+> 前面的 2.1~2.4 讲的是**运行时**的逻辑数据结构（`KVCacheBlock`、`FreeKVCacheBlockQueue` 等），它们管理的是"逻辑块"——只有编号、引用计数、哈希，**不直接持有显存**。但逻辑块对应的**物理显存**是如何分配出来的？这一节把这条链路补全。
+>
+> **生活化类比**：前面的 `BlockPool` 是图书管理员手中的**借阅登记本**（记录哪个笔记页被谁借了），但笔记页本身（物理显存）是**仓库管理员**（`GPUModelRunner`）去文具店采购（`torch.zeros`）回来的。本节讲的是"采购"全过程。
+
+#### 2.6.1 全景图：从 GPU 显存到 BlockPool
+
+整个显存申请是一条**五步链路**，跨越 `gpu_worker.py` → `kv_cache_utils.py` → `kv_cache_interface.py` → `gpu_model_runner.py` → `block_pool.py`：
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  GPU 总显存 (total_memory)                                          │
+│    │                                                                │
+│    │  × gpu_memory_utilization                                      │
+│    ▼                                                                │
+│  requested_memory = ceil(total_memory × gpu_memory_utilization)    │
+│  (gpu_worker.py:395, worker/utils.py:393)                          │
+│    │                                                                │
+│    │  − 模型权重 − 激活 − CUDA graph (profile_run 测量)              │
+│    ▼                                                                │
+│  available_kv_cache_memory_bytes (可用于 KV cache 的字节数)         │
+│  (gpu_worker.py:541-545)                                            │
+│    │                                                                │
+│    │  get_kv_cache_configs() 计算 num_blocks                        │
+│    ▼                                                                │
+│  KVCacheConfig                                                      │
+│    ├─ num_blocks: int                    ← 逻辑块总数               │
+│    └─ kv_cache_tensors: list[KVCacheTensor]  ← 每张量的字节数       │
+│       (kv_cache_utils.py:2073, kv_cache_interface.py:954)           │
+│    │                                                                │
+│    │  _allocate_kv_cache_tensors() 实际申请显存                     │
+│    ▼                                                                │
+│  torch.zeros(size, dtype=int8)  ← 按字节数申请的一维 int8 张量      │
+│  (gpu_model_runner.py:7286)                                         │
+│    │                                                                │
+│    │  _reshape_kv_cache_tensors() 重塑形状                          │
+│    ▼                                                                │
+│  kv_caches[layer_name] = [2, num_blocks, block_size, num_kv_heads, head_size]
+│  (gpu_model_runner.py:7338)                                         │
+│    │                                                                │
+│    │  BlockPool(num_gpu_blocks=num_blocks) 只接收 num_blocks         │
+│    ▼                                                                │
+│  BlockPool.blocks = [KVCacheBlock(0), ..., KVCacheBlock(num_blocks-1)]
+│  (block_pool.py:162)  ← 逻辑块，不持有显存，只持有 block_id         │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**关键洞察**：
+- **物理显存**（`torch.Tensor`）由 `GPUModelRunner` 持有，存放在 `self.kv_caches[layer_name]`
+- **逻辑块**（`KVCacheBlock`）由 `BlockPool` 持有，只记录 `block_id`，**不持有显存指针**
+- 两者通过 `block_id` 间接关联：注意力后端用 `block_table[block_id]` 索引到物理张量中对应的位置
+
+下面逐步展开每个环节。
+
+---
+
+#### 2.6.2 第一步：测量可用显存
+
+**文件**：`vllm/v1/worker/gpu_worker.py`
+
+##### (1) 启动快照与请求显存
+
+```python
+# gpu_worker.py:394-395
+self.init_snapshot = init_snapshot = MemorySnapshot(device=self.device)
+self.requested_memory = request_memory(init_snapshot, self.cache_config)
+```
+
+`request_memory` 的实现（`worker/utils.py:393`）：
+
+```python
+def request_memory(init_snapshot: MemorySnapshot, cache_config: CacheConfig) -> int:
+    requested_memory = math.ceil(
+        init_snapshot.total_memory * cache_config.gpu_memory_utilization
+    )
+    # ...
+    return requested_memory
+```
+
+> **生活化类比**：图书馆总建筑面积 100㎡（`total_memory`），你申请使用 90%（`gpu_memory_utilization=0.9`），那么 `requested_memory = 90㎡`。这是你**有权使用**的总空间，不是 KV cache 专属。
+
+##### (2) profile_run 测量非 KV cache 占用
+
+```python
+# gpu_worker.py:459-602
+def determine_available_memory(self) -> int:
+    # ...
+    with memory_profiling(
+        self.init_snapshot,
+        weights_memory=int(self.model_runner.model_memory_usage),
+    ) as profile_result:
+        self.model_runner.profile_run()  # 用 dummy 输入跑一次前向
+    # ...
+    cudagraph_memory_estimate = self.model_runner.profile_cudagraph_memory()
+    # ...
+```
+
+`profile_run()` 用 dummy 输入执行一次完整前向传播，让 PyTorch 分配好模型权重、激活、中间 buffer 的显存，从而测量出**非 KV cache 部分占了多少显存**。
+
+##### (3) 计算可用 KV cache 显存
+
+```python
+# gpu_worker.py:553-556
+self.available_kv_cache_memory_bytes = (
+    self.requested_memory
+    - profile_result.non_kv_cache_memory       # 权重 + 激活
+    - cudagraph_memory_estimate_applied        # CUDA graph
+)
+```
+
+> **生活化类比**：你有权使用 90㎡，其中书架（权重）占了 50㎡，阅读桌（激活）占了 20㎡，通道（CUDA graph）占了 5㎡，那么能放读书笔记（KV cache）的就是 `90 − 50 − 20 − 5 = 15㎡`。
+
+最终 `determine_available_memory()` 返回 `available_kv_cache_memory_bytes`，这就是传给下一步的 `available_memory` 参数。
+
+---
+
+#### 2.6.3 第二步：计算 num_blocks
+
+**文件**：`vllm/v1/core/kv_cache_utils.py`
+
+##### (1) 入口：get_kv_cache_configs
+
+```python
+# kv_cache_utils.py:2073
+def get_kv_cache_configs(
+    vllm_config: VllmConfig,
+    kv_cache_specs: list[dict[str, KVCacheSpec]],
+    available_memory: list[int],          # 各 worker 的可用显存
+) -> list[KVCacheConfig]:
+```
+
+这个函数负责协调**多 worker**（TP/PP）场景，核心逻辑：
+
+1. **合并**所有 worker 的 `kv_cache_specs`（不同 PP stage 有不同层）
+2. **生成全局 KV cache groups**（按注意力类型分组）
+3. **逐 worker 调用** `get_kv_cache_config_from_groups()` 生成配置
+4. **取最小值**：`min_num_blocks = min(所有 worker 的 num_blocks)`，保证所有 worker 一致
+5. **按比例收缩** tensor size，避免分配用不上的显存
+
+```python
+# kv_cache_utils.py:2196-2210（简化）
+min_num_blocks = min(kv_cache_config.num_blocks for kv_cache_config in kv_cache_configs)
+for kv_cache_config in kv_cache_configs:
+    num_blocks_old = kv_cache_config.num_blocks
+    kv_cache_config.num_blocks = min_num_blocks
+    for tensor in kv_cache_config.kv_cache_tensors:
+        assert tensor.size % num_blocks_old == 0
+        tensor.size = tensor.size // num_blocks_old * min_num_blocks
+```
+
+> **为什么取最小值？** 因为 TP/PP 场景下，所有 worker 必须用相同的 `num_blocks`（block_table 要对齐）。某个 worker 显存少，就按它来。
+
+##### (2) 核心计算：get_kv_cache_config_from_groups
+
+```python
+# kv_cache_utils.py:1340
+def get_kv_cache_config_from_groups(
+    vllm_config: VllmConfig,
+    kv_cache_groups: list[KVCacheGroupSpec],
+    available_memory: int,
+) -> KVCacheConfig:
+```
+
+这里有**三种分支**，对应不同的模型结构：
+
+| 分支 | 触发条件 | num_blocks 计算公式 | 适用场景 |
+|------|---------|---------------------|---------|
+| **UniformType** | 单 group 且是 `UniformTypeKVCacheSpecs` | `available_memory // page_size_bytes` | 同类型但不同 hidden_size 的层 |
+| **Packed** | `_use_packed_kv_cache_config()` 为真 | `_get_kv_cache_config_packed()` | DeepSeek V4 等打包布局 |
+| **通用混合** | 其他多 group 情况 | `available_memory // page_size // group_size` | 混合注意力（Full + SWA 等） |
+
+**通用混合分支**的代码（最常见）：
+
+```python
+# kv_cache_utils.py:1396-1417（简化）
+group_size = max(len(group.layer_names) for group in kv_cache_groups)
+page_size = get_uniform_page_size([group.kv_cache_spec for group in kv_cache_groups])
+num_blocks = get_num_blocks(vllm_config, group_size, available_memory, page_size)
+```
+
+其中 `get_num_blocks`（`kv_cache_utils.py:1006`）：
+
+```python
+def get_num_blocks(vllm_config, num_layers, available_memory, page_size) -> int:
+    num_blocks = int(available_memory // page_size // num_layers)
+    num_blocks = max(num_blocks, 0)
+    return may_override_num_blocks(vllm_config, num_blocks)
+```
+
+> **公式**：`num_blocks = available_memory // page_size // num_layers`
+>
+> - `available_memory`：可用显存（字节）
+> - `page_size`：**每个 block 每层**占用的字节数（见 2.6.5）
+> - `num_layers`：`group_size`，即每个内存池被多少层共享
+>
+> **生活化类比**：仓库有 15㎡（`available_memory`），每页笔记占 0.1㎡（`page_size`），有 3 个章节要分别存（`num_layers`），能存 `15 // 0.1 // 3 = 50` 页。
+
+##### (3) 用户覆盖：may_override_num_blocks
+
+```python
+# kv_cache_utils.py:962
+def may_override_num_blocks(vllm_config: VllmConfig, num_blocks: int) -> int:
+    if vllm_config.cache_config.num_gpu_blocks_override is not None:
+        num_blocks = vllm_config.cache_config.num_gpu_blocks_override
+    return num_blocks
+```
+
+如果用户通过 `--num-gpu-blocks-override` 显式指定了块数，直接覆盖计算结果。
+
+---
+
+#### 2.6.4 第三步：存储数据结构
+
+**文件**：`vllm/v1/kv_cache_interface.py`
+
+计算出的配置信息存放在三个 dataclass 中：
+
+##### (1) KVCacheTensor — 单个物理张量的描述
+
+```python
+# kv_cache_interface.py:928
+@dataclass
+class KVCacheTensor:
+    size: int                  # 张量字节数（实际申请的显存大小）
+    shared_by: list[str]       # 共享该张量的层名列表
+    offset: int = 0            # packed 布局中的字节偏移
+    block_stride: int = 0      # packed 布局下每 block 的字节数（0 = 非 packed）
+```
+
+| 字段 | 作用 | 类比 |
+|------|------|------|
+| `size` | **实际申请的显存字节数** | 采购的纸张总面积 |
+| `shared_by` | 哪些层共用这个张量 | 这叠纸由哪几个章节共用 |
+| `offset` | packed 布局中该层的起始字节 | 这叠纸里本章从第几页开始 |
+| `block_stride` | packed 布局下每个 block 的跨步字节 | 每页的厚度（含对齐填充） |
+
+> **packed 布局**（`block_stride > 0`）：多个层的 KV 数据**交织**在同一个张量里（DeepSeek V4），节省显存碎片。此时多个 `KVCacheTensor` 共享同一个底层 backing tensor，只是 `offset` 不同。
+
+##### (2) KVCacheGroupSpec — 一个 KV cache 组的描述
+
+```python
+# kv_cache_interface.py:938
+@dataclass
+class KVCacheGroupSpec:
+    layer_names: list[str]             # 组内所有层名
+    kv_cache_spec: KVCacheSpec          # 该组的 KV cache 规格（block_size, num_kv_heads, ...）
+    is_eagle_group: bool = False        # 是否为 EAGLE/MTP draft 注意力层
+```
+
+##### (3) KVCacheConfig — 顶层配置容器
+
+```python
+# kv_cache_interface.py:953
+@dataclass
+class KVCacheConfig:
+    num_blocks: int                              # 逻辑块总数
+    kv_cache_tensors: list[KVCacheTensor]         # 物理张量描述列表
+    kv_cache_groups: list[KVCacheGroupSpec]       # KV cache 组描述列表
+```
+
+**数据流向示意**：
+
+```
+KVCacheConfig
+├── num_blocks = 1000                    ← BlockPool 用这个创建逻辑块
+├── kv_cache_tensors                     ← ModelRunner 用这个申请显存
+│   ├── KVCacheTensor(size=50MB, shared_by=["layer0", "layer1"])  ← 一个张量被多层共享
+│   └── KVCacheTensor(size=50MB, shared_by=["layer2", "layer3"])
+└── kv_cache_groups                      ← KVCacheManager 用这个构建协调器
+    └── KVCacheGroupSpec(layer_names=["layer0".."layer3"], kv_cache_spec=FullAttentionSpec(...))
+```
+
+---
+
+#### 2.6.5 第四步：实际显存申请
+
+**文件**：`vllm/v1/worker/gpu_model_runner.py`
+
+##### (1) 入口：initialize_kv_cache
+
+```python
+# gpu_model_runner.py:7598
+def initialize_kv_cache(self, kv_cache_config: KVCacheConfig, is_profiling: bool = False):
+    # ... 准备工作（backend、metadata builder 等）
+    kv_caches = self.initialize_kv_cache_tensors(kv_cache_config, kernel_block_sizes)
+    # ... 绑定到模型层
+```
+
+##### (2) 分发：initialize_kv_cache_tensors
+
+```python
+# gpu_model_runner.py:7515
+def initialize_kv_cache_tensors(self, kv_cache_config, kernel_block_sizes):
+    if self.use_uniform_kv_cache(self.attn_groups):
+        kv_caches, ... = self.allocate_uniform_kv_caches(...)   # 优化路径
+    else:
+        kv_cache_raw_tensors = self._allocate_kv_cache_tensors(kv_cache_config)  # 通用路径
+        kv_caches = self._reshape_kv_cache_tensors(kv_cache_raw_tensors, kernel_block_sizes)
+    # ... 跨层共享设置
+    bind_kv_cache(kv_caches, ...)
+    return kv_caches
+```
+
+##### (3) 核心申请：_allocate_kv_cache_tensors
+
+这是**真正调用 `torch.zeros` 申请显存**的地方：
+
+```python
+# gpu_model_runner.py:7286
+def _allocate_kv_cache_tensors(self, kv_cache_config: KVCacheConfig):
+    kv_cache_raw_tensors: dict[str, torch.Tensor] = {}
+    packed_backing: torch.Tensor | None = None
+    for kv_cache_tensor in kv_cache_config.kv_cache_tensors:
+        if kv_cache_tensor.block_stride > 0:
+            # packed 布局：只申请一次共享 backing，所有 packed 层 alias 同一張量
+            if packed_backing is None:
+                packed_backing = torch.zeros(
+                    kv_cache_tensor.size,       # ← 字节数
+                    dtype=torch.int8,            # ← 按字节申请
+                    device=self.device,
+                )
+            tensor = packed_backing
+        else:
+            # 非 packed：每张量独立申请
+            tensor = torch.zeros(
+                kv_cache_tensor.size,           # ← 字节数
+                dtype=torch.int8,                # ← 按字节申请
+                device=self.device,
+            )
+        for layer_name in kv_cache_tensor.shared_by:
+            kv_cache_raw_tensors[layer_name] = tensor
+    # ... 校验
+    return kv_cache_raw_tensors
+```
+
+**关键设计**：
+
+| 要点 | 说明 |
+|------|------|
+| `dtype=torch.int8` | **按字节申请**，与实际的 KV 数据类型（fp16/bf16/fp8 等）解耦 |
+| `size = kv_cache_tensor.size` | 字节数由 `KVCacheTensor.size` 决定，在 2.6.3 那一步算好 |
+| `packed_backing` | packed 布局下多个层共享同一个底层张量，节省碎片 |
+| `shared_by` | 多层共享同一个张量时，`kv_cache_raw_tensors` 里多个 key 指向同一对象 |
+
+> **为什么用 int8？** 因为不同层、不同量化模式下 KV cache 的元素类型不同（fp16/bf16/fp8/int4/...），但底层显存就是一段字节。用 int8 申请一段裸字节，再在下一步 reshape 成具体类型，是最灵活的做法。
+
+##### (4) 重塑形状：_reshape_kv_cache_tensors
+
+申请到的 int8 一维张量需要被**重塑**成注意力后端期望的形状：
+
+```python
+# gpu_model_runner.py:7338
+def _reshape_kv_cache_tensors(self, kv_cache_raw_tensors, kernel_block_sizes):
+    for group in self._kv_cache_spec_attn_group_iterator():
+        kv_cache_spec = group.kv_cache_spec
+        kernel_block_size = kernel_block_sizes[group.kv_cache_group_id]
+        for layer_name in group.layer_names:
+            raw_tensor = kv_cache_raw_tensors[layer_name]    # int8 一维
+            # ...
+            if isinstance(kv_cache_spec, AttentionSpec):
+                kv_cache_shape = attn_backend.get_kv_cache_shape(
+                    kernel_num_blocks,
+                    shape_block_size,
+                    kv_cache_spec.num_kv_heads,
+                    kv_cache_spec.head_size,
+                    cache_dtype_str=layer_cache_dtype_str,
+                )
+                kv_caches[layer_name] = _reshape_attention_kv_cache(
+                    raw_tensor, kv_cache_spec, kv_cache_shape, ...
+                )
+            elif isinstance(kv_cache_spec, MambaSpec):
+                kv_caches[layer_name] = raw_tensor[:num_blocks * page_size_bytes].view(
+                    num_blocks, 1, 1, page_size_bytes
+                )
+```
+
+常见的最终形状（以 FullAttention + NHD 布局为例）：
+
+```
+申请时:  torch.zeros(size=N_bytes, dtype=int8)           ← 一维裸字节
+          ↓ _reshape_kv_cache_tensors
+使用时:  kv_cache[layer] shape = [2, num_blocks, block_size, num_kv_heads, head_size]
+                              ↑ K/V  ↑ 逻辑块数    ↑ 每块token数  ↑ KV头数    ↑ 头维度
+         dtype = fp16 / bf16 / fp8 / ...（由 cache_dtype 决定）
+```
+
+> **生活化类比**：仓库管理员采购回来一卷 100 米长的白纸（int8 一维张量）。然后根据每个章节的需求，裁剪、折叠成特定规格的笔记本（reshape）。有的章节要 16 开纸，有的要 32 开纸，但原材料都是同一卷白纸。
+
+##### (5) 绑定到模型层：bind_kv_cache
+
+```python
+# gpu_model_runner.py:7568
+bind_kv_cache(
+    kv_caches,                                          # {layer_name: tensor}
+    self.compilation_config.static_forward_context,      # 静态前向上下文
+    self.kv_caches,                                      # runner 自己的引用
+    num_attn_module,
+)
+```
+
+这一步把重塑好的 KV cache 张量注册到模型的各注意力层，让前向计算时 `attn_layer.kv_cache` 能直接引用到对应的物理张量。
+
+---
+
+#### 2.6.6 显存大小计算公式总结
+
+`page_size_bytes`（每 block 每层的字节数）是计算 `num_blocks` 的关键。它由 `KVCacheSpec` 的子类决定：
+
+##### (1) AttentionSpec 基类公式
+
+```python
+# kv_cache_interface.py: AttentionSpec.real_page_size_bytes
+real_page_size_bytes = 2 * block_size * num_kv_heads * head_dim * dtype_size
+```
+
+其中 `2` 表示 K 和 V 各一份，`head_dim` 在不同量化模式下不同：
+
+| 量化模式 | head_dim 计算 | 说明 |
+|---------|--------------|------|
+| 无量化（默认） | `head_size` | 标准 fp16/bf16 |
+| NVFP4 | `nvfp4_kv_cache_full_dim(head_size)` | fp4 数据 + fp8 block scales |
+| INT4_PER_TOKEN_HEAD | `head_size // 2` | 两个 int4 打包成一个字节 |
+| FP8 / 其他 | `head_size` | 元素类型变 1 字节，但维度不变 |
+
+##### (2) FullAttentionSpec 重写公式
+
+```python
+# kv_cache_interface.py: FullAttentionSpec.real_page_size_bytes
+last_dim = head_size + head_size_v    # 非 quant 情况
+real_page_size_bytes = block_size * num_kv_heads * last_dim * dtype_size
+```
+
+> 当 `head_size_v == head_size` 时，等价于 `2 * block_size * num_kv_heads * head_size * dtype_size`。
+
+##### (3) MLAAttentionSpec 特殊公式
+
+```python
+# kv_cache_interface.py: MLAAttentionSpec.real_page_size_bytes
+if cache_dtype_str == "fp8_ds_mla":
+    if model_version == "deepseek_v4":
+        return storage_block_size * 584    # 448B NoPE + 128B RoPE + 8B fp8 scale
+    return block_size * 656               # V3.2: 512 + 64 = 576 维，按 656 字节布局
+# 普通 MLA:
+real_page_size_bytes = storage_block_size * num_kv_heads * head_dim * dtype_size
+```
+
+##### (4) 各场景显存计算对照表
+
+以 `block_size=16, num_kv_heads=8, head_size=128, num_layers=32, available_memory=8GB` 为例：
+
+| 场景 | page_size_bytes（每 block 每层） | num_blocks 公式 | num_blocks |
+|------|-------------------------------|----------------|------------|
+| 标准 fp16 | `2 × 16 × 8 × 128 × 2 = 65536 B` | `8GB // 65536 // 32` | **4096** |
+| 标准 bf16 | `2 × 16 × 8 × 128 × 2 = 65536 B` | 同上 | **4096** |
+| FP8 per-tensor | `2 × 16 × 8 × 128 × 1 = 32768 B` | `8GB // 32768 // 32` | **8192** |
+| INT4 per-token-head | `16 × 8 × (128//2 + 128//2) × 1 = 16384 B` | `8GB // 16384 // 32` | **16384** |
+| MLA (V3.2 fp8) | `16 × 656 = 10496 B` | `8GB // 10496 // 32` | **24414** |
+| Mamba | `page_size_bytes`（含 conv_state + ssm_state） | `8GB // page_size_bytes`（单层） | 取决于状态大小 |
+
+> **注意**：MLA 的 `num_kv_heads` 通常为 1（单 KV 头），且 `head_size` 含义不同（`kv_lora_rank + pe_dim`），所以公式简化。Mamba 的 `page_size_bytes` 由 `conv_state` 和 `ssm_state` 的大小决定，与 token 数无关。
+
+##### (5) per-token-head 量化的额外开销
+
+启用 per-token-head 量化（INT4/INT8/FP8）时，除了 `real_page_size_bytes`，还需要为**per-token-head 缩放因子**预留空间：
+
+```python
+# kv_cache_interface.py: AttentionSpec.unpadded_page_size_bytes
+unpadded_page_size_bytes = real_page_size_bytes
+if self.kv_quant_mode.is_per_token_head:
+    unpadded_page_size_bytes += 2 * block_size * num_kv_heads * sizeof(float32)
+    # K 和 V 各需要一组 scale，每个 token 每个 head 一个 float32
+```
+
+> **生活化类比**：每页笔记除了正文（KV 数据），还要在页边空白处记录每段文字的缩放比例（scale），方便还原精度。
+
+---
+
+#### 2.6.7 与 BlockPool 的衔接
+
+显存张量申请完成后，`num_blocks` 会被写入 `cache_config.num_gpu_blocks`，传给 `BlockPool`：
+
+```python
+# block_pool.py:143
+class BlockPool:
+    def __init__(self, num_gpu_blocks, enable_caching, hash_block_size, ...):
+        self.num_gpu_blocks = num_gpu_blocks
+        self.blocks: list[KVCacheBlock] = [
+            KVCacheBlock(idx) for idx in range(num_gpu_blocks)
+        ]
+        self.free_block_queue = FreeKVCacheBlockQueue(self.blocks)
+        # ...
+```
+
+**关键关系图**：
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  GPUModelRunner                                                  │
+│    ├── self.kv_caches: dict[str, torch.Tensor]                   │
+│    │     ← 物理显存张量（[2, num_blocks, block_size, ...]）       │
+│    │     ← 由 _allocate_kv_cache_tensors() 申请                   │
+│    │                                                              │
+│    └── self.kv_cache_manager: KVCacheManager                     │
+│          └── self.block_pool: BlockPool                          │
+│                ├── self.blocks: list[KVCacheBlock]               │
+│                │     ← 逻辑块（只有 block_id, ref_cnt, hash）     │
+│                │     ← 不持有显存指针！                            │
+│                └── self.num_gpu_blocks = num_blocks              │
+│                      ← 与物理张量的 num_blocks 一致               │
+└──────────────────────────────────────────────────────────────────┘
+
+前向计算时:
+  1. BlockPool 分配逻辑块 → 得到 block_id 列表
+  2. block_table[seq] = [block_id_0, block_id_1, ...]
+  3. 注意力后端用 block_table 索引 kv_caches[layer][block_id] 取物理数据
+```
+
+> **核心设计理念**：**逻辑管理与物理存储分离**
+> - `BlockPool` 只管"哪个块给谁用"（逻辑调度），不碰显存
+> - `GPUModelRunner` 只管"显存长什么样"（物理存储），不管分配
+> - 两者通过 `block_id` 这个整数解耦
+>
+> 这样设计的好处：BlockPool 的 LRU、前缀缓存、驱逐逻辑完全独立于显存布局，可以自由演化而不影响显存管理。
+
+---
+
+#### 2.6.8 本节要点总结
+
+| 问题 | 答案 | 源码位置 |
+|------|------|---------|
+| 显存在哪里申请？ | `_allocate_kv_cache_tensors()` 中的 `torch.zeros()` | `gpu_model_runner.py:7286` |
+| 申请多大？ | 由 `KVCacheTensor.size` 决定（字节数） | `kv_cache_interface.py:930` |
+| size 怎么算出来的？ | `page_size_bytes * num_blocks` | `kv_cache_utils.py:1396-1417` |
+| num_blocks 怎么算？ | `available_memory // page_size // num_layers` | `kv_cache_utils.py:1006` |
+| available_memory 怎么来？ | `requested_memory - 非KV占用` | `gpu_worker.py:541` |
+| 存在哪个数据结构里？ | `GPUModelRunner.kv_caches[layer_name]`（物理）+ `BlockPool.blocks`（逻辑） | `gpu_model_runner.py` / `block_pool.py:173` |
+| 配置信息存哪？ | `KVCacheConfig`（含 `num_blocks` + `kv_cache_tensors`） | `kv_cache_interface.py:954` |
+
+---
+
 ## 3. 分层管理架构
 
 > **设计哲学**：每一层都有清晰的边界，上层通过下层提供的接口操作，
