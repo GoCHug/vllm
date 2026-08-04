@@ -7296,11 +7296,13 @@ class GPUModelRunner(
             dict[str, torch.Tensor]: A map between layer names to their
             corresponding memory buffer for KV cache.
         """
+        # layer_name -> 原始 int8 字节缓冲区的映射；后续会被 reshape 为模型需要的形状
         kv_cache_raw_tensors: dict[str, torch.Tensor] = {}
+        # packed layout 下所有层共享的 backing tensor；只在首次遇到 block_stride>0 时分配
         packed_backing: torch.Tensor | None = None
         for kv_cache_tensor in kv_cache_config.kv_cache_tensors:
             if kv_cache_tensor.block_stride > 0:
-                # Allocate once; all packed tensors alias the same backing.
+                # packed layout：整个 group 共用一张 backing tensor，各层通过 offset 区分数据
                 if packed_backing is None:
                     packed_backing = torch.zeros(
                         kv_cache_tensor.size,
@@ -7309,18 +7311,24 @@ class GPUModelRunner(
                     )
                 tensor = packed_backing
             else:
+                # 普通 layout：为每张 KVCacheTensor 单独申请 size 字节的 int8 缓冲区
                 tensor = torch.zeros(
                     kv_cache_tensor.size, dtype=torch.int8, device=self.device
                 )
+            # shared_by 中的 layer_name 指向同一个 tensor 对象（packed 场景下共享显存）
             for layer_name in kv_cache_tensor.shared_by:
                 kv_cache_raw_tensors[layer_name] = tensor
 
+        # 一致性校验：从所有 kv_cache_groups 中收集应该分配 KV cache 的 layer_name
         layer_names = set()
         for group in kv_cache_config.kv_cache_groups:
             for layer_name in group.layer_names:
+                # runner_only_attn_layers 只在 runner 侧存在（如 KV sharing、encoder-only），
+                # 已通过 shared_by 处理，这里跳过以避免重复计算
                 if layer_name in self.runner_only_attn_layers:
                     continue
                 layer_names.add(layer_name)
+        # 校验：groups 期望的 layer 必须和实际分配的 raw_tensors keys 完全一致
         assert layer_names == set(kv_cache_raw_tensors.keys()), (
             "Some layers are not correctly initialized"
         )

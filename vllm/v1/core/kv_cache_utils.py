@@ -1337,11 +1337,11 @@ def _get_kv_cache_config_packed(
     return num_blocks, kv_cache_tensors
 
 
-def get_kv_cache_config_from_groups(
-    vllm_config: VllmConfig,
-    kv_cache_groups: list[KVCacheGroupSpec],
-    available_memory: int,
-) -> KVCacheConfig:
+def get_kv_cache_config_from_groups(  # 根据 KV cache 分组和各层 spec 生成 KV cache 配置
+    vllm_config: VllmConfig,  # 全局配置对象，用于读取用户覆盖项等
+    kv_cache_groups: list[KVCacheGroupSpec],  # KV cache 分组列表，每组包含若干 layer 及其 spec
+    available_memory: int,  # 当前可用于 KV cache 的显存大小，单位：字节
+) -> KVCacheConfig:  # 返回生成的 KVCacheConfig
     """
     Generate the KV cache configuration from the KV cache groups and spec
     of each layer.
@@ -1353,41 +1353,41 @@ def get_kv_cache_config_from_groups(
     Returns:
         The generated KVCacheConfig
     """
-    if len(kv_cache_groups) == 0:
+    if len(kv_cache_groups) == 0:  # 如果没有任何 KV cache group
         # Attention free models do not have KV cache.
         # Return num_blocks=1 as BlockPool always needs a null_block.
-        return KVCacheConfig(
-            num_blocks=1,
-            kv_cache_tensors=[],
-            kv_cache_groups=kv_cache_groups,
+        return KVCacheConfig(  # 仍然返回一个最小配置，因为 BlockPool 需要 null block
+            num_blocks=1,  # block 数固定为 1，仅满足 null block 需求
+            kv_cache_tensors=[],  # 没有实际的 KV cache 张量
+            kv_cache_groups=kv_cache_groups,  # 把原始空分组信息透传回去
         )
 
     # Determine how model runners should initialize the KV cache tensors.
-    if len(kv_cache_groups) == 1 and isinstance(
-        kv_cache_groups[0].kv_cache_spec, UniformTypeKVCacheSpecs
+    if len(kv_cache_groups) == 1 and isinstance(  # 如果只有 1 个 group
+        kv_cache_groups[0].kv_cache_spec, UniformTypeKVCacheSpecs  # 且其 spec 为 UniformTypeKVCacheSpecs
     ):
         # Special case: all layers have the same type of KV cache but with
         # different hidden sizes. Allocate different amount of memory for each
         # layer based on its hidden size.
-        num_blocks = (
-            available_memory // kv_cache_groups[0].kv_cache_spec.page_size_bytes
+        num_blocks = (  # 计算可分配的 block 数
+            available_memory // kv_cache_groups[0].kv_cache_spec.page_size_bytes  # 可用显存除以每页字节数
         )
-        num_blocks = may_override_num_blocks(vllm_config, num_blocks)
-        per_layer_specs = kv_cache_groups[0].kv_cache_spec.kv_cache_specs
-        kv_cache_tensors = [
-            KVCacheTensor(
-                size=per_layer_specs[layer_name].page_size_bytes * num_blocks,
-                shared_by=[layer_name],
+        num_blocks = may_override_num_blocks(vllm_config, num_blocks)  # 允许用户配置覆盖 block 数
+        per_layer_specs = kv_cache_groups[0].kv_cache_spec.kv_cache_specs  # 取出每层单独的 spec
+        kv_cache_tensors = [  # 为每个 layer 单独生成一个 KVCacheTensor
+            KVCacheTensor(  # 构造 KV cache 张量
+                size=per_layer_specs[layer_name].page_size_bytes * num_blocks,  # 计算当前layer需要分配的总显存大小
+                shared_by=[layer_name],  # 这个张量只由当前 layer 独享
             )
-            for layer_name in kv_cache_groups[0].layer_names
+            for layer_name in kv_cache_groups[0].layer_names  # 遍历 group 中所有 layer 名
         ]
-    elif _use_packed_kv_cache_config(vllm_config, kv_cache_groups):
+    elif _use_packed_kv_cache_config(vllm_config, kv_cache_groups):  # 如果满足 packed 布局条件
         # DeepSeek V4 uses the packed layout by default. Other multi-group
         # layouts can opt in with --enable-cross-layers.
-        num_blocks, kv_cache_tensors = _get_kv_cache_config_packed(
-            vllm_config, kv_cache_groups, available_memory
+        num_blocks, kv_cache_tensors = _get_kv_cache_config_packed(  # 交给 packed 布局专用函数处理
+            vllm_config, kv_cache_groups, available_memory  # 传入配置、分组、可用显存
         )
-    else:
+    else:  # 通用多 group 分支
         # General case:
         # We will have group_size memory pools, each is shared by one layer from
         # each group. As layers of different groups have different block table,
@@ -1396,29 +1396,29 @@ def get_kv_cache_config_from_groups(
         # (sw.1, padding) will be: (group_size = 2)
         # full.0, sw.0, sw.1: share a Tensor with size=available_memory//2
         # full.1, sw.2: share another Tensor with size=available_memory//2
-        group_size = max(len(group.layer_names) for group in kv_cache_groups)
+        group_size = max(len(group.layer_names) for group in kv_cache_groups)  # 取所有 group 中 layer 数量的最大值
 
-        page_size = get_uniform_page_size(
-            [group.kv_cache_spec for group in kv_cache_groups]
+        page_size = get_uniform_page_size(  # 获取所有 group 统一的 page size
+            [group.kv_cache_spec for group in kv_cache_groups]  # 传入每个 group 的 kv_cache_spec
         )
-        assert group_size > 0, "group_size must be greater than 0"
-        num_blocks = get_num_blocks(
-            vllm_config, group_size, available_memory, page_size
+        assert group_size > 0, "group_size must be greater than 0"  # 防御性断言
+        num_blocks = get_num_blocks(  # 根据 group_size、可用显存和 page size 计算 block 数
+            vllm_config, group_size, available_memory, page_size  # 传入相关参数
         )
-        kv_cache_tensors = []
-        for i in range(group_size):
-            shared_by = []
-            for j in range(len(kv_cache_groups)):
-                if i < len(kv_cache_groups[j].layer_names):
-                    shared_by.append(kv_cache_groups[j].layer_names[i])
-            kv_cache_tensors.append(
-                KVCacheTensor(size=page_size * num_blocks, shared_by=shared_by)
+        kv_cache_tensors = []  # 初始化张量列表
+        for i in range(group_size):  # 对每个内存池索引 i 循环
+            shared_by = []  # 记录共享该内存池的 layer 名
+            for j in range(len(kv_cache_groups)):  # 遍历所有 group
+                if i < len(kv_cache_groups[j].layer_names):  # 如果 group j 有第 i 个 layer
+                    shared_by.append(kv_cache_groups[j].layer_names[i])  # 把该 layer 名加入共享列表
+            kv_cache_tensors.append(  # 生成一个 KVCacheTensor
+                KVCacheTensor(size=page_size * num_blocks, shared_by=shared_by)  # 大小=每页×block 数，shared_by 为上面收集的 layer
             )
 
-    return KVCacheConfig(
-        num_blocks=num_blocks,
-        kv_cache_tensors=kv_cache_tensors,
-        kv_cache_groups=kv_cache_groups,
+    return KVCacheConfig(  # 统一返回生成的 KVCacheConfig
+        num_blocks=num_blocks,  # block 总数
+        kv_cache_tensors=kv_cache_tensors,  # 所有 KV cache 张量
+        kv_cache_groups=kv_cache_groups,  # 原始分组信息
     )
 
 
