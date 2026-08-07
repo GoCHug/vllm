@@ -28,6 +28,41 @@
 | `null_block` | `KVCacheBlock` | `block_id=0` 的占位块，`is_null=True`，**不维护 ref_cnt、不可释放**。用于稀疏注意 / Mamba 等场景对齐 block table |
 | `num_gpu_blocks` | `int` | 池容量 |
 
+#### 为什么所有 group 共享同一个 `BlockPool`？共享的是"编号空间"，不是"物理存储"
+
+异构 attention（Full / SWA / Mamba / MLA…）被分成多个 group（见 [`1_physical_memory.md` §5.2](./1_physical_memory.md)），每个 group 在自己的 `kv_caches[layer]` 张量里有独立的物理存储。但所有 group **共用同一个 `BlockPool`**——这里共享的只是"block_id 编号空间 + 空闲块调度 + 前缀哈希表"，不是共享物理存储。
+
+同一个 `block_id=5` 在不同 group 中指向**各自物理张量的第 5 行**，互不干扰：
+
+```
+                    block_id = 5
+                          │
+           ┌──────────────┼──────────────┐
+           ▼              ▼              ▼
+     group_0 张量      group_1 张量     group_2 张量
+     (Full attn)       (Mamba)         (SWA)
+  kv_caches[L0][5]  kv_caches[Lm][5]  kv_caches[Ls][5]
+           │              │              │
+           ▼              ▼              ▼
+       存 K/V 张量     存 SSM 状态     存 K/V 张量
+       （第 5 行）     （第 5 行）      （第 5 行）
+       独立显存        独立显存         独立显存
+```
+
+`BlockPool.blocks[5]` 这个 `KVCacheBlock` 对象**只代表"5 号房间"这个抽象编号**，不区分 group——group 信息存在哈希表 key 里（`BlockHashWithGroupId`，见 §2.3），而不是 block 对象里。同一个 `KVCacheBlock(5)` 可以同时被多个 group 引用（通过各自的 [`req_to_blocks`](./3_single_type_kv_cache_manager.md)），它的 `ref_cnt` 是所有 group 引用的总和。
+
+**为什么不让每个 group 用独立的 block_id 空间？** 三个原因：
+
+| 原因 | 共享编号下的表现 | 独立编号下的麻烦 |
+|---|---|---|
+| **请求 block_table 跨组对齐** | 请求只需一份 `block_table = [5, 8, 12]`，所有 group 都按这个号找自己张量第 5/8/12 行 | 每个请求每个 group 都要维护一份独立编号的 block_table，且编号完全无关，对齐逻辑复杂 |
+| **前缀命中必须跨组同时命中** | [`get_cached_block`](file:///c:/Users/89517/Desktop/vllm同步/vllm/vllm/v1/core/block_pool.py#L198) 输入一个 `BlockHash` + 一组 `group_ids`，任何一组 miss 就整体返回 None。共享编号让"对齐"自然成立：命中第 k 个 token-block 时所有 group 都用 `block_id=k` | 跨组命中要查多张表、转换多套编号，无法用"号相同"简单判断 |
+| **分配/释放跨组同步** | 一次 `popleft_n(3)` 拿到 `[k, k+1, k+2]`，所有 group 用同一组编号，原子操作无需跨组同步 | 各 group 独立分配，编号不一致，请求使用时还要跨组对齐编号 |
+
+**生活化类比**：把 BlockPool 想象成一栋写字楼——`block_id` = 房间号（全楼统一编号），`group` = 楼层（每层业态不同：5F 是 Full attn 办公区，6F 是 Mamba 机房）。同号房间在不同楼层（505 和 605 都是 05 号）但里面是完全不同的公司/设备。一位访客（请求）要同时去 5F、6F、7F 办事，共享编号让他只需记住"今天去 05、08、12 号房间"，每层都按这个号找；独立编号则要记住三套完全无关的号。
+
+> **一句话**：BlockPool 共享的是"编号空间 + 空闲块调度 + 前缀哈希表"，不是共享物理存储。每个 group 在自己的物理张量上有独立的第 N 行；BlockPool 让所有 group 用统一的"N"来指代"第 k 个 token-block"，从而让跨组分配、跨组命中、跨组对齐变成"号相同"的简单判断。这也是 [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md) "迭代不动点求交集"能成立的前提。
+
 ### 2.2 空闲块队列（空间调度）
 
 | 字段 | 类型 | 说明 |
