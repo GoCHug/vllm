@@ -115,21 +115,83 @@ block_table = [5, 12, 8, 33]   # 只是一组 int block_id
 
 ## 4. 关键概念速览
 
+为方便阅读后续子文档，先把术语按**职责层级**分成四组。每组都标注了"主要在哪一层管"，读者可据此建立"概念→层"的映射。
+
+### 4.1 块实体（Block 体系）｜块池层 §2 管
+
+块是 KV cache 的最小调度单位。这一组概念描述"块本身是什么、有多少、生命周期怎么管"。
+
 | 术语 | 含义 |
 |------|------|
-| `KVCacheBlock` | 逻辑块，只含 `block_id` 和元数据 |
-| `block_id` | 逻辑块全局编号 `[0, num_blocks-1]` |
-| `block_size` | 一个 block 容纳的 token 数 |
-| `block_table` | 请求 → `[block_id, ...]` 映射 |
-| `group` | 形状兼容、共用 block table 与分配决策的层集合 |
-| `ref_cnt` | 引用计数，多少请求正在使用此 block |
-| `BlockHash` | 单个 block 的链式哈希（组无关） |
-| `BlockHashWithGroupId` | 带 group_id 的哈希，缓存表 key（避免跨组误匹配） |
-| `num_blocks` | 每个 worker 的逻辑块总数 |
-| `null_block` | `block_id=0` 的占位符，填充不参与计算的位置 |
+| `KVCacheBlock` | 逻辑块对象，只含 `block_id` 和元数据（无显存指针） |
+| `block_id` | 逻辑块全局编号 `[0, num_blocks-1]`，也是物理张量 reshape 后第 0 维的行号 |
+| `block_size` | 一个 block 容纳的 token 数（决定 block_table 的粒度） |
+| `num_blocks` | 每个 worker 的逻辑块总数（物理层 §1 算出，块池层 §2 据此建池） |
+| `null_block` | `block_id=0` 的占位块，不可释放、不维护 ref_cnt，用于稀疏注意 / Mamba 对齐 block_table |
+| `ref_cnt` | 引用计数，多少请求正在使用此 block；归零才能进空闲队列，命中前缀时自增实现零拷贝共享 |
 
-**关键直觉**：
-- 分配一个 `block_id` 的真实显存开销 = `num_layers × page_size_bytes`；
+### 4.2 请求 ↔ 块映射（Request Mapping 体系）｜单类型层 §3 管
+
+这一组把"一条请求"和"它用到的一组 block"绑在一起。
+
+| 术语 | 含义 |
+|------|------|
+| `block_table` | 请求 → `[block_id, ...]` 映射；代码上属于 `SingleTypeKVCacheManager.req_to_blocks[request_id]`，不是 `Request` 字段。forward 时 attention 算子用它作 fancy index 从物理张量 gather KV |
+
+### 4.3 模型层分组（Group 体系）｜协调层 §4 管
+
+异构 attention（Full / SWA / Mamba / MLA…）不能混用同一套 block_table，必须按"形状兼容"分组。
+
+| 术语 | 含义 |
+|------|------|
+| `group` | 形状兼容（`block_size` 相同）、共用 block_table 与分配决策的层集合。每个 group 对应一个 `SingleTypeKVCacheManager`；所有 group 共用同一个 `BlockPool`。多 group 场景下同一条请求在每个 group 都有一份独立的 `req_to_blocks[request_id]`，由 `KVCacheCoordinator` 跨组对齐 |
+
+### 4.4 块内容哈希（Hash 体系）｜块池层 §2 管
+
+哈希是前缀缓存的"指纹"，用来判断两个 block 的内容是否相同、能否复用。
+
+| 术语 | 含义 |
+|------|------|
+| `BlockHash` | 单个 block 的链式哈希（**组无关**，只基于 token 内容 + 父块哈希） |
+| `BlockHashWithGroupId` | 带 `group_id` 的哈希，是 `BlockPool` 缓存表的真实 key。**为什么带 group_id？** 不同 group 的 block 即使 token 相同，物理布局也可能不同（如 Full vs Mamba），不能跨组复用，所以 key 必须区分 group |
+
+### 4.5 四组概念的关系图
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  模型层分组（§4.3 Group 体系，协调层 §4 管）                      │
+│  group = 形状兼容的层集合，每个 group 一个 SingleTypeKVCacheManager │
+│         group_0 (Full attn)    group_1 (Mamba)    ...            │
+└─────────────────────────────────────────────────────────────────┘
+                              │ 共用同一个
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  块实体（§4.1 Block 体系，块池层 §2 管）                          │
+│  BlockPool.blocks = [KVCacheBlock(0), KVCacheBlock(1), ...]      │
+│  ↑ block_id == 物理张量第 0 维行号（§4.6 关键直觉）               │
+│  生命周期：ref_cnt 跟踪 → null_block 占位 → num_blocks 定容量     │
+└─────────────────────────────────────────────────────────────────┘
+              ▲                              ▲
+              │ 每请求一份                    │ 内容指纹
+              │                              │
+┌─────────────┴────────────┐    ┌────────────┴────────────────────┐
+│ §4.2 请求↔块映射           │    │ §4.4 块内容哈希                  │
+│ block_table =             │    │ BlockHash → BlockHashWithGroupId │
+│   req_to_blocks[req_id]   │    │ （组无关内容）→（带 group 的 key）│
+│ 单类型层 §3 管             │    │ 块池层 §2 管                     │
+└──────────────────────────┘    └─────────────────────────────────┘
+```
+
+阅读后续子文档时，可按此图定位"这一层主要管哪组概念"：
+- [`1_physical_memory.md`](./1_physical_memory.md)：物理显存如何申请、reshape，使 `block_id == 张量行号`成立
+- [`2_block_pool.md`](./2_block_pool.md)：`KVCacheBlock` / `null_block` / `ref_cnt` / `BlockHash` / `BlockHashWithGroupId` 的实现
+- [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md)：`block_table`（`req_to_blocks`）的单组维护
+- [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md)：`group` 之间的跨组协调
+- [`5_kv_cache_manager.md`](./5_kv_cache_manager.md)：把上述全部封装成 Scheduler 唯一入口
+
+### 4.6 关键直觉
+
+- 分配一个 `block_id` 的真实显存开销 = 所有层 `page_size_bytes` 之和（uniform spec 场景下所有层相同，简化为 `num_layers × page_size_bytes`；异构 attention 严格形式见 [`1_physical_memory.md` §5.3](./1_physical_memory.md)）；
 - `block_table` 相当于「房间号表」，不同层各自有独立房间空间，但房间号一致；
 - 前缀缓存命中 = 命中 block 的 `block_id` 被多个请求复用，`ref_cnt` 增加，**零显存拷贝**。
 

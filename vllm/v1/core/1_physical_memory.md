@@ -444,6 +444,57 @@ return self.block_hashes[(idx + 1) * self.scale_factor - 1]
 
 - **`BlockPool` 只持 `block_id`**：每个 `KVCacheBlock` 只有 `block_id` 这一显式编号，物理张量指针存放在 `kv_caches[layer_name]` 里，二者解耦。
 - **`block_table` 是桥接**：每条请求维护 `block_table = [block_id, ...]`；forward 时 attention backend 通过 `block_table` 索引 `kv_caches[layer]` 张量里对应的物理块。
+
+  #### 对应关系的本质：位置等同，不是查表
+
+  物理张量与 `block_id` 之间**没有额外的指针表或 dict**，对应关系完全靠 reshape 后张量**第 0 维的下标位置**隐式建立。两个下标体系天然对齐：
+
+  ```
+  逻辑层（BlockPool）              物理层（torch.Tensor，reshape 后）
+  ─────────────────────           ───────────────────────────────────
+  KVCacheBlock(block_id=0)   ←→   kv_caches[layer][0]   ← 第 0 行
+  KVCacheBlock(block_id=1)   ←→   kv_caches[layer][1]   ← 第 1 行
+  KVCacheBlock(block_id=2)   ←→   kv_caches[layer][2]   ← 第 2 行
+     ...                              ...
+  KVCacheBlock(block_id=N-1) ←→   kv_caches[layer][N-1] ← 第 N-1 行
+  ```
+
+  - **逻辑侧**：`BlockPool.__init__`（`block_pool.py:162-196`）一次性创建 `blocks = [KVCacheBlock(i) for i in range(num_blocks)]`，保证 `blocks[i].block_id == i`。
+  - **物理侧**：[`_reshape_kv_cache_tensors`](file:///c:/Users/89517/Desktop/vllm同步/vllm/vllm/v1/worker/gpu_model_runner.py#L7346) 把 int8 字节池 view 成后端期望的逻辑 shape，第 0 维大小就是 `num_blocks`：
+
+    ```python
+    # gpu_model_runner.py:7396-7400
+    num_blocks = raw_tensor.numel() // kv_cache_spec.page_size_bytes
+    # → 随后 attn_utils.py:212 把 raw_tensor.view(dtype).view(permuted_kv_cache_shape)
+    #   其中 permuted_kv_cache_shape[0] == num_blocks
+    ```
+
+  - **forward 时**：attention 算子把请求的 `block_table`（一组 `block_id`）当作 fancy index 使用，伪代码：
+
+    ```python
+    for seq in batch:
+        block_table = seq.block_table             # [b0, b1, b2, ...] 一组 block_id
+        kv = kv_caches[layer][block_table]        # 用 block_id 作索引 gather 出该 seq 的 KV
+        #                ↑ 第 0 维 fancy indexing，block_id == 行号
+    ```
+
+  `block_table` 语义上表达的是"这条请求的第 k 个 token-block 落在物理张量的第几行"，但因 block_id 等于行号，这是一次恒等映射——代码上看不出"对应关系"，正是因为对应关系被固化在了 reshape 的 shape 约定里。
+
+  #### Packed 布局下依然成立
+
+  DeepSeek V4 / `enable_cross_layers_blocks` 场景下多层共享一个 backing tensor，但对应关系不变：`_reshape_attention_kv_cache`（`attn_utils.py:226-234`）用 `view(-1, block_stride)[:, offset:offset+page_bytes]` 切出本层的字节窗，**第 0 维仍是 `block_id`**，只是不同层在 backing tensor 的同一行内占不同字节段。
+
+  #### `block_table` 的代码归属澄清
+
+  `block_table` 严格说**不是 `Request` 对象的字段**，而是 [`SingleTypeKVCacheManager.req_to_blocks`](file:///c:/Users/89517/Desktop/vllm同步/vllm/vllm/v1/core/single_type_kv_cache_manager.py) 持有的 `defaultdict[str, list[KVCacheBlock]]`：
+
+  | 维度 | 实际归属 |
+  |---|---|
+  | key | `request_id`（字符串），不是 Request 对象本身 |
+  | value | `list[KVCacheBlock]`，每个对象只含 `block_id` 等元数据 |
+  | 持有者 | 每个 KV cache group 一个 `SingleTypeKVCacheManager` 实例，所有 group 共用同一个 `BlockPool` 但各自维护一份 `req_to_blocks` |
+
+  多 group 场景下，**同一个 `request_id` 在每个 group 的 `SingleTypeKVCacheManager` 里都有一份独立的 `req_to_blocks[req_id]`**——这正是 `KVCacheCoordinator` 存在的核心动机之一（跨组命中对齐，详见 [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md)）。本文及 [`0_kv_cache_management_arch.md`](./0_kv_cache_management_arch.md) 第 16 行所说的"每条请求维护 `block_table`"是调度语义层面的简化表达，代码归属在 kv_cache_manager 体系一侧。
 - **不同层共享 `block_id` 语义**：`model.layers.0.self_attn` 与 `model.layers.31.self_attn` 各自持有独立 `torch.Tensor`，但同一 `block_id` 在所有层中指代同一组 token（这正是 §5.3 通用分支里“同一 group 内多层共享一张 tensor + 多个内存池”设计的物理基础）。
 - **`null_block` 为公共占位符**：`BlockPool.__init__` 立刻摘走 `block_id=0` 作 `null_block`，所以实际可分配空闲块为 `num_blocks - 1` 个（详见 `2_block_pool.md` §2.1）。
 
