@@ -2324,7 +2324,7 @@ def resolve_block_hashes(
         and alignment_tokens is not None
         and alignment_tokens < block_size
         and block_size % alignment_tokens == 0
-    ):
+    ): # 细粒度查找需要访问更小粒度的哈希以实现部分缓存命中，因此不能合并为更大的块，保留原始粒度。
         return block_hashes
     assert block_size % hash_block_size == 0
     return BlockHashListWithBlockSize(block_hashes, hash_block_size, block_size)
