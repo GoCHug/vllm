@@ -4,6 +4,8 @@
 >
 > 源文件：`vllm/vllm/v1/core/block_pool.py`
 
+---
+
 ## 1. 一句话定位
 
 `BlockPool` 是 vLLM v1 前缀缓存体系下的 **物理 KV-cache 块管理器**，负责：
@@ -16,11 +18,42 @@
 
 ---
 
-## 2. 核心数据结构
+## 2. 全局心智模型
+
+读本章前先建立一张全景图：BlockPool 把"一块显存"抽象成一个**逻辑块**，每个逻辑块有四个身份——编号、引用计数、内容哈希、空闲链表节点。四个身份共同决定这块显存"被谁用、能不能复用、什么时候能被回收"。
+
+```
+                  ┌─────────────────────────────────────┐
+                  │       KVCacheBlock（逻辑块）          │
+                  ├─────────────────────────────────────┤
+                  │ ① block_id      → 显存行号（物理对应）│
+                  │ ② ref_cnt       → 共享 / 可驱逐判定   │
+                  │ ③ _block_hash   → 内容指纹（前缀缓存）│
+                  │ ④ prev/next     → 空闲链表节点        │
+                  └─────────────────────────────────────┘
+                            │
+            ┌───────────────┼───────────────┐
+            ▼               ▼               ▼
+      空闲链表           哈希表           全局 blocks 数组
+   （空间调度 LRU）    （内容复用）       （block_id 索引）
+```
+
+**两条主线**：
+
+- **空间主线**：`free_block_queue` 按驱逐优先级排序，决定"没空时先抢谁"。
+- **内容主线**：两张哈希表（正向 `hash→block` + 反向 `block→hashes`）决定"哪些块内容相同可复用"。
+
+`ref_cnt` 是两条主线的耦合点：归零的块进入空闲链表成为驱逐候选，但仍可能挂在哈希表上等下次命中——这正是前缀缓存"零拷贝共享"的物理基础。
+
+---
+
+## 3. 核心数据结构
 
 初始化在 `__init__`（`block_pool.py:162-196`）中完成，可分四组。
 
-### 2.1 物理块池（基础底座）
+### 3.1 物理块池与 `KVCacheBlock`
+
+BlockPool 持有三组块池字段：
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -28,42 +61,83 @@
 | `null_block` | `KVCacheBlock` | `block_id=0` 的占位块，`is_null=True`，**不维护 ref_cnt、不可释放**。用于稀疏注意 / Mamba 等场景对齐 block table |
 | `num_gpu_blocks` | `int` | 池容量 |
 
-#### 为什么所有 group 共享同一个 `BlockPool`？共享的是"编号空间"，不是"物理存储"
+#### `KVCacheBlock` 是什么
 
-异构 attention（Full / SWA / Mamba / MLA…）被分成多个 group（见 [`1_physical_memory.md` §5.2](./1_physical_memory.md)），每个 group 在自己的 `kv_caches[layer]` 张量里有独立的物理存储。但所有 group **共用同一个 `BlockPool`**——这里共享的只是"block_id 编号空间 + 空闲块调度 + 前缀哈希表"，不是共享物理存储。
+`KVCacheBlock` 是挂在 `blocks` 列表里的**逻辑块对象**，也是 BlockPool 管理的基本单元。它只承载"编号 + 生命周期 + 哈希指纹 + 链表指针"四类**元数据**，**不持有任何 torch.Tensor / 显存指针**——物理显存在 worker 侧的 `kv_caches[layer]` 张量里，靠 `block_id == 张量第 0 维行号`隐式对应（见 [`1_physical_memory.md` §10](./1_physical_memory.md)）。
 
-同一个 `block_id=5` 在不同 group 中指向**各自物理张量的第 5 行**，互不干扰：
+**关键认知**：`KVCacheBlock` 代表的是"**一组 token 在所有层 KV 数据集合**"的逻辑抽象，而不是"某一层某段 KV"的抽象。同一个 `block_id` 在每一层都有独立的物理存储（每层一张 `kv_caches[layer_name]` 张量的对应行），但逻辑上它们被抽象为同一个 block——因为它们存储的是**同一组 token** 的 KV 数据。这也是为什么 block 上只挂**一个**基于 token 内容的 hash（见 §9），而不是每层一个 hash：hash 的语义是"这组 token 的内容指纹"，与层无关。
 
+源码定义（`kv_cache_utils.py:117-178`）：
+
+```python
+@dataclass(slots=True)
+class KVCacheBlock:
+    """KV-cache block metadata."""
+    block_id: int
+    ref_cnt: int = 0
+    _block_hash: BlockHashWithGroupId | None = None
+    _block_hash_num_tokens: int | None = None
+    prev_free_block: "KVCacheBlock | None" = None
+    next_free_block: "KVCacheBlock | None" = None
+    is_null: bool = False
 ```
-                    block_id = 5
-                          │
-           ┌──────────────┼──────────────┐
-           ▼              ▼              ▼
-     group_0 张量      group_1 张量     group_2 张量
-     (Full attn)       (Mamba)         (SWA)
-  kv_caches[L0][5]  kv_caches[Lm][5]  kv_caches[Ls][5]
-           │              │              │
-           ▼              ▼              ▼
-       存 K/V 张量     存 SSM 状态     存 K/V 张量
-       （第 5 行）     （第 5 行）      （第 5 行）
-       独立显存        独立显存         独立显存
-```
+KVCacheBlock 是"一组 token 在所有层 KV 数据集合"的逻辑抽象 。它代表"这组 token 对应所有层的 KV"，而不是"某一层的某段 KV"。
 
-`BlockPool.blocks[5]` 这个 `KVCacheBlock` 对象**只代表"5 号房间"这个抽象编号**，不区分 group——group 信息存在哈希表 key 里（`BlockHashWithGroupId`，见 §2.3），而不是 block 对象里。同一个 `KVCacheBlock(5)` 可以同时被多个 group 引用（通过各自的 [`req_to_blocks`](./3_single_type_kv_cache_manager.md)），它的 `ref_cnt` 是所有 group 引用的总和。
+#### 字段语义（按职责分四组）
 
-**为什么不让每个 group 用独立的 block_id 空间？** 三个原因：
-
-| 原因 | 共享编号下的表现 | 独立编号下的麻烦 |
+| 职责 | 字段 | 说明 |
 |---|---|---|
-| **请求 block_table 跨组对齐** | 请求只需一份 `block_table = [5, 8, 12]`，所有 group 都按这个号找自己张量第 5/8/12 行 | 每个请求每个 group 都要维护一份独立编号的 block_table，且编号完全无关，对齐逻辑复杂 |
-| **前缀命中必须跨组同时命中** | [`get_cached_block`](file:///c:/Users/89517/Desktop/vllm同步/vllm/vllm/v1/core/block_pool.py#L198) 输入一个 `BlockHash` + 一组 `group_ids`，任何一组 miss 就整体返回 None。共享编号让"对齐"自然成立：命中第 k 个 token-block 时所有 group 都用 `block_id=k` | 跨组命中要查多张表、转换多套编号，无法用"号相同"简单判断 |
-| **分配/释放跨组同步** | 一次 `popleft_n(3)` 拿到 `[k, k+1, k+2]`，所有 group 用同一组编号，原子操作无需跨组同步 | 各 group 独立分配，编号不一致，请求使用时还要跨组对齐编号 |
+| **① 编号** | `block_id: int` | 全局编号 `[0, num_gpu_blocks-1]`，创建后不变；同时是物理张量第 0 维行号、`blocks` 列表下标 |
+| **② 生命周期** | `ref_cnt: int` | 引用计数，多少请求（跨所有 group）正在使用此 block。归零 → 进空闲队列可被驱逐；>0 → 不可驱逐。命中前缀时自增实现零拷贝共享 |
+| **② 生命周期** | `is_null: bool` | 是否为 `null_block`（`block_id=0`）。null block **不维护 ref_cnt、不进空闲队列、不可释放**，用于稀疏注意 / Mamba 对齐 block_table 的占位 |
+| **③ 哈希指纹** | `_block_hash: BlockHashWithGroupId \| None` | 该 block 内容的哈希 key（**带 group_id**，见 §3.3）。仅当 block **写满且入缓存**时才设置；为 `None` 表示"未缓存/已驱逐" |
+| **③ 哈希指纹** | `_block_hash_num_tokens: int \| None` | `_block_hash` 覆盖的前缀 token 数。满块时等于 `block_size`；**部分块**（prefix 在 block 内部结束）时小于 `block_size` |
+| **④ 链表指针** | `prev_free_block` / `next_free_block` | 空闲块双向链表的前驱 / 后继指针。**仅由 `FreeKVCacheBlockQueue` 操作**（见 §3.2），其他代码不应直接读写 |
 
-**生活化类比**：把 BlockPool 想象成一栋写字楼——`block_id` = 房间号（全楼统一编号），`group` = 楼层（每层业态不同：5F 是 Full attn 办公区，6F 是 Mamba 机房）。同号房间在不同楼层（505 和 605 都是 05 号）但里面是完全不同的公司/设备。一位访客（请求）要同时去 5F、6F、7F 办事，共享编号让他只需记住"今天去 05、08、12 号房间"，每层都按这个号找；独立编号则要记住三套完全无关的号。
+#### 哈希状态机
 
-> **一句话**：BlockPool 共享的是"编号空间 + 空闲块调度 + 前缀哈希表"，不是共享物理存储。每个 group 在自己的物理张量上有独立的第 N 行；BlockPool 让所有 group 用统一的"N"来指代"第 k 个 token-block"，从而让跨组分配、跨组命中、跨组对齐变成"号相同"的简单判断。这也是 [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md) "迭代不动点求交集"能成立的前提。
+只有两个入口，状态机严格：
 
-### 2.2 空闲块队列（空间调度）
+```python
+# 写入：block 被写满并入缓存时调用（BlockPool.touch_block_hash）
+def set_block_hash(self, block_hash, num_tokens=None):
+    assert self.block_hash is None and self._block_hash_num_tokens is None, \
+        "The block already has a hash. This should not happen."
+    self._block_hash = block_hash
+    self._block_hash_num_tokens = num_tokens
+
+# 清空：block 被驱逐时调用（BlockPool._reset_block_hash）
+def reset_hash(self):
+    self._block_hash = None
+    self._block_hash_num_tokens = None
+```
+
+| 模式 | block 状态 | 有 hash? | `_block_hash_num_tokens` |
+|---|---|---|---|
+| 标准 | 满块 | 有 | = `block_size` |
+| 标准 | 非满块 | 无 | `None` |
+| 细粒度（`hash_block_size < block_size`） | 满块 | 有 | = `block_size` |
+| 细粒度 | 部分尾巴 | 有 | = `n × hash_block_size` |
+
+- **断言保证"一块一哈希"**：`set_block_hash` 要求当前 `block_hash is None`，即一块在生命期内只允许设置**一次**主哈希；要换内容必须先 `reset_hash` 走驱逐流程。
+- 两个私有字段 `_block_hash` / `_block_hash_num_tokens` 只通过 `@property` 只读暴露，外部不能绕过 `set_block_hash` / `reset_hash` 修改——这是 §4 不变量 ①「每块恰好一个主哈希」的代码级保障。
+
+#### `null_block` 的特殊性
+
+`BlockPool.__init__` 启动时立即把 `block_id=0` 从空闲队列头摘出，置 `is_null=True`，作为全局占位块。它用于填充 block table 中不需要实际 KV 数据的位置（如滑动窗口外、稀疏注意力对齐）。所有释放/计数路径（`free_blocks`、`get_usage`、`get_num_free_blocks`）都对其特判，跳过 `ref_cnt` 维护。
+
+#### 设计细节
+
+| 设计 | 用意 |
+|---|---|
+| `@dataclass(slots=True)` | 用 `__slots__` 锁死字段集合，禁止运行时动态加属性；同时省去 `__dict__`，大量 block 对象下显著降内存 |
+| `_block_hash` 设为私有 + property | 把"设置入口"收敛到 `set_block_hash`，让断言和状态转换集中在一处，避免外部散落赋值破坏不变量 |
+| `__repr__` 用 `block_id` 而非递归打印邻居 | `prev_free_block` / `next_free_block` 是同类对象，直接 `!r` 会沿链表无限递归；改打 `block_id` 既可读又终止递归 |
+| 链表指针放在 block 对象上 | 省去单独的"链表节点"类型，`FreeKVCacheBlockQueue` 直接操作 block 字段，O(1) 摘挂；代价是 block 对象承担了双重职责（元数据 + 链表节点），但注释明确标注"应由 Queue 操纵"作为约定 |
+
+> **一句话**：`KVCacheBlock` 是"轻量元数据壳"——只记编号、引用计数、哈希指纹和链表指针，不碰显存；物理 KV 数据在 worker 侧张量里靠 `block_id` 行号隐式对应。它的状态机（`ref_cnt` 增减 + `set/reset_hash`）把 BlockPool 的"空间调度"和"内容复用"两条主线耦合在同一个对象上。
+
+### 3.2 空闲块队列（空间调度）
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -75,7 +149,7 @@
 - `prepend_n`：插到假头之后 → **优先驱逐侧**。
 - `append_n`：插到假尾之前 → **尽量保留侧**（MRU）。
 
-### 2.3 前缀缓存双向映射（内容复用）
+### 3.3 前缀缓存双向映射（内容复用）
 
 block↔hash 的关系由 **三处** 共同维护，缺一不可：
 
@@ -87,7 +161,7 @@ block↔hash 的关系由 **三处** 共同维护，缺一不可：
 
 > 反向表只存别名；主哈希由 block 自身字段持有。这种分工让 eviction / reset 能一次枚举出某块被**所有** hash 指向的关系，避免孤儿键。
 
-### 2.4 旁路：事件与指标
+### 3.4 旁路：事件与指标
 
 | 字段 | 说明 |
 |---|---|
@@ -100,7 +174,7 @@ block↔hash 的关系由 **三处** 共同维护，缺一不可：
 
 ---
 
-## 3. 关键不变量
+## 4. 关键不变量
 
 1. **每块恰好一个主哈希**：`block.block_hash` 不为 `None` 时即唯一主哈希；任何额外同义查询键只能进 `cached_block_hashes_by_block`，绝不覆盖主哈希。
 2. **正向表与反向表互相对齐**：所有别名键都在反向表里有记录；清理时主哈希 + 反向表 pop 出来的别名一并从正向表删除，反向索引无残留。
@@ -110,9 +184,9 @@ block↔hash 的关系由 **三处** 共同维护，缺一不可：
 
 ---
 
-## 4. 公开 API 速查
+## 5. 公开 API 速查
 
-### 4.1 查询
+### 5.1 查询
 
 | 方法 | 作用 |
 |---|---|
@@ -121,7 +195,7 @@ block↔hash 的关系由 **三处** 共同维护，缺一不可：
 | `get_usage()` | KV cache 占用率（0~1），扣除 null_block |
 | `take_events()` | 原子取出并清空事件队列 |
 
-### 4.2 缓存写入
+### 5.2 缓存写入
 
 | 方法 | 作用 |
 |---|---|
@@ -130,19 +204,19 @@ block↔hash 的关系由 **三处** 共同维护，缺一不可：
 | `move_block_hashes(src, dst)` | 把 `src_block` 的全部 hash 条目转嫁给 `dst_block`（request 继续写入 src 时，缓存保留私有副本 dst） |
 | `emit_cached_block_events(...)` | 对**已被复用**的命中块补发 `BlockStored` 事件，不改块状态 |
 
-### 4.3 分配 / 回收 / 触碰
+### 5.3 分配 / 回收 / 触碰
 
 | 方法 | 作用 |
 |---|---|
 | `get_new_blocks(n)` | 从空闲链表取 n 块；启用缓存时对每块 `_maybe_evict_cached_block` 先驱逐其缓存条目，再 `ref_cnt += 1` |
 | `touch(blocks)` | 命中复用时 `ref_cnt += 1`，并把 `ref_cnt` 从 0 抬起的块从空闲链表摘除 |
-| `free_blocks(ordered_blocks)` | `ref_cnt -= 1`；归零块按是否有主哈希分流进空闲链表（见 §6） |
+| `free_blocks(ordered_blocks)` | `ref_cnt -= 1`；归零块按是否有主哈希分流进空闲链表（见 §7.2） |
 | `evict_blocks(block_ids)` | 仅从哈希表驱逐缓存条目（不动物理块），`ref_cnt > 0` 时块仍在池中 |
 | `reset_prefix_cache()` | 清空两张哈希表 + 全部块 `reset_hash`；用于 RLHF 权重更新后失效缓存 |
 
 ---
 
-## 5. 内部辅助方法
+## 6. 内部辅助方法
 
 | 方法 | 职责 |
 |---|---|
@@ -155,9 +229,9 @@ block↔hash 的关系由 **三处** 共同维护，缺一不可：
 
 ---
 
-## 6. 关键流程
+## 7. 关键流程
 
-### 6.1 分配新块 `get_new_blocks`
+### 7.1 分配新块 `get_new_blocks`
 
 ```
 popleft_n(n)  ──►  对每块：
@@ -169,7 +243,7 @@ popleft_n(n)  ──►  对每块：
 
 要点：从空闲链表取出的块可能仍挂着前缀缓存条目（被驱逐候选但尚未清理），分配前必须先 `_remove_cached_block_hashes`，否则旧 hash 会错指向新内容。
 
-### 6.2 释放 `free_blocks` —— 双队列分流
+### 7.2 释放 `free_blocks` —— 双队列分流
 
 ```
 for block in ordered_blocks:
@@ -190,7 +264,7 @@ append_n(blocks_with_hash)       # → 队尾：尽量保留
 - **有主哈希块**是有效 LRU 缓存条目，未来可复用 → 放队尾保护。
 - `enable_caching=False` 时区分无意义，统一走 `with_hash` 侧按 recency 追加，保留 GPU 显存局部性。
 
-### 6.3 命中复用 `touch`
+### 7.3 命中复用 `touch`
 
 ```
 for block in blocks:
@@ -201,7 +275,7 @@ for block in blocks:
 
 把空闲中的命中块「救回」，避免它被别人分配走。
 
-### 6.4 注册完整块 `cache_full_blocks`
+### 7.4 注册完整块 `cache_full_blocks`
 
 对每个新完整块：
 
@@ -209,7 +283,7 @@ for block in blocks:
 2. `_insert_block_hash` 写入新主哈希（首次即晋升主哈希）。
 3. 开启事件时累积 `BlockStored` 事件，含 `extra_keys`（多模态特征 / cache_salt 等）。
 
-### 6.5 注册部分块 `cache_partial_block`
+### 7.5 注册部分块 `cache_partial_block`
 
 前置：`block_size > hash_block_size` 且 `num_tokens % block_size != 0`（边界落在块内部）。把同一个物理大块在某内部前缀边界注册成可命中键：
 
@@ -217,15 +291,15 @@ for block in blocks:
 - 块已有主哈希 → 走 `_insert_block_hash` 的 else 分支，登记进反向别名表。
 - 若新 partial 覆盖更长前缀，先清掉旧的小 partial，保证主哈希始终代表最长前缀。
 
-### 6.6 驱逐条目 `evict_blocks`
+### 7.6 驱逐条目 `evict_blocks`
 
 仅按 `block_id` 从哈希表移除缓存条目（`_maybe_evict_cached_block`），**不动物理块**。`ref_cnt > 0` 的块仍由 request 持有，只失去「可被命中」的身份。
 
 ---
 
-## 7. 典型协作场景（端到端轨迹）
+## 8. 典型协作场景（端到端轨迹）
 
-下面四个场景从 **「正向索引 / 反向别名表 / 空闲队列 / ref_cnt / 全局 blocks 数组」** 五者联动的视角，看一次操作如何穿过各数据结构。与 §6 的方法级视角互补。
+下面四个场景从 **「正向索引 / 反向别名表 / 空闲队列 / ref_cnt / 全局 blocks 数组」** 五者联动的视角，看一次操作如何穿过各数据结构。与 §7 的方法级视角互补。
 
 ### 场景 1：前缀缓存命中
 
@@ -276,86 +350,24 @@ for block in blocks:
 
 ---
 
-## 8. 与外部组件的协作
+## 9. 链式哈希体系
 
-- **Scheduler / KV cache manager**：通过 `get_cached_block` 查前缀命中，`cache_full_blocks` / `cache_partial_block` 写入，`get_new_blocks` / `touch` / `free_blocks` 管生命周期。
-- **KV connector**：通过 `take_events()` 消费 `BlockStored` / `BlockRemoved` / `AllBlocksCleared`，做跨节点 / 跨设备的 KV 同步。
-- **`BlockHashToBlockMap`**（同文件）：提供正向表的支持多块挂同 key 的实现，是 `cached_block_hash_to_block` 的类型。
-- **`KVCacheMetricsCollector`**：在分配 / 驱逐 / 访问点埋点。
+本章深入到哈希的内部，讲清 `BlockHash` / `BlockHashWithGroupId` 的区别、链式哈希的生成机制、以及多 group 场景下的粒度转换。读完本章你将理解：为什么 hash 只依赖 token 而不依赖层、跨组命中是如何对齐的。
 
----
+### 9.1 两种哈希类型
 
-## 9. 设计要点小结
-
-1. **二维耦合**：空间维度（free_block_queue）与内容维度（两张 hash 表）通过 `ref_cnt` 解耦又联动——`ref_cnt` 归零才进驱逐候选，但驱逐候选仍可挂在 hash 表上等命中。
-2. **主哈希 + 别名分离**：每块一个主哈希身份，别名只进反向表，使清理路径只需看主哈希 + 反向表即可无遗漏枚举。
-3. **无哈希块优先驱逐**：把「永远命中不了」的块排在前，保护可复用前缀，等价于对前缀缓存做 LRU 保护。
-4. **不去重物理块**：同 hash 可挂多块，保证 block table append-only，代价是冗余存储。
-5. **事件旁路不参与决策**：`kv_event_queue` 只广播，`enable_kv_cache_events` 关闭时调度逻辑完全不受影响。
-
----
-
-## 10. 逻辑块元数据：`KVCacheBlock`
-
-> 源文件：`vllm/v1/core/kv_cache_utils.py:117`
-
-`KVCacheBlock` 是 BlockPool 里每块物理 KV cache 的**逻辑身份**。它只记录元数据与双向链表指针，**不持有任何 GPU 显存指针**——物理张量由 `GPUModelRunner` 统一申请（详见 `1_physical_memory.md`）。逻辑与物理通过 `block_id` 桥接。
-
-```python
-@dataclass(slots=True)
-class KVCacheBlock:
-    block_id: int                              # [0, num_gpu_blocks-1]
-    ref_cnt: int = 0                           # 引用计数
-    _block_hash: BlockHashWithGroupId | None = None   # 前缀缓存主哈希
-    _block_hash_num_tokens: int | None = None  # 哈希覆盖的前缀 token 数
-    prev_free_block: "KVCacheBlock | None" = None     # 空闲链表前驱
-    next_free_block: "KVCacheBlock | None" = None     # 空闲链表后继
-    is_null: bool = False                      # 占位块标记
-```
-
-### 10.1 字段语义
-
-| 字段 | 语义 |
-|---|---|
-| `block_id` | 物理块全局编号；attn backend 用它索引 `kv_caches[layer]` 张量 |
-| `ref_cnt` | 共享机制核心。`=0` ⇒ 可回收的空闲候选；前缀命中多请求共享时 `>1` |
-| `_block_hash` / `_block_hash_num_tokens` | 本块的主哈希及其覆盖的前缀长度（见 §11） |
-| `prev_free_block` / `next_free_block` | **仅由 `FreeKVCacheBlockQueue` 操作**，构成 LRU 双向链表 |
-| `is_null` | `block_id=0` 的全局占位块，`ref_cnt` 不维护、不可释放 |
-
-### 10.2 哈希状态机
-
-| 模式 | block 状态 | 有 hash? | `_block_hash_num_tokens` |
-|---|---|---|---|
-| 标准 | 满块 | 有 | = `block_size` |
-| 标准 | 非满块 | 无 | `None` |
-| 细粒度（`hash_block_size < block_size`） | 满块 | 有 | = `block_size` |
-| 细粒度 | 部分尾巴 | 有 | = `n × hash_block_size` |
-
-`set_block_hash()` / `reset_hash()` 是状态转换的唯一入口：前者断言块当前无哈希（防止覆盖主哈希），后者在驱逐时清空。BlockPool 的 `_insert_block_hash` / `_remove_cached_block_hashes` 负责联动两张哈希表（见 §5）。
-
-### 10.3 `null_block` 的特殊性
-
-`BlockPool.__init__` 启动时立即把 `block_id=0` 从空闲队列头摘出，置 `is_null=True`，作为全局占位块。它用于填充 block table 中不需要实际 KV 数据的位置（如滑动窗口外、稀疏注意力对齐）。所有释放/计数路径（`free_blocks`、`get_usage`、`get_num_free_blocks`）都对其特判，跳过 `ref_cnt` 维护。
-
----
-
-## 11. 链式哈希体系
-
-### 11.1 两种哈希类型
-
-> 源文件：`vllm/v1/core/kv_cache_utils.py:44-49`
+> 源文件：`vllm/vllm/v1/core/kv_cache_utils.py:44-49`
 
 ```python
 BlockHash            = NewType("BlockHash", bytes)            # 组无关，只算一次
 BlockHashWithGroupId = NewType("BlockHashWithGroupId", bytes) # 拼上 group_id
 ```
 
-- **`BlockHash`**：一段前缀的哈希值。**组无关、只算一次**、存在 `Request.block_hashes` 上、喂给哈希链。
+- **`BlockHash`**：一段前缀的哈希值。**组无关、只算一次**、存在 `Request.block_hashes` 上、喂给哈希链。**hash 内容只依赖 token 序列 + 父块哈希，不依赖 layer 的 KV 数据形态**——不同层即使 KV 数据的 shape / dtype 完全不同（Full 是 `[..., head_size]` 的 K/V，Mamba 是 `[state_size]` 的 SSM 状态），只要输入 token 相同，`BlockHash` 就相同。这是"同一组 token 在所有 group 天然对齐"的基础：用 token 内容做 hash，让跨组命中只需比较 token 指纹，而不需要比较各层物理数据。
 - **`BlockHashWithGroupId`**：`BlockHash`（32 字节）+ `group_id`（4 字节 big-endian）。作为 `BlockHashToBlockMap` 的 key、也是 `KVCacheBlock._block_hash` 记录的值，**仅在查表/插入/驱逐时用**。不同 group 的相同内容 block 因 `group_id` 不同而隔离，避免跨组误匹配。
 - `ExternalBlockHash`（可序列化版本）只出现在对外事件里。
 
-### 11.2 链式哈希生成
+### 9.2 链式哈希生成
 
 > 源文件：`hash_block_tokens()`，`kv_cache_utils.py:596`
 
@@ -373,7 +385,7 @@ block_2 哈希 = H(block_1_hash, token_16~23, extra_keys)
 
 `NONE_HASH` 是链头种子。默认 `os.urandom(32)` 防碰撞攻击；若希望跨进程可复现，设置环境变量 `PYTHONHASHSEED`（`init_none_hash()`，`kv_cache_utils.py:99`）。
 
-### 11.3 多 group 的粒度转换：`BlockHashListWithBlockSize`
+### 9.3 多 group 的粒度转换：`BlockHashListWithBlockSize`
 
 混合模型里不同 attention 类型有不同物理 `block_size`。为统一哈希计算与调度对齐，引入三种尺寸（`resolve_kv_cache_block_sizes()`，`kv_cache_utils.py:626-688`）：
 
@@ -396,7 +408,56 @@ hash_block_size      = GCD(16, 32) = 16   # 哈希以 16 token 计算，更细
 
 ---
 
-## 12. 完整生命周期综合示例
+## 10. 跨组共享与命中语义
+
+本章把 BlockPool 放到多 group 场景下，讲清"为什么所有 group 共享同一个 BlockPool"和"跨组命中是如何对齐的"。读完本章你将理解：共享的是"编号空间"而非"物理存储"，以及为什么跨组命中要求所有 group 同时命中。
+
+### 10.1 为什么所有 group 共享同一个 `BlockPool`？共享的是"编号空间"，不是"物理存储"
+
+异构 attention（Full / SWA / Mamba / MLA…）被分成多个 group（见 [`1_physical_memory.md` §5.2](./1_physical_memory.md)），每个 group 在自己的 `kv_caches[layer]` 张量里有独立的物理存储。但所有 group **共用同一个 `BlockPool`**——这里共享的只是"block_id 编号空间 + 空闲块调度 + 前缀哈希表"，不是共享物理存储。
+
+同一个 `block_id=5` 在不同 group 中指向**各自物理张量的第 5 行**，互不干扰：
+
+```
+                    block_id = 5
+                          │
+           ┌──────────────┼──────────────┐
+           ▼              ▼              ▼
+     group_0 张量      group_1 张量     group_2 张量
+     (Full attn)       (Mamba)         (SWA)
+  kv_caches[L0][5]  kv_caches[Lm][5]  kv_caches[Ls][5]
+           │              │              │
+           ▼              ▼              ▼
+       存 K/V 张量     存 SSM 状态     存 K/V 张量
+       （第 5 行）     （第 5 行）      （第 5 行）
+       独立显存        独立显存         独立显存
+```
+
+`BlockPool.blocks[5]` 这个 `KVCacheBlock` 对象**只代表"5 号房间"这个抽象编号**，不区分 group——group 信息存在哈希表 key 里（`BlockHashWithGroupId`，见 §3.3），而不是 block 对象里。同一个 `KVCacheBlock(5)` 可以同时被多个 group 引用（通过各自的 [`req_to_blocks`](./3_single_type_kv_cache_manager.md)），它的 `ref_cnt` 是所有 group 引用的总和。
+
+**为什么不让每个 group 用独立的 block_id 空间？** 三个原因：
+
+| 原因 | 共享编号下的表现 | 独立编号下的麻烦 |
+|---|---|---|
+| **请求 block_table 跨组对齐** | 请求只需一份 `block_table = [5, 8, 12]`，所有 group 都按这个号找自己张量第 5/8/12 行 | 每个请求每个 group 都要维护一份独立编号的 block_table，且编号完全无关，对齐逻辑复杂 |
+| **前缀命中必须跨组同时命中** | `get_cached_block` 输入一个 `BlockHash` + 一组 `group_ids`，任何一组 miss 就整体返回 None。共享编号让"对齐"自然成立：命中第 k 个 token-block 时所有 group 都用 `block_id=k` | 跨组命中要查多张表、转换多套编号，无法用"号相同"简单判断 |
+| **分配/释放跨组同步** | 一次 `popleft_n(3)` 拿到 `[k, k+1, k+2]`，所有 group 用同一组编号，原子操作无需跨组同步 | 各 group 独立分配，编号不一致，请求使用时还要跨组对齐编号 |
+
+**生活化类比**：把 BlockPool 想象成一栋写字楼——`block_id` = 房间号（全楼统一编号），`group` = 楼层（每层业态不同：5F 是 Full attn 办公区，6F 是 Mamba 机房）。同号房间在不同楼层（505 和 605 都是 05 号）但里面是完全不同的公司/设备。一位访客（请求）要同时去 5F、6F、7F 办事，共享编号让他只需记住"今天去 05、08、12 号房间"，每层都按这个号找；独立编号则要记住三套完全无关的号。
+
+### 10.2 `get_cached_block` 的跨组同时命中语义
+
+[`get_cached_block`](./block_pool.py) 输入是**一个** `BlockHash`（基于 token 内容，组无关）+ 一组 `group_ids`。对每个 `group_id`，用 `(block_hash, group_id)` 组成 `BlockHashWithGroupId` 查缓存表；**任一 group miss 就整体返回 `None`**。
+
+为什么必须所有 group 同时命中？一条请求需要所有 group 同时持有该 block 才能复用——如果 group_0 (Full) 命中但 group_1 (Mamba) 没命中，意味着 Mamba 那边还没存过这组 token 的状态，请求复用 Full 的缓存没意义，Mamba 还是要重新计算，整体上等于没命中。
+
+这正是共享 `block_id` 编号空间的价值：命中第 k 个 token-block 时所有 group 都用 `block_id=k`，"对齐"自然成立。这也是 [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md) "迭代不动点求交集"能成立的前提。
+
+> **一句话**：BlockPool 共享的是"编号空间 + 空闲块调度 + 前缀哈希表"，不是共享物理存储。每个 group 在自己的物理张量上有独立的第 N 行；BlockPool 让所有 group 用统一的"N"来指代"第 k 个 token-block"，从而让跨组分配、跨组命中、跨组对齐变成"号相同"的简单判断。
+
+---
+
+## 11. 完整生命周期综合示例
 
 假设 `block_size=8`，GPU 共 10 个 block（id 0~9），请求 A（20 token）和请求 B（18 token）前 8 个 token 相同。用 H0/H1/H2 表示 block 内容哈希。
 
@@ -452,4 +513,24 @@ hash_block_size      = GCD(16, 32) = 16   # 哈希以 16 token 计算，更细
 - **步骤 3**：前缀命中走 `touch`（`ref_cnt++` + 从空闲链表摘出），**绝不搬移显存**，A/B 共享 block_1。新 token 才申请新 `block_id`。
 - **步骤 4–5**：`free_blocks` 逆序释放——尾部 block（前缀链更长）先回到驱逐队列前面；按有无哈希分流到队头/队尾，使前缀缓存得 LRU 保护。block_1 因 `ref_cnt>1` 在步骤 4 不释放，到步骤 5 才真正归零回空闲链。
 
-下一层（请求↔block 的命中查询、CoW、稀疏缓存策略）由各 `SingleTypeKVCacheManager` 实现，详见 `3_single_type_kv_cache_manager.md`。
+下一层（请求↔block 的命中查询、CoW、稀疏缓存策略）由各 `SingleTypeKVCacheManager` 实现，详见 [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md)。
+
+---
+
+## 12. 设计要点小结
+
+1. **二维耦合**：空间维度（free_block_queue）与内容维度（两张 hash 表）通过 `ref_cnt` 解耦又联动——`ref_cnt` 归零才进驱逐候选，但驱逐候选仍可挂在 hash 表上等命中。
+2. **主哈希 + 别名分离**：每块一个主哈希身份，别名只进反向表，使清理路径只需看主哈希 + 反向表即可无遗漏枚举。
+3. **无哈希块优先驱逐**：把「永远命中不了」的块排在前，保护可复用前缀，等价于对前缀缓存做 LRU 保护。
+4. **不去重物理块**：同 hash 可挂多块，保证 block table append-only，代价是冗余存储。
+5. **事件旁路不参与决策**：`kv_event_queue` 只广播，`enable_kv_cache_events` 关闭时调度逻辑完全不受影响。
+6. **跨组共享编号空间**：所有 group 共用 `[0, num_blocks-1]` 编号 + 同一个空闲链表 + 同一张哈希表，让跨组对齐变成"号相同"的简单判断（见 §10）。
+
+---
+
+## 13. 与外部组件的协作
+
+- **Scheduler / KV cache manager**：通过 `get_cached_block` 查前缀命中，`cache_full_blocks` / `cache_partial_block` 写入，`get_new_blocks` / `touch` / `free_blocks` 管生命周期。
+- **KV connector**：通过 `take_events()` 消费 `BlockStored` / `BlockRemoved` / `AllBlocksCleared`，做跨节点 / 跨设备的 KV 同步。
+- **`BlockHashToBlockMap`**（同文件）：提供正向表的支持多块挂同 key 的实现，是 `cached_block_hash_to_block` 的类型。
+- **`KVCacheMetricsCollector`**：在分配 / 驱逐 / 访问点埋点。
