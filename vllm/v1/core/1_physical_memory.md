@@ -460,7 +460,7 @@ return self.block_hashes[(idx + 1) * self.scale_factor - 1]
   ```
 
   - **逻辑侧**：`BlockPool.__init__`（`block_pool.py:162-196`）一次性创建 `blocks = [KVCacheBlock(i) for i in range(num_blocks)]`，保证 `blocks[i].block_id == i`。
-  - **物理侧**：[`_reshape_kv_cache_tensors`](file:///c:/Users/89517/Desktop/vllm同步/vllm/vllm/v1/worker/gpu_model_runner.py#L7346) 把 int8 字节池 view 成后端期望的逻辑 shape，第 0 维大小就是 `num_blocks`：
+  - **物理侧**：[`_reshape_kv_cache_tensors`](../worker/gpu_model_runner.py#L7346) 把 int8 字节池 view 成后端期望的逻辑 shape，第 0 维大小就是 `num_blocks`：
 
     ```python
     # gpu_model_runner.py:7396-7400
@@ -480,13 +480,81 @@ return self.block_hashes[(idx + 1) * self.scale_factor - 1]
 
   `block_table` 语义上表达的是"这条请求的第 k 个 token-block 落在物理张量的第几行"，但因 block_id 等于行号，这是一次恒等映射——代码上看不出"对应关系"，正是因为对应关系被固化在了 reshape 的 shape 约定里。
 
+  #### 一个 `block_id` 如何找到"每个 group 中每层"的 KV cache？
+
+  前面的对应关系是**单层**视角：`kv_caches[layer][block_id]` 取本层第 `block_id` 行。但用户常有的疑问是：**`BlockPool` 只有一个，一个 `block_id` 怎么找到每个 group 中各层的 KV cache？不同层存的还是不同类型的数据，到底怎么对上？**
+
+  关键认知分三点：
+
+  **① `block_id` 不携带层 / group 信息**——它只是一个 `[0, num_blocks-1]` 范围内的整数编号，本身不记录"我属于哪一层、属于哪个 group"。层 / group 信息在另一侧：**每一层都有自己的 `kv_caches[layer_name]` 张量**，且第 0 维大小都是 `num_blocks`。
+
+  **② 物理存储是"每层一张表"，不是"一个 block 一份混合数据"**——不同 group 的不同层各自有独立的 `torch.Tensor`，分别存在 GPU 显存的不同位置。同一个 `block_id=5` 在每一层的张量里都能取到"第 5 行"，但每行的内容、shape、dtype 都由该层自己的 spec 决定：
+
+  ```
+  block_id = 5（一个抽象编号，无层信息）
+       │
+       │  遍历所有层（每层都属于某个 group）
+       │
+       ├─→ kv_caches["model.layers.0.self_attn"][5]   ← group_0 (Full) 第 5 行 K/V
+       ├─→ kv_caches["model.layers.1.self_attn"][5]   ← group_0 (Full) 第 5 行 K/V
+       ├─→      ...                                    ← group_0 其他 Full attn 层
+       ├─→ kv_caches["model.layers.10.mamba"][5]      ← group_1 (Mamba) 第 5 行 SSM 状态
+       ├─→ kv_caches["model.layers.12.mamba"][5]      ← group_1 (Mamba) 第 5 行 SSM 状态
+       └─→      ...
+  ```
+
+  每一行的 dtype / shape 都可能不同（Full 是 `[..., head_size]` 的 K/V，Mamba 是 `[state_size]` 的 SSM 状态），但**第 0 维下标都是 `block_id`**，所以"同一 block_id 在所有层都能取到对应行"这个事实恒成立。
+
+  **③ forward 时 attention backend 不感知 group**——group 是调度期的产物，到 forward 时已经被"层名"消解。每个 attention / mamba 算子只持有三样东西：
+
+  | 持有物 | 来源 | 作用 |
+  |---|---|---|
+  | `kv_caches[layer_name]` | `_reshape_kv_cache_tensors` 创建后 bind 给算子 | 本层的物理张量 |
+  | `block_table` | scheduler 在 inputs 里下发，张量形式 `[num_blocks_per_seq]` | 本 seq 用的 block_id 列表 |
+  | `layer_name` | 算子初始化时绑定 | 知道自己是哪一层，但不知道自己在哪个 group |
+
+  算子执行时根本不需要"找到每个 group"——它只关心**自己这一层**：
+
+  ```python
+  # 伪代码：attention 算子在第 L 层前向
+  def forward(self, layer_name, query, block_table):
+      kv_cache = self.kv_caches[layer_name]              # 本层张量
+      kv = kv_cache[block_table]                         # 用 block_id 作 fancy index
+      #       ↑ block_id 直接当行号用，无需查 group
+      return attention(query, kv)
+  ```
+
+  所以"一个 `block_id` 怎么找到每个 group 各层的 KV"这个问题，从代码视角看是反过来的——**不是 `block_id` 主动去"找"数据，而是每一层各自用自己的 `kv_caches[layer_name]` 张量 + 下发的 `block_table` 把本层数据 gather 出来**。`block_id` 只是被用作 fancy index 的"行号"。
+
+  **多 group 场景下请求的完整寻址路径**（以 Full + Mamba 混合模型为例）：
+
+  ```
+  请求 req_id="r1" 同时使用 group_0 (Full) 和 group_1 (Mamba)
+  │
+  ├─ group_0.req_to_blocks["r1"] = [5, 8, 12]   ← 这三个 block_id 用于 Full attn 层
+  │      │
+  │      └─→ forward 时 inputs["block_tables"]["r1"] = [5, 8, 12]
+  │          ↓
+  │          每个 Full attn 层的算子用这个 block_table 从各自张量取第 5/8/12 行
+  │
+  └─ group_1.req_to_blocks["r1"] = [5, 8, 12]   ← 同样三个 block_id 用于 Mamba 层
+         │
+         └─→ （scheduler 把多 group 的 block_table 合并下发，详见 §4 协调层）
+             ↓
+             每个 Mamba 层的算子用这个 block_table 从各自张量取第 5/8/12 行
+  ```
+
+  **这里跨组 block_table 编号一致正是 [§2.1 共享 BlockPool](./2_block_pool.md) 设计的直接结果**：因为所有 group 共享 `[0, num_blocks-1]` 编号空间 + 同一次分配拿到的 `[k, k+1, ...]`，所以同一个 `request_id` 在每个 group 的 `req_to_blocks` 里编号必然相同。这也是 [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md) "迭代不动点求交集"能成立的前提。
+
+  **生活化类比**：把每一层想象成一栋写字楼里的一个楼层——`block_id` 是房间号（全楼统一编号 0~N-1），不同楼层业态不同（5F~20F 是 Full attn 办公区，21F~25F 是 Mamba 机房）。一位访客（请求）去 5F、6F、…、25F 各办一件事，每层都进"05 号房间"——但 5F 的 05 是工位 K/V，21F 的 05 是机房 SSM 状态。访客不需要知道"5F 的 05 和 21F 的 05 有什么关系"——它们只是恰好同号，访客只需按楼层进对应房间办事。同样，attention 算子按层名拿对应张量、按 `block_id` 行号取数据，**完全不需要在运行时跨组查询**。
+
   #### Packed 布局下依然成立
 
   DeepSeek V4 / `enable_cross_layers_blocks` 场景下多层共享一个 backing tensor，但对应关系不变：`_reshape_attention_kv_cache`（`attn_utils.py:226-234`）用 `view(-1, block_stride)[:, offset:offset+page_bytes]` 切出本层的字节窗，**第 0 维仍是 `block_id`**，只是不同层在 backing tensor 的同一行内占不同字节段。
 
   #### `block_table` 的代码归属澄清
 
-  `block_table` 严格说**不是 `Request` 对象的字段**，而是 [`SingleTypeKVCacheManager.req_to_blocks`](file:///c:/Users/89517/Desktop/vllm同步/vllm/vllm/v1/core/single_type_kv_cache_manager.py) 持有的 `defaultdict[str, list[KVCacheBlock]]`：
+  `block_table` 严格说**不是 `Request` 对象的字段**，而是 [`SingleTypeKVCacheManager.req_to_blocks`](./single_type_kv_cache_manager.py) 持有的 `defaultdict[str, list[KVCacheBlock]]`：
 
   | 维度 | 实际归属 |
   |---|---|
