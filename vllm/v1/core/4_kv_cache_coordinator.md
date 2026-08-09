@@ -48,7 +48,7 @@ KV Cache 管理分五层：物理显存层 → `BlockPool`（逻辑块池）→ 
 
 **Coordinator 不直接管理单条 request→block 的绑定**（那是 SingleTypeKVCacheManager 的职责），只做三件事：
 1. **跨组命中取交集**：不同组的命中长度可能不同，必须找到所有组都一致认可的最大公共前缀
-2. **统一调度粒度**：`scheduler_block_size` 是所有组 block_size 的 LCM，`hash_block_size` 是 GCD，确保调度边界对齐
+2. **统一调度粒度**：`scheduler_block_size` 是所有组 block_size 的 LCM（Lowest Common Multiple，最小公倍数），`hash_block_size` 是 GCD（Greatest Common Divisor，最大公约数），确保调度边界对齐
 3. **跨组分配安全**：两阶段分配（先全组 touch 命中块，再全组分配新块）防止竞态
 
 ### 2.2 核心职责（结合调度流程）
@@ -134,20 +134,32 @@ def get_kv_cache_coordinator(
 
 ### 3.3 辅助函数 `_validate_prefix_cache_retention_interval`
 
-构造函数中调用，校验稀疏保留间隔的合法性：
+**函数作用**：在 Coordinator 构造时被调用，校验环境变量 `VLLM_PREFIX_CACHE_RETENTION_INTERVAL`（稀疏前缀缓存保留间隔）配置的合法性，防止无效配置静默失效或导致缓存命中边界错位。
+
+**什么是 retention_interval？**
+- `None`（默认）：稠密缓存，所有写满的块都存入前缀缓存
+- `0`：稀疏模式，只保留序列边界块（prompt 边界、chunk 边界），中间块不缓存，大幅节省显存但牺牲部分命中率
+- `>0`（例如 `512`）：稀疏模式，除了边界块外，每间隔 N 个 token 额外保留一个锚点块，在显存节省和命中率之间折中
+
+该配置**只对 Sliding Window Attention 和 Mamba 类型的 KV group 生效**——Full Attention 是稠密缓存，本身不做稀疏保留，配置了也没有意义，因此会直接报错提醒用户。
+
+**为什么必须是 scheduler_block_size 的倍数？**
+前缀缓存命中以 scheduler_block_size 为对齐粒度（`allocate_slots` 要求 `num_computed_tokens` 按 scheduler_block_size 对齐），如果 retention_interval 不对齐，锚点块不会落在真实的缓存命中边界上，导致稀疏保留的块永远无法被后续请求命中，配置完全失效。
 
 ```python
 def _validate_prefix_cache_retention_interval(
-    retention_interval: int | None,                          # 保留间隔：None=稠密，0=只保留边界，>0=间隔N token保留
-    scheduler_block_size: int,                               # 调度对齐粒度
-    kv_cache_config: KVCacheConfig,                          # KV缓存配置
+    retention_interval: int | None,                          # 保留间隔配置：None=稠密缓存，0=仅边界，>0=间隔N token保留
+    scheduler_block_size: int,                               # 调度对齐粒度（前缀缓存命中必须按此对齐）
+    kv_cache_config: KVCacheConfig,                          # 全局KV缓存配置，包含所有group的spec信息
 ) -> None:
-    if retention_interval is None:
-        return
+    if retention_interval is None:                           # None表示稠密缓存（默认配置），无需校验
+        return                                               # 直接返回，稀疏保留逻辑不启用
 
-    # retention只对SWA和Mamba类型生效；FullAttention/ChunkedLocal是稠密缓存，设置了会报错
-    if not any(
-        isinstance(g.kv_cache_spec, (SlidingWindowSpec, MambaSpec))
+    # 第一层校验：模型必须包含SWA或Mamba类型的KV group
+    # FullAttention/ChunkedLocalAttention本身是稠密缓存，设置retention_interval无任何效果
+    # 报错提醒用户取消无效配置，避免误以为配置生效
+    if not any(                                              # 遍历所有KV cache group
+        isinstance(g.kv_cache_spec, (SlidingWindowSpec, MambaSpec))  # 只要有一个group是SWA或Mamba就通过
         for g in kv_cache_config.kv_cache_groups
     ):
         raise ValueError(
@@ -157,7 +169,8 @@ def _validate_prefix_cache_retention_interval(
             "attention)."
         )
 
-    # retention_interval必须是非负且scheduler_block_size的倍数，确保落在真实缓存命中边界上
+    # 第二层校验：retention_interval必须是非负整数，且是scheduler_block_size的倍数
+    # 非负：负数无意义；倍数：保证锚点块落在真实缓存命中边界上
     if retention_interval < 0 or retention_interval % scheduler_block_size != 0:
         raise ValueError(
             f"VLLM_PREFIX_CACHE_RETENTION_INTERVAL ({retention_interval}) "
@@ -168,17 +181,60 @@ def _validate_prefix_cache_retention_interval(
 
 ### 3.4 SpecGroup（Hybrid 专用）
 
-`SpecGroup` 是 Hybrid 内部用来合并"spec 完全相同"的 group 的 NamedTuple：
+**类作用**：`SpecGroup` 是 `HybridKVCacheCoordinator` 内部的优化数据结构，用来**合并"KV cache spec 完全相同"的多个 group**，把多个 group 的前缀缓存命中查找批量处理，减少哈希表查找次数。
+
+**为什么需要合并？**
+混合模型（如 Gemma3）可能有多个 layer 共享完全相同的 KV cache spec：例如多个连续的 Full Attention 层 block_size 相同、sliding_window 相同，它们各自对应一个独立的 KV cache group，但它们的哈希表结构、命中规则、块大小完全一致。如果对每个 group 独立调用一次 `find_longest_cache_hit`，会重复扫描同一个 block hash 序列，重复查找哈希表——合并后**一次查找就能得到所有同 spec group 的命中结果**，性能随 group 数量线性提升。
+
+**字段含义逐行注释**：
 
 ```python
 class SpecGroup(NamedTuple):
-    spec: KVCacheSpec                                        # 合并代表的spec
-    group_ids: list[int]                                     # 该spec覆盖的所有group_id
-    manager_cls: type[SingleTypeKVCacheManager]              # 同spec必须同manager类
-    use_eagle: bool                                          # 任一成员是EAGLE group即为True
+    """KV cache groups that share one spec, batched together for a single
+    cache-hit lookup.
+
+    ``use_eagle`` is True iff any member group is an EAGLE/MTP group. Members
+    sharing a spec are cached and looked up jointly, so the EAGLE last-block drop
+    is necessarily decided for the whole spec group.
+    """
+
+    spec: KVCacheSpec                                        # 该组共享的KV cache spec（block_size/sliding_window等参数完全相同）
+    group_ids: list[int]                                     # 共享该spec的所有原始group的索引列表，一次查找返回多份结果
+    manager_cls: type[SingleTypeKVCacheManager]              # 对应manager类（相同spec必须对应相同manager类，构建时断言）
+    use_eagle: bool                                          # 任一成员是EAGLE/MTP投机解码group即为True；EAGLE需要特殊处理"多查一块再丢弃"逻辑
 ```
 
-相同 spec 的 group 合并后联合查找缓存命中（一次 find_longest_cache_hit 调用查出所有同 spec group 的结果），减少重复哈希表查找。
+**设计要点**：
+- **批量查找减少开销**：N个同spec group合并后，哈希表查找从N次降到1次，时间复杂度O(N_groups) → O(N_spec_groups)
+- **Full Attention 优先排序**：Full Attention spec 排在最前，因为它是向下闭合（downward-closed）的——如果长度L命中，则所有小于L的长度都命中，左到右扫描效率最高，能给出最紧的初始边界，后续 group 基于这个边界收敛更快
+- **EAGLE 按组决策**：同 spec 的 group 联合查找，EAGLE 的"last-block drop"逻辑必须对整个 SpecGroup 统一决策（要么都多查一块，要么都不），不能部分 group 应用部分不应用
+- **use_eagle 传播**：构建时将 SpecGroup 的 use_eagle 标志传播到所有成员 manager，保证 `cache_blocks` 时 EAGLE 组多缓存一块 lookahead block
+
+**举例**：以 Gemma3 为例，它有 10 个 Full Attention 层 + 20 个 Sliding Window 层（比例 1:2）。
+
+**为什么 20 个 SWA 层不合并成 1 个 group？根本原因是 page size 必须统一**（参见 `docs/design/hybrid_kv_cache_manager.md` Case 2）：
+
+物理 KV cache 内存池是统一的，所有 group 必须使用相同大小的物理 block（page size）。一个物理 block 存储的内容是：
+
+$$\text{page\_size} = \text{num\_layers\_in\_group} \times \text{block\_size} \times \text{kv\_hidden\_size}$$
+
+如果把 20 个 SWA 合成 1 个 group：
+- Full group：10 层 → page_size = 10 × 16 × kv_hidden_size
+- SWA group：20 层 → page_size = 20 × 16 × kv_hidden_size = 2 × Full 的 page size
+
+page size 不一致，无法放入同一个内存池统一分配。因此必须拆成**每个 group 层数相同**：
+- group 0：Full Attention，10 layers（模式中"Full"位置的层）
+- group 1：SWA 位置1，10 layers（模式中第1个SWA位置的层）
+- group 2：SWA 位置2，10 layers（模式中第2个SWA位置的层）
+
+三个 group 都是 10 层，page size 完全相同，可以共享同一个 block pool。
+
+这就是 `_get_kv_cache_groups_uniform_page_size`（源码1140-1259行）的核心分组逻辑：先按 layer 类型分组，再把每种类型的层列表按 stride 方式（`layers[i::num_groups]`）切分成多个 group，确保每个 group 层数相同，从而 page size 统一。group 1 和 group 2 的 `kv_cache_spec` 完全相同（都是 `SlidingWindowSpec`）、manager 类完全相同，但它们是两个独立 group，各自维护独立的 block table 和物理 blocks。
+
+`SpecGroup` 的作用正是在 Coordinator 层面把这些"spec 相同、manager 相同"的独立 group 合并，在**前缀缓存命中查找时批量处理**——对 SWA 只调用一次 `find_longest_cache_hit`，返回结果同时分发到 group 1 和 group 2，把 N 次哈希表查找降到 M 次（M = spec 种类数）。
+
+
+合并后得到 2 个 SpecGroup：`SpecGroup(FullAttentionSpec, [0], FullAttentionManager, False)` 和 `SpecGroup(SlidingWindowSpec, [1,2], SlidingWindowManager, False)`。`find_longest_cache_hit` 只需要调用两次类方法（而不是3次），SWA 的一次调用返回 group 1 和 group 2 两份结果。
 
 ---
 
@@ -188,74 +244,139 @@ class SpecGroup(NamedTuple):
 
 ### 4.1 `__init__` 构造函数（65-128行）
 
+构造函数完成四件事：①保存基础配置 ②校验调度粒度并创建共享BlockPool ③配置EAGLE组并创建各group的manager ④校验稀疏保留间隔。
+
+---
+
+#### 4.1.1 参数列表与基础配置保存（65-81行）
+
 ```python
 def __init__(
     self,
-    kv_cache_config: KVCacheConfig,                          # KV缓存配置（含各组spec、num_blocks等）
-    max_model_len: int,                                      # 模型最大序列长度
-    max_in_flight_tokens: int,                               # 最大在飞token数（控制batch）
-    use_eagle: bool,                                         # 是否启用EAGLE/MTP投机解码
-    enable_caching: bool,                                    # 是否启用前缀缓存
-    enable_kv_cache_events: bool,                            # 是否启用KV缓存事件（用于P/D分离、offload）
-    dcp_world_size: int,                                     # Decode Context Parallelism world size
-    pcp_world_size: int,                                     # Prefill Context Parallelism world size
-    scheduler_block_size: int,                               # 跨组调度对齐粒度（各group block_size的LCM）
-    hash_block_size: int,                                    # 哈希计算粒度（各group block_size的GCD）
-    metrics_collector: KVCacheMetricsCollector | None = None,
+    kv_cache_config: KVCacheConfig,                          # KV缓存全局配置：包含各组kv_cache_groups列表、总block数num_blocks、是否需要zeroing等
+    max_model_len: int,                                      # 模型支持的最大序列长度（token数），用于manager内部预分配数据结构
+    max_in_flight_tokens: int,                               # 最大同时处理的token数（prefill+decode），用于manager内部哈希表/数组初始容量
+    use_eagle: bool,                                         # 是否启用EAGLE/MTP投机解码，影响last-block drop逻辑
+    enable_caching: bool,                                    # 是否启用前缀缓存（APC），False时所有manager退化为无缓存模式
+    enable_kv_cache_events: bool,                            # 是否生成KV cache事件（用于P/D分离、KV offload、分布式KV transfer等）
+    dcp_world_size: int,                                     # Decode Context Parallelism（DCP）world size
+    pcp_world_size: int,                                     # Prefill Context Parallelism（PCP）world size
+    scheduler_block_size: int,                               # Scheduler调度对齐粒度 = 所有group block_size的LCM，确保跨组token数对齐
+    hash_block_size: int,                                    # Block hash计算粒度 = 所有group block_size的GCD，所有group共用一套chained hash
+    metrics_collector: KVCacheMetricsCollector | None = None, # 可选指标收集器，统计命中率、驱逐数等Prometheus指标
 ):
-    self.kv_cache_config = kv_cache_config
-    self.max_model_len = max_model_len
-    self.enable_caching = enable_caching
+    self.kv_cache_config = kv_cache_config                   # 保存全局配置，后续访问num_blocks、kv_cache_groups均通过此字段
+    self.max_model_len = max_model_len                       # 保存最大序列长度，传给各single_type_manager
+    self.enable_caching = enable_caching                     # 保存前缀缓存开关
+```
 
-    # 调度对齐约束：scheduler_block_size必须是hash_block_size和每个group block_size的公倍数
+**参数设计要点**：
+- `scheduler_block_size` 和 `hash_block_size` 由上层 `kv_cache_utils.py` 预先计算好传入——LCM保证所有group的block边界在scheduler层面能对齐，GCD保证hash链能被所有group复用，Coordinator自己不做计算。
+- `enable_kv_cache_events` 控制是否产生 `KVCacheEvent`，这些事件被KV Connector（NIXL/Mooncake/Offloading等）消费，用于跨节点传输或CPU offload。
+
+---
+
+#### 4.1.2 调度粒度校验与共享BlockPool创建（82-96行）
+
+```python
+    # 调度对齐约束：scheduler_block_size必须是hash_block_size的倍数，
+    # 同时也必须是每个group自身block_size的倍数——否则跨组分配时token数无法对齐
     assert scheduler_block_size % hash_block_size == 0 and all(
         scheduler_block_size % g.kv_cache_spec.block_size == 0
         for g in kv_cache_config.kv_cache_groups
     )
-    self.scheduler_block_size = scheduler_block_size
+    self.scheduler_block_size = scheduler_block_size         # 保存调度粒度，后续get_num_common_prefix_blocks等方法使用
 
-    # 创建共享的BlockPool——所有single_type_managers共用同一个池子
+    # 创建唯一的共享BlockPool——所有KV group的single_type_manager共用这一个物理block池
+    # 这是混合模型KV cache管理的核心设计：统一内存池，按group需求分配不同数量的block
     self.block_pool = BlockPool(
-        num_gpu_blocks=kv_cache_config.num_blocks,            # GPU可用block总数
-        enable_caching=enable_caching,
-        hash_block_size=hash_block_size,
-        enable_kv_cache_events=enable_kv_cache_events,
-        metrics_collector=metrics_collector,
+        num_gpu_blocks=kv_cache_config.num_blocks,            # GPU上可用的物理KV block总数（所有group共享）
+        enable_caching=enable_caching,                        # 是否启用prefix caching（决定是否维护hash→block映射）
+        hash_block_size=hash_block_size,                      # hash粒度，用于chained hash计算
+        enable_kv_cache_events=enable_kv_cache_events,        # 是否产生KV事件
+        metrics_collector=metrics_collector,                  # 指标收集器
     )
+```
 
-    # EAGLE/MTP投机解码：需要丢弃最后一个命中块的group集合
-    # draft head的hidden states在最后一个hash粒度token上，多匹配一个block再丢掉
+**共享BlockPool的设计意义**：
+所有group共享同一个物理block池是vLLM混合模型KV管理的关键设计（详见 `docs/design/hybrid_kv_cache_manager.md`）。这样做的好处是：
+1. **内存利用率最大化**：不同group的block需求此消彼长时（如长序列Full Attention需要更多block，短序列SWA需要较少），池化分配能避免碎片化
+2. **跨组驱逐一致性**：所有block的LRU顺序在同一个池中维护，驱逐决策全局统一
+3. **block ID全局唯一**：跨group的block ID不会冲突，GPU上的block table tensor可以统一索引
+
+如果每个group独立维护block池，会导致某group内存不足而其他group空闲时无法互相借用，内存利用率大幅下降。
+
+---
+
+#### 4.1.3 EAGLE组配置（98-104行）
+
+```python
+    # EAGLE/MTP投机解码专用：标记哪些group需要应用"last-block drop"逻辑
+    # 原因：EAGLE draft head的hidden states落在最后一个hash粒度的token边界上，
+    # 多匹配一个完整hash block会导致draft target计算错误，需要命中后再丢弃最后一块
     self.eagle_group_ids: set[int] = {
         i for i, g in enumerate(kv_cache_config.kv_cache_groups) if g.is_eagle_group
     }
-    # 保守回退：use_eagle=True但没有group标记为eagle时，所有group都启用drop
+    # 保守回退策略：use_eagle=True但模型配置中没有任何group显式标记is_eagle_group时，
+    # 对所有group都启用last-block drop（兼容旧版EAGLE集成，不依赖模型侧标记）
     if use_eagle and not self.eagle_group_ids:
         self.eagle_group_ids = set(range(len(kv_cache_config.kv_cache_groups)))
+```
 
-    # 为每个KV group创建对应的SingleTypeKVCacheManager实例
+**EAGLE last-block drop机制**：EAGLE/MTP投机解码时，draft模型基于前N个token预测后续N个token。draft head的hidden states位置与prefix cache的hash block边界不完全对齐——它需要多取一个完整block的数据来计算最后一个位置，计算完成后这个额外block不能算入命中前缀，否则verify阶段token位置会偏移。`eagle_group_ids`标记哪些KV group需要执行这个"多取一块再丢弃"的操作。
+
+---
+
+#### 4.1.4 创建各group的SingleTypeKVCacheManager（106-120行）
+
+```python
+    # 为每个KV cache group创建对应的SingleTypeKVCacheManager实例
+    # 用tuple而非list：创建后manager的数量和顺序固定不变，tuple语义上不可变
     self.single_type_managers = tuple(
-        get_manager_for_kv_cache_spec(                        # 工厂函数：根据spec类型选manager子类
-            kv_cache_spec=kv_cache_group.kv_cache_spec,
+        get_manager_for_kv_cache_spec(                        # 工厂函数：根据kv_cache_spec类型动态选择manager子类
+            kv_cache_spec=kv_cache_group.kv_cache_spec,       # 该group的KV cache配置（决定manager类型：FullAttention/SWA/Mamba等）
             max_in_flight_tokens=max_in_flight_tokens,
             max_model_len=max_model_len,
-            block_pool=self.block_pool,                       # 所有manager共享同一个BlockPool
+            block_pool=self.block_pool,                       # 【关键】所有manager共享同一个BlockPool实例
             enable_caching=enable_caching,
-            kv_cache_group_id=i,
+            kv_cache_group_id=i,                              # 该group的全局索引ID，用于block pool中区分不同group的缓存条目
             dcp_world_size=dcp_world_size,
             pcp_world_size=pcp_world_size,
             scheduler_block_size=self.scheduler_block_size,
-            needs_kv_cache_zeroing=self.kv_cache_config.needs_kv_cache_zeroing,
+            needs_kv_cache_zeroing=self.kv_cache_config.needs_kv_cache_zeroing,  # 新分配block是否需要清零（如FP8 KV cache）
         )
         for i, kv_cache_group in enumerate(self.kv_cache_config.kv_cache_groups)
     )
+```
 
-    # 稀疏保留间隔：对SWA/Mamba类型每retention_interval个token保留一个checkpoint
-    # 0=只保留最新边界；None=稠密保留（不稀疏化）；FullAttention/ChunkedLocal忽略此参数
+**工厂函数`get_manager_for_kv_cache_spec`**：根据`kv_cache_spec`的类型分发到不同的manager子类：
+- `FullAttentionSpec` → `FullAttentionManager`
+- `SlidingWindowSpec` → `SlidingWindowManager`
+- `MambaSpec` → `MambaManager`
+- `ChunkedLocalAttentionSpec` → `ChunkedLocalManager`
+- `CrossAttentionSpec` → `CrossAttentionManager`
+
+所有manager接收同一个`block_pool`引用，这是共享内存池的实现基础——`block_pool`内部用`(block_hash, group_id)`作为缓存key，不同group的缓存条目互不干扰但共享同一物理block空间。
+
+---
+
+#### 4.1.5 稀疏前缀缓存保留间隔校验（122-128行）
+
+```python
+    # 稀疏保留间隔：对SWA/Mamba类型控制前缀缓存的保留密度
+    # None = 稠密保留（所有full block都缓存，默认行为）
+    # 正整数N = 每N个token保留一个checkpoint block，其余稀疏化（降低SWA/Mamba的缓存内存占用）
+    # 0 = 只保留最新的一个replay boundary（最小缓存）
+    # FullAttention/ChunkedLocal类型忽略此参数（稠密保留）
     self.retention_interval = envs.VLLM_PREFIX_CACHE_RETENTION_INTERVAL
-    _validate_prefix_cache_retention_interval(               # 校验合法性
+    _validate_prefix_cache_retention_interval(               # 校验参数合法性（前面135-168行已详细讲解）
         self.retention_interval, self.scheduler_block_size, kv_cache_config
     )
 ```
+
+**稀疏保留的用途**：Sliding Window Attention和Mamba层本身只需要最近窗口内的KV，更早的token会被attention机制自然忽略。如果不加稀疏化，这些层的前缀缓存仍然会缓存所有历史block，浪费GPU内存。`retention_interval`允许用户配置"每隔多少token保留一个checkpoint block"，在牺牲少量命中率的前提下大幅降低SWA/Mamba的缓存内存占用。
+
+---
 
 ### 4.2 `get_num_blocks_to_allocate`（130-190行）
 
