@@ -72,52 +72,66 @@
 
 ## 四、KVCacheSpec 体系（Full Attention）
 
+### 速查：不同模型类型对应的 Spec 类
+
+| 模型 / 注意力类型 | Spec 类 | 继承链 | 备注 |
+|-------------------|---------|--------|------|
+| 标准 Full Attention（如 Llama、Qwen、Mistral 纯解码） | `FullAttentionSpec` | `AttentionSpec` → `KVCacheSpec` | 最常见；支持量化、fp8 等 |
+| 混合模型含 SWA 层（hybrid allocator 关闭时） | `FullAttentionSpec`（记录 `sliding_window`） | 同上 | SWA 在 KV cache 层面视为 full attention |
+| 有滑动窗口注意力（独立模式） | `SlidingWindowSpec` | `AttentionSpec` → `KVCacheSpec` | 块大小独立，内存按 SW 窗口计算 |
+| RoPE 随步长注意力（RSWA） | `RSWASpec` | `FullAttentionSpec` → `AttentionSpec` → `KVCacheSpec` | Ring Attention 变种 |
+| Chunked Local Attention（如 GLM-4v） | `ChunkedLocalAttentionSpec` | `AttentionSpec` → `KVCacheSpec` | 块内局部注意力 |
+| Sink Attention | `SinkFullAttentionSpec` | `FullAttentionSpec` → `AttentionSpec` → `KVCacheSpec` | 保留 sink tokens 的 full attention |
+| MLA（Multi-head Latent Attention） | `MLAAttentionSpec` | `FullAttentionSpec` → `AttentionSpec` → `KVCacheSpec` | 共用 KV latent |
+| Mamba / RWKV 等线性注意力 | `MambaSpec` | `KVCacheSpec`（无 `AttentionSpec` 父类） | 非注意力机制，KV cache 布局完全不同 |
+| TurboQuant 量化 | `TQFullAttentionSpec` | `FullAttentionSpec` → `AttentionSpec` → `KVCacheSpec` | 特殊量化后端 |
+
+> 纯解码模型（如 Llama-7B）统一走 `FullAttentionSpec`；只有带滑动窗口、chunked local 等特殊注意力模式的层才会使用其他子类。
+>
+> `MambaSpec` 不继承 `AttentionSpec`，因为其 KV cache 布局与注意力模型完全不同。
+>
+> 所有 Spec 类均定义为 `@dataclass(frozen=True)`，定义在 `vllm/v1/kv_cache_interface.py`，外层入口在 `vllm/v1/worker/gpu/attn_utils.py:get_kv_cache_spec()`。
+
 ### 4.1 基类：KVCacheSpec
 
-`KVCacheSpec`（`kv_cache_interface.py:99-173`）是每层 KV cache 的"规格说明书"，定义为**冻结 dataclass**——一旦创建不可修改，保证多 worker 间可以安全比较、共享和深拷贝。
+`KVCacheSpec`（`kv_cache_interface.py:99-173`）是每层 KV cache 的"规格说明书"，定义为**冻结 dataclass**——一旦创建不可修改，保证多 worker 间可安全比较、共享和深拷贝。
 
 #### 4.1.1 字段定义
 
 ```python
 @dataclass(frozen=True)
 class KVCacheSpec:
-    """
-    A base class for specifying the KV cache format of one layer.
-    定义单层 KV cache 的存储格式规格
-    """
+    """A base class for specifying the KV cache format of one layer.
+    定义单层 KV cache 的存储格式规格"""
 
     block_size: int
-    # 一个块容纳的token数量，所有KV缓存按块管理的基本单位
-    # 纯Full Attention场景下通常为16，SWA/Mamba可能不同
+    # 一个块容纳的 token 数量，所有 KV 缓存按块管理的基本单位
+    # 纯 Full Attention 场景下通常为 16，SWA/Mamba 可能不同
 ```
 
-> **`frozen=True` 冻结不可变**：spec一旦生成就不能修改，确保多TP/PP rank间可以安全比较相等性，`engine/core.py` 在初始化阶段会断言同组所有层的spec必须一致。`block_size` 是唯一的基类字段——所有类型的KV缓存（Attention/Mamba/MLA等）都按块管理，块大小是最基础的公共属性；其余维度（头数、头大小、dtype等）由子类`AttentionSpec`等补充。
+> `frozen=True` 冻结不可变：spec 一旦生成不能修改，确保多 TP/PP rank 间可安全比较相等性，`engine/core.py` 在初始化阶段会断言同组所有层的 spec 必须一致。`block_size` 是唯一的基类字段——所有类型的 KV 缓存（Attention/Mamba/MLA 等）都按块管理，块大小是最基础的公共属性；其余维度（头数、头大小、dtype 等）由子类 `AttentionSpec` 等补充。
 
 #### 4.1.2 `page_size_bytes`：单块字节数（抽象属性）
 
 ```python
     @property
     def page_size_bytes(self) -> int:
-        """
-        The size of a page with `block_size` tokens in bytes.
+        """The size of a page with `block_size` tokens in bytes.
         Returns: The page size
-        单block在单层占用的字节数——这是计算num_blocks的核心输入
-        基类定义为抽象属性，子类必须实现具体计算逻辑
-        """
+        单 block 在单层占用的字节数——这是计算 num_blocks 的核心输入
+        基类定义为抽象属性，子类必须实现具体计算逻辑"""
         raise NotImplementedError
 ```
 
-> 后续计算 `num_blocks = available_memory // page_size_bytes // num_layers` 完全依赖这个值，子类（如`AttentionSpec`）必须正确实现。
+> 后续计算 `num_blocks = available_memory // page_size_bytes // num_layers` 完全依赖这个值，子类（如 `AttentionSpec`）必须正确实现。
 
 #### 4.1.3 `storage_block_size`：存储层块大小
 
 ```python
     @property
     def storage_block_size(self) -> int:
-        """
-        存储层实际使用的block大小，默认等于逻辑block_size
-        DCP（分布式KV传输）场景下会乘以dcp_world_size，这里基类默认返回原值
-        """
+        """存储层实际使用的 block 大小，默认等于逻辑 block_size
+        DCP（分布式 KV 传输）场景下会乘以 dcp_world_size，这里基类默认返回原值"""
         return self.block_size
 ```
 
@@ -127,73 +141,65 @@ class KVCacheSpec:
 
 ```python
     def max_memory_usage_bytes(self, vllm_config: VllmConfig) -> int:
-        """
-        The maximum possible memory usage of this KV cache in bytes.
+        """The maximum possible memory usage of this KV cache in bytes.
         Returns: The KV cache size in bytes
-        计算该规格下KV cache可能占用的最大显存，用于显存预估和准入控制
-        基类抽象，子类实现
-        """
+        计算该规格下 KV cache 可能占用的最大显存，用于显存预估和准入控制
+        基类抽象，子类实现"""
         raise NotImplementedError
 ```
 
-#### 4.1.5 `max_num_blocks_per_req`：单请求最大block数
+#### 4.1.5 `max_num_blocks_per_req`：单请求最大 block 数
 
 ```python
     def max_num_blocks_per_req(
         self, vllm_config: VllmConfig, max_len: int
     ) -> int:
-        """
-        The number of block table entries needed per request, i.e. the row
+        """The number of block table entries needed per request, i.e. the row
         length of the worker-side block table for this cache group.
 
         Args:
             vllm_config: The vllm config.
             max_len: The maximum sequence length to size for, including the
                 encoder length for encoder-decoder models.
-        
-        计算单个请求最多需要多少个block table条目
-        即Worker侧block_tables张量中每个请求的行长度
-        公式：ceil(max_len / block_size)——向上取整除法
-        """
+
+        计算单个请求最多需要多少个 block table 条目
+        即 Worker 侧 block_tables 张量中每个请求的行长度
+        公式：ceil(max_len / block_size)——向上取整除法"""
         return cdiv(max_len, self.block_size)
 ```
 
-> **`cdiv` 就是向上取整除法**：`cdiv(a, b) = (a + b - 1) // b`。例如34个token，block_size=16，需要`cdiv(34,16)=3`个块。子类`AttentionSpec`会重写这个方法考虑Context Parallel场景。
+> `cdiv` 为向上取整除法：`cdiv(a, b) = (a + b - 1) // b`。例如 34 个 token，`block_size=16`，需要 `cdiv(34, 16) = 3` 个块。子类 `AttentionSpec` 会重写此方法考虑 Context Parallel 场景。
 
 #### 4.1.6 `copy_with_new_block_size`：不可变对象的"修改"
 
 ```python
     def copy_with_new_block_size(self, block_size: int) -> Self:
-        """
-        Create a new KVCacheSpec from self but replacing the block size.
-        复制当前spec，但替换block_size——用于DCP等需要调整块大小的场景
-        使用dataclasses.replace实现不可变对象的"修改"（返回新对象）
-        """
+        """Create a new KVCacheSpec from self but replacing the block size.
+        复制当前 spec，但替换 block_size——用于 DCP 等需要调整块大小的场景
+        使用 dataclasses.replace 实现不可变对象的"修改"（返回新对象）"""
         return replace(self, block_size=block_size)
 ```
 
-> 因为spec是冻结不可变的，不能直接修改字段，必须用`dataclasses.replace`创建一个新对象返回。
+> 因为 spec 是冻结不可变的，不能直接修改字段，必须用 `dataclasses.replace` 创建新对象返回。
 
 #### 4.1.7 `merge`：多层规格合并为组规格
 
 ```python
     @classmethod
     def merge(cls, specs: list[Self]) -> Self:
-        """
-        Merge a list of KVCacheSpec objects into a single KVCacheSpec object.
-        把多层的spec合并为一个组的代表spec
-        
-        基类默认合并规则：组内所有spec必须完全相等（用==比较）
-        纯Full Attention场景下所有层spec完全相同，直接深拷贝第一个即可
-        SWA等场景子类会重写这个方法，允许兼容不同的sliding_window
-        """
+        """Merge a list of KVCacheSpec objects into a single KVCacheSpec.
+        把多层的 spec 合并为一个组的代表 spec
+
+        基类默认合并规则：组内所有 spec 必须完全相等（用 == 比较）
+        纯 Full Attention 场景下所有层 spec 完全相同，直接深拷贝第一个即可
+        SWA 等场景子类会重写此方法，允许兼容不同的 sliding_window"""
         assert all(spec == specs[0] for spec in specs[1:]), (
             "All layers in the same KV cache group must be the same."
         )
         return copy.deepcopy(specs[0])
 ```
 
-> **`merge()` 是分组的关键**：`create_kv_cache_group_specs` 按层分组后，调用这个方法验证组内兼容性。基类要求全相等，SWA等子类会放宽规则允许兼容的窗口大小。
+> `merge()` 是分组的关键：`create_kv_cache_group_specs` 按层分组后，调用此方法验证组内兼容性。基类要求全相等，SWA 等子类会放宽规则允许兼容的窗口大小。
 
 #### 4.1.8 `is_uniform_with_collection`：判断是否可全模型合并为单组
 
@@ -201,29 +207,31 @@ class KVCacheSpec:
     def is_uniform_with_collection(
         self, kv_cache_specs: dict[str, KVCacheSpec]
     ) -> bool:
-        """
-        Whether this KVCacheSpec is uniform with all specs of all layers.
-        判断当前spec是否与所有层的spec属于统一类型
-        用于决定是否可以把所有层合并为一个group
-        
-        通过KVCacheSpecRegistry查找该类型的统一基类，然后检查所有层spec是否都是该基类的实例
-        纯Full Attention场景下返回True——所有层可以合并为单一组
-        """
-        uniform_type_base_spec = KVCacheSpecRegistry.get_uniform_type_base_spec(self)
+        """Whether this KVCacheSpec is uniform with all specs of all layers.
+        判断当前 spec 是否与所有层的 spec 属于统一类型
+        用于决定是否可以把所有层合并为一个 group
+
+        通过 KVCacheSpecRegistry 查找该类型的统一基类，然后检查所有层 spec
+        是否都是该基类的实例
+        纯 Full Attention 场景下返回 True——所有层可以合并为单一组"""
+        uniform_type_base_spec = KVCacheSpecRegistry.get_uniform_type_base_spec(
+            self
+        )
         assert uniform_type_base_spec is not None, (
             f"Unsupported KV cache spec type: {type(self)}. "
             "Please register it using @register_kv_cache_spec decorator."
         )
         return all(
-            isinstance(spec, uniform_type_base_spec) for spec in kv_cache_specs.values()
+            isinstance(spec, uniform_type_base_spec)
+            for spec in kv_cache_specs.values()
         )
 ```
 
-> 纯Full Attention模型（如Llama、Qwen）所有层都是`FullAttentionSpec`，这个方法返回True，整个模型合并为**单个KV cache group**，BlockPool全局唯一，block_table跨所有层通用。
+> 纯 Full Attention 模型（如 Llama、Qwen）所有层都是 `FullAttentionSpec`，此方法返回 True，整个模型合并为**单个 KV cache group**，BlockPool 全局唯一，`block_table` 跨所有层通用。
 
 ### 4.2 中间基类：AttentionSpec
 
-`AttentionSpec`（`kv_cache_interface.py:175-224`）作为所有注意力类型KV缓存的中间基类，继承自`KVCacheSpec`，补齐注意力计算相关的维度、数据类型、量化模式等字段。
+`AttentionSpec`（`kv_cache_interface.py:175-224`）作为所有注意力类型 KV 缓存的中间基类，继承自 `KVCacheSpec`，补齐注意力计算相关的维度、数据类型、量化模式等字段。
 
 #### 4.2.1 字段定义
 
@@ -231,103 +239,105 @@ class KVCacheSpec:
 @dataclass(frozen=True, kw_only=True)
 class AttentionSpec(KVCacheSpec):
     num_kv_heads: int
-    # KV头的数量——GQA/MQA场景下小于query头数
-    # Llama-7B: 32个KV头，Llama-70B: 8个KV头
-    
+    # KV 头的数量——GQA/MQA 场景下小于 query 头数
+    # Llama-7B: 32 个 KV 头，Llama-70B: 8 个 KV 头
+
     head_size: int
     # 每个注意力头的维度
-    # Llama系列: 128
-    
+    # Llama 系列: 128
+
     dtype: torch.dtype
-    # KV缓存存储的数据类型
-    # 常见: torch.bfloat16(2字节), torch.float16(2字节), torch.int8(1字节量化)
-    
+    # KV 缓存存储的数据类型
+    # 常见: torch.bfloat16(2 字节), torch.float16(2 字节), torch.int8(1 字节量化)
+
     kv_quant_mode: KVQuantMode = KVQuantMode.NONE
-    # KV量化模式，默认NONE不量化
-    # 可选: FP8, INT8_PER_TOKEN, INT4_PER_TOKEN_HEAD, NVFP4等
-    
+    # KV 量化模式，默认 NONE 不量化
+    # 可选: FP8, INT8_PER_TOKEN, INT4_PER_TOKEN_HEAD, NVFP4 等
+
     page_size_padded: int | None = None
-    # 手动指定padded后的page大小（字节），用于内存对齐
-    # None表示自动计算，不需要额外padding
-    
+    # 手动指定 padded 后的 page 大小（字节），用于内存对齐
+    # None 表示自动计算，不需要额外 padding
+
     indexes_kv_by_block_stride: bool = False
-    # 是否按block stride索引KV，某些后端优化用
-    # Full Attention默认False
+    # 是否按 block stride 索引 KV，某些后端优化用
+    # Full Attention 默认 False
 ```
 
-#### 4.2.2 `real_page_size_bytes`：纯KV数据大小
+#### 4.2.2 `real_page_size_bytes`：纯 KV 数据大小
 
-计算**纯KV数据本身**占用的字节数，不含量化scale、不含内存对齐padding。
+计算**纯 KV 数据本身**占用的字节数，不含量化 scale、不含内存对齐 padding。
+
+> ⚠️ 这是**每块（block）每层（layer）**的大小。一个页（page）即一个块，包含 `block_size` 个 token 的 K 和 V 数据。单层单 block = `2 × block_size × num_kv_heads × head_dim × dtype_size`。模型总 KV 缓存 = `层数 × 页数 × real_page_size_bytes`。
 
 ```python
     @property
     def real_page_size_bytes(self) -> int:
-        # 根据量化模式决定实际存储的head维度
+        # 根据量化模式决定实际存储的 head 维度
         if self.kv_quant_mode.is_nvfp4:
-            # NVFP4量化：fp4数据 + fp8 block scale打包存储，维度更大
+            # NVFP4 量化：fp4 数据 + fp8 block scale 打包存储，维度更大
             head_dim = nvfp4_kv_cache_full_dim(self.head_size)
         elif self.kv_quant_mode == KVQuantMode.INT4_PER_TOKEN_HEAD:
-            # INT4量化：2个int4值打包到1字节，维度减半
+            # INT4 量化：2 个 int4 值打包到 1 字节，维度减半
             head_dim = self.head_size // 2
         else:
-            # 不量化/FP8/INT8量化：维度不变
+            # 不量化/FP8/INT8 量化：维度不变
             head_dim = self.head_size
-            
+
         return (
-            2                                  # K和V两个矩阵，各占一半
-            * self.block_size                  # 每个块存储的token数量
-            * self.num_kv_heads                # KV头数量
+            2                                  # K 和 V 两个矩阵，各占一半
+            * self.block_size                  # 每个块存储的 token 数量
+            * self.num_kv_heads                # KV 头数量
             * head_dim                         # 每个头的存储维度（量化后可能变化）
-            * get_dtype_size(self.dtype)       # 每个元素的字节数（bf16=2, int8=1等）
+            * get_dtype_size(self.dtype)       # 每个元素的字节数（bf16=2, int8=1 等）
         )
 ```
 
-> **Llama-7B bf16例子**：`2 × 16 × 32 × 128 × 2 = 262,144 B = 256 KB`（单层单block大小）
+> **Llama-7B bf16 例子**：`2 × 16 × 32 × 128 × 2 = 262,144 B = 256 KB`（单层单 block 大小）
 
 ##### 🔍 为什么量化改的是 `head_dim` 而不是 `dtype_size`？
 
-核心原因：**物理存储的dtype宽度是固定的**（uint8=1字节，bf16=2字节），量化改变的是最后一维的**物理元素个数**，而不是每个元素的字节数。
+核心原因：**物理存储的 dtype 宽度是固定的**（`uint8`=1 字节，`bf16`=2 字节），量化改变的是最后一维的**物理元素个数**，而非每个元素的字节数。
 
 公式：`字节数 = head_dim × dtype_size`，两个因子相乘决定总字节数。
 
-- **不量化/FP8/INT8**：`head_dim = head_size`（128），每个物理位置存一个逻辑值，维度不变
-- **INT4_PER_TOKEN_HEAD**：`head_dim = head_size // 2`（64），因为2个int4（4bit）打包到1个uint8字节中，物理元素数减半；per-token-head scale单独存放在独立张量中，在`unpadded_page_size_bytes`里额外加
-- **NVFP4**：`head_dim = head_size//2 + head_size//16`（72），fp4数据打包占64字节，**fp8 block scale直接内嵌在数据末尾**占8字节（每16个fp4值共享1个scale），所以维度反而变大；scale和数据在同一个张量里，不需要额外加
+- **不量化/FP8/INT8**：`head_dim = head_size`（128），每个物理位置存一个逻辑值，维度不变。
+- **INT4_PER_TOKEN_HEAD**：`head_dim = head_size // 2`（64），2 个 int4（4bit）打包到 1 个 `uint8` 字节中，物理元素数减半；per-token-head scale 单独存放在独立张量中，在 `unpadded_page_size_bytes` 里额外加。
+- **NVFP4**：`head_dim = head_size//2 + head_size//16`（72），fp4 数据打包占 64 字节，**fp8 block scale 直接内嵌在数据末尾**占 8 字节（每 16 个 fp4 值共享 1 个 scale），所以维度反而变大；scale 与数据在同一张量里，无需额外加。
 
-| 量化模式 | head_dim | 原因 | scale存储方式 |
-|---------|----------|------|--------------|
-| bf16(不量化) | 128 | 1值1位置，无打包 | 无需scale |
-| FP8/INT8 | 128 | 1字节存1值，无打包 | 外挂（per-tensor/per-token-head独立张量）|
-| INT4 | 64 | 2个int4打包到1字节 | 外挂（per-token-head独立张量）|
-| NVFP4 | 72 | fp4打包(64) + fp8 scale内嵌(8) | **内嵌在同一张量末尾** |
+| 量化模式 | `head_dim` | 原因 | scale 存储方式 |
+|---------|-----------|------|----------------|
+| bf16（不量化） | 128 | 1 值 1 位置，无打包 | 无需 scale |
+| FP8/INT8 | 128 | 1 字节存 1 值，无打包 | 外挂（per-tensor/per-token-head 独立张量） |
+| INT4 | 64 | 2 个 int4 打包到 1 字节 | 外挂（per-token-head 独立张量） |
+| NVFP4 | 72 | fp4 打包(64) + fp8 scale 内嵌(8) | **内嵌在同一张量末尾** |
 
-> 这种设计让所有量化模式都能用uint8/int8作为统一的物理dtype，kernel通过shape/stride统一处理不同格式。
+> 此设计让所有量化模式都能用 `uint8`/`int8` 作为统一的物理 dtype，kernel 通过 shape/stride 统一处理不同格式。
 
-**dtype映射关系**定义在[vllm/utils/torch_utils.py]的`STR_DTYPE_TO_TORCH_DTYPE`字典中，由kv_cache_dtype_str_to_dtype()查表后赋值给`AttentionSpec.dtype`：
+**dtype 映射关系**定义在[vllm/utils/torch_utils.py]的 `STR_DTYPE_TO_TORCH_DTYPE` 字典中，由 `kv_cache_dtype_str_to_dtype()` 查表后赋值给 `AttentionSpec.dtype`：
 
-| 量化模式 | cache_dtype字符串 | torch dtype | dtype_size | head_dim |
-|---------|------------------|-------------|-----------|----------|
-| 不量化(bf16) | `"auto"`/`"bfloat16"` | `torch.bfloat16` | 2 | head_size |
-| 不量化(fp16) | `"float16"`/`"half"` | `torch.float16` | 2 | head_size |
-| FP8(per-tensor) | `"fp8"` | `torch.uint8` | 1 | head_size |
-| INT8(per-token-head) | `"int8_per_token_head"` | `torch.int8` | 1 | head_size |
-| FP8(per-token-head) | `"fp8_per_token_head"` | `torch.uint8` | 1 | head_size |
-| INT4(per-token-head) | `"int4_per_token_head"` | `torch.uint8` | 1 | head_size//2 |
-| NVFP4 | `"nvfp4"` | `torch.uint8` | 1 | head_size//2 + head_size//16 |
+| 量化模式 | cache_dtype 字符串 | torch dtype | dtype_size | head_dim |
+|---------|-------------------|-------------|-----------|----------|
+| 不量化（bf16） | `"auto"` / `"bfloat16"` | `torch.bfloat16` | 2 | head_size |
+| 不量化（fp16） | `"float16"` / `"half"` | `torch.float16` | 2 | head_size |
+| FP8（per-tensor） | `"fp8"` | `torch.uint8` | 1 | head_size |
+| INT8（per-token-head） | `"int8_per_token_head"` | `torch.int8` | 1 | head_size |
+| FP8（per-token-head） | `"fp8_per_token_head"` | `torch.uint8` | 1 | head_size |
+| INT4（per-token-head） | `"int4_per_token_head"` | `torch.uint8` | 1 | head_size // 2 |
+| NVFP4 | `"nvfp4"` | `torch.uint8` | 1 | head_size // 2 + head_size // 16 |
 
-> 注意：FP8/INT4/NVFP4虽然精度不同（4bit/8bit），但物理存储dtype都是`uint8`（1字节），区别仅在`head_dim`和`kv_quant_mode`。`"auto"`模式使用模型本身的dtype（通常bf16/fp16）。
+> 注意：FP8/INT4/NVFP4 虽然精度不同（4bit/8bit），但物理存储 dtype 都是 `uint8`（1 字节），区别仅在 `head_dim` 和 `kv_quant_mode`。`"auto"` 模式使用模型本身的 dtype（通常 bf16/fp16）。
 
-#### 4.2.3 `unpadded_page_size_bytes`：加上量化scale
+#### 4.2.3 `unpadded_page_size_bytes`：加上量化 scale
 
-在纯KV数据大小基础上，如果是per-token-head量化，还要额外加上scale张量的显存预算——scale虽然由attention backend管理，但显存是从KV cache分配中切出来的，必须算入预算。
+在纯 KV 数据大小基础上，如果是 per-token-head 量化，还要额外加上 scale 张量的显存预算——scale 虽然由 attention backend 管理，但显存是从 KV cache 分配中切出来的，必须算入预算。
 
 ```python
     @property
     def unpadded_page_size_bytes(self) -> int:
         unpadded = self.real_page_size_bytes
         if self.kv_quant_mode.is_per_token_head:
-            # per-token-head量化：每个token每个K/V头需要一个fp32 scale
-            # 2 for K+V，scale是float32占4字节
+            # per-token-head 量化：每个 token 每个 K/V 头需要一个 fp32 scale
+            # 2 for K+V，scale 是 float32 占 4 字节
             unpadded += (
                 2 * self.block_size * self.num_kv_heads * get_dtype_size(torch.float32)
             )
@@ -336,13 +346,13 @@ class AttentionSpec(KVCacheSpec):
 
 #### 4.2.4 `page_size_bytes`：最终用于显存计算的值
 
-这是外层计算`num_blocks`时实际使用的值——如果手动设置了`page_size_padded`（用于内存对齐），使用padded值；否则自动计算。
+这是外层计算 `num_blocks` 时实际使用的值——如果手动设置了 `page_size_padded`（用于内存对齐），使用 padded 值；否则自动计算。
 
 ```python
     @property
     def page_size_bytes(self) -> int:
         if self.page_size_padded is not None:
-            # 手动padded时，padded值必须大于等于实际数据大小
+            # 手动 padded 时，padded 值必须大于等于实际数据大小
             assert self.page_size_padded >= self.unpadded_page_size_bytes
             return self.page_size_padded
         return self.unpadded_page_size_bytes
@@ -350,21 +360,21 @@ class AttentionSpec(KVCacheSpec):
 
 **字节数计算三层关系**：
 ```
-real_page_size_bytes  →  纯KV数据本身
-    ↓ + per-token-head scale大小
-unpadded_page_size_bytes  →  实际数据+scale，无padding
-    ↓ （如果设置了page_size_padded则替换为padded值）
-page_size_bytes  →  最终用于num_blocks计算的值
+real_page_size_bytes  →  纯 KV 数据本身
+    ↓ + per-token-head scale 大小
+unpadded_page_size_bytes  →  实际数据 + scale，无 padding
+    ↓ （如果设置了 page_size_padded 则替换为 padded 值）
+page_size_bytes  →  最终用于 num_blocks 计算的值
 ```
 
-#### 4.2.5 `max_num_blocks_per_req`：CP场景修正
+#### 4.2.5 `max_num_blocks_per_req`：CP 场景修正
 
-重写基类方法，考虑**Context Parallel（DCP/Decode Parallel）**场景：序列长度被切分到多个rank上，每个rank只需要存储自己负责的那部分KV，所以需要的block数也要除以CP大小。
+重写基类方法，考虑 DCP 场景：序列长度被切分到多个 rank 上，每个 rank 只需要存储自己负责的那部分 KV，因此需要的 block 数也要除以 CP 大小。
 
 ```python
     def max_num_blocks_per_req(self, vllm_config: VllmConfig, max_len: int) -> int:
         parallel_config = vllm_config.parallel_config
-        kv_shard_count = parallel_config.decode_context_parallel_size  # CP大小
+        kv_shard_count = parallel_config.decode_context_parallel_size  # CP 大小
         return cdiv(max_len, self.block_size * kv_shard_count)
 ```
 
@@ -372,9 +382,10 @@ page_size_bytes  →  最终用于num_blocks计算的值
 
 ### 4.3 FullAttentionSpec
 
-`FullAttentionSpec`（`kv_cache_interface.py:226-350`）是Full Attention层的具体规格类，支持两种场景：
-1. **纯Full Attention**：`sliding_window=None`，缓存所有历史token的KV（Llama、Qwen等标准模型）
-2. **混合分配模式下的SWA**：混合分配器禁用时，SWA层也用FullAttentionSpec分配（给所有token分配块），只是模型计算时用滑动窗口
+`FullAttentionSpec`（`kv_cache_interface.py:226-350`）是 Full Attention 层的具体规格类，支持两种场景：
+1. **纯 Full Attention**：`sliding_window=None`，缓存所有历史 token 的 KV（Llama、Qwen 等标准模型）。
+2. **混合分配模式下的 SWA**：当关闭了混合分配器（`--disable-hybrid-kv-cache-manager`），SWA 层也会被分配完整的 KV 缓存（所有 token 的块），只是模型计算时仍然按滑动窗口逻辑读取。
+   > 混合分配器（hybrid allocator）：vLLM KV cache 管理器的一项功能，用于同时管理多种注意力类型（full attention + SWA 等）。开启时，不同注意力类型各自独立管理 block table；关闭时，所有层统一用一种方式管理，SWA 在 KV 分配层面被视为 full attention（KV cache 给所有 token 分配块，不限制窗口），仅计算时用滑动窗口。
 
 #### 4.3.1 字段定义
 
@@ -382,85 +393,137 @@ page_size_bytes  →  最终用于num_blocks计算的值
 @dataclass(frozen=True, kw_only=True)
 class FullAttentionSpec(AttentionSpec):
     head_size_v: int = None  # type: ignore[assignment]
-    # V头的维度，如果和K不同（如MLA）则单独指定
-    # 默认None，__post_init__中自动设置为等于head_size（标准模型K/V同维度）
+    # K 头维度为 None 时默认等于 K 头维度，__post_init__ 中自动设置为 head_size；
+    # 用于 K 和 V 维度不同的模型，如 MiMo-V2（v_head_dim）。
 
     sliding_window: int | None = None
     # 滑动窗口大小：
-    # - None: 普通Full Attention，缓存所有token（标准模型默认值）
-    # - >0: 滑动窗口大小，模型计算时只看最近window个token，但KV管理仍按Full分配（混合模式）
-    
+    # - None: 普通 Full Attention，缓存所有 token（标准模型默认值）
+    # - >0: 滑动窗口大小，模型计算时只看最近 window 个 token，
+    #       但 KV 管理仍按 Full 分配（混合模式）
+
     attention_chunk_size: int | None = None
-    # attention分块计算大小，None表示不分块
-    # 和sliding_window互斥：不能同时存在
-    
+    # attention 分块计算大小，None 表示不分块
+    # >0 表示将长序列分成该大小的 chunk 独立计算 attention，
+    #   用于 LLaMA 4 等分块局部注意力模型，超长序列场景下避免单次 attention 计算开销过大
+    # 和 sliding_window 互斥：不能同时存在
+
     non_causal: bool = False
-    # 是否非因果注意力（如Prefix LM、Encoder-Decoder交叉注意力）
-    # 这个标记不影响KV缓存布局，但会影响Scheduler的调度策略
-    # 非因果组会禁用：分块prefill、前缀缓存等因果注意力专属优化
+    # 是否非因果注意力（如 Prefix LM、Encoder-Decoder 交叉注意力）
+    # 不影响 KV 缓存布局，但会影响 Scheduler 的调度策略——
+    # 非因果组会禁用分块 prefill、前缀缓存等因果注意力专属优化
 ```
 
 #### 4.3.2 `__post_init__`：冻结对象初始化后处理
 
-因为spec是`frozen=True`的冻结dataclass，初始化后不能直接赋值，必须用`object.__setattr__`绕过冻结限制。
+因 spec 是 `frozen=True` 的冻结 dataclass，初始化后不能直接赋值，必须用 `object.__setattr__` 绕过冻结限制。
 
 ```python
     def __post_init__(self):
-        # 如果没有单独指定head_size_v，默认V头维度等于K头维度
         if self.head_size_v is None:
             object.__setattr__(self, "head_size_v", self.head_size)
 ```
 
-#### 4.3.3 `max_memory_usage_bytes`：单请求最大显存预估
+#### 4.3.3 `real_page_size_bytes`：单层单 block 的 KV 缓存字节数
 
-计算单个请求在最大序列长度下，最多会占用多少KV cache显存，用于显存预估和准入控制。
+计算**单层**一个 block（`block_size` 个 token）的 K 和 V 共占多少字节。
+
+与 `AttentionSpec.real_page_size_bytes` 的区别：`FullAttentionSpec` 分别维护 K 和 V 两份独立张量，因此 `last_dim` 是 K 头维度与 V 头维度的**简单相加**，即 `last_dim = K_dim + V_dim`。两个维度各自按量化模式独立计算（量化减半或按 NVFP4 规则展开），然后相加得到一个 block 的总维度。
+
+公式：`block_size × num_kv_heads × last_dim × dtype_size`，其中 `last_dim` 取决于量化模式：
+
+| 量化模式 | `last_dim` | 说明 |
+|---------|-----------|------|
+| NVFP4 | `nvfp4_kv_cache_full_dim(head_size) + nvfp4_kv_cache_full_dim(head_size_v)` | K 和 V 各自 fp4 数据 + fp8 block scale 内嵌 |
+| INT4_PER_TOKEN_HEAD | `head_size // 2 + head_size_v // 2` | K 和 V 各自 2×int4 打包到 1 字节 |
+| 其他（bf16/FP8/INT8） | `head_size + head_size_v` | K 和 V 均保持原始 head_size |
+
+```python
+    @property
+    def real_page_size_bytes(self) -> int:
+        # K 和 V 各自按量化规则计算维度，然后相加得到总维度
+        if self.kv_quant_mode.is_nvfp4:
+            # NVFP4 量化：fp4 数据 + fp8 block scale 打包存储
+            last_dim = nvfp4_kv_cache_full_dim(
+                self.head_size
+            ) + nvfp4_kv_cache_full_dim(self.head_size_v)
+        elif self.kv_quant_mode == KVQuantMode.INT4_PER_TOKEN_HEAD:
+            # INT4 量化：2 个 int4 值打包到 1 字节，K 和 V 维度各减半
+            last_dim = self.head_size // 2 + self.head_size_v // 2
+        else:
+            # 不量化/FP8/INT8 量化：K 和 V 维度均为原始 head_size，相加
+            last_dim = self.head_size + self.head_size_v
+        return (
+            self.block_size * self.num_kv_heads * last_dim * get_dtype_size(self.dtype)
+        )
+```
+
+#### 4.3.4 `max_memory_usage_bytes`：单层单请求最大显存预估
+
+计算单个请求在最大序列长度下最多会占用多少 KV cache 显存，用于显存预估和准入控制。
 
 ```python
     def max_memory_usage_bytes(self, vllm_config: VllmConfig) -> int:
+        # 最大模型长度，即一个请求最多能容纳多少 token
         max_model_len = vllm_config.model_config.max_model_len
+        # DCP（分布式 Context Parallel）world size——序列被切分到多少个 rank 上
         dcp_world_size = vllm_config.parallel_config.decode_context_parallel_size
-        
-        # CP（Context Parallel）场景：序列切分到多个rank，每个rank只存1/CP
+
+        # CP 场景：序列被切分到多个 rank，每个 rank 只需存总序列的 1/CP 部分
         if dcp_world_size > 1:
             max_model_len = cdiv(max_model_len, dcp_world_size)
-            
-        # 最大block数 × 单block字节数
+
+        # 最大 block 数 × 单 block 字节数 = 该层单请求最大 KV 缓存显存
+        # 此方法计算的是"单层"的显存字节数，不乘层数
+        # 模型总显存 = 所有层(max_memory_usage_bytes 之和)，在上层汇总函数中完成
         return cdiv(max_model_len, self.block_size) * self.page_size_bytes
 ```
 
-#### 4.3.4 `merge_window_sizes`：窗口/块大小合并辅助方法
+#### 4.3.5 `merge_window_sizes`：窗口/块大小合并辅助方法
 
-合并多个层的`sliding_window`或`attention_chunk_size`，要求同组所有层的窗口大小必须一致。
+合并多个层的 `sliding_window` 或 `attention_chunk_size`，要求同组所有层的窗口大小必须一致。
 
 ```python
     @classmethod
     def merge_window_sizes(cls, window_sizes: set[int]) -> int | None:
         if len(window_sizes) == 0:
-            return None                # 所有层都没设置窗口 → 纯Full Attention
+            return None                # 所有层都没设窗口 → 纯 Full Attention
         elif len(window_sizes) == 1:
-            return window_sizes.pop()  # 所有层窗口大小一致 → 返回该值
+            return window_sizes.pop()  # 所有层窗口一致 → 返回该值
         else:
             # 多个不同窗口大小 → 不兼容，直接报错
             raise ValueError(
-                "All attention layers in the same KV cache group must have the "
-                "same window size."
+                "All attention layers in the same KV cache group must have "
+                "the same window size."
             )
 ```
 
-#### 4.3.5 `merge`：多Layer规格合并为组规格
+#### 4.3.6 `merge`：多 Layer 规格合并为组规格
 
-把同一组内所有层的`FullAttentionSpec`合并为一个"代表spec"，是分组机制的核心方法。合并分三步：类型校验→收集参数→创建merged spec→一致性校验。
+把同一组内所有层的 `FullAttentionSpec` 合并为一个"代表 spec"，是分组机制的核心方法。
+调用方：`create_kv_cache_group_specs`（`kv_cache_utils.py`）按层分组后，对每组调用 `merge()` 生成该组的代表 spec。
+
+**为什么需要合并？**
+同组各层 KV cache 在 GPU 上**各自有独立的张量**（`kv_caches[layer_name]`），但共享以下资源：
+- 同一个 `BlockPool`（同一组空闲 block ID 池）
+- 同一个 `page_size_bytes`（每层每 block 的字节数相同）
+- 同一个 `block_table` 结构（每层用各自的 block table 索引自己的 KV 张量）
+
+因此只需一组统一参数（代表性的 spec）就能管理整组所有层的 KV cache 分配。合并的本质是**兼容性汇合**：如果各层参数冲突（如 `sliding_window` 不同，或 KV 头维度不同），则无法同组，断言失败并报错。
+
+合并分四步：类型校验 → 收集参数 → 创建 merged spec → 一致性校验。
 
 **第一步：类型校验**
 
 ```python
     @classmethod
     def merge(cls, specs: list[Self]) -> Self:
-        # 所有spec必须都是FullAttentionSpec类型，不能混入MLA等其他类型
+        # 确保所有 spec 都是 FullAttentionSpec 类型，不能混入 MLA 等其他子类
+        # 不同类型 Spec 有不同字段，无法合并为同一组
         assert all(isinstance(spec, FullAttentionSpec) for spec in specs), (
             "All attention layers in the same KV cache group must be FullAttentionSpec."
         )
-        # 明确禁止混入MLA（MLA有自己的merge逻辑）
+        # 明确禁止混入 MLAAttentionSpec（MLA 有自己独立的 merge 逻辑和字段）
         assert not any(isinstance(spec, MLAAttentionSpec) for spec in specs), (
             "MLAAttentionSpec should be merged in MLAAttentionSpec.merge"
         )
@@ -469,11 +532,13 @@ class FullAttentionSpec(AttentionSpec):
 **第二步：收集可兼容参数**
 
 ```python
-        # 收集所有层的sliding_window（排除None）
+        # 收集所有层的 sliding_window（排除 None 值）
+        # 用 set 自动去重：全部为 None → 空集；全部相同 → 单元素集；各层不同 → 多元素集 → merge_window_sizes 会报错
         sliding_window = set(
             spec.sliding_window for spec in specs if spec.sliding_window is not None
         )
-        # 收集所有层的attention_chunk_size（排除None）
+        # 收集所有层的 attention_chunk_size（排除 None 值）
+        # 同样去重：一致则保留，不一致则报错
         attention_chunk_size = set(
             spec.attention_chunk_size
             for spec in specs
@@ -481,12 +546,13 @@ class FullAttentionSpec(AttentionSpec):
         )
 ```
 
-**第三步：创建合并后的spec**
+**第三步：创建 merged spec**
 
 ```python
-        # 基础字段（block_size、头数、dtype等）直接取第一个spec的值（后面会校验全相等）
-        # sliding_window/chunk_size用merge_window_sizes合并
-        # non_causal用"只要有一层是非因果，整个组就非因果"的保守策略
+        # 基础字段（block_size、num_kv_heads、head_size、head_size_v、dtype、
+        # kv_quant_mode、page_size_padded、indexes_kv_by_block_stride）
+        # 都直接取第一个 spec 的值——后面的一致性校验会断言所有层这些值必须完全相等
+        # 如果不相等，这里虽先取 specs[0] 的值，但后续校验会捕获并报错
         merged_spec = cls(
             block_size=specs[0].block_size,
             num_kv_heads=specs[0].num_kv_heads,
@@ -496,24 +562,34 @@ class FullAttentionSpec(AttentionSpec):
             kv_quant_mode=specs[0].kv_quant_mode,
             page_size_padded=specs[0].page_size_padded,
             indexes_kv_by_block_stride=specs[0].indexes_kv_by_block_stride,
+            # sliding_window / chunk_size 上面已用 set 收集，交给 merge_window_sizes 做最终合并
             sliding_window=cls.merge_window_sizes(sliding_window),
             attention_chunk_size=cls.merge_window_sizes(attention_chunk_size),
-            non_causal=any(spec.non_causal for spec in specs),  # 保守策略
+            # non_causal 采用"悲观保守"策略：只要有一层是非因果的，整个组就标记为非因果
+            # 这样 Scheduler 会禁用该组的分块 prefill、前缀缓存等因果注意力专属优化
+            non_causal=any(spec.non_causal for spec in specs),
         )
 ```
 
 **第四步：一致性校验**
 
 ```python
-        # 校验所有层的AttentionSpec基类字段必须完全相等
+        # 校验所有层的 AttentionSpec 基类字段（block_size、num_kv_heads、head_size、
+        # head_size_v、dtype、kv_quant_mode、page_size_padded、indexes_kv_by_block_stride）
+        # 必须完全相等——这些是物理内存布局的关键参数，不相等意味着各层 K/V 张量大小不同，
+        # 无法共享同一块 GPU 内存
         for spec in specs:
             for f in fields(AttentionSpec):
                 assert getattr(spec, f.name) == getattr(merged_spec, f.name), (
                     "All attention layers in the same KV cache group must have "
                     "the same attention spec."
                 )
-        
-        # 校验：sliding_window和attention_chunk_size互斥，不能同时设置
+
+        # 校验：sliding_window 和 attention_chunk_size 互斥，不能同时设置
+        # 使用异或逻辑：(A is not None) + (B is not None) <= 1
+        # 两者都为 None（无特殊注意力）→ 0 ≤ 1 ✓
+        # 只有其中一个设置 → 1 ≤ 1 ✓
+        # 两者都设置 → 2 ≤ 1 ✗ 断言失败
         assert (merged_spec.sliding_window is not None) + (
             merged_spec.attention_chunk_size is not None
         ) <= 1, (
@@ -523,23 +599,55 @@ class FullAttentionSpec(AttentionSpec):
         return merged_spec
 ```
 
-**FullAttentionSpec合并规则总结**：
+**FullAttentionSpec 合并规则总结**：
 | 字段 | 合并策略 |
 |------|----------|
-| `block_size`/`num_kv_heads`/`head_size`/`dtype`等基类字段 | 必须全相等，否则断言失败 |
-| `sliding_window`/`attention_chunk_size` | 收集所有非None值，必须一致，不一致报错 |
+| `block_size` / `num_kv_heads` / `head_size` / `dtype` 等基类字段 | 必须全相等，否则断言失败 |
+| `sliding_window` / `attention_chunk_size` | 收集所有非 None 值，必须一致，不一致报错 |
 | `non_causal` | 保守策略：只要有一层是非因果，整个组标记为非因果 |
-| 其他字段 | 取第一个spec的值（通过后续一致性校验保证全相等） |
+| 其他字段 | 取第一个 spec 的值（通过后的一致性校验保证全相等） |
 
 ### 4.4 分组：为什么能把多层合并为一个 group？
 
-`create_kv_cache_group_specs`（`kv_cache_utils.py:882-909`）按分组逐组调用 `spec.merge(layer_specs)`：组内兼容则晋升为单一"代表 spec"，不兼容断言失败。
+`create_kv_cache_group_specs`（`kv_cache_utils.py:882-909`）按分组逐组调用 `spec.merge(layer_specs)`：组内兼容则晋升为单一"代表 spec"，不兼容则断言失败。
 
 **纯 Full Attention 模型（如 Llama）**：所有层的 spec 完全相等（`block_size`、`num_kv_heads`、`head_size`、`dtype` 全部一致），`merge()` 直接返回深拷贝，因此**全模型只有一个 KV cache group**。
 
-这是理解后续架构的关键：**单 group 意味着不需要跨组协调，BlockPool 全局唯一，block_table 跨所有层通用**。
+这是理解后续架构的关键：**单 group 意味着不需要跨组协调，BlockPool 全局唯一，`block_table` 跨所有层通用**。
+
+> **关于 `page_size_bytes` 不同的层**：分组前会调用 `unify_kv_cache_spec_page_size()`（`kv_cache_utils.py:1070`）统一所有层的 `page_size_bytes`。它**不是简单取最大**，而是分三步尝试：
+> 1. **取最大页大小的倍数关系**：若 `max_page_size % layer_page_size == 0`，等比例放大该层的 `block_size`（如最大是当前的 2 倍，`block_size` 翻倍）。
+> 2. **Mamba 层**：page_size 由状态维度决定，无法通过放大 `block_size` 对齐，直接用 `page_size_padded` 补到最大。
+> 3. **Attention 层但不可整除也不支持 strided view**：抛出 `NotImplementedError`。
+> 统一后的 `page_size_bytes` 才进入分组，所以组内 `page_size` 必定相等。
+
+#### 4.4.1 `create_kv_cache_group_specs` 逐行讲解
+
+```python
+def create_kv_cache_group_specs(
+    kv_cache_spec: dict[str, KVCacheSpec], grouped_layer_names: list[list[str]]
+) -> list[KVCacheGroupSpec]:
+    """Create KVCacheGroupSpec object for each kv cache group layer.
+    The layers in the same group should share the same KVCacheSpec."""
+    kv_cache_groups = []  # 收集所有组的 KVCacheGroupSpec
+    for layer_names_one_group in grouped_layer_names:  # 遍历每个组
+        # 取出该组内所有层的 KVCacheSpec
+        layer_specs = [
+            kv_cache_spec[layer_name] for layer_name in layer_names_one_group
+        ]
+        # 合并该组内所有层为单一代表 spec
+        # merge() 会检查类型一致、参数兼容，不兼容则断言失败
+        merged_layer_spec = layer_specs[0].merge(layer_specs)
+        # 将组名列表 + 代表 spec 组成 KVCacheGroupSpec，加入结果
+        kv_cache_groups.append(
+            KVCacheGroupSpec(layer_names_one_group, merged_layer_spec)
+        )
+    return kv_cache_groups  # 返回所有组的规格列表
+```
 
 ---
+
+
 
 ## 五、测量可用显存：profile_run
 
