@@ -361,164 +361,253 @@ class KVCacheManager:
 
 这是整个KV Cache管理**最核心的方法**，Scheduler拿到前缀命中结果后调用它来分配需要的新块。源码注释里有详细的块布局图：
 
+    Blocks layout:
+    ----------------------------------------------------------------------
+    | < comp > | < new_comp > | < ext_comp >  | < new >  | < lookahead > |
+    ----------------------------------------------------------------------
+                                                |   < to be computed >     |
+    ----------------------------------------------------------------------
+                                |            < to be allocated >           |
+    ----------------------------------------------------------------------
+                                | < to be cached (roughly, |
+                                | details below)>          |
+    ----------------------------------------------------------------------
+    | Prefix-cached tokens from either vLLM   |
+    | or connector. Can be safely removed if  |
+    | they are outside sliding window.        |
+    ----------------------------------------------------------------------
+    |   < cached by vLLM >    | not cached by |
+                                | vLLM, but     |
+    | ref_cnt  | ref_cnt not  | cached by     |
+    | increased| increased yet| connector     |
+    ----------------------------------------------------------------------
+    comp      = request.num_computed_tokens
+    new_comp  = num_new_computed_tokens
+                = len(new_computed_blocks) * block_size
+    ext_comp  = num_external_computed_tokens, cached by the connector
+    new       = num_new_tokens, including unverified draft tokens
+    lookahead = num_lookahead_tokens
+    
+源码docstring明确声明**分配分为三个阶段**：
+
 ```
-----------------------------------------------------------------------
-| < comp > | < new_comp > | < ext_comp >  | < new >  | < lookahead > |
-----------------------------------------------------------------------
-                                              |   < to be computed >     |
-----------------------------------------------------------------------
-                              |            < to be allocated >           |
-----------------------------------------------------------------------
-comp      = request.num_computed_tokens  （已计算的token）
-new_comp  = num_new_computed_tokens      （刚命中的本地前缀token）
-ext_comp  = num_external_computed_tokens （外部Connector缓存的token）
-new       = num_new_tokens               （本轮新token，含未验证的draft）
-lookahead = num_lookahead_tokens         （投机解码的lookahead token）
+阶段1: 释放 comp 中不需要的块，检查空闲块是否足够（不足则返回 None）
+阶段2: 处理前缀 token（comp + new_comp + ext_comp）
+        - 释放不需要的块（如滑动窗口外的）
+        - 为 ext_comp 在滑动窗口内的 token 分配新块
+阶段3: 为待计算的 token（new + lookahead）分配新块
 ```
 
-分配分为三个主要阶段：
+下面按"前置准备 → 阶段1 → 阶段2 → 阶段3"的顺序逐行注释源码。
+
+#### 函数签名与参数
 
 ```python
-    def allocate_slots(
-        self,
-        request: Request,
-        num_new_tokens: int,                           # 本轮要计算的新token数
-        num_new_computed_tokens: int = 0,              # 刚命中的本地前缀token数
-        new_computed_blocks: KVCacheBlocks | None = None,  # 刚命中的块
-        num_lookahead_tokens: int = 0,                 # 投机解码lookahead
-        num_external_computed_tokens: int = 0,         # 外部Connector缓存的token
-        delay_cache_blocks: bool = False,              # 是否延迟缓存（P/D传输用）
-        num_encoder_tokens: int = 0,                   # encoder token数（cross-attn用）
-        full_sequence_must_fit: bool = False,          # 全序列必须放得下才准入（准入门控）
-        reserved_blocks: int = 0,                      # 为其他in-flight请求保留的块
-        has_scheduled_reqs: bool = True,               # 是否已有请求在调度
-    ) -> KVCacheBlocks | None:
-        """分配槽位，返回新分配的块；如果空间不足返回None"""
-
-        # ========== 参数校验 ==========
-        if num_new_tokens == 0 and num_external_computed_tokens == 0:
-            raise ValueError(...)
-
-        if new_computed_blocks is not None:
-            new_computed_block_list = new_computed_blocks.blocks
-        else:
-            new_computed_block_list = self.empty_kv_cache_blocks.blocks
-
-        # ========== 1. 计算token统计 ==========
-        num_local_computed_tokens = request.num_computed_tokens + num_new_computed_tokens
-        total_computed_tokens = min(
-            num_local_computed_tokens + num_external_computed_tokens,
-            self.max_model_len,
-        )
-        num_tokens_main_model = total_computed_tokens + num_new_tokens
-        num_tokens_need_slot = min(
-            num_tokens_main_model + num_lookahead_tokens, self.max_model_len
-        )
-
-        # ========== 2. Watermark设置：只对WAITING/PREEMPTED请求生效 ==========
-        watermark_blocks = 0
-        if has_scheduled_reqs and request.status in (RequestStatus.WAITING, RequestStatus.PREEMPTED):
-            watermark_blocks = self.watermark_blocks
-
-        # ========== 3. 【阶段1】full_sequence_must_fit准入检查 ==========
-        # 这是chunked prefill的准入门控：如果整个序列都放不下，直接拒绝，不要只放第一个chunk
-        if full_sequence_must_fit:
-            full_num_tokens = min(request.num_tokens, self.max_model_len)
-            num_blocks_to_allocate = self.coordinator.get_num_blocks_to_allocate(
-                request_id=request.request_id,
-                num_tokens=full_num_tokens,
-                new_computed_blocks=new_computed_block_list,
-                num_encoder_tokens=num_encoder_tokens,
-                total_computed_tokens=total_computed_tokens,
-                num_local_computed_tokens=num_local_computed_tokens,
-                num_tokens_main_model=full_num_tokens,
-                apply_admission_cap=True,  # 应用准入上限
-            )
-            required_blocks = num_blocks_to_allocate + watermark_blocks
-            if required_blocks > self.block_pool.get_num_free_blocks():
-                return None  # 空间不足，拒绝准入
-
-        # ========== 4. 【阶段2】先清理不需要的块（SWA滑动窗口外的）==========
-        # 在分配之前先释放，减少需要驱逐的块数
-        self.coordinator.remove_skipped_blocks(
-            request.request_id,
-            max(0, total_computed_tokens - request.num_in_flight_tokens),
-            num_prompt_tokens=request.num_prompt_tokens,
-        )
-        # 纯FullAttention下这个函数基本什么都不做（没有滑动窗口）
-
-        # ========== 5. 【阶段3】计算本次实际需要分配多少块 ==========
-        num_blocks_to_allocate = self.coordinator.get_num_blocks_to_allocate(
-            request_id=request.request_id,
-            num_tokens=num_tokens_need_slot,
-            new_computed_blocks=new_computed_block_list,
-            num_encoder_tokens=num_encoder_tokens,
-            total_computed_tokens=num_local_computed_tokens + num_external_computed_tokens,
-            num_local_computed_tokens=num_local_computed_tokens,
-            num_tokens_main_model=num_tokens_main_model,
-        )
-
-        # ========== 6. 【阶段4】空间检查：可用块 = 空闲块 - 预留块 ==========
-        available_blocks = self.block_pool.get_num_free_blocks() - reserved_blocks
-        required_blocks = num_blocks_to_allocate + watermark_blocks
-        if required_blocks > available_blocks:
-            return None  # 空间不足，需要抢占或等待
-
-        # ========== 7. 【阶段5】两阶段分配（修复issue #33775）==========
-        # 关键：必须先touch所有命中块（ref_cnt++），再分配新块！
-        # 否则分配新块时可能驱逐还没touch的命中块
-        if (new_computed_block_list is not self.empty_kv_cache_blocks.blocks
-            or num_external_computed_tokens > 0):
-            # 阶段5a：touch命中块 → ref_cnt++，标记为"正在使用"，不会被驱逐
-            self.coordinator.allocate_new_computed_blocks(
-                request_id=request.request_id,
-                new_computed_blocks=new_computed_block_list,
-                num_local_computed_tokens=num_local_computed_tokens,
-                num_external_computed_tokens=num_external_computed_tokens,
-            )
-
-        # 阶段5b：真正分配新块 → 从free_block_queue取块，加入manager的req_to_blocks
-        new_blocks = self.coordinator.allocate_new_blocks(
-            request.request_id,
-            num_tokens_need_slot,
-            num_tokens_main_model,
-            num_encoder_tokens,
-        )
-        # 新分配的块会被加入manager.new_block_ids列表，等下Worker调用take_new_block_ids()来拿去清零
-
-        # ========== 8. P/D延迟缓存：如果是远程传输，先不缓存 ==========
-        if not self.enable_caching or delay_cache_blocks:
-            return self.create_kv_cache_blocks(new_blocks)
-
-        # ========== 9. 【阶段6】缓存写入（调度阶段，forward之前）==========
-        # cache_blocks只缓存"满块"(num_tokens // block_size)，尾块不缓存
-        # hash基于token ID，不依赖KV数据，所以forward之前就能算hash
-        # 用request.num_tokens来cap，排除可能被拒绝的draft token（只缓存finalized token）
-        # 注意：cache_blocks是幂等的——已缓存的块(num_cached_block >= num_full_blocks)直接跳过
-        num_tokens_to_cache = min(
-            total_computed_tokens + num_new_tokens,
-            request.num_tokens,
-        )
-        self.coordinator.cache_blocks(request, num_tokens_to_cache)
-        # prompt阶段：前2块已在prefix cache中，num_cached_block=2 >= num_full_blocks=2，是no-op
-        # decode阶段：每满一个block_size的块，这里就会把它写入哈希表
-        # cache_blocks也会被外部调用方在forward之后追加调用（async PP / KV Connector场景）
-
-        # ========== 10. 返回新分配的块 ==========
-        return self.create_kv_cache_blocks(new_blocks)
+def allocate_slots(
+    self,
+    request: Request,                              # 当前请求
+    num_new_tokens: int,                           # 本轮要计算的新token数（含未验证draft）
+    num_new_computed_tokens: int = 0,              # 刚命中的本地前缀缓存token数（不含ext）
+    new_computed_blocks: KVCacheBlocks | None = None,  # 上面命中token对应的块（按group分组）
+    num_lookahead_tokens: int = 0,                 # 投机解码lookahead token数（eagle等用）
+    num_external_computed_tokens: int = 0,         # 外部Connector缓存的token数（vLLM不持有KV）
+    delay_cache_blocks: bool = False,              # 是否延迟缓存（P/D远程传输未完成时跳过cache）
+    num_encoder_tokens: int = 0,                   # encoder token数（encoder-decoder如Whisper的cross-attn）
+    full_sequence_must_fit: bool = False,          # 准入门控：整个序列必须放得下才允许进入
+    reserved_blocks: int = 0,                      # 为其他in-flight请求保留的空闲块数
+    has_scheduled_reqs: bool = True,               # 本step是否已有请求被调度（控制watermark）
+) -> KVCacheBlocks | None:
+    """分配槽位，返回新分配的块；如果空间不足返回 None"""
 ```
 
-**端到端例子**：34token prompt，命中32token（2块），num_new_tokens=2
-- `num_local_computed_tokens = 0 + 32 = 32`（假设是新请求，之前没计算过）
-- `num_tokens_need_slot = 32 + 2 = 34`
-- `num_blocks_to_allocate = ceil(34/16) - 2 = 3 - 2 = 1`块
-- 检查空间：假设空闲块足够
-- 阶段5a：touch命中的blockA、blockB → ref_cnt都+1
-- 阶段5b：从free_block_queue分配blockC → new_block_ids=[blockC.block_id]
-- 阶段6：`num_tokens_to_cache = min(32+2, 34) = 34`
-  - `num_full_blocks = 34 // 16 = 2`，`num_cached_block = 2`（prefix hit已缓存前2块）
-  - `num_cached_block(2) >= num_full_blocks(2)` → 提前返回，no-op，不写入任何新块
-- 返回：`KVCacheBlocks(([blockC],))`
+#### 前置准备：参数校验 + token统计 + watermark设置
+
+```python
+# 异步加载KV数据时，可能num_new_tokens=0但仍需为external token分配slot
+if num_new_tokens == 0 and num_external_computed_tokens == 0:
+    raise ValueError(
+        "num_new_tokens must be greater than 0 when there are no "
+        "external computed tokens"
+    )
+
+# 统一取出命中块的内部列表，避免后续到处做None判断
+if new_computed_blocks is not None:
+    new_computed_block_list = new_computed_blocks.blocks   # 有命中：用命中块
+else:
+    new_computed_block_list = self.empty_kv_cache_blocks.blocks  # 无命中：用空列表占位
+
+# 本地已计算token = 之前已计算的 + 刚命中前缀的
+num_local_computed_tokens = (
+    request.num_computed_tokens + num_new_computed_tokens
+)
+# 总已计算token = 本地 + 外部Connector，不能超过max_model_len
+total_computed_tokens = min(
+    num_local_computed_tokens + num_external_computed_tokens,
+    self.max_model_len,
+)
+
+# watermark只对WAITING/PREEMPTED请求生效，且本step已有其他请求在调度时才加
+# 目的：给正在运行中的请求留出headroom，防止新请求把空间吃光导致preempt
+watermark_blocks = 0
+if has_scheduled_reqs and request.status in (
+    RequestStatus.WAITING,
+    RequestStatus.PREEMPTED,
+):
+    watermark_blocks = self.watermark_blocks
+```
+
+#### 阶段1：释放 comp 中不需要的块，检查空闲块是否足够
+
+源码docstring：*"Free unnecessary blocks in `comp` and check if we have sufficient free blocks (return None if not)."*
+
+```python
+# ---- 1a. full_sequence_must_fit 准入门控检查 ----
+# chunked prefill场景下，如果只检查第一个chunk就可能放行一个永远放不下的请求
+# 这里先按"完整序列"算一遍需求，放不下直接拒绝，避免无效占用
+if full_sequence_must_fit:
+    # 完整序列token数，同样受max_model_len约束
+    full_num_tokens = min(request.num_tokens, self.max_model_len)
+
+    # 向coordinator查询：放下整个序列还需要分配多少新块
+    # apply_admission_cap=True 表示应用准入上限（防止过度估算）
+    num_blocks_to_allocate = self.coordinator.get_num_blocks_to_allocate(
+        request_id=request.request_id,
+        num_tokens=full_num_tokens,              # 完整序列长度
+        new_computed_blocks=new_computed_block_list,  # 可复用的命中块
+        num_encoder_tokens=num_encoder_tokens,
+        total_computed_tokens=total_computed_tokens,
+        num_local_computed_tokens=num_local_computed_tokens,
+        num_tokens_main_model=full_num_tokens,   # 主模型按完整序列算
+        apply_admission_cap=True,
+    )
+    # 需求 = 实际要分配的块 + watermark预留
+    required_blocks = num_blocks_to_allocate + watermark_blocks
+    # 比较的是 get_num_free_blocks()（不含reserved，因为这是准入阶段）
+    if required_blocks > self.block_pool.get_num_free_blocks():
+        return None   # 整个序列放不下，拒绝准入
+
+# ---- 1b. 计算本轮实际需要slot的token数 ----
+# 主模型token = 总已计算token + 本轮新token
+num_tokens_main_model = total_computed_tokens + num_new_tokens
+# 需要slot的token = 主模型token + lookahead，受max_model_len约束
+num_tokens_need_slot = min(
+    num_tokens_main_model + num_lookahead_tokens, self.max_model_len
+)
+
+# ---- 1c. 释放滑动窗口（SWA）外不需要的块 ----
+# 在分配新块之前先释放，能减少后续需要驱逐的块数
+# 即使本请求最终因空间不足无法调度，这个释放也是安全的（SWA外的块确实不再需要）
+# 基于"已处理token"来释放：in-flight的step还在读optimistic boundary以下的块，
+# 被拒绝的spec token也可能回滚，所以用 (total_computed - num_in_flight_tokens) 作为下界
+self.coordinator.remove_skipped_blocks(
+    request.request_id,
+    max(0, total_computed_tokens - request.num_in_flight_tokens),
+    num_prompt_tokens=request.num_prompt_tokens,
+)
+# 纯FullAttention模型下这个函数基本是no-op（没有滑动窗口）
+
+# ---- 1d. 计算本轮实际需要分配多少新块 ----
+num_blocks_to_allocate = self.coordinator.get_num_blocks_to_allocate(
+    request_id=request.request_id,
+    num_tokens=num_tokens_need_slot,             # 本轮需要slot的token数
+    new_computed_blocks=new_computed_block_list,  # 可复用的命中块（这些不算新分配）
+    num_encoder_tokens=num_encoder_tokens,
+    total_computed_tokens=num_local_computed_tokens
+    + num_external_computed_tokens,
+    num_local_computed_tokens=num_local_computed_tokens,
+    num_tokens_main_model=num_tokens_main_model,
+)
+
+# ---- 1e. 空间检查：可用块 = 空闲块 - 预留块 ----
+# reserved_blocks 是给其他in-flight请求留的（如async KV-connector加载时，
+# 不能让新请求吃掉正在prefill的请求所依赖的块）
+available_blocks = self.block_pool.get_num_free_blocks() - reserved_blocks
+required_blocks = num_blocks_to_allocate + watermark_blocks
+if required_blocks > available_blocks:
+    return None   # 空间不足，需要抢占或等待
+```
+
+#### 阶段2：处理前缀 token（comp + new_comp + ext_comp）
+
+源码docstring：*"Handle prefix tokens (comp + new_comp + ext_comp): Free unnecessary blocks / Allocate new blocks for ext_comp tokens inside sliding window"*
+
+```python
+# 关键：必须先 touch 所有命中块（ref_cnt++），再分配新块！
+# 否则分配新块时可能触发驱逐，把还没touch的命中块给驱逐掉（issue #33775）
+# 触发条件：有本地命中块，或 有外部Connector token（ext_comp也需要分配slot）
+if (
+    new_computed_block_list is not self.empty_kv_cache_blocks.blocks
+    or num_external_computed_tokens > 0
+):
+    # touch命中块：把命中块追加到请求的block列表中，ref_cnt++，标记为"正在使用"
+    # 对于ext_comp的token：connector缓存了KV但vLLM没有，这里会为它们分配本地slot
+    # （在滑动窗口范围内的ext_comp token需要本地块来接收传输的KV数据）
+    self.coordinator.allocate_new_computed_blocks(
+        request_id=request.request_id,
+        new_computed_blocks=new_computed_block_list,
+        num_local_computed_tokens=num_local_computed_tokens,
+        num_external_computed_tokens=num_external_computed_tokens,
+    )
+```
+
+#### 阶段3：为待计算的 token（new + lookahead）分配新块
+
+源码docstring：*"Allocate new blocks for tokens to be computed (new + lookahead)"*
+
+```python
+# ---- 3a. 真正分配新块 ----
+# 从 free_block_queue 取出空闲块，加入 manager 的 req_to_blocks 映射
+# 新分配的块ID会被追加到 manager.new_block_ids 列表，
+# 后续 Worker 调用 take_new_block_ids() 取走这些ID，在forward前把对应块清零
+new_blocks = self.coordinator.allocate_new_blocks(
+    request.request_id,
+    num_tokens_need_slot,      # 需要slot的总token数（含lookahead）
+    num_tokens_main_model,     # 主模型token数（不含lookahead，决定主模型block边界）
+    num_encoder_tokens,        # encoder token数（cross-attn用，decoder-only为0）
+)
+
+# ---- 3b. P/D 延迟缓存：远程传输未完成时先不缓存 ----
+# P/D场景下，KV数据要从remote接收，本step还没收完，cache了会写入不完整数据
+if not self.enable_caching or delay_cache_blocks:
+    return self.create_kv_cache_blocks(new_blocks)   # 直接返回，跳过cache
+
+# ---- 3c. 缓存写入（调度阶段，forward之前）----
+# 想缓存到 total_computed + num_new_tokens，但必须排除"不可提交"的token
+# （如可能被拒绝的draft token），所以用 request.num_tokens 来cap，
+# 确保只缓存"已finalized"的token
+num_tokens_to_cache = min(
+    total_computed_tokens + num_new_tokens,
+    request.num_tokens,
+)
+# cache_blocks 只缓存"满块"（num_tokens // block_size），尾块不缓存
+# hash 基于 token ID（不依赖KV数据），所以 forward 之前就能算 hash 并写入
+# cache_blocks 是幂等的：已缓存的块（num_cached_block >= num_full_blocks）直接跳过
+#   - prompt阶段：前2块已在prefix cache中，num_cached_block=2 >= num_full_blocks=2 → no-op
+#   - decode阶段：每满一个block_size的块，这里就会把它写入哈希表
+# 外部调用方（async PP / KV Connector）也会在forward之后追加调用 cache_blocks
+self.coordinator.cache_blocks(request, num_tokens_to_cache)
+
+# ---- 3d. 返回新分配的块 ----
+return self.create_kv_cache_blocks(new_blocks)
+```
+
+#### 端到端例子
+
+34token prompt，命中32token（2块），num_new_tokens=2：
+
+- **前置准备**：`num_local_computed_tokens = 0 + 32 = 32`，`total_computed_tokens = 32`
+- **阶段1**：
+  - `num_tokens_need_slot = min(32 + 2, max_model_len) = 34`
+  - `remove_skipped_blocks`：FullAttention下no-op
+  - `num_blocks_to_allocate = ceil(34/16) - 2 = 3 - 2 = 1`块
+  - 空间检查：假设空闲块足够，通过
+- **阶段2**：`allocate_new_computed_blocks` → touch命中blockA、blockB，ref_cnt都+1
+- **阶段3**：
+  - `allocate_new_blocks` → 从free_block_queue分配blockC，`new_block_ids=[blockC.block_id]`
+  - `num_tokens_to_cache = min(32+2, 34) = 34`
+    - `num_full_blocks = 34 // 16 = 2`，`num_cached_block = 2`（prefix hit已缓存前2块）
+    - `num_cached_block(2) >= num_full_blocks(2)` → 提前返回，no-op
+  - 返回：`KVCacheBlocks(([blockC],))`
 
 ### 5.4 块释放方法
 
