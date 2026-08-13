@@ -39,58 +39,43 @@
 | **前缀查找** | 接收Request，调用Coordinator查找最长前缀命中，返回命中块 | `get_computed_blocks` |
 | **准入检查** | 计算需要的块数，检查是否有足够空闲块（含watermark保留） | `allocate_slots` 前半段 |
 | **两阶段分配** | 1. touch命中块（ref_cnt++防驱逐）；2. 分配新块 | `allocate_slots` → coordinator |
-| **缓存写入** | 模型计算后，把满块写入前缀缓存 | `allocate_slots` 末尾 / `cache_blocks` |
+| **缓存写入** | 调度阶段（forward之前），满块基于token ID计算hash写入前缀缓存 | `allocate_slots` 内部 / `cache_blocks`（async模式forward后额外调用） |
 | **Drain数据收集** | 收集new_block_ids（清零）、COW copies（拷贝）、partial tail offloads（卸载），给Worker准备GPU数据 | `take_new_block_ids` / `take_kv_cache_block_copies` / `take_partial_tail_offloads` |
 | **块释放** | 请求结束/抢占时，释放块（逆序释放优化尾块复用） | `free` / `pop_blocks_for_free` |
 | **事件收集** | 收集KV cache事件（BlockStored等），给外部connector/metrics用 | `take_events` |
 | **生命周期** | 新步开始通知、重置前缀缓存、查询使用率等 | `new_step_starts` / `reset_prefix_cache` / `usage` |
 
-### 端到端流程中的位置（以34token prompt为例，block_size=16）
+### 端到端调用序列（以34token prompt为例，block_size=16）
 
 ```
-【调度阶段1：前缀查找】
-Scheduler
-  → kv_cache_manager.get_computed_blocks(request)  ← 本层入口1
-      → coordinator.find_longest_cache_hit(block_hashes, 33)  (max=num_tokens-1=33)
-          → FullAttentionManager.find_longest_cache_hit()
-              ← 返回 hit_blocks=([blockA, blockB],), hit_length=32
-      ← 返回 (blocks=KVCacheBlocks([blockA, blockB]), num_computed=32, shared_prefix=0)
+【1. 前缀查找】
+kv_cache_manager.get_computed_blocks(request)
+  → coordinator.find_longest_cache_hit(block_hashes, max_len=33)  # max=num_tokens-1
+      ← 命中 ([blockA, blockB],), hit_length=32
+  ← 返回 (KVCacheBlocks([blockA, blockB]), 32, 0)
 
-【调度阶段2：准入检查+分配】
-Scheduler
-  → kv_cache_manager.allocate_slots(request, num_new_tokens=2, num_new_computed_tokens=32, new_computed_blocks=blocks)  ← 本层入口2
-      → 阶段0：清理skipped块（SWA窗口外的，FullAttention基本不做）
-      → 阶段1：full_sequence_must_fit检查（准入门控）
-      → 阶段2：计算需要的块数：ceil((32+2)/16) - 2 = 1块
-      → 阶段3：检查空闲块 ≥ 需要的块 + watermark
-      → 阶段4：两阶段分配
-          → coordinator.allocate_new_computed_blocks()  (touch: blockA.ref_cnt++, blockB.ref_cnt++)
-          → coordinator.allocate_new_blocks()  (从free_block_queue分配blockC，new_block_ids收集blockC)
-      → 阶段5：cache_blocks（prompt阶段不缓存新块，因为还没计算完；decode阶段才缓存）
-      ← 返回 new_blocks=KVCacheBlocks([blockC])
+【2. 准入检查 + 两阶段分配 + 缓存写入】
+kv_cache_manager.allocate_slots(request, num_new_tokens=2, num_new_computed_tokens=32, new_computed_blocks=blocks)
+  → 阶段3：get_num_blocks_to_allocate → 需要 ceil(34/16) - 2 = 1块
+  → 阶段5a：allocate_new_computed_blocks → touch blockA/B (ref_cnt++)
+  → 阶段5b：allocate_new_blocks → 从free_block_queue分配blockC
+  → 阶段6：cache_blocks(num_tokens_to_cache=34) → num_full_blocks=2, num_cached=2, 幂等跳过
+  ← 返回 KVCacheBlocks([blockC])
 
-【模型Forward】
-Worker
-  → kv_cache_manager.take_new_block_ids()  ← 本层Drain入口
-      ← 返回 [blockC.block_id]
-  → GPU zeroing新块blockC的内存
-  → 模型计算...
+【3. Drain：给Worker准备GPU数据】
+kv_cache_manager.take_new_block_ids()  ← 返回 [blockC.block_id]（Worker会在GPU上清零这些块）
 
-【计算完成后：缓存写入】
-Scheduler
-  → kv_cache_manager.cache_blocks(request, num_computed_tokens=34)  ← 本层入口3
-      → coordinator.cache_blocks(request, 34)
-          → FullAttentionManager.cache_blocks()
-              → 满块（前两块已经缓存了）计算hash，写入cached_block_hash_to_block
-              → 第三块只有2token，不缓存
+【4. （forward执行，KVCacheManager不参与）】
 
-【请求结束：释放】
-Scheduler
-  → kv_cache_manager.free(request)  ← 本层入口4
-      → coordinator.free(request_id)
-          → manager.free(request_id)
-              → block_pool.free_blocks([blockA, blockB, blockC])
-              → 逆序释放：blockC → blockB → blockA（尾块先回free_block_queue）
+【5. cache_blocks的外部调用（视场景而定）】
+  → 默认（sync）：不额外调用，下一步allocate_slots会用更新后的num_computed_tokens
+  → async PP：forward后外部追加一次cache_blocks补缓存并行调度漏掉的满块
+  → KV Connector：远程KV到达后外部追加一次cache_blocks
+
+【6. 请求结束】
+kv_cache_manager.free(request)
+  → coordinator.free(request_id) → block_pool.free_blocks([blockA, blockB, blockC])
+  → 逆序释放：blockC → blockB → blockA（尾块先回free_block_queue，优先复用）
 ```
 
 ---
@@ -482,16 +467,19 @@ lookahead = num_lookahead_tokens         （投机解码的lookahead token）
         if not self.enable_caching or delay_cache_blocks:
             return self.create_kv_cache_blocks(new_blocks)
 
-        # ========== 9. 【阶段6】缓存写入（只缓存已确定的token）==========
-        # 注意：投机解码的draft token可能被拒绝，不能缓存
-        # 所以用request.num_tokens来cap，只缓存已finalized的token
+        # ========== 9. 【阶段6】缓存写入（调度阶段，forward之前）==========
+        # cache_blocks只缓存"满块"(num_tokens // block_size)，尾块不缓存
+        # hash基于token ID，不依赖KV数据，所以forward之前就能算hash
+        # 用request.num_tokens来cap，排除可能被拒绝的draft token（只缓存finalized token）
+        # 注意：cache_blocks是幂等的——已缓存的块(num_cached_block >= num_full_blocks)直接跳过
         num_tokens_to_cache = min(
             total_computed_tokens + num_new_tokens,
             request.num_tokens,
         )
         self.coordinator.cache_blocks(request, num_tokens_to_cache)
-        # 注意：prompt阶段这里num_tokens_to_cache可能还没到满块边界，实际不会缓存任何块
-        # decode阶段每步num_new_tokens=1，满块后才会真正写入哈希表
+        # prompt阶段：前2块已在prefix cache中，num_cached_block=2 >= num_full_blocks=2，是no-op
+        # decode阶段：每满一个block_size的块，这里就会把它写入哈希表
+        # cache_blocks也会被外部调用方在forward之后追加调用（async PP / KV Connector场景）
 
         # ========== 10. 返回新分配的块 ==========
         return self.create_kv_cache_blocks(new_blocks)
@@ -505,7 +493,8 @@ lookahead = num_lookahead_tokens         （投机解码的lookahead token）
 - 阶段5a：touch命中的blockA、blockB → ref_cnt都+1
 - 阶段5b：从free_block_queue分配blockC → new_block_ids=[blockC.block_id]
 - 阶段6：`num_tokens_to_cache = min(32+2, 34) = 34`
-  - 34token不是16的倍数，没有新的满块，所以cache_blocks实际上不会写入任何新块到哈希表
+  - `num_full_blocks = 34 // 16 = 2`，`num_cached_block = 2`（prefix hit已缓存前2块）
+  - `num_cached_block(2) >= num_full_blocks(2)` → 提前返回，no-op，不写入任何新块
 - 返回：`KVCacheBlocks(([blockC],))`
 
 ### 5.4 块释放方法
@@ -641,7 +630,10 @@ Copy-on-Write拷贝任务：当多个请求共享同一块，其中一个请求�
         self.coordinator.new_step_starts()
 
     def cache_blocks(self, request: Request, num_computed_tokens: int) -> None:
-        """外部触发缓存写入（一般allocate_slots内部已经做了，特殊场景单独调用）"""
+        """缓存写入：把满块按token ID计算hash写入前缀缓存。
+        主要被 allocate_slots 内部调用，也会被外部调用方在 forward 之后追加调用。
+        幂等：仅缓存满块，已缓存的块跳过。
+        """
         if self.enable_caching:
             self.coordinator.cache_blocks(request, num_computed_tokens)
 
@@ -652,43 +644,19 @@ Copy-on-Write拷贝任务：当多个请求共享同一块，其中一个请求�
 
 ---
 
-## 六、Scheduler 交互节奏（纯 FullAttention 6步流程）
+## 六、方法调用总览
 
-以34token prompt为例，从请求到达到释放的完整交互顺序：
+一个请求从分配到释放，KVCacheManager 的方法按以下顺序被调用：
 
-```
-【1. 新请求到达】
-  Scheduler.schedule()
-    → kv_cache_manager.new_step_starts()  （新步开始，重置内部状态）
-
-【2. 前缀查找】
-    → blocks, num_computed, shared_prefix = kv_cache_manager.get_computed_blocks(req)
-    → 结果：命中2块，32token
-
-【3. 准入与分配】
-    → new_blocks = kv_cache_manager.allocate_slots(
-          req, num_new_tokens=2, num_new_computed_tokens=32, new_computed_blocks=blocks)
-    → 内部：touch命中块 → 分配1新块 → 返回新块
-    → 如果返回None，说明空间不足，需要抢占其他请求
-
-【4. 准备GPU数据】
-    → new_block_ids = kv_cache_manager.take_new_block_ids()
-    → copies, _ = kv_cache_manager.take_kv_cache_block_copies()
-    → Worker在GPU上：清零new_block_ids → 执行copies
-    → 构造block_table = [blockA.id, blockB.id, blockC.id] 传给模型
-
-【5. 模型Forward】
-    → 模型使用block_table做attention，结果写入KV cache
-
-【6. 计算完成，下一token（decode阶段）】
-    → 每decode 1个token，重复2-5步
-    → 每16个token（满一个块），cache_blocks会把满块写入哈希表
-
-【请求结束/被抢占】
-    → 如果正常结束：kv_cache_manager.free(req) → 逆序释放所有块
-    → 如果被抢占：blocks = kv_cache_manager.pop_blocks_for_free(req)
-                  → 做preempt处理后 block_pool.free_blocks(reversed(blocks))
-```
+| 步骤 | 方法 | 说明 |
+|------|------|------|
+| 步开始 | `new_step_starts()` | 重置内部状态（清空 new_block_ids 等） |
+| 前缀查找 | `get_computed_blocks(req)` | 返回命中块和命中 token 数 |
+| 分配 | `allocate_slots(req, ...)` | 内部包含准入检查、两阶段分配、cache_blocks |
+| Drain | `take_new_block_ids()` / `take_kv_cache_block_copies()` | 给 Worker 准备 GPU 数据 |
+| （forward） | — | KVCacheManager 不参与 |
+| 补缓存（可选） | `cache_blocks(req, ...)` | async PP / KV Connector 场景外部追加 |
+| 释放 | `free(req)` 或 `pop_blocks_for_free(req)` | 正常结束直接释放；抢占先弹出再逆序释放 |
 
 ---
 
@@ -697,10 +665,12 @@ Copy-on-Write拷贝任务：当多个请求共享同一块，其中一个请求�
 1. **门面模式**：KVCacheManager是典型的Facade门面，为Scheduler提供一个简化的单一入口，封装了下面4层的所有复杂度
 2. **三阶段分配**：`allocate_slots`是核心，逻辑分为：准入检查 → 两阶段touch+allocate → 缓存写入，每一步都有明确的职责
 3. **两阶段分配修复竞态**：先`allocate_new_computed_blocks`（touch所有命中块，ref_cnt++防驱逐），再`allocate_new_blocks`（真正分配），这是修复issue #33775的关键
-4. **Drain模式数据准备**：`take_new_block_ids`、`take_kv_cache_block_copies`、`take_partial_tail_offloads`、`take_events`都是"调用即取走并清空"的drain模式，Worker批量拿到后在GPU上执行，CPU/GPU解耦
-5. **逆序释放优化**：`pop_blocks_for_free`返回分配顺序的块，上层必须逆序释放，让尾部分配的不完整块优先回到free_block_queue头部，提高下次分配的尾块复用率
-6. **Watermark机制**：给WAITING/PREEMPTED请求预留watermark_blocks的空闲块，防止它们进来把空闲块吃光导致正在运行的请求频繁被抢占
-7. **GC优化**：预创建`empty_kv_cache_blocks`复用，`create_kv_cache_blocks`工厂方法避免频繁创建空对象
-8. **不可变数据协议**：`KVCacheBlocks`使用tuple不可变结构，作为Scheduler和KVCacheManager之间的安全接口，防止内部状态被意外篡改
-9. **num_tokens-1细节**：前缀查找时`max_cache_hit_length = num_tokens - 1`，即使全命中也要重算最后一个token的logits，保证输出正确性
-10. **投机解码安全**：`cache_blocks`用`request.num_tokens`做cap，只缓存已finalized的token，防止被拒绝的draft token污染前缀缓存
+4. **cache_blocks基于token ID计算hash**：不依赖KV数据，所以能在forward之前调用；幂等设计支持被外部调用方在forward之后追加调用（async PP / KV Connector场景）
+5. **cache_blocks幂等性**：只缓存满块（`num_tokens // block_size`），已缓存的块（`num_cached_block >= num_full_blocks`）直接跳过，多次调用安全
+6. **Drain模式数据准备**：`take_new_block_ids`、`take_kv_cache_block_copies`、`take_partial_tail_offloads`、`take_events`都是"调用即取走并清空"的drain模式，Worker批量拿到后在GPU上执行，CPU/GPU解耦
+7. **逆序释放优化**：`pop_blocks_for_free`返回分配顺序的块，上层必须逆序释放，让尾部分配的不完整块优先回到free_block_queue头部，提高下次分配的尾块复用率
+8. **Watermark机制**：给WAITING/PREEMPTED请求预留watermark_blocks的空闲块，防止它们进来把空闲块吃光导致正在运行的请求频繁被抢占
+9. **GC优化**：预创建`empty_kv_cache_blocks`复用，`create_kv_cache_blocks`工厂方法避免频繁创建空对象
+10. **不可变数据协议**：`KVCacheBlocks`使用tuple不可变结构，作为Scheduler和KVCacheManager之间的安全接口，防止内部状态被意外篡改
+11. **num_tokens-1细节**：前缀查找时`max_cache_hit_length = num_tokens - 1`，即使全命中也要重算最后一个token的logits，保证输出正确性
+12. **投机解码安全**：`cache_blocks`用`request.num_tokens`做cap，只缓存已finalized的token，防止被拒绝的draft token污染前缀缓存
