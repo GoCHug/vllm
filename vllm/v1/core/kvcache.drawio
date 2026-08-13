@@ -1,0 +1,40 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="第 1 页" id="cIjtBph32yj8Lc_fUO57">
+    <mxGraphModel dx="2020" dy="1902" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="4WQTpP4IgaKNjt1HLRzb-7" parent="1" style="whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="360" width="600" x="80" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="4WQTpP4IgaKNjt1HLRzb-1" parent="1" style="whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot;&gt;KVCacheBlock&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="120" x="120" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="4WQTpP4IgaKNjt1HLRzb-2" parent="1" style="whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot;&gt;KVCacheBlock&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="120" x="320" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="4WQTpP4IgaKNjt1HLRzb-3" parent="1" style="whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot;&gt;KVCacheBlock&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="120" x="520" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="4WQTpP4IgaKNjt1HLRzb-4" parent="1" style="whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot;&gt;KVCacheBlock&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="120" x="120" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="4WQTpP4IgaKNjt1HLRzb-5" parent="1" style="whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot;&gt;KVCacheBlock&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="120" x="320" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="4WQTpP4IgaKNjt1HLRzb-6" parent="1" style="whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot;&gt;KVCacheBlock&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="120" x="520" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="4WQTpP4IgaKNjt1HLRzb-8" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;span style=&quot;font-size: 13px;&quot;&gt;KVCacheManager的分配结果：KVCacheBlocks&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="330" x="200" y="-40" as="geometry" />
+        </mxCell>
+        <mxCell id="4WQTpP4IgaKNjt1HLRzb-9" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;span style=&quot;font-size: 13px;&quot;&gt;第i个group&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="110" x="-30" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="4WQTpP4IgaKNjt1HLRzb-10" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;span style=&quot;font-size: 13px;&quot;&gt;第j个块&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="110" x="125" y="-10" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
