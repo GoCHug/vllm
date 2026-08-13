@@ -32,53 +32,76 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 核心职责（纯 FullAttention 场景）
+### 调度流程中 KVCacheManager 的职责与调用时序
 
-| 调度阶段 | 职责 | 对应方法 |
-|---------|------|---------|
-| **前缀查找** | 接收Request，调用Coordinator查找最长前缀命中，返回命中块 | `get_computed_blocks` |
-| **准入检查** | 计算需要的块数，检查是否有足够空闲块（含watermark保留） | `allocate_slots` 前半段 |
-| **两阶段分配** | 1. touch命中块（ref_cnt++防驱逐）；2. 分配新块 | `allocate_slots` → coordinator |
-| **缓存写入** | 调度阶段（forward之前），满块基于token ID计算hash写入前缀缓存 | `allocate_slots` 内部 / `cache_blocks`（async模式forward后额外调用） |
-| **Drain数据收集** | 收集new_block_ids（清零）、COW copies（拷贝）、partial tail offloads（卸载），给Worker准备GPU数据 | `take_new_block_ids` / `take_kv_cache_block_copies` / `take_partial_tail_offloads` |
-| **块释放** | 请求结束/抢占时，释放块（逆序释放优化尾块复用） | `free` / `pop_blocks_for_free` |
-| **事件收集** | 收集KV cache事件（BlockStored等），给外部connector/metrics用 | `take_events` |
-| **生命周期** | 新步开始通知、重置前缀缓存、查询使用率等 | `new_step_starts` / `reset_prefix_cache` / `usage` |
+> 源码入口：`Scheduler.schedule()` 位于 [vllm\vllm\v1\core\sched\scheduler.py:427-1226]
 
-### 端到端调用序列（以34token prompt为例，block_size=16）
+
+#### 全景图
+
+KVCacheManager 是 Scheduler 操作 KV Cache 的**唯一入口**。vLLM 的推理是一个"调度→计算"不断循环的过程：Scheduler 决定算哪些 token，KVCacheManager 分配/管理 KV 块，Worker 在 GPU 上执行，结果返回后进入下一轮。先看全景图（每个方法的内部细节在后续章节详细展开）：
 
 ```
-【1. 前缀查找】
-kv_cache_manager.get_computed_blocks(request)
-  → coordinator.find_longest_cache_hit(block_hashes, max_len=33)  # max=num_tokens-1
-      ← 命中 ([blockA, blockB],), hit_length=32
-  ← 返回 (KVCacheBlocks([blockA, blockB]), 32, 0)
+┌──────────────────────────────────────────────────────────────────────┐
+│                     EngineCore 主循环（每步重复）                     │
+└───────────────────────────────────┬──────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ ① 调度阶段：Scheduler.schedule()                                     │
+│                                                                      │
+│ ├── kv_cache_manager.new_step_starts()    新步开始，重置内部状态      │
+│ │                                                                    │
+│ ├── 调度 Running 请求（已有块，继续decode/prefill）                   │
+│ │   └── 每个请求：kv_cache_manager.allocate_slots(...)               │
+│ │         └→ 返回None(空间不够)? → 抢占：                            │
+│ │              kv_cache_manager.free()/pop_blocks_for_free() 释放    │
+│ │              被抢占请求的块 → 重试                                  │
+│ │                                                                    │
+│ ├── 调度 Waiting 请求（新来的/被抢占的）                              │
+│ │   ├── kv_cache_manager.get_computed_blocks()    前缀缓存查找       │
+│ │   └── kv_cache_manager.allocate_slots(...)      准入→分配→缓存     │
+│ │         └→ 返回None(空间不够)? → 跳过（不抢占Running）             │
+│ │                                                                    │
+│ ├── kv_cache_manager.get_num_common_prefix_blocks()  公共前缀查询    │
+│ │                                                                    │
+│ └── Drain：取出GPU待办事项，打包给Worker                             │
+│     ├── kv_cache_manager.take_new_block_ids()        → 新块需清零   │
+│     ├── kv_cache_manager.take_kv_cache_block_copies()→ COW拷贝对    │
+│     └── kv_cache_manager.take_partial_tail_offloads()→ 尾块传输信息 │
+└───────────────────────────────────┬──────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ ② GPU计算：Worker.forward()（KVCacheManager不参与GPU计算）           │
+│   清零新块 → 执行COW拷贝 → 模型前向计算写K/V到GPU张量                │
+└───────────────────────────────────┬──────────────────────────────────┘
+                                    │
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ ③ 处理结果                                                           │
+│ ├── 追加生成的token到请求，更新num_computed_tokens                   │
+│ ├── 完成/被抢占的请求释放块：                                        │
+│ │   ├── kv_cache_manager.free()           立即释放                  │
+│ │   └── kv_cache_manager.pop_blocks_for_free()  延迟释放(GPU in-flight)│
+│ └── kv_cache_manager.take_events()    取出KV事件(供metrics/connector)│
+└───────────────────────────────────┬──────────────────────────────────┘
+                                    │
+                              ┌─────┴─────┐
+                              │ 回到① ↺   │
+                              └───────────┘
 
-【2. 准入检查 + 两阶段分配 + 缓存写入】
-kv_cache_manager.allocate_slots(request, num_new_tokens=2, num_new_computed_tokens=32, new_computed_blocks=blocks)
-  → 阶段3：get_num_blocks_to_allocate → 需要 ceil(34/16) - 2 = 1块
-  → 阶段5a：allocate_new_computed_blocks → touch blockA/B (ref_cnt++)
-  → 阶段5b：allocate_new_blocks → 从free_block_queue分配blockC
-  → 阶段6：cache_blocks(num_tokens_to_cache=34) → num_full_blocks=2, num_cached=2, 幂等跳过
-  ← 返回 KVCacheBlocks([blockC])
-
-【3. Drain：给Worker准备GPU数据】
-kv_cache_manager.take_new_block_ids()  ← 返回 [blockC.block_id]（Worker会在GPU上清零这些块）
-
-【4. （forward执行，KVCacheManager不参与）】
-
-【5. cache_blocks的外部调用（视场景而定）】
-  → 默认（sync）：不额外调用，下一步allocate_slots会用更新后的num_computed_tokens
-  → async PP：forward后外部追加一次cache_blocks补缓存并行调度漏掉的满块
-  → KV Connector：远程KV到达后外部追加一次cache_blocks
-
-【6. 请求结束】
-kv_cache_manager.free(request)
-  → coordinator.free(request_id) → block_pool.free_blocks([blockA, blockB, blockC])
-  → 逆序释放：blockC → blockB → blockA（尾块先回free_block_queue，优先复用）
+退出：正常结束(EOS/max_tokens)→free移除 | 被抢占→放回Waiting下次重走前缀查找
 ```
+
+**核心概念先明确**：
+- **Running 请求**：已经在跑的请求（之前步骤已经分配过 KV 块），每步 decode 1个或多个 token
+- **Waiting 请求**：新来的请求或被抢占后等待重新调度的请求，需要先做前缀缓存查找
+- **Drain（排空/取清单）**：调度过程中，KVCacheManager 会一边干活一边"记账"——比如新分配了哪些块、产生了哪些COW拷贝，都随手记在内部列表里。等所有请求调度完了，要给Worker准备GPU任务清单时，就**一次性把这些记的东西全部取出来交给Worker，取完内部列表就空了**（所以叫"排空"）。对应的三个 `take_*` 方法就是干这个的。
+- **块（Block）**：KV Cache 的分配单位，固定大小（如16个token）。每个请求的 KV 按块组织，称为 block_table
 
 ---
+
 
 ## 三、文件结构
 
