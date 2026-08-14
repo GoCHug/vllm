@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net">
   <diagram name="第 1 页" id="cIjtBph32yj8Lc_fUO57">
-    <mxGraphModel dx="2583" dy="1738" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="3145" dy="2085" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -73,11 +73,11 @@
         <mxCell id="k3sKyQmKgb3j_hQE832h-15" parent="1" style="text;whiteSpace=wrap;fontSize=13;" value="前缀查找    返回：(命中块KVCacheBlocks, 命中token数, shared_prefix_boundary)&#xa;def get_computed_blocks(self, request: Request) -&gt; tuple[KVCacheBlocks, int, int]:&#xa;        max_cache_hit_length = request.num_tokens - 1    # 即使所有token命中，最后一个token也必须重算logits&#xa;        computed_blocks, num_new_computed_tokens, num_uncached = (&#xa;            self.coordinator.find_longest_cache_hit(&#xa;                request.block_hashes, max_cache_hit_length    # 调用Coordinator查找&#xa;            )&#xa;        )    &#xa;" vertex="1">
           <mxGeometry height="150" width="660" x="90" y="-220" as="geometry" />
         </mxCell>
-        <mxCell id="k3sKyQmKgb3j_hQE832h-16" parent="1" style="text;whiteSpace=wrap;fontSize=13;" value="分配槽位，返回新分配的块；如果空间不足返回None&#xa;def allocate_slots(...) -&gt; KVCacheBlocks | None" vertex="1">
-          <mxGeometry height="150" width="660" x="840" y="-220" as="geometry" />
+        <mxCell id="k3sKyQmKgb3j_hQE832h-16" parent="1" style="text;whiteSpace=wrap;fontSize=13;" value="分配槽位，返回新分配的块；如果空间不足返回None&#xa;def allocate_slots(...) -&gt; KVCacheBlocks | None&#xa;&#xa;阶段1：检查空闲块是否足够&#xa;num_blocks_to_allocate = self.coordinator.get_num_blocks_to_allocate(num_tokens=full_num_tokens)    #完整序列token数需要的block数量，放不下直接拒绝&#xa;num_blocks_to_allocate = self.coordinator.get_num_blocks_to_allocate(num_tokens=num_tokens_need_slot)    #本轮token数需要的block数量&#xa;available_blocks = self.block_pool.get_num_free_blocks() - reserved_blocks&#xa;required_blocks = num_blocks_to_allocate + watermark_blocks&#xa;&#xa;&#xa;阶段2: 处理前缀 token（comp + new_comp + ext_comp）&#xa;        -  touch命中块（comp + new_comp）&#xa;        - 为 ext_comp 在滑动窗口内的 token 分配新块&#xa;self.coordinator.allocate_new_computed_blocks()&#xa;&#xa;&#xa;阶段3: 为待计算的 token（new + lookahead）分配新块&#xa;new_blocks = self.coordinator.allocate_new_blocks()    #新分配的块&#xa;self.coordinator.cache_blocks(request, num_tokens_to_cache)    #因为hash是基于token id的，forward之前就能算hash&#xa;return self.create_kv_cache_blocks(new_blocks)    #返回新分配的块&#xa;" vertex="1">
+          <mxGeometry height="350" width="990" x="870" y="-220" as="geometry" />
         </mxCell>
         <mxCell id="UCie7HOgLCN_nIk6QIr0-1" parent="1" style="whiteSpace=wrap;html=1;" value="Hash" vertex="1">
-          <mxGeometry height="60" width="120" x="-1540" y="-580" as="geometry" />
+          <mxGeometry height="60" width="120" x="-1530" y="-750" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
