@@ -85,8 +85,9 @@ GPU forward 计算                    →  attn backend 用 block_table 索引�
 │     (LRU 空闲块队列)                 (链式哈希→block映射)          │
 ├──────────────────────────────────────────────────────────────────┤
 │           GPUModelRunner.kv_caches[layer] (物理显存层)            │  详见 §1
-│      torch.Tensor [2, num_blocks, block_size, num_kv_heads, head_dim]
+│      torch.Tensor [num_blocks, num_kv_heads, block_size, 2*head_dim]
 │        ↑ block_id 直接索引第0维：block_table[b]即张量行号          │
+│        （维度顺序由 attention backend 决定，此处为主流 blocks-first）│
 └──────────────────────────────────────────────────────────────────┘
                           底层物理显存
 ```
@@ -171,11 +172,11 @@ H(b2) = hash(H(b1), tokens[2*block_size:3*block_size])
    - 每个 attention 层调用 `get_kv_cache_spec(vllm_config)` 返回 `FullAttentionSpec`
    - 纯FullAttention模型所有层spec相同，`is_kv_cache_spec_uniform=True`，合并为1个KV cache group
    - 单token单layer的KV字节数：`kv_dim_bytes = 2 × num_kv_heads × head_size × dtype_size`（`2` for K+V）
-2. **计算 `page_size`**：每个逻辑block的物理字节数 = `num_layers × block_size × kv_dim_bytes`（一个block跨所有层占用相同位置）
-3. **计算 `num_blocks`**：`num_gpu_blocks = available_gpu_memory // page_size`，分布式下所有worker取最小值对齐
+2. **计算 `page_size`**：每个逻辑block的物理字节数 = `block_size × kv_dim_bytes`，即 `FullAttentionSpec.real_page_size_bytes`（`kv_cache_interface.py:327-342`）。这是**单层**一个 block 的字节数；模型所有层共享同一套 `block_id`，所以一个 block 跨所有层总占用 `num_layers × page_size_bytes`，但 `num_blocks` 配容量按**单层** page_size 计算
+3. **计算 `num_blocks`**：`num_gpu_blocks = available_gpu_memory // page_size_bytes`（`num_blocks = raw_tensor.numel() // spec.page_size_bytes`，见 `gpu_model_runner.py:7388`），分布式下所有worker取最小值对齐
 4. **申请物理KV张量**：`GPUModelRunner._allocate_kv_cache_tensors()` → `_reshape_kv_cache_tensors()` → `bind_kv_cache()`：
    - 创建Python列表 `kv_caches = []`，为每一层单独调用 `torch.zeros(...)` 申请独立张量，共 `num_layers` 张
-   - 每张张量经 `_reshape_attention_kv_cache()` 按backend要求permute后形状为 `[2, num_blocks, block_size, num_kv_heads, head_dim]`（维度顺序由attention backend决定）
+   - 每张张量经 `_reshape_attention_kv_cache()` 按backend要求 permute 后形状为主流 `[num_blocks, num_kv_heads, block_size, 2*head_dim]`（FlashInfer/FlashAttn 默认，维度顺序由 `get_kv_cache_shape()` 决定；ROCm 等用 `[2, num_blocks, block_size, num_kv_heads, head_dim]`，见总览文档 §1.3/§八 block_dim）
    - `bind_kv_cache()` 把所有层张量绑定到 `ModelRunner.kv_caches` 列表，`kv_caches[i]` 就是第i层的KV cache张量
    - 设计核心：同一个 `block_id=5` 在所有层都对应第5行，全局共用一份 `block_table`，不需要每层单独一份
 5. **创建 `BlockPool`**：
@@ -212,34 +213,31 @@ token位置：  0  1  2 ... 15 | 16 17 ...  31 | 32 33
    - `H(b1)` 存在 → 命中，返回 `block12`
    - 下一个哈希不存在（b2未满），停止查找
 6. **逐层返回结果**：
-   - `FullAttentionManager` 返回 `([block5, block12], new_parent_hash=H(b1), num_extra_tokens=0)`
-   - `UnitaryKVCacheCoordinator` 包装为 `KVCacheBlocks(blocks=( (block5, block12), ))` （外层tuple是group维度，纯FullAttention只有1个group）
-   - `KVCacheManager` 直接返回这个 `KVCacheBlocks` 给Scheduler
+   - `FullAttentionManager.find_longest_cache_hit` 是 **classmethod**，返回 `(hit_blocks, hit_length)`：`hit_blocks` 是 `((block5, block12),)`（外层tuple是group维度，纯FullAttention只有1个group），`hit_length=32`（命中token数）
+   - `UnitaryKVCacheCoordinator.find_longest_cache_hit` 透传结果并补第3个返回值 0（`num_uncached`，仅多group混合模型用），返回 `(hit_blocks, hit_length, 0)`
+   - `KVCacheManager.get_computed_blocks` 用 `create_kv_cache_blocks(hit_blocks)` 包装成 `KVCacheBlocks`，最终返回 `(KVCacheBlocks, num_tokens, shared_prefix_boundary)`
 7. **结果**：命中2个完整block，共 `2×16=32` 个token的KV已经缓存，可以直接复用，不需要重新prefill
 
 ---
 
 ### 5.3 分配slots（找到前缀后执行）
 
-拿到命中块后，Scheduler调用 `kv_cache_manager.allocate_slots(request, num_new_tokens=2, new_computed_blocks=computed_blocks, ...)` 分配需要的新块。`allocate_slots` 内部执行三阶段分配：
+拿到命中块后，Scheduler调用 `kv_cache_manager.allocate_slots(request, num_new_tokens=2, new_computed_blocks=computed_blocks, ...)` 分配需要的新块。`allocate_slots`（`kv_cache_manager.py:344-565`）内部按以下真实顺序执行：
 
-1. **阶段1：准入预检**
-   - 调用 `coordinator.get_num_blocks_to_allocate()` 计算需要的新块数：总token34个，已命中2块（32token），还需要 `ceil(34/16) - 2 = 1` 块
-   - 计算 `required_blocks = 1 + watermark_blocks`（`watermark_blocks`是为WAITING/PREEMPTED请求预留的空闲块）
-   - 检查 `block_pool.get_num_free_blocks() >= required_blocks`，不足则返回None（调度失败，需要抢占）
-   - 调用 `coordinator.remove_skipped_blocks()` 释放滑动窗口外不需要的块（FullAttention不涉及，无操作）
-2. **阶段2：触摸命中块（两阶段分配第一阶段，防竞态）**
-   - 对命中的 `[block5, block12]` 调用 `block_pool.touch(blocks)`
+1. **计算总量**：`num_local_computed_tokens = request.num_computed_tokens + num_new_computed_tokens`；`total_computed_tokens = min(local + external, max_model_len)`
+2. **watermark 判定**：仅当 `has_scheduled_reqs` 为真且请求状态为 `WAITING`/`PREEMPTED` 时，`watermark_blocks = self.watermark_blocks`（给这些请求预留空闲块）
+3. **滑动窗口释放**：调用 `coordinator.remove_skipped_blocks()` 释放滑窗外的块（FullAttention 不涉及，无操作）。**注意顺序：它在 `get_num_blocks_to_allocate` 之前**，先释放再算，减少驱逐数
+4. **容量检查**：调用 `coordinator.get_num_blocks_to_allocate()` 计算需分配块数；`available_blocks = block_pool.get_num_free_blocks() - reserved_blocks`；若 `required_blocks = num_blocks_to_allocate + watermark_blocks > available_blocks` 则返回 `None`（调度失败，触发抢占）
+5. **触摸命中块**：调用 `coordinator.allocate_new_computed_blocks()` → 内部 `FullAttentionManager.add_local_computed_blocks()` → `block_pool.touch(blocks)`
    - `touch` 逻辑：遍历每个block，若 `ref_cnt == 0`，则从 `free_block_queue.remove(block)`，然后 `ref_cnt += 1`
-   - **为什么先touch？** 命中块虽然在缓存里，但`ref_cnt=0`时仍然挂在`free_block_queue`上是可分配状态，如果先分配新块可能把命中块弹走覆盖，先touch"占住"再分配就不会抢错
-3. **阶段3：分配新块**
-   - 调用 `coordinator.allocate_new_blocks()` → `FullAttentionManager.allocate_new_blocks()`
-   - 从 `free_block_queue.popleft()` 头部弹出 `block8`，`block8.ref_cnt = 1`，重置 `block8._block_hash = None`（旧数据会被覆盖）
+   - **为什么在容量检查之后才touch？** 先确认能分配，再 touch 命中块，避免"touch 了却因容量不足要回滚"
+6. **分配新块**：调用 `coordinator.allocate_new_blocks()` → `FullAttentionManager.allocate_new_blocks()`
+   - 从 `free_block_queue.popleft()` 头部弹出 `block8`，`block8.ref_cnt = 1`
    - `FullAttentionManager` 把 `block8.block_id` 加入自己的 `new_block_ids` 列表，等待Worker清零
-4. **阶段4：缓存已确认的token**
-   - 调用 `coordinator.cache_blocks(request, num_tokens_to_cache=34)`
-   - 已经是完整缓存块的`block5`、`block12`不动；`block8`只有2个token未满，不计算哈希、不插入`cached_block_hash_to_block`
-5. **返回结果**：返回 `KVCacheBlocks(blocks=( (block5, block12, block8), ))`，请求现在持有3个块
+7. **缓存已确认的token**：调用 `coordinator.cache_blocks(request, num_tokens_to_cache)`，其中 `num_tokens_to_cache = min(total_computed_tokens + num_new_tokens, request.num_tokens)`（只缓存"已定稿"token，排除可能被拒的draft token）
+   - 已经是完整缓存块的`block5`、`block12`不动；`block8`只有2个token未满，`num_full_blocks = 34//16 = 2`，不缓存`block8`
+   - 若 `enable_caching=False` 或 `delay_cache_blocks=True`（P/D 场景），跳过本步
+8. **返回结果**：返回 `create_kv_cache_blocks(new_blocks)`，请求现在持有3个块 `(block5, block12, block8)`
 
 ---
 
@@ -258,7 +256,7 @@ Scheduler构造`SchedulerOutput`，把KV相关数据drain给Worker：
    - 计算新token（位置32、33）的KV，写入每层 `kv_caches[layer][8]` 的对应位置
 5. **Decode阶段（后续逐token生成）**：
    - 每生成1个token：如果当前块（block8）还没满，直接写下一个位置，不缓存
-   - 当前块写满16个token后：`FullAttentionManager.maybe_save_new_kv_blocks_to_cache()` 计算完整链式哈希，插入 `block_pool.cached_block_hash_to_block[H(b2)] = block8`，供后续请求前缀命中
+   - 当前块写满16个token后：`FullAttentionManager.cache_blocks(request, num_tokens)` 通过 `block_pool.cache_full_blocks` 计算完整链式哈希，插入 `block_pool.cached_block_hash_to_block[H(b2)] = block8`，供后续请求前缀命中
    - 块满了继续生成：回到5.3分配下一个新块
 
 ---
