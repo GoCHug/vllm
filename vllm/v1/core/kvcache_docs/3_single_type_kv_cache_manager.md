@@ -115,8 +115,15 @@ class SingleTypeKVCacheManager(ABC):
         self._null_block = block_pool.null_block        # null_block占位符引用
 
         self.use_eagle = False                          # EAGLE投机解码标记
-        self._partial_hit_reqs: dict[str, tuple[int, KVCacheBlock]] = {}  # 部分命中CoW记录
-        self._pending_cow_copies: list[tuple[KVCacheBlock, KVCacheBlock]] = []  # CoW复制队列
+
+        # ── 部分命中 CoW 相关簿记（仅 FullAttention / Mamba align 填充，其它 manager 永远空）──
+        # 部分命中"预约表"：记录需要 CoW 的请求信息。
+        # key=request_id，value=(block_idx, source_block)，
+        # 其中 block_idx 是尾块在 block_table 中的索引，source_block 是被多请求共享的源块。
+        self._partial_hit_reqs: dict[str, tuple[int, KVCacheBlock]] = {}
+        # CoW 复制任务队列：drain 给 Worker，元素 (source_block, cow_block) 表示"把 source 的 KV 拷到 cow"
+        self._pending_cow_copies: list[tuple[KVCacheBlock, KVCacheBlock]] = []
+        # 外部 KV connector 的部分尾部 offload 交接队列（仅 Mamba align）：元素 (req_id, group_id, block, boundary_tokens)
         self._pending_partial_tail_offloads: list[tuple[str, int, KVCacheBlock, int]] = []
 ```
 
@@ -520,47 +527,67 @@ def allocate_external_computed_blocks(
 
 ### 4.5 核心方法：`allocate_new_blocks`
 
-源码位置：`single_type_kv_cache_manager.py:330-369`
+源码位置：`single_type_kv_cache_manager.py:329-368`
+
+**作用**：本方法是 `allocate_slots` 流程的**第三阶段**（继 `allocate_new_computed_blocks` 处理完命中块之后），为请求中"未命中缓存"的 token 分配**新的物理块**，让请求最终持有覆盖 `num_tokens` 个 token 槽位的 block_table。同时把"部分命中"场景下需要 CoW（Copy-on-Write）的共享尾块替换为私有副本。
+
+调用链：`KVCacheManager.allocate_slots`（kv_cache_manager.py:541）→ `KVCacheCoordinator.allocate_new_blocks`（kv_cache_coordinator.py:238-271，遍历所有 single_type_manager）→ 本方法。
+
+#### 4.5.1 完整源码 + 逐行注释
 
 ```python
 def allocate_new_blocks(
     self,
-    request_id: str,
-    num_tokens: int,                    # 需要槽位的总 token 数
-    num_tokens_main_model: int,         # 主模型 token 数
+    request_id: str,                                # 请求 ID
+    num_tokens: int,                                # 需要槽位的总 token 数（含已分配命中 token + spec decode lookahead）
+    num_tokens_main_model: int,                     # 主模型 token 数（无 spec decode = num_tokens；
+                                                    # 有 spec decode = num_tokens - num_lookahead_tokens）
+                                                    # 注意：基类不使用此参数，仅 MambaManager "align" 覆写用
 ) -> list[KVCacheBlock]:
     """为请求分配新块，使其至少有 num_tokens 个 token 槽位"""
+    # ===== 第 1 步：处理部分命中 CoW 重定向 =====
+    # 若尾块被多请求共享（部分命中场景），替换为私有 CoW 副本，避免写穿破坏其它请求 KV
     cow_blocks: list[KVCacheBlock] = []
     if request_id in self._partial_hit_reqs:
-        # 部分命中：把共享尾块重定向到私有 CoW 副本
+        # 取出预约：(block_idx, source_block) = 尾块下标 + 被共享的原块
         block_idx, source_block = self._partial_hit_reqs.pop(request_id)
+        # 取 1 个新块作为 CoW 副本（容量早在 get_num_blocks_to_allocate 里 +1 预约过）
         cow_block = self.block_pool.get_new_blocks(1)[0]
+        # _apply_cow: 原地替换 req_blocks[block_idx]=cow_block + 记录待 Worker 拷贝任务 + cow_block.ref_cnt += 1
         self._apply_cow(request_id, block_idx, source_block, cow_block)
+        # 无条件记入 new_block_ids：CoW 块拷贝前必须清零，避免部分拷贝残留脏数据
         self.new_block_ids.append(cow_block.block_id)
         cow_blocks.append(cow_block)
 
+    # ===== 第 2 步：计算还需新分配多少块 =====
+    # 总块数 = cdiv(num_tokens, block_size)，扣掉已有的（命中块 / 外部块 / CoW 尾块），剩下就是新块数
     req_blocks = self.req_to_blocks[request_id]
     num_required_blocks = cdiv(num_tokens, self.block_size)
     num_new_blocks = num_required_blocks - len(req_blocks)
+    # spec decode draft token 被拒绝时 num_new_blocks 可能 < 0，直接返回
     if num_new_blocks <= 0:
         return cow_blocks
     else:
+        # ===== 第 3 步：取新块、追加、记录 ID =====
+        # 容量检查在 caller (kv_cache_manager.py:522-526) 已做，这里块不够会抛异常（precondition 违反）
         new_blocks = self.block_pool.get_new_blocks(num_new_blocks)
         req_blocks.extend(new_blocks)
+        # 条件记录：_record_new_block_ids 决定是否需要 Worker 清零（多数 attention 后端需要）
         if self._record_new_block_ids:
             self.new_block_ids.extend(b.block_id for b in new_blocks)
+        # 返回 [cow_block?, ...new_blocks]：CoW 块在前（替换中间位置），新块在后（追加末尾）
         return cow_blocks + new_blocks
 ```
 
-**分配流程**：
-1. **部分命中 CoW 重定向**：若该请求有部分命中记录，先从块池取一个新块作为 CoW 副本，把共享尾块替换为私有副本（`_apply_cow`），并把 CoW 请求加入 `_pending_cow_copies` 等待 Worker 复制
-2. 计算还需多少新块：`cdiv(num_tokens, block_size) - len(req_blocks)`
-3. 从块池 `get_new_blocks` 取块，追加到 `req_to_blocks`，新块 id 记录进 `new_block_ids` 等待清零
-4. 返回新块（cow_block 在前，普通新块在后）
+#### 4.5.2 关键设计点
 
-> 注意：这里的分配**不做驱逐**——空闲块不足时 `get_new_blocks` 会抛异常，由上层 KVCacheManager 在 `allocate_slots` 的容量检查中提前拦截，触发抢占而非直接崩溃。
+- **流程定位**：本方法是 `allocate_slots` 的第三阶段，在 `add_local_computed_blocks`（touch 本地命中块）+ `allocate_external_computed_blocks`（为外部命中分配新块）之后调用，把 block_table 从"覆盖命中 token"扩展到"覆盖全部 num_tokens"。
+- **部分命中 CoW 延迟执行**：`add_local_computed_blocks`（§4.3）只把 `(block_idx, source_block)` 预约到 `_partial_hit_reqs`；真正取新块做 CoW 延迟到本方法——因为必须等容量检查（`get_num_blocks_to_allocate`，:226-229 为 CoW 块 +1 预约）通过后才动手。
+- **CoW 块 ID 无条件记录 vs 新块 ID 条件记录**：`cow_block` 的 ID 直接 `append`（拷贝前必须清零），新块的 ID 走 `_record_new_block_ids` 条件分支（不需要清零的 backend 可省 kernel）。
+- **`num_tokens_main_model` 基类未使用**：基类只用 `num_tokens`（含 lookahead）算 `cdiv`。该参数给子类 `MambaManager` "align" 覆写用（mamba 不为 draft token 预留块，:1550 把 `num_tokens = num_tokens_main_model` 抹掉 lookahead）。基类保留是为了让 coordinator 用统一签名遍历调用所有 manager。
+- **不做容量检查**：caller `KVCacheManager.allocate_slots`（kv_cache_manager.py:509-526）已用 `get_num_blocks_to_allocate` + 空闲块/watermark 提前检查；若不够返回 `None` 触发抢占，不到本方法。
 
-### 4.5.1 端到端分配流程串讲（对应总览阶段3）
+### 4.5.3 端到端分配流程串讲（对应总览阶段3）
 
 `UnitaryKVCacheCoordinator.allocate_*` 调用本类方法的完整顺序（以纯 FullAttention 单组为例）：
 
@@ -577,7 +604,7 @@ def allocate_slots(self, request, num_new_tokens, new_computed_blocks, ...):
         num_local_computed_tokens, num_external_computed_tokens,
     )
 
-    # ③ 计算需要新分配多少块
+    # ③ 计算需要新分配多少块（含部分命中 CoW 块的 +1 预约）
     num_new_blocks = self.managers[0].get_num_blocks_to_allocate(
         request_id=request.request_id,
         num_tokens=num_tokens_need_slot,
@@ -587,13 +614,19 @@ def allocate_slots(self, request, num_new_tokens, new_computed_blocks, ...):
         num_tokens_main_model=...,
     )
 
-    # ④ 分配新块（含部分命中 CoW 重定向）
+    # ④ 为外部 connector 命中分配新块（两阶段 protocol 的第二阶段，可选）
+    self.managers[0].allocate_external_computed_blocks(
+        request.request_id,
+        num_local_computed_tokens, num_external_computed_tokens,
+    )
+
+    # ⑤ 分配新块（含部分命中 CoW 重定向）
     new_blocks = self.managers[0].allocate_new_blocks(
         request.request_id, num_tokens_need_slot, num_tokens_main_model
     )
 ```
 
-**关键点**：`req_to_blocks[request_id]` 就是在这里一步步维护起来的——它的内容就是 [历史块..., 本次命中块..., 本次新分配块...]，顺序就是 block_table 在 GPU 上的顺序。
+**关键点**：`req_to_blocks[request_id]` 就是在这里一步步维护起来的——它的内容就是 [历史块..., 本次命中块..., (CoW 替换的尾块), 本次新分配块...]，顺序就是 block_table 在 GPU 上的顺序。
 
 ### 4.6 核心方法：`cache_blocks`（缓存写入）
 
