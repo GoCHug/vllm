@@ -258,17 +258,27 @@ sequenceDiagram
     autonumber
     participant S as Scheduler
     participant KM as KVCacheManager
-    participant CO as Coordinator
+    participant CO as UnitaryKVCacheCoordinator
     participant FM as FullAttnManager
     participant BP as BlockPool
 
     S->>+KM: allocate_slots(request, num_new_tokens, new_computed_blocks)  (kv_cache_manager.py:344)
     KM->>+CO: remove_skipped_blocks(...)  (先释放滑窗外块, :504)
+    CO->>+FM: remove_skipped_blocks()  (coordinator.py:354 逐 manager 下放)
+    Note over FM: get_num_skipped_tokens() 默认 0 → full attention 不弹块<br/>仅 SWA / R-SWA 等子类真释放滑窗外块
+    FM-->>-CO: 完成
     CO-->>-KM: 释放完成
     KM->>+CO: get_num_blocks_to_allocate(...)  (① 容量检查: :510)
+    Note over CO: Unitary 未覆写，走基类 KVCacheCoordinator (coordinator.py:130)<br/>for manager in single_type_managers: 逐组累加
+    CO->>+FM: get_num_blocks_to_allocate()  (single_type_kv_cache_manager.py:144)
+    Note over FM: num_required = cdiv(num_tokens, block_size)<br/>num_local_computed = len(new_computed_blocks) + len(req_to_blocks[req_id])<br/>num_new = max(num_required - num_local_computed, 0)<br/>+ evictable(可驱逐候选) + partial-hit 预留<br/>running 走 fast-path: max(num_required - num_req, 0)
+    FM-->>-CO: 本组 num_blocks
+    CO-->>-KM: num_blocks_to_allocate（各组累加）
+    KM->>+BP: get_num_free_blocks()  (block_pool.py:799)
+    BP-->>-KM: 空闲块数
     Note over KM: available = free - reserved<br/>required = num_blocks + watermark<br/>不足 → return None → 触发抢占 (见 §3.6)
-    CO-->>-KM: num_blocks_to_allocate
     KM->>+CO: allocate_new_computed_blocks(...)  (② 处理前缀 token: :535)
+    Note over CO: 两阶段 (coordinator.py:192, issue #33775)<br/>先各组 add_local_computed_blocks 再各组 allocate_external_computed_blocks
     CO->>+FM: add_local_computed_blocks(...)  (touch 命中块, :223)
     FM->>-BP: block_pool.touch(blocks)  (ref_cnt++, 摘出 free 队列)
     CO->>+FM: allocate_external_computed_blocks(...)  (ext_comp 新块, :230)
@@ -285,13 +295,29 @@ sequenceDiagram
 
 **字段变化（B2 是 `BlockHash` → `BlockHashWithGroupId` 的关键落库点）**：`cache_full_blocks`（block_pool.py:225）遍历新满块，对每块调 `make_block_hash_with_group_id(block_hash, kv_cache_group_id)`（:281）构造 `BlockHashWithGroupId`，交给 `_insert_block_hash`（:607）。对该块若 `block.block_hash is None`（新满块），则 `block.set_block_hash(block_hash_with_group_id, num_tokens=...)`（:223）把 `BlockHashWithGroupId` 存入 KVBlock 的 `block_hash` 字段（该字段类型即 `BlockHashWithGroupId | None`，kv_cache_utils.py:127），再 `cached_block_hash_to_block.insert(key, block)`（:627）写入映射表。命中块哈希已存在，走 `_insert_block_hash` 的幂等早退（:613）。—— 阶段 A / B1 始终是纯 `BlockHash`，到 B2 才真正"升级并落库"为 `BlockHashWithGroupId`。
 
-**要点（与源码顺序严格一致）**：
-1. `remove_skipped_blocks` 在 `get_num_blocks_to_allocate` **之前**（先释放滑窗外块，减少驱逐；kv_cache_manager.py:504）
-2. **① 容量检查**：`num_blocks_to_allocate = coordinator.get_num_blocks_to_allocate(...)`；`available_blocks = free - reserved`；`required_blocks = num_blocks_to_allocate + watermark`；`required_blocks > available_blocks` 时 `return None` → 触发**抢占**（scheduler.py:578）
-3. **② 处理前缀 token**：`allocate_new_computed_blocks` 分两阶段（coordinator.py:192）——先对每个 group `add_local_computed_blocks`（touch 命中块，:223），再对每个 group `allocate_external_computed_blocks`（为 `ext_comp` 段分配新块，:230）；放在容量检查**之后**避免 touch 后回滚，两阶段避免 ext_comp 的 `get_new_blocks` 驱逐尚未 touch 的命中块（issue #33775）
-4. **③ 为待计算 token 分配新块**：`new_blocks = coordinator.allocate_new_blocks(req_id, num_tokens,... )`（:542）
-5. `cache_blocks` 的 `num_tokens_to_cache = min(total_computed + num_new, request.num_tokens)`，只缓存已定稿 token（排除可能被拒的 draft token）
-6. 新块 id 进入 `new_block_ids`，等待 drain 给 Worker 清零
+**要点（与源码顺序严格一致）**：`allocate_slots` 依次执行 5 步（编号对应上方时序图）。
+
+- **步骤 0｜释放滑窗外块** `remove_skipped_blocks`（kv_cache_manager.py:504）
+  - 在容量检查**之前**调用，先释放被滑窗跳过的块，减少驱逐（下钻：coordinator.py:354 → single_type:622）
+  - full attention 下 `get_num_skipped_tokens()` 恒 0，**实际不弹块**；仅 SWA / R-SWA 等子类生效
+
+- **步骤 ①｜容量检查** `get_num_blocks_to_allocate`（kv_cache_manager.py:510）
+  - **下钻链**：KM → `UnitaryKVCacheCoordinator`（未覆写，走基类 coordinator.py:130）→ 逐组 `FullAttentionManager`（single_type:144）累加
+  - **FullAttentionManager 算式**（纯计算，不碰物理块）：
+    `num_new_blocks = max(cdiv(num_tokens, block_size) - num_local_computed, 0)`
+    其中 `num_local_computed = len(new_computed_blocks) + len(req_to_blocks[req_id])`；另加 evictable 候选块与 partial-hit 预留；running 请求走 fast-path `max(num_required - num_req, 0)`
+  - **容量比较（KM 侧）**：`available = block_pool.get_num_free_blocks() - reserved_blocks`（block_pool.py:799）；`required = num_blocks_to_allocate + watermark`；`required > available` → `return None` → 触发**抢占**（scheduler.py:578）
+
+- **步骤 ②｜处理前缀 token** `allocate_new_computed_blocks`（kv_cache_manager.py:535，coordinator.py:192）
+  - **两阶段**（issue #33775）：先逐组 `add_local_computed_blocks`（touch 命中块，single_type:232），再逐组 `allocate_external_computed_blocks`（ext_comp 新块，single_type:291）
+  - 放在容量检查**之后**：避免 touch 后回滚；两阶段避免 ext_comp 的 `get_new_blocks` 驱逐尚未 touch 的命中块
+
+- **步骤 ③｜分配待计算块** `allocate_new_blocks`（kv_cache_manager.py:542，coordinator.py:238 → single_type:330）
+  - `new_blocks = coordinator.allocate_new_blocks(req_id, num_tokens, ...)`，为待计算的 `new + lookahead` token 分新块
+
+- **步骤 ④｜缓存满块** `cache_blocks`（kv_cache_manager.py:563，coordinator.py:273 → single_type:427）
+  - `num_tokens_to_cache = min(total_computed + num_new, request.num_tokens)`，**只缓存已定稿 token**（排除可能被拒的 draft token）
+  - 新块 id 记入 `new_block_ids`，等待 drain 给 Worker 清零
 
 **结合请求 R**：容量检查算出当前可分配块数足够后，`allocate_new_computed_blocks` 先 `touch` B1 命中的前 2 块（`block_pool.touch`，ref_cnt 1→2，并从 free 队列摘出），再为剩余 38 个 token 计算待分配数量。38 个 token 按 16 切块需 3 块（16+16+6），`get_new_blocks(3)` 得到新 id，使 R 的 block_table 变为 `[命中块0, 命中块1, 新块2, 新块3, 新块4]`（5 项）。随后 `cache_blocks` 遍历满块 block 0~3：命中块 0/1 的哈希本就在映射表（由最初缓存它们的请求写入），`_insert_block_hash` 对同哈希早退（幂等空操作）；真正**新写入哈希表的是新满块 2、3**；未满的第 5 块（6 token）不入表。
 
@@ -301,11 +327,11 @@ sequenceDiagram
 |---|---|---|---|---|
 | **Scheduler**<br>`allocate_slots` | `request, num_new_tokens, new_computed_blocks` | 发起分配，拿 KVCacheBlocks 组装 block_table | `KVCacheBlocks` | 发起者 |
 | **KVCacheManager**<br>`allocate_slots` `kv_cache_manager.py:344` | `request, num_new_tokens, new_computed_blocks` | 编排时序：① `remove_skipped_blocks` 释放滑窗外块 → ② `get_num_blocks_to_allocate` 容量检查 → ③ `allocate_new_computed_blocks`（touch 命中块 + 分配 ext_comp）→ ④ `allocate_new_blocks` 分配待计算块 → ⑤ `cache_blocks` 缓存满块 | `KVCacheBlocks(新块)` | 编排总体顺序 |
-| **Coordinator**<br>`kv_cache_coordinator.py:130/192/238/273` | `req_id, num_tokens, request` | 逐项派发到各组：`get_num_blocks_to_allocate`（:130）/ `allocate_new_computed_blocks`（两阶段，:192）/ `allocate_new_blocks`（:238）/ `cache_blocks`（:273） | `num_blocks` / 新块 / 缓存结果 | 按 KV group 派发 |
-| **FullAttnManager**<br>`single_type:232/291/330/427` | 命中块 / 新块 / token 数 | `add_local_computed_blocks`（touch 命中块，:232）/ `allocate_external_computed_blocks`（ext_comp 新块，:291）/ `allocate_new_blocks`（:330）/ `cache_blocks`（:427） | 命中块 / 新块 / 缓存 | 单组实现 |
+| **UnitaryKVCacheCoordinator**<br>`kv_cache_coordinator.py:130/192/238/273/336` | `req_id, num_tokens, request` | 纯 Full Attention 单组场景；这些方法多在基类 `KVCacheCoordinator` 实现，`for manager in single_type_managers` 逐组派发：`get_num_blocks_to_allocate`（:130）/ `remove_skipped_blocks`（:336）/ `allocate_new_computed_blocks`（两阶段，:192）/ `allocate_new_blocks`（:238）/ `cache_blocks`（:273） | 各组累加 `num_blocks` / 新块 / 缓存结果 | 按 KV group 派发 |
+| **FullAttnManager**<br>`single_type:144/232/291/330/427` | 命中块 / 新块 / token 数 | `get_num_blocks_to_allocate`（内部算式算出本组新块数，:144）/ `add_local_computed_blocks`（touch 命中块，:232）/ `allocate_external_computed_blocks`（ext_comp 新块，:291）/ `allocate_new_blocks`（:330）/ `cache_blocks`（:427） | 命中块 / 新块 / 缓存 / 本组块数 | 单组实现 |
 | **BlockPool**<br>`block_pool.py:702/647/225` | 块 / token | `touch`（ref_cnt++ 摘出 free 队列，:702）/ `get_new_blocks`（ref_cnt=1，记入 new_block_ids，:647）/ `cache_full_blocks`（写哈希入映射表，:225） | 物理块 | 物理块池 |
 
-> B2 的时序实质：**先释放（remove_skipped）→ 再容量检查（get_num_blocks_to_allocate）→ 再复用/touch 命中块 + 分 ext_comp（两阶段 allocate_new_computed_blocks）→ 再分配待计算块（allocate_new_blocks）→ 最后缓存（cache_full_blocks）**。三层（Coordinator / FullAttnManager / BlockPool）只是把同一动作逐级下放，最底层 BlockPool 才真正触碰物理块与哈希表。
+> B2 的时序实质：**先释放（remove_skipped）→ 再容量检查（get_num_blocks_to_allocate）→ 再复用/touch 命中块 + 分 ext_comp（两阶段 allocate_new_computed_blocks）→ 再分配待计算块（allocate_new_blocks）→ 最后缓存（cache_full_blocks）**。四层（KVCacheManager → UnitaryKVCacheCoordinator → FullAttnManager → BlockPool）只是把同一动作逐级下放：Coordinator 负责"选组并逐组派发"，Manager 负责"算本组该分多少 / 真正分配"，最底层 BlockPool 才触碰物理块与哈希表。注意**容量检查阶段只有 KM 直连 BlockPool 的 `get_num_free_blocks` 查空闲数**，真正的 `get_num_blocks_to_allocate` 下钻到 FullAttnManager 只做纯计算、不碰物理块。
 
 #### 3.2.3 B3 产出 SchedulerOutput
 
