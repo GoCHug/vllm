@@ -330,48 +330,195 @@ def get_num_skipped_tokens(self, num_computed_tokens: int) -> int:
 
 源码位置：`single_type_kv_cache_manager.py:232-289`
 
+**作用**：处理"本地前缀缓存命中"的块——把 B1 阶段查到的命中块 add 到请求的 block 列表里，并通过 `touch` 锁定引用计数，防止它们被后续分配驱逐。这是 [`allocate_new_computed_blocks` 两阶段 protocol]（coordinator.py:192）的**第一阶段**，必须在 `allocate_external_computed_blocks`（§4.4）之前对所有组执行完毕，否则 connector 的新块 `get_new_blocks` 可能驱逐本组尚未 touch 的命中块（issue #33775）。
+
+#### 4.3.1 完整源码 + 逐行注释
+
 ```python
 def add_local_computed_blocks(
     self,
-    request_id: str,
-    new_computed_blocks: Sequence[KVCacheBlock],   # 本次命中的新块列表
-    num_local_computed_tokens: int,               # 本地命中 token 数
-    num_external_computed_tokens: int,            # 外部命中 token 数
+    request_id: str,                                          # 请求 ID
+    new_computed_blocks: Sequence[KVCacheBlock],              # B1 阶段刚查到的前缀命中块列表（均为满块）
+    num_local_computed_tokens: int,                           # 本地前缀命中 token 数 = len(new_computed_blocks) * block_size（满块对齐时）
+    num_external_computed_tokens: int,                        # 外部 connector 命中 token 数（本方法不用，只参与滑窗跳过计算）
 ) -> None:
-    """处理命中的块：增加引用计数，加入 req_to_blocks"""
+    """
+    Add the locally cached (prefix-hit) blocks to the request:
+    1. Touch the computed blocks (paired with adding them to `req_blocks`)
+       so their ref_cnt exactly tracks the referencing requests.
+    1.5. (Optional) For sliding window, skipped blocks are padded with nulls.
+    2. Add the remaining computed blocks.
+    """
+
+    # ===== 第 1 步：取出请求当前的 block 列表，并断言为空 =====
+    # req_to_blocks: defaultdict[str, list[KVCacheBlock]]，记录请求已持有的块。
+    # coordinator（kv_cache_coordinator.py:192）只在"首次分配"（即请求第一次进 scheduler 做 prefill）时
+    # 才调用本方法——running 请求已在 coordinator 层被短路（running 不会再有新前缀命中）。
+    # 因此此处 req_blocks 必为空：request 还没被分配过任何命中块。
     req_blocks = self.req_to_blocks[request_id]
-    assert len(req_blocks) == 0       # coordinator 只在首次分配时调用
-    num_total_computed_tokens = num_local_computed_tokens + num_external_computed_tokens
+    assert len(req_blocks) == 0   # 零断言：保证后面的"追加"语义安全
+
+    # ===== 第 2 步：处理滑窗跳过（full-attn 下 noop）=====
+    # 滑动窗口/RSWA 会在序列头部丢弃 token（滑出窗口），这些 token 对应的块
+    # 不需要参与 attention，但需要在 block_table 里"占位"以保持位置对齐。
+    # 对 full attention (基类 FullAttentionManager, :661) get_num_skipped_tokens 恒返回 0，
+    # 所以 num_skipped_blocks = 0，下面的 if 分支不进入。
+    num_total_computed_tokens = (
+        num_local_computed_tokens + num_external_computed_tokens
+    )
     num_skipped_tokens = self.get_num_skipped_tokens(num_total_computed_tokens)
     num_skipped_blocks = num_skipped_tokens // self.block_size
     if num_skipped_blocks > 0:
+        # SWA 场景：丢弃前 num_skipped_blocks 个命中块——它们虽然在前缀缓存活，
+        # 但已经滑出窗口，本请求不再引用。直接切片跳过，后面用 null 占位。
+        # 注意：被跳过的块没有 touch，ref_cnt 不增，仍留在 free 队列可被驱逐。
         new_computed_blocks = new_computed_blocks[num_skipped_blocks:]
 
-    # touch 命中块，防止被驱逐
+    # ===== 第 3 步：touch 命中块——锁定引用计数，防止被驱逐 =====
+    # block_pool.touch(blocks)（block_pool.py:702）逐块执行：
+    #   - 若 block.ref_cnt == 0 且非 null：说明它在 free_block_queue 里（驱逐候选），
+    #     先 free_block_queue.remove(block) 把它从空闲队列摘出；
+    #   - block.ref_cnt += 1（0→1 或 1→2，多请求共享同一命中块时累加）；
+    #   - 这一步是"命中块不分配新物理块，只是增加引用"的核心。
     if self.enable_caching:
         self.block_pool.touch(new_computed_blocks)
     else:
-        assert not any(new_computed_blocks), "..."
+        # 缓存未开启时不应该有命中块——find_longest_cache_hit 在 caching 关闭时返回空，
+        # 所以 new_computed_blocks 应该是空列表/空元组。
+        assert not any(new_computed_blocks), (
+            "Computed blocks should be empty when prefix caching is disabled"
+        )
 
-    # 跳过的块用 null_block 填充
+    # ===== 第 4 步：把命中块追加到请求的 block 列表 =====
+    # 先用 null_block 填充滑窗跳过的位置（full-attn 下 num_skipped_blocks=0，等价于不追加）。
+    # null_block 是一个特殊的哨兵块（is_null=True），不占物理资源，touch/evict 时都会跳过它。
+    # 占位的目的：让后续的 "token index → block index" 映射保持连续（block_table[i] 对应第 i 个 block）。
     req_blocks.extend([self._null_block] * num_skipped_blocks)
+    # 追加真正命中的块。此时 req_blocks = [null...] * skip + 命中块...，
+    # 这些块的 ref_cnt 已在 touch 里 +1，物理内存将由 GPU 复用（不需要清零/重算）。
     req_blocks.extend(new_computed_blocks)
-    # 标记已缓存块数，cache_blocks() 不会重复缓存
+
+    # ===== 第 5 步：标记已缓存块数，避免 cache_blocks() 重复缓存 =====
+    # num_cached_block: dict[req_id, int]，记录"这个请求有多少块已经是缓存命中/已写哈希的"。
+    # 后续 cache_blocks()（§4.6）会从 num_cached_block[req_id] 开始往后写哈希，
+    # 已标记的块直接跳过（命中块的 block_hash 在最初缓存它们的请求时已写入映射表）。
     self.num_cached_block[request_id] = len(req_blocks)
+
+    # ===== 第 6 步：部分命中检测——尾块落在块内部，需要 CoW =====
+    # _has_partial_local_hit（:132）判断命中是否"不整除"：
+    #   len(new_computed_blocks) > 0 and num_local_computed_tokens % self.block_size != 0
+    # 即本地命中的 token 数不是 block_size 的整数倍 → 最后一个命中块只覆盖了部分 token，
+    # 但该块同时还被其他请求引用（ref_cnt >= 2），不能直接往里写新 token（会污染共享数据）。
     if self._has_partial_local_hit(new_computed_blocks, num_local_computed_tokens):
-        # 部分命中：记录尾块用于 CoW 重定向
+        # 记录这对 (block_idx, source_block) 到 _partial_hit_reqs（:116），
+        # 供后续 allocate_new_blocks（§4.5）做 CoW（Copy-On-Write）重定向：
+        #   - 分配一块全新的 cow_block 替换 req_blocks[block_idx]；
+        #   - 把 source_block 的数据拷贝到 cow_block；
+        #   - 之后新 token 往 cow_block 写，不影响其他请求读 source_block。
         block_idx = num_local_computed_tokens // self.block_size
         self._partial_hit_reqs[request_id] = (block_idx, new_computed_blocks[-1])
+        # 把 num_cached_block 回退到"满块数"（不含部分命中的尾块）。
+        # 原因：尾块即将被 CoW 替换，新 cow_block 是私有块（block_hash=None），
+        # 需要等它被写满后由 cache_blocks() 重新写入哈希表，所以不能把它算作"已缓存"。
+        # block_idx = num_local_computed_tokens // block_size 正好是"完整命中的满块数"。
         self.num_cached_block[request_id] = block_idx
 ```
 
-**关键点**：
-- 命中缓存块不是简单"拿来用"，必须调用 `block_pool.touch()`：增加 `ref_cnt` 并从空闲队列摘出，防止被驱逐
-- **零断言保障**：coordinator 只在请求首次分配时调用本方法，此时 `req_to_blocks[request_id]` 必为空
-- 滑动窗口场景下，跳过的块用 `null_block` 填充，保持 block_table 长度与位置对齐
-- 部分命中（命中落在块内）时，把尾块记录到 `_partial_hit_reqs`，供后续 `allocate_new_blocks` 做 CoW 重定向
+#### 4.3.2 关键设计点
 
-### 4.4 核心方法：`allocate_new_blocks`
+- **引用计数而非复制**：命中块是已有请求写入的物理块，多请求共享。用 `touch`（`ref_cnt++` 并从 free 队列摘出）来"占座"，不分配新物理块，是前缀缓存省显存的核心机制。
+- **两阶段 protocol 的第一阶段**：本方法只是 coordinator 两阶段（`add_local_computed_blocks` → `allocate_external_computed_blocks`）的第一阶段，只处理"本地命中"。必须所有组都完成 `add_local_computed` 后，coordinator 才会逐组调 `allocate_external_computed_blocks`，否则跨组的 `get_new_blocks` 可能驱逐尚未 touch 的命中块（issue #33775）。
+- **零断言保障**：`assert len(req_blocks) == 0`——coordinator 在 running 请求路径已短路，首次分配时请求不可能已持有块。
+- **滑窗占位**：跳过的块用 `null_block` 填充保持 `block_table` 位置对齐，`null_block` 不占物理资源、touch/evict 均跳过。
+- **部分命中 → CoW 预约**：当 `num_local_computed_tokens % block_size != 0`（命中落在块内），尾块被多请求共享不能直接写。把 `(block_idx, source_block)` 存入 `_partial_hit_reqs` 预约，由后续 `allocate_new_blocks` 真正执行 CoW 替换，同时把 `num_cached_block` 回退到满块数，由 `cache_blocks` 后续写哈希。
+
+### 4.4 核心方法：`allocate_external_computed_blocks`
+
+源码位置：`single_type_kv_cache_manager.py:291-328`
+
+**作用**：为"外部 connector 命中"（如 CPU offload、remote KV cache）的 token 分配**新的物理块**。这是 [`allocate_new_computed_blocks` 两阶段 protocol]（coordinator.py:192）的**第二阶段**。
+
+与 `add_local_computed_blocks`（§4.3，复用已有命中块）不同：外部 connector 的 KV 数据在远端 / CPU 上，GPU 端**没有现成的物理块可复用**，所以必须 `get_new_blocks` 从空闲池分配新块，后续由 Worker 从远端加载填充。必须在本组及所有组 `add_local_computed_blocks` 完成（即所有命中块已 touch 锁定）之后才调用，避免新块分配驱逐尚未锁定的命中块。
+
+#### 4.4.1 完整源码 + 逐行注释
+
+```python
+def allocate_external_computed_blocks(
+    self,
+    request_id: str,                                # 请求 ID
+    num_local_computed_tokens: int,                 # 本地前缀命中 token 数（已完成 touch，本方法不再处理）
+    num_external_computed_tokens: int,              # 外部 connector 命中 token 数（本方法要为其分配新块）
+) -> None:
+    """
+    Allocate new blocks for external (KV-connector) computed tokens.
+
+    Must run only after every group's local blocks have been touched via
+    `add_local_computed_blocks`, so this group's `get_new_blocks` cannot
+    evict another group's cache-hit blocks (issue #33775).
+    """
+    # 注意：本方法不接收 new_computed_blocks 参数——因为外部命中的块
+    # 不存在于 GPU 端，没有现成的 KVCacheBlock 可 touch，需要现编新物理块。
+
+    # ===== 第 1 步：计算滑窗跳过对外部命中 token 数的影响 =====
+    # 同 add_local_computed_blocks 的逻辑：滑窗头部跳过的 token 同样
+    # 应该从外部命中里扣除（滑出窗口的 token 不需要 KV slot）。
+    # 对 full attention (基类 :661) get_num_skipped_tokens 恒返回 0，本段 noop。
+    num_total_computed_tokens = (
+        num_local_computed_tokens + num_external_computed_tokens
+    )
+    num_skipped_tokens = self.get_num_skipped_tokens(num_total_computed_tokens)
+    if num_skipped_tokens > 0:
+        # SWA 场景：扣掉滑窗跳过后，外部命中真正需要分配块的 token 数。
+        # 取 min(总数 - 跳过, 原外部数)：如果跳过部分吃掉了本地命中的 token，
+        # 这里保守不超出原始 num_external_computed_tokens。
+        num_external_computed_tokens = min(
+            num_total_computed_tokens - num_skipped_tokens,
+            num_external_computed_tokens,
+        )
+    # 外部命中扣减跳过后若 ≤ 0（极端情况：滑窗跳过 ≥ 总命中），直接返回，不分块。
+    if num_external_computed_tokens <= 0:
+        return
+
+    # ===== 第 2 步：计算还需要分配多少新块 =====
+    # req_blocks 已在 §4.3 add_local_computed_blocks 里被追加过命中块（含 null 占位），
+    # 它现在覆盖了 num_local_computed_tokens 这么多 token（满块部分）。
+    # 要让 block_table 覆盖"本地命中 + 外部命中"全部 token，需要的总块数：
+    #   cdiv(num_total_computed_tokens, block_size)
+    # 扣掉已有的 len(req_blocks) 个块，剩下的就是要新分配的块数。
+    # 举例：block_size=16，local=32(2块) + external=38(2.375→3块去掉2块已占≈需补3块)，
+    #   total=70, cdiv(70,16)=5, req_blocks 已有 2 块 → 新分配 3 块。
+    req_blocks = self.req_to_blocks[request_id]
+    allocated_blocks = self.block_pool.get_new_blocks(
+        cdiv(num_total_computed_tokens, self.block_size) - len(req_blocks)
+    )
+
+    # ===== 第 3 步：把新块追加进请求的 block 列表 =====
+    # 这些块是新鲜块（block_hash=None）, ref_cnt=1（get_new_blocks 内置赋值，
+    # 见 block_pool.py:668），不在 free_block_queue 里（popleft 取出时已摘除）。
+    # 它们的物理内容目前是"脏的/未填充"，后续由 Worker 从外部 connector 加载真实 KV 填入。
+    # 注意：这里没有 touch（因为是新块，没有 ref_cnt=0 → +1 的共享语义），也没有写哈希表
+    # （哈希在 cache_blocks 阶段才写——但外部命中块是否写哈希取决于 connector 策略，
+    # 多数 connector 实现会跳过缓存，由 connector 自己管理，避免污染本地 hash 索引）。
+    req_blocks.extend(allocated_blocks)
+
+    # ===== 第 4 步：记录新块 ID，供 Worker 清零 =====
+    # _record_new_block_ids（:86）：构造时根据 needs_kv_cache_zeroing 和 kv_cache_spec 类型决定，
+    # 多数 attention 类型需要记。记下来的 block_id 后续由 take_new_block_ids()（:411）
+    # drain 给 scheduler，在 SchedulerOutput 里下发给 Worker，Worker 对这些块做清零。
+    # 外部命中的块虽然将被外部 connector 填充，但 Worker 不知道哪些块会被填——保守起见
+    # 仍然清零，避免"未填充 + 残留旧数据"混合导致 attention 计算出错。
+    if self._record_new_block_ids:
+        self.new_block_ids.extend(b.block_id for b in allocated_blocks)
+```
+
+#### 4.4.2 关键设计点
+
+- **与 `add_local_computed_blocks` 的根本区别**：本地命中块在 GPU 上已存在，只需 `touch` 增引用（ref_cnt 1→2 等共享）；外部命中块在远端 / CPU，GPU 端无现成物理块，必须 `get_new_blocks` 分配新块，后续由 Worker 从外部加载填充。
+- **两阶段 ordering 的必要性**：本方法会调用 `get_new_blocks`，而 `get_new_blocks` 在开启缓存时会 `_maybe_evict_cached_block` 驱逐 free 队列尾部的缓存块（block_pool.py:666）。如果某组的命中块还没 touch（还在 free 队列里），就可能被这一步误驱逐。所以 coordinator 强制所有组先做完 `add_local_computed_blocks`（把命中块 touch 摘出 free 队列），再逐组 `allocate_external_computed_blocks`，这是 issue #33775 的修复。
+- **新块哈希不写表**：本方法只分配新块和追加，不调用 `cache_full_blocks`/`_insert_block_hash`。外部命中块的哈希管理归 connector（多数跳过本地缓存，避免外部 hash 污染本地索引）；这些块的哈希写入时机由后续 `cache_blocks`（§4.6）统一处理——但 connector 命中的块在 `cache_blocks` 里一般也被排除在哈希写入之外。
+- **新块 ID 记录用于清零**：分配的新块物理内容是脏的（上一任请求残留），记入 `new_block_ids` 交给 Worker 清零。即使外部 connector 会填充，Worker 仍保守清零，保证 attention 计算安全。
+
+### 4.5 核心方法：`allocate_new_blocks`
 
 源码位置：`single_type_kv_cache_manager.py:330-369`
 
@@ -413,7 +560,7 @@ def allocate_new_blocks(
 
 > 注意：这里的分配**不做驱逐**——空闲块不足时 `get_new_blocks` 会抛异常，由上层 KVCacheManager 在 `allocate_slots` 的容量检查中提前拦截，触发抢占而非直接崩溃。
 
-### 4.4.1 端到端分配流程串讲（对应总览阶段3）
+### 4.5.1 端到端分配流程串讲（对应总览阶段3）
 
 `UnitaryKVCacheCoordinator.allocate_*` 调用本类方法的完整顺序（以纯 FullAttention 单组为例）：
 
@@ -448,7 +595,7 @@ def allocate_slots(self, request, num_new_tokens, new_computed_blocks, ...):
 
 **关键点**：`req_to_blocks[request_id]` 就是在这里一步步维护起来的——它的内容就是 [历史块..., 本次命中块..., 本次新分配块...]，顺序就是 block_table 在 GPU 上的顺序。
 
-### 4.5 核心方法：`cache_blocks`（缓存写入）
+### 4.6 核心方法：`cache_blocks`（缓存写入）
 
 源码位置：`single_type_kv_cache_manager.py:427-477`（基类统一实现）
 
@@ -488,11 +635,11 @@ def cache_blocks(
 
 > 注意：本文最初草稿中提到的 `maybe_save_new_kv_blocks_to_cache` **在该版本源码中不存在**，统一由 `cache_blocks` 承担。
 
-### 4.6 核心方法：`pop_blocks_for_free` / `free`（释放流程）
+### 4.7 核心方法：`pop_blocks_for_free` / `free`（释放流程）
 
 源码位置：`single_type_kv_cache_manager.py:500-527`，对应总览阶段 6 的释放流程。
 
-#### 4.6.1 `pop_blocks_for_free`：取出请求的块列表（不真正归还）
+#### 4.7.1 `pop_blocks_for_free`：取出请求的块列表（不真正归还）
 
 ```python
 def pop_blocks_for_free(self, request_id: str) -> list[KVCacheBlock]:
@@ -504,7 +651,7 @@ def pop_blocks_for_free(self, request_id: str) -> list[KVCacheBlock]:
     return req_blocks                                    # 返回按分配顺序排列的块列表
 ```
 
-#### 4.6.2 `free`：完整释放单个请求的所有块（最常用）
+#### 4.7.2 `free`：完整释放单个请求的所有块（最常用）
 
 ```python
 def free(self, request_id: str) -> None:
@@ -514,7 +661,7 @@ def free(self, request_id: str) -> None:
     self.block_pool.free_blocks(reversed(self.pop_blocks_for_free(request_id)))
 ```
 
-#### 4.6.3 `free_blocks`（BlockPool 方法）：引用计数减一+队列回收
+#### 4.7.3 `free_blocks`（BlockPool 方法）：引用计数减一+队列回收
 
 ```python
 # BlockPool.free_blocks（block_pool.py:719-742）

@@ -279,13 +279,24 @@ sequenceDiagram
     Note over KM: available = free - reserved<br/>required = num_blocks + watermark<br/>不足 → return None → 触发抢占 (见 §3.6)
     KM->>+CO: allocate_new_computed_blocks(...)  (② 处理前缀 token: :535)
     Note over CO: 两阶段 (coordinator.py:192, issue #33775)<br/>先各组 add_local_computed_blocks 再各组 allocate_external_computed_blocks
-    CO->>+FM: add_local_computed_blocks(...)  (touch 命中块, :223)
-    FM->>-BP: block_pool.touch(blocks)  (ref_cnt++, 摘出 free 队列)
-    CO->>+FM: allocate_external_computed_blocks(...)  (ext_comp 新块, :230)
-    FM->>-BP: get_new_blocks(n)  (ref_cnt=1, 记入 new_block_ids)
+    CO->>+FM: add_local_computed_blocks(...)  (touch 命中块, coordinator:223 → single_type:232)
+    FM->>+BP: block_pool.touch(blocks)  (ref_cnt++, 摘出 free 队列, :269)
+    BP-->>-FM: 完成
+    Note over FM: req_to_blocks[req_id].extend([null]*skip + 命中块)  (:276-278)<br/>num_cached_block[req_id] = len(req_blocks)  (:282)
+    FM-->>-CO: 完成
+    CO->>+FM: allocate_external_computed_blocks(...)  (ext_comp 新块, coordinator:231 → single_type:291)
+    FM->>+BP: get_new_blocks(n)  (ref_cnt=1, block_pool.py:647)
+    BP-->>-FM: list[KVCacheBlock]  (新块, ref_cnt=1)
+    Note over FM: req_to_blocks[req_id].extend(allocated_blocks)  (:326)
+    FM-->>-CO: 完成
     KM->>+CO: allocate_new_blocks(req_id, num_tokens, ...)  (③ 待计算 token 新块: :542)
     CO->>+FM: allocate_new_blocks()
-    FM->>-BP: get_new_blocks(n)  (ref_cnt=1, 记入 new_block_ids)
+    Note over FM: num_new = cdiv(num_tokens, block_size) - len(req_to_blocks[req_id])<br/>partial-hit 先 get_new_blocks(1) 做 CoW 替换共享尾块
+    FM->>+BP: get_new_blocks(num_new)  (ref_cnt=1, 记入 new_block_ids)
+    BP-->>-FM: list[KVCacheBlock]  (新块, ref_cnt=1, block_pool.py:677)
+    Note over FM: req_to_blocks[req_id].extend(new_blocks)<br/>new_block_ids.extend(block_id)  (single_type:365-368)
+    FM-->>-CO: list[KVCacheBlock]  (cow_blocks + new_blocks, 单组新块, single_type:369)
+    CO-->>-KM: tuple[list[KVCacheBlock], ...]  (new_blocks, 各组新块, coordinator.py:262)
     KM->>+CO: cache_blocks(request, num_tokens_to_cache)  (prefill 缓存: :563)
     CO->>+FM: cache_blocks()
     FM->>-BP: cache_full_blocks()  (写哈希入映射表, 仅满块/已定稿 token)
