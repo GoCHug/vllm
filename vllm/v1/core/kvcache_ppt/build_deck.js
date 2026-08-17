@@ -28,17 +28,30 @@ function flattenNode(node, realSlide) {
   node.children.forEach(c => flattenNode(c, realSlide));
 }
 const _origAddSlide = pptxgen.prototype.addSlide;
+let FOOTER_ZONE = false;
+const AUDIT = [];
 pptxgen.prototype.addSlide = function (o) {
   const realSlide = _origAddSlide.call(this, o);
   const vs = { children: [], _r: realSlide };
-  const mk = (t, d) => { const n = createVirtualNode(t, d, 0, 0); vs.children.push(n); return n; };
+  const mk = (t, d) => { const n = createVirtualNode(t, d, 0, 0); n._footer = FOOTER_ZONE; vs.children.push(n); return n; };
   vs.addSlideCount = () => vs.children.length;
   vs.addShape = (st, op = {}) => mk('shape', { shapeType: st, opts: op });
   vs.addText = (t, op = {}) => mk('text', { text: t, opts: { fit: "shrink", ...op } });
   vs.addImage = (op = {}) => mk('image', { opts: op });
   vs.addTable = (td, op = {}) => mk('table', { tableData: td, opts: op });
   vs.addChart = (ct, d, op = {}) => realSlide.addChart(ct, d, op);
-  vs.render = () => vs.children.forEach(c => flattenNode(c, realSlide));
+  vs.render = () => {
+    const walk = (n) => {
+      const bottom = n.absY + (n.h || 0), right = n.absX + (n.w || 0);
+      if (!n._footer && (bottom > 5.155 || right > 10.01 || n.absY < -0.01 || n.absX < -0.06)) {
+        const preview = n.type === 'text' ? String(typeof n.data.text === 'string' ? n.data.text : '[rich]').slice(0, 24) : n.type;
+        AUDIT.push('p' + PAGE + ' ' + n.type + ' y=' + n.absY.toFixed(2) + ' b=' + bottom.toFixed(2) + ' x=' + n.absX.toFixed(2) + ' r=' + right.toFixed(2) + ' "' + preview + '"');
+      }
+      n.children.forEach(walk);
+    };
+    vs.children.forEach(walk);
+    vs.children.forEach(c => flattenNode(c, realSlide));
+  };
   Object.defineProperty(vs, 'background', { get(){return realSlide.background;}, set(v){realSlide.background=v;} });
   return vs;
 };
@@ -57,6 +70,7 @@ const CW = SW - 2 * M, CH = SH - 2 * M;
 // ============================================================
 const INK = '16324F', BODY = '3D4F5E', TEAL = '0E7C7B', TEAL2 = '2AA6A0', TEAL_DARK = '0A5C5B';
 const AMBER = 'E8A33D', AMBER_DK = '9A5E12', AMBER_BG = 'FBF1E1', TEAL_BG = 'E6F1F1';
+const RED = 'C0504D', RED_BG = 'F9ECEC', GREEN = '2E8B57', GREEN_BG = 'EAF5EF';
 const HAIR = 'D6E0E6', MUTED = '6B7B8A', BG = 'F6F9FA', WHITE = 'FFFFFF', INK_BG = '0F2A43';
 const TF = '华文中宋', BF = '微软雅黑', MF = 'Consolas';
 let PAGE = 0;
@@ -79,26 +93,36 @@ function header(slide, section, title, opts = {}) {
   slide.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: M, y: 0.34, w: opts.chipW || 2.6, h: 0.34, rectRadius: 0.17, fill: { color: TEAL_BG }, line: { color: TEAL, width: 0.75 } });
   slide.addText(section, { x: M, y: 0.34, w: opts.chipW || 2.6, h: 0.34, align: 'center', valign: 'middle', fontFace: BF, fontSize: 10.5, bold: true, color: TEAL_DARK, charSpacing: 0.5 });
   slide.addShape(pres.shapes.RECTANGLE, { x: M, y: 0.95, w: 0.07, h: 0.5, fill: { color: AMBER } });
-  slide.addText(title, { x: M + 0.18, y: 0.86, w: 7.6, h: 0.66, valign: 'middle', fontFace: TF, fontSize: 23, bold: true, color: INK, charSpacing: 1.2 });
+  slide.addText(title, { x: M + 0.18, y: 0.86, w: 7.6, h: 0.66, valign: 'middle', fontFace: TF, fontSize: 22, bold: true, color: INK, charSpacing: 1.2 });
   blockGrid(slide, 9.06, 0.44, 0.15, 0.07, [TEAL, AMBER, TEAL2, MUTED]);
-  if (opts.sub) slide.addText(opts.sub, { x: M + 0.18, y: 1.48, w: 8.4, h: 0.38, valign: 'middle', fontFace: BF, fontSize: 12, color: MUTED });
+  if (opts.sub) slide.addText(opts.sub, { x: M + 0.18, y: 1.48, w: 8.7, h: 0.38, valign: 'middle', fontFace: BF, fontSize: 11, color: MUTED });
   slide.addShape(pres.shapes.RECTANGLE, { x: M, y: 1.85, w: CW, h: 0.012, fill: { color: HAIR } });
 }
 
 function analogyChip(slide, x, y, w = 3.2, text = '生活化类比', sub) {
-  const c = slide.addShape(pres.shapes.ROUNDED_RECTANGLE, {
-    x, y, w, h: sub ? 0.82 : 0.4, rectRadius: 0.1, fill: { color: AMBER_BG }, line: { color: AMBER, width: 0.75 }
-  });
+  const h = sub ? 0.82 : 0.4;
+  box(slide, x, y, w, h, { fill: AMBER_BG, line: AMBER, lineW: 0.75, radius: 0.1 });
   const inner = [];
   inner.push(para(text, { fontFace: BF, fontSize: 10, bold: true, color: AMBER_DK, charSpacing: 0.3 }));
-  if (sub) inner.push(para(sub, { fontFace: BF, fontSize: 9, color: '7A5A26', breakLine: true }));
-  c.addText(inner, { x: 0.12, y: 0, w: w - 0.24, h: sub ? 0.82 : 0.4, valign: 'middle', align: 'center' });
+  if (sub) inner.push(para(sub, { fontFace: BF, fontSize: 8.5, color: '7A5A26', breakLine: true }));
+  slide.addText(inner, { x: x + 0.12, y, w: w - 0.24, h, valign: 'middle', align: 'center' });
 }
 
-function footer(slide, tag = 'vLLM V1 KV Cache 管理机制详解') {
+// worked-example card (amber, tagged "例")
+function exampleCard(s, x, y, w, h, title, body, o = {}) {
+  box(s, x, y, w, h, { fill: AMBER_BG, line: AMBER, lineW: 0.9 });
+  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: x + 0.1, y: y + 0.09, w: 0.58, h: 0.24, rectRadius: 0.12, fill: { color: AMBER }, line: { color: WHITE, width: 0 } });
+  s.addText('例', { x: x + 0.1, y: y + 0.09, w: 0.58, h: 0.24, align: 'center', valign: 'middle', fontFace: BF, fontSize: 9, bold: true, color: WHITE });
+  s.addText(title, { x: x + 0.78, y: y + 0.07, w: w - 0.9, h: 0.28, valign: 'middle', fontFace: BF, fontSize: 9.5, bold: true, color: AMBER_DK });
+  s.addText(Array.isArray(body) ? body.join('\n') : body, { x: x + 0.12, y: y + 0.36, w: w - 0.24, h: h - 0.42, valign: 'top', fontFace: o.mono ? MF : BF, fontSize: o.fs || 8.5, color: '7A5A26', fit: 'shrink' });
+}
+
+function footer(slide, tag = 'vLLM V1 KV Cache 管理机制详解 · 教学版') {
+  FOOTER_ZONE = true;
   blockGrid(slide, 0.56, SH - 0.36, 0.09, 0.05, [TEAL, TEAL2, AMBER, MUTED]);
   slide.addText(tag, { x: 0.78, y: SH - 0.46, w: 6.4, h: 0.3, fontFace: BF, fontSize: 8, color: MUTED, valign: 'middle' });
   slide.addText(String(PAGE).padStart(2, '0'), { x: 9.05, y: SH - 0.46, w: 0.45, h: 0.3, align: 'right', fontFace: MF, fontSize: 9, color: MUTED, valign: 'middle' });
+  FOOTER_ZONE = false;
 }
 
 function box(slide, x, y, w, h, o = {}, lines, lineOpts = {}) {
@@ -123,25 +147,56 @@ function chip(slide, x, y, w, h, label, fill, color, fs = 9) {
   return c;
 }
 
+// bottom takeaway strip
+function takeaway(s, text, y = 4.62, h = 0.44) {
+  box(s, M, y, CW, h, { fill: TEAL_BG, noLine: true });
+  s.addText(text, { x: M + 0.2, y, w: CW - 0.4, h, align: 'center', valign: 'middle', fontFace: BF, fontSize: 10, bold: true, color: TEAL_DARK });
+}
+
+// simple grid table builder (manual, no addTable)
+function gridHead(s, x0, y0, cols, widths, h = 0.42) {
+  cols.forEach((c, i) => {
+    const cx = x0 + widths.slice(0, i).reduce((a, b) => a + b, 0);
+    box(s, cx, y0, widths[i], h, { fill: TEAL_DARK, noLine: true });
+    s.addText(c, { x: cx + 0.04, y: y0, w: widths[i] - 0.08, h, align: 'center', valign: 'middle', fontFace: BF, fontSize: 10.5, bold: true, color: WHITE });
+  });
+}
+function gridRow(s, x0, y0, widths, cells, ri, o = {}) {
+  const bgc = ri % 2 === 0 ? WHITE : 'EDF4F5';
+  cells.forEach((cell, i) => {
+    const cx = x0 + widths.slice(0, i).reduce((a, b) => a + b, 0);
+    box(s, cx, y0, widths[i], o.h ?? 0.5, { fill: bgc, noLine: true });
+    s.addText(cell, {
+      x: cx + 0.08, y: y0, w: widths[i] - 0.16, h: o.h ?? 0.5,
+      align: o.aligns ? o.aligns[i] : (i === 0 ? 'center' : 'left'), valign: 'middle',
+      fontFace: o.mono && o.mono.includes(i) ? MF : BF,
+      fontSize: (o.fs && o.fs[i]) || o.fsAll || 9.5,
+      bold: i === 0 && !o.noBoldFirst, color: o.color ?? BODY
+    });
+  });
+}
+
 // ============================================================
 // SLIDE 1 — COVER
 // ============================================================
 (function cover() {
   const s = newSlide(INK_BG);
   blockGrid(s, 7.7, 3.4, 0.55, 0.14, ['1B3E5F', '1B3E5F', TEAL, '1B3E5F']);
+  FOOTER_ZONE = true;
   blockGrid(s, 7.0, 4.5, 0.34, 0.1, ['1B3E5F', '1B3E5F', '1B3E5F', TEAL2]);
   blockGrid(s, 6.2, 5.0, 0.2, 0.07, ['1B3E5F', '1B3E5F', '1B3E5F', AMBER]);
   blockGrid(s, 0.6, 0.6, 0.18, 0.08, [TEAL2, TEAL, AMBER, AMBER]);
-  s.addText('vLLM V1 内核源码精讲 · KVCache 五层架构', { x: 0.7, y: 1.5, w: 8.6, h: 0.4, fontFace: BF, fontSize: 13, bold: true, color: TEAL2, charSpacing: 2 });
-  s.addShape(pres.shapes.RECTANGLE, { x: 0.72, y: 2.0, w: 1.4, h: 0.045, fill: { color: AMBER } });
-  s.addText('KV Cache 管理机制详解', { x: 0.7, y: 2.18, w: 8.8, h: 1.15, fontFace: TF, fontSize: 44, bold: true, color: WHITE, charSpacing: 3 });
-  s.addText('从物理显存 → 逻辑块池 → 调度命中的完整链路与源码视角', { x: 0.7, y: 3.35, w: 8.8, h: 0.55, fontFace: TF, fontSize: 18, color: 'C9E0EA' });
+  s.addText('vLLM V1 内核源码精讲 · KVCache 五层架构', { x: 0.7, y: 1.42, w: 8.6, h: 0.4, fontFace: BF, fontSize: 13, bold: true, color: TEAL2, charSpacing: 2 });
+  s.addShape(pres.shapes.RECTANGLE, { x: 0.72, y: 1.92, w: 1.4, h: 0.045, fill: { color: AMBER } });
+  s.addText('KV Cache 管理机制详解', { x: 0.7, y: 2.1, w: 8.8, h: 1.15, fontFace: TF, fontSize: 44, bold: true, color: WHITE, charSpacing: 3 });
+  s.addText('从物理显存 → 逻辑块池 → 调度命中的完整链路与源码视角', { x: 0.7, y: 3.28, w: 8.8, h: 0.55, fontFace: TF, fontSize: 18, color: 'C9E0EA' });
   s.addText([
-    para('教学课件 · 面向同学', { fontSize: 11, color: '9FB8C9' }),
-    para('由浅入深五模块 · 生活化类比随文标注', { fontSize: 11, color: '9FB8C9', breakLine: true }),
-    para('2026 年 8 月', { fontSize: 11, color: '9FB8C9', breakLine: true })
-  ], { x: 0.72, y: 4.4, w: 8.5, h: 0.9, fontFace: BF });
-  s.addText('PagedAttention · 前缀缓存 · 引用计数共享', { x: 0.72, y: 5.05, w: 8.5, h: 0.35, fontFace: MF, fontSize: 10, color: TEAL2 });
+    para('教学课件 · 面向同学 · 由浅入深', { fontSize: 11, color: '9FB8C9' }),
+    para('五模块渐进 · 每节配数字例子与生活化类比', { fontSize: 11, color: '9FB8C9', breakLine: true }),
+    para('2026 年 8 月 · 结合 PagedAttention 论文与社区优质讲解', { fontSize: 11, color: '9FB8C9', breakLine: true })
+  ], { x: 0.72, y: 4.35, w: 8.5, h: 0.9, fontFace: BF });
+  s.addText('PagedAttention · 前缀缓存 · 引用计数共享 · Copy-on-Write', { x: 0.72, y: 5.05, w: 8.5, h: 0.35, fontFace: MF, fontSize: 10, color: TEAL2 });
+  FOOTER_ZONE = false;
   s.render();
 })();
 
@@ -150,163 +205,421 @@ function chip(slide, x, y, w, h, label, fill, color, fs = 9) {
 // ============================================================
 (function toc() {
   const s = newSlide();
-  header(s, '内容导览', '从“为什么”到“怎么做”：一条学习路径', { sub: '五模块渐进，对应“入门 → 专家”的学习方法' });
+  header(s, '内容导览', '从"为什么"到"怎么做"：一条学习路径', { sub: '五模块渐进，对应"入门 → 专家"的学习方法，每节都带可跟算的例子' });
   const items = [
-    ['01', '入门 · 为什么需要 KV Cache', 'O(n²)→O(n) 的取舍，与三条核心设计'],
-    ['02', '基础 · 核心概念速览', 'Block / block_table / 链式哈希 / ref_cnt'],
-    ['03', '核心 · 五层架构全景', '物理层 → 块池 → 管理器 → 协调器 → 门面'],
-    ['04', '进阶 · 一条请求的旅程', '示例 R：prefill / decode / 缓存 / 逆序释放'],
-    ['05', '专家 · 设计要点与扩展', '八条设计哲学 + 其他注意力类型']
+    ['01', '入门 · 为什么需要 KV Cache', 'O(n²)→O(n) 的取舍、显存账本、传统方案三大浪费与论文成绩单', '5 页'],
+    ['02', '基础 · 核心概念速览', 'Block / block_table / 链式哈希 / ref_cnt · OS 分页类比 · PagedAttention 图解', '6 页'],
+    ['03', '核心 · 五层架构逐层拆解', '物理层 → 块池 → 管理器 → 协调器 → 门面，含 CoW 与两阶段分配', '8 页'],
+    ['04', '进阶 · 一条请求的旅程', '示例请求 R 全程跟拍 + BlockPool 11 块逐步演算 + 抢占与主循环', '8 页'],
+    ['05', '专家 · 设计要点与扩展', '八条设计哲学、扩展类型、自测八问、源码地图与参考资料', '7 页']
   ];
-  let y = 2.12;
+  let y = 2.10;
   items.forEach((it, i) => {
     const bgc = i === 3 ? TEAL_BG : WHITE;
-    box(s, M, y, CW, 0.58, { fill: bgc, noLine: false, lineW: 0.75 });
-    s.addText(it[0], { x: M + 0.12, y, w: 1.1, h: 0.58, align: 'center', valign: 'middle', fontFace: MF, fontSize: 18, bold: true, color: TEAL });
-    s.addText(it[1], { x: M + 1.45, y: y + 0.06, w: 5.0, h: 0.4, valign: 'middle', fontFace: BF, fontSize: 13.5, bold: true, color: INK });
-    s.addText(it[2], { x: M + 1.45, y: y + 0.4, w: 6.3, h: 0.3, valign: 'middle', fontFace: BF, fontSize: 9.5, color: MUTED });
-    s.addShape(pres.shapes.RIGHT_ARROW, { x: 8.9, y: y + 0.18, w: 0.52, h: 0.22, fill: { color: TEAL2 }, line: { color: WHITE, width: 0 } });
-    y += 0.67;
+    box(s, M, y, CW, 0.57, { fill: bgc, noLine: false, lineW: 0.75 });
+    s.addText(it[0], { x: M + 0.12, y, w: 1.1, h: 0.57, align: 'center', valign: 'middle', fontFace: MF, fontSize: 17, bold: true, color: TEAL });
+    s.addText(it[1], { x: M + 1.45, y: y + 0.05, w: 5.0, h: 0.28, valign: 'middle', fontFace: BF, fontSize: 12.5, bold: true, color: INK });
+    s.addText(it[2], { x: M + 1.45, y: y + 0.32, w: 6.9, h: 0.22, valign: 'middle', fontFace: BF, fontSize: 8.5, color: MUTED, fit: 'shrink' });
+    s.addText(it[3], { x: 8.5, y, w: 0.55, h: 0.57, align: 'center', valign: 'middle', fontFace: MF, fontSize: 9, color: MUTED });
+    s.addShape(pres.shapes.RIGHT_ARROW, { x: 9.06, y: y + 0.17, w: 0.36, h: 0.22, fill: { color: TEAL2 }, line: { color: WHITE, width: 0 } });
+    y += 0.61;
   });
-  analogyChip(s, M + 0.05, 5.0, 6.6, '学习建议', '每模块先看“是什么 / 为什么”，再进“结构”，最后落到源码调用点');
   footer(s);
   s.render();
 })();
 
 // ============================================================
-// SECTION DIVIDER
+// SECTION DIVIDER (with progress dots + learning points)
 // ============================================================
-function divider(num, title, sub, analogyText) {
+function divider(num, title, sub, analogyText, learns) {
   const s = newSlide(INK_BG);
-  blockGrid(s, 0.7, 0.7, 0.2, 0.1, [TEAL, TEAL2, AMBER, MUTED]);
-  s.addText('MODULE ' + num + ' · DEEP DIVE', { x: 0.8, y: 1.55, w: 3, h: 0.3, fontFace: MF, fontSize: 11, color: '7FA4B5', charSpacing: 1 });
-  s.addShape(pres.shapes.RECTANGLE, { x: 0.85, y: 1.9, w: 0.14, h: 2.0, fill: { color: AMBER } });
-  s.addText(num, { x: 1.25, y: 1.6, w: 1.9, h: 1.5, fontFace: TF, fontSize: 74, bold: true, color: TEAL2, charSpacing: 4 });
-  s.addText(title, { x: 2.95, y: 1.78, w: 6.4, h: 0.95, fontFace: TF, fontSize: 30, bold: true, color: WHITE, charSpacing: 2 });
-  s.addText(sub, { x: 2.95, y: 2.9, w: 6.5, h: 0.55, fontFace: BF, fontSize: 12.5, color: 'C9E0EA' });
-  if (analogyText) s.addText('💡 ' + analogyText, { x: 2.95, y: 3.7, w: 6.5, h: 0.4, fontFace: BF, fontSize: 11.5, color: AMBER });
-  blockGrid(s, 8.6, 4.55, 0.3, 0.1, ['1B3E5F', '1B3E5F', TEAL2, '1B3E5F']);
+  blockGrid(s, 0.7, 0.62, 0.16, 0.07, [TEAL, TEAL2, AMBER, MUTED]);
+  const modIdx = ['01', '02', '03', '04', '05'].indexOf(num);
+  for (let i = 0; i < 5; i++) {
+    s.addShape(pres.shapes.OVAL, { x: 1.35 + i * 0.3, y: 0.66, w: 0.13, h: 0.13, fill: { color: i === modIdx ? AMBER : '2E4A66' }, line: { color: WHITE, width: 0 } });
+  }
+  s.addText('MODULE ' + num + ' · DEEP DIVE', { x: 0.8, y: 1.42, w: 3, h: 0.3, fontFace: MF, fontSize: 11, color: '7FA4B5', charSpacing: 1 });
+  s.addShape(pres.shapes.RECTANGLE, { x: 0.85, y: 1.78, w: 0.14, h: 1.9, fill: { color: AMBER } });
+  s.addText(num, { x: 1.25, y: 1.5, w: 1.9, h: 1.4, fontFace: TF, fontSize: 70, bold: true, color: TEAL2, charSpacing: 4 });
+  s.addText(title, { x: 2.95, y: 1.66, w: 6.4, h: 0.9, fontFace: TF, fontSize: 29, bold: true, color: WHITE, charSpacing: 2 });
+  s.addText(sub, { x: 2.95, y: 2.66, w: 6.5, h: 0.5, fontFace: BF, fontSize: 12.5, color: 'C9E0EA' });
+  if (analogyText) s.addText('💡 ' + analogyText, { x: 2.95, y: 3.3, w: 6.5, h: 0.38, fontFace: BF, fontSize: 11.5, color: AMBER });
+  if (learns) {
+    FOOTER_ZONE = true;
+    s.addText('本模块你将学到', { x: 2.95, y: 3.85, w: 3, h: 0.3, fontFace: BF, fontSize: 10.5, bold: true, color: TEAL2, charSpacing: 1 });
+    learns.forEach((t, i) => {
+      s.addText('· ' + t, { x: 3.1, y: 4.16 + i * 0.33, w: 6.2, h: 0.3, fontFace: BF, fontSize: 10.5, color: 'C9E0EA' });
+    });
+  }
+  blockGrid(s, 8.6, 4.7, 0.28, 0.09, ['1B3E5F', '1B3E5F', TEAL2, '1B3E5F']);
+  FOOTER_ZONE = false;
   s.render();
 }
 
-function endSlide({ title, big, note }) {
-  return divider('FIN', title || '谢谢聆听', note || '愿你也能亲手读懂内核源码', '把抽象的内存管理讲成身边的故事');
-}
-
 // ============================================================
-// MODULE 01 — MOTIVATION
+// MODULE 01 — MOTIVATION (5 pages)
 // ============================================================
-divider('01', '为什么需要 KV Cache', '自回归推理的显存难题与三条核心解法', 'KV Cache ≈ 小说“读书笔记”：重看前面不用重读');
+divider('01', '为什么需要 KV Cache', '自回归推理的显存难题、三大浪费与三条核心解法', 'KV Cache ≈ 小说"读书笔记"：重看前面不用重读', [
+  'K / V 是什么：注意力的"标签"与"内容"',
+  '不算代价 O(n²)、算了代价是显存：一笔显存账',
+  'PagedAttention 论文：60-80% 浪费如何降到 <4%'
+]);
 
-(function why() {
+(function kvWhat() {
   const s = newSlide();
-  header(s, '模块 01 · 动机', 'O(n²) 重算 → O(n) 缓存', { sub: '自回归推理：每个新 token 都要用到前面所有 token 的 K / V' });
-
-  // left complexity block
-  box(s, M, 2.15, 4.35, 1.7, { fill: 'EAF0F2' });
-  s.addText('逐 token 生成 = 每步都要算 attention', { x: M + 0.2, y: 2.35, w: 4.0, h: 0.4, fontFace: BF, fontSize: 12.5, bold: true, color: INK });
-  s.addText('若不缓存：第 n 个 token 要把前 n 个 token 的 K/V 全部重算', { x: M + 0.2, y: 2.78, w: 4.0, h: 0.6, fontFace: BF, fontSize: 10.5, color: BODY });
-  // O formula
-  chip(s, M + 0.2, 3.15, 1.8, 0.5, 'O(n²)', 'C9DDE5', INK, 13);
-  s.addShape(pres.shapes.RIGHT_ARROW, { x: M + 2.05, y: 3.3, w: 0.5, h: 0.2, fill: { color: MUTED }, line: { color: WHITE, width: 0 } });
-  chip(s, M + 2.62, 3.15, 1.55, 0.5, 'O(n)', TEAL, WHITE, 13);
-  analogyChip(s, M + 0.05, 3.62, 4.4, '类比', '不缓存 = 每次重抄；缓存 = 直接翻草稿');
-
-  // right three principles
-  const principles = [
-    ['①', 'PagedAttention 分页', '切块分配、回收、共享，解决内存碎片', TEAL],
-    ['②', '逻辑与物理分离', '调度只操作 block_id 整数，零显存拷贝', TEAL_DARK],
-    ['③', '前缀缓存 + 引用计数', '相同前缀共享，LRU 决定驱逐顺序', TEAL2]
-  ];
-  let y = 2.15;
-  principles.forEach(p => {
-    box(s, 5.0, y, 4.5, 0.94, { fill: WHITE });
-    chip(s, 5.2, y + 0.2, 0.54, 0.54, p[0], p[3], WHITE, 14);
-    s.addText([
-      para(p[1], { fontSize: 12.5, bold: true, color: INK }),
-      para(p[2], { fontSize: 9.5, color: MUTED, breakLine: true })
-    ], { x: 5.9, y: y + 0.08, w: 3.5, h: 0.8, valign: 'middle', fontFace: BF });
-    y += 1.04;
+  header(s, '模块 01 · 起点', 'K 和 V 到底是什么？', { sub: '一切从注意力说起：生成每个新 token，都要"回看"前面所有 token' });
+  // left: QKV explanation
+  box(s, M, 2.1, 4.55, 1.62, { fill: WHITE });
+  s.addText('注意力 = 拿着问题去查笔记', { x: M + 0.18, y: 2.2, w: 4.2, h: 0.34, fontFace: BF, fontSize: 12.5, bold: true, color: INK });
+  s.addText([
+    para('Q（Query）：当前 token 的"提问"', { fontSize: 10, color: TEAL_DARK, bold: true }),
+    para('K（Key）：每个历史 token 的"索引标签"', { fontSize: 10, color: TEAL_DARK, bold: true }),
+    para('V（Value）：每个历史 token 的"内容摘要"', { fontSize: 10, color: TEAL_DARK, bold: true, breakLine: true }),
+    para('新 token 的表示 = 所有 V 按 Q·K 相关度加权求和', { fontSize: 9.5, color: BODY, breakLine: true })
+  ], { x: M + 0.18, y: 2.56, w: 4.25, h: 1.1, valign: 'top' });
+  // right: autoregressive loop
+  box(s, 5.2, 2.1, 4.3, 1.62, { fill: 'EDF4F5', line: TEAL, lineW: 1 });
+  s.addText('自回归：一次只生成 1 个 token', { x: 5.38, y: 2.2, w: 4.0, h: 0.34, fontFace: BF, fontSize: 12.5, bold: true, color: TEAL_DARK });
+  const words = ['我', '爱', '北', '京', '→?'];
+  let wx = 5.42;
+  words.forEach((w, i) => {
+    box(s, wx, 2.62, 0.62, 0.42, { fill: i === 4 ? AMBER : TEAL2, noLine: true });
+    s.addText(w, { x: wx, y: 2.62, w: 0.62, h: 0.42, align: 'center', valign: 'middle', fontFace: BF, fontSize: 11, bold: true, color: WHITE });
+    wx += 0.7;
   });
+  s.addText('预测"安"时，要同时看"我/爱/北/京"四个 token 的 K 和 V；每生成一步，历史 K/V 都要再被用到一次', { x: 5.38, y: 3.1, w: 3.95, h: 0.56, fontFace: BF, fontSize: 9, color: BODY });
+  // bottom: the key question
+  box(s, M, 3.85, CW, 0.62, { fill: INK_BG, noLine: true });
+  s.addText([
+    para('核心矛盾：', { fontSize: 11, bold: true, color: AMBER }),
+    para('历史 token 的 K / V 在生成过程中从不改变，但每一步都要用 —— 重算它，还是存下来？', { fontSize: 11, color: WHITE })
+  ], { x: M + 0.25, y: 3.85, w: CW - 0.5, h: 0.62, valign: 'middle' });
+  analogyChip(s, M + 0.05, 4.66, 8.9, '生活化类比：K/V = 每个词的"索引卡片 + 内容摘录"，卡片留在桌上就是 KV Cache');
+  footer(s);
+  s.render();
+})();
 
+(function onSquare() {
+  const s = newSlide();
+  header(s, '模块 01 · 不缓存的代价', 'O(n²) 重算：长度一长就爆炸', { sub: '若不缓存：生成第 n 个 token，要把前 n 个 token 的 K/V 全部重新投影一遍' });
+  // left: computing example
+  exampleCard(s, M, 2.12, 4.5, 1.85, '算一笔账：1000 token 序列，完整生成一遍', [
+    '不缓存：每步重算全部历史 →',
+    '  1+2+…+1000 ≈ 50 万次 token 投影',
+    '缓存后：每个 token 只算 1 次',
+    '  → 共 1000 次',
+    '差距 ≈ 500 倍，且序列越长差距按平方扩大',
+    '长度 2 倍 → 代价约 4 倍（O(n²) 的含义）'
+  ], { mono: false, fs: 9 });
+  // middle chips
+  box(s, M, 4.05, 4.5, 0.62, { fill: 'EAF0F2', noLine: true });
+  chip(s, M + 0.25, 4.14, 1.85, 0.42, '不缓存 O(n²)', 'C9DDE5', INK, 11);
+  s.addShape(pres.shapes.RIGHT_ARROW, { x: M + 2.16, y: 4.26, w: 0.42, h: 0.18, fill: { color: MUTED }, line: { color: WHITE, width: 0 } });
+  chip(s, M + 2.64, 4.14, 1.7, 0.42, '缓存 O(n)', TEAL, WHITE, 11);
+  // right: cooking analogy + decision
+  box(s, 5.2, 2.12, 4.3, 1.55, { fill: WHITE });
+  s.addText('做饭类比', { x: 5.38, y: 2.2, w: 3.9, h: 0.32, fontFace: BF, fontSize: 12, bold: true, color: INK });
+  s.addText('不缓存 = 每加一味新料，就把整锅汤倒掉、从头重熬一遍；缓存 = 熬好的汤底留着，只加新料。', { x: 5.38, y: 2.54, w: 3.95, h: 1.0, fontFace: BF, fontSize: 10, color: BODY });
+  box(s, 5.2, 3.75, 4.3, 0.92, { fill: TEAL_BG, noLine: true });
+  s.addText('这就是 KV Cache 的定义', { x: 5.38, y: 3.83, w: 3.9, h: 0.3, fontFace: BF, fontSize: 11.5, bold: true, color: TEAL_DARK });
+  s.addText('把每个 token 每一层的 K、V 向量算好后就地保存；后续每步直接读取，不再重算。', { x: 5.38, y: 4.15, w: 3.95, h: 0.48, fontFace: BF, fontSize: 9.5, color: BODY });
+  takeaway(s, 'KV Cache 的本质：用"存下来的显存"换"不用重算的时间"—— 剩下的问题全是怎么把这笔显存管好', 4.76, 0.34);
+  footer(s);
+  s.render();
+})();
+
+(function memoryBill() {
+  const s = newSlide();
+  header(s, '模块 01 · 缓存的代价', '一笔显存账：KV Cache 能吃多少？', { sub: '公式：每 token KV 字节 = 2(K+V) × 层数 × KV头数 × head_dim × 每元素字节' });
+  // left: formula + Llama-7B worked example
+  exampleCard(s, M, 2.12, 4.7, 2.1, '代入 Llama-7B（32 层 · 32 KV头 · head_dim 128 · bf16=2B）', [
+    '每 token：2 × 32 × 32 × 128 × 2 = 512 KiB',
+    '一个请求 4K 上下文：512 KiB × 4096 = 2 GB',
+    '一个请求 32K 上下文：= 16 GB',
+    '而模型权重本身（bf16）才约 13 GB ——',
+    '一条长请求的 KV 竟比整个模型还大！',
+    '并发 10 条长请求：光 KV 就要 160 GB'
+  ], { fs: 9.5 });
+  // right: MHA/MQA/GQA table
+  s.addText('省显存的第一招：减少 KV 头数', { x: 5.35, y: 2.12, w: 4.1, h: 0.32, fontFace: BF, fontSize: 12, bold: true, color: INK });
+  const head = ['方案', 'KV 头数', '每 token KV', '代表模型'];
+  const widths = [0.95, 0.9, 1.25, 1.5];
+  gridHead(s, 5.35, 2.5, head, widths, 0.36);
+  const rows = [
+    ['MHA', '32 (=Q)', '512 KiB', 'Llama-7B'],
+    ['GQA', '8 (÷4)', '128 KiB', 'Llama-3.1-70B'],
+    ['MQA', '1 (÷32)', '16 KiB', '部分小模型'],
+    ['MLA', '低秩 latent', '≈64 KiB', 'DeepSeek-V3']
+  ];
+  let y = 2.9;
+  rows.forEach((r, ri) => {
+    gridRow(s, 5.35, y, widths, r, ri, { h: 0.36, fsAll: 8.5, aligns: ['center', 'center', 'center', 'center'], mono: [0, 2] });
+    y += 0.39;
+  });
+  box(s, 5.35, 4.48, 4.05, 0.3, { fill: TEAL_BG, noLine: true });
+  s.addText('MLA：不存 K/V，存压缩的 latent 向量（模块 05 展开）', { x: 5.45, y: 4.48, w: 3.9, h: 0.3, align: 'center', valign: 'middle', fontFace: BF, fontSize: 8, color: TEAL_DARK });
+  analogyChip(s, M + 0.05, 4.3, 4.6, '类比：KV Cache = 推理的"房租"，随并发×长度上涨');
+  takeaway(s, 'KV Cache 是推理显存第一大户，且随 并发 × 上下文长度 线性膨胀 —— 所以它值得一整套专门的管理机制', 4.82, 0.32);
+  footer(s);
+  s.render();
+})();
+
+(function threeWastes() {
+  const s = newSlide();
+  header(s, '模块 01 · 传统方案的痛', '连续存储的三大浪费：实测 60-80% 显存白用', { sub: 'PagedAttention 论文（SOSP 2023）实测：现有系统仅 20.4%~38.2% 的 KV 显存真正存了有效 token' });
+  // waste bar visualization
+  box(s, M, 2.14, CW, 0.78, { fill: WHITE });
+  s.addText('一条 2048 槽位的连续 KV 显存（实际只用 300 token）', { x: M + 0.15, y: 2.2, w: 6.5, h: 0.28, fontFace: BF, fontSize: 9.5, bold: true, color: INK });
+  // effective part
+  s.addShape(pres.shapes.RECTANGLE, { x: M + 0.15, y: 2.52, w: 1.15, h: 0.3, fill: { color: TEAL2 }, line: { color: WHITE, width: 0 } });
+  s.addShape(pres.shapes.RECTANGLE, { x: M + 1.3, y: 2.52, w: 8.15, h: 0.3, fill: { color: RED }, line: { color: WHITE, width: 0 } });
+  s.addText('有效 14.6%', { x: M + 0.15, y: 2.52, w: 1.15, h: 0.3, align: 'center', valign: 'middle', fontFace: BF, fontSize: 7.5, bold: true, color: WHITE });
+  s.addText('预留未用 + 内部碎片 + 外部碎片 ≈ 85% 浪费（极端示例；论文实测均值 60-80%）', { x: M + 1.5, y: 2.52, w: 7.8, h: 0.3, valign: 'middle', fontFace: BF, fontSize: 8.5, bold: true, color: WHITE });
+  // three wastes cards
+  const wastes = [
+    ['① 按最大长度预留', '未知生成长度 → 一次性预留 max_len 槽位。生成 200 token 也占了 2048 的坑', 'Reserved'],
+    ['② 内部碎片', '槽位按 2 的幂分配，实际 token 数对不齐 → 每段末尾总有一截用不上', 'Internal'],
+    ['③ 外部碎片', '不同请求长短不一、来了又走 → 显存里到处是"空洞"，新的长序列放不进', 'External']
+  ];
+  let x = M;
+  wastes.forEach(w => {
+    box(s, x, 3.08, 2.93, 1.28, { fill: 'FDF7F7', line: RED, lineW: 0.9 });
+    s.addText(w[0], { x: x + 0.12, y: 3.18, w: 2.7, h: 0.3, fontFace: BF, fontSize: 10.5, bold: true, color: RED });
+    s.addText(w[1], { x: x + 0.12, y: 3.5, w: 2.7, h: 0.6, fontFace: BF, fontSize: 8.5, color: BODY });
+    chip(s, x + 0.12, 4.06, 1.1, 0.22, w[2], RED_BG, RED, 7.5);
+    x += 3.03;
+  });
+  analogyChip(s, M + 0.05, 4.42, 8.9, '类比：老式图书馆给每位读者"预留整面墙书架"，哪怕只借 3 本书');
+  takeaway(s, '浪费的显存 = 少跑的并发 = 低吞吐 —— 解决方案藏在操作系统里：分页（Paging）', 4.84, 0.3);
+  footer(s);
+  s.render();
+})();
+
+(function threeDesigns() {
+  const s = newSlide();
+  header(s, '模块 01 · 解法总览', '三条核心设计 + 一份成绩单', { sub: 'vLLM 的答案：PagedAttention 分页 + 逻辑物理分离 + 前缀缓存共享' });
+  const principles = [
+    ['①', 'PagedAttention 分页', 'KV 切成固定大小块（如 16 token/块），按需分配、用完即还，碎片 <4%', TEAL],
+    ['②', '逻辑与物理分离', '调度器只操作 block_id 整数，物理张量一次申请不再动 —— 零显存拷贝', TEAL_DARK],
+    ['③', '前缀缓存 + 引用计数', '相同前缀共享同一批块（ref_cnt 计数），LRU 决定驱逐顺序', TEAL2]
+  ];
+  let y = 2.12;
+  principles.forEach(p => {
+    box(s, M, y, 5.35, 0.76, { fill: WHITE });
+    chip(s, M + 0.16, y + 0.12, 0.52, 0.52, p[0], p[3], WHITE, 14);
+    s.addText([
+      para(p[1], { fontSize: 11.5, bold: true, color: INK }),
+      para(p[2], { fontSize: 8.5, color: MUTED, breakLine: true })
+    ], { x: M + 0.84, y: y + 0.05, w: 4.4, h: 0.66, valign: 'middle', fontFace: BF });
+    y += 0.88;
+  });
+  // right: report card
+  box(s, 6.05, 2.12, 3.45, 2.9, { fill: INK_BG, noLine: true, shadow: true });
+  s.addText('论文成绩单（SOSP 2023）', { x: 6.25, y: 2.24, w: 3.1, h: 0.32, fontFace: TF, fontSize: 13, bold: true, color: AMBER });
+  const stats = [
+    ['KV 显存浪费', '60-80% → <4%'],
+    ['吞吐提升', '2-4 ×'],
+    ['Beam Search 省显存', '55.2% / 66.3%'],
+    ['长共享前缀吞吐', '3.58 ×']
+  ];
+  stats.forEach((st, i) => {
+    s.addText(st[0], { x: 6.3, y: 2.66 + i * 0.56, w: 1.9, h: 0.3, fontFace: BF, fontSize: 9.5, color: 'C9E0EA', valign: 'middle' });
+    s.addText(st[1], { x: 8.05, y: 2.6 + i * 0.56, w: 1.35, h: 0.36, align: 'right', valign: 'middle', fontFace: MF, fontSize: 11, bold: true, color: TEAL2 });
+  });
+  s.addText('对比对象：FasterTransformer、Orca', { x: 6.25, y: 4.78, w: 3.1, h: 0.24, fontFace: BF, fontSize: 7.5, color: '7FA4B5' });
+  analogyChip(s, M + 0.05, 4.72, 5.3, '类比：整面墙书架 → 按需格子 + 共享书区');
   footer(s);
   s.render();
 })();
 
 // ============================================================
-// MODULE 02 — CORE CONCEPTS
+// MODULE 02 — CORE CONCEPTS (6 pages)
 // ============================================================
-divider('02', '基础 · 核心概念速览', 'Block / block_table / 链式哈希 / ref_cnt', '物理块 = 练习册，哈希块 = 单元，读书笔记 = KV 缓存');
+divider('02', '基础 · 核心概念速览', 'Block / block_table / 链式哈希 / ref_cnt，配 OS 分页类比', '物理块 = 练习册，block_table = 目录页，链式哈希 = 单元指纹', [
+  '六个"积木词"：后面所有内容的最小语义单元',
+  '操作系统分页思想如何平移到 GPU 显存',
+  '一张图看懂 PagedAttention：逻辑连续、物理离散'
+]);
 
 (function glossary() {
   const s = newSlide();
-  header(s, '模块 02 · 概念', '先记住六个“积木词”', { sub: '它们是后续理解五层架构的最小语义单元' });
+  header(s, '模块 02 · 概念', '先记住六个"积木词"', { sub: '它们是理解五层架构的最小语义单元 —— 建议配合右侧例子记忆' });
   const rows = [
-    ['KVCacheBlock', '逻辑块：只含 block_id 与元数据，不含显存指针', '练习册里的一个空页'],
+    ['KVCacheBlock', '逻辑块：只含 block_id 与元数据，不含任何显存指针', '练习册里的一个空页'],
     ['block_id', '全局编号 [0, N-1]，= 物理张量第 0 维行号', '书架上的编号'],
-    ['block_size', '一个块容纳的 token 数（如 16）', '每页能写多少字'],
+    ['block_size', '一个块容纳的 token 数（vLLM 默认 16）', '每页能写多少字'],
     ['num_blocks', 'GPU 总块数 = 可用显存 ÷ 单块字节数', '练习册总共多少页'],
-    ['null_block', 'block_id=0 的占位块，不分配 / 不释放', '书末的空白页，仅占位'],
-    ['ref_cnt', '引用计数：多少请求在用，归零才回收', '同一页被几个同学借阅']
+    ['null_block', 'block_id=0 的占位块，不分配 / 不释放，仅对齐长度', '永远空着的 0 号柜'],
+    ['ref_cnt', '引用计数：多少请求在用，归零才可回收', '同一页被几个同学借阅']
   ];
   const head = ['术语', '含义（结合源码）', '一句话类比'];
   const widths = [1.9, 4.7, 2.4];
-  const tbl = rows.map(r => [head ? r.concat([])[0] : r[0], r[1], r[2]]);
-  // build grid manually
-  let y = 2.2;
-  // header
-  head.forEach((h, i) => {
-    box(s, M + (i === 0 ? 0 : (i === 1 ? widths[0] : widths[0] + widths[1])), y, widths[i], 0.42, { fill: TEAL_DARK, noLine: true });
-    s.addText(h, { x: M + (i === 0 ? 0 : (i === 1 ? widths[0] : widths[0] + widths[1])), y, w: widths[i], h: 0.42, align: 'center', valign: 'middle', fontFace: BF, fontSize: 11.5, bold: true, color: WHITE });
-  });
-  y += 0.46;
+  gridHead(s, M, 2.12, head, widths, 0.38);
+  let y = 2.54;
   rows.forEach((r, ri) => {
     const bgc = ri % 2 === 0 ? WHITE : 'EDF4F5';
-    box(s, M, y, CW, 0.5, { fill: bgc, noLine: true });
-    s.addText(r[0], { x: M + 0.1, y, w: widths[0] - 0.15, h: 0.5, valign: 'middle', fontFace: MF, fontSize: 11.5, bold: true, color: TEAL_DARK });
-    s.addText(r[1], { x: M + widths[0], y, w: widths[1], h: 0.5, valign: 'middle', fontFace: BF, fontSize: 10, color: INK });
-    s.addText(r[2], { x: M + widths[0] + widths[1], y, w: widths[2], h: 0.5, valign: 'middle', fontFace: BF, fontSize: 9.5, color: AMBER_DK, align: 'center' });
-    y += 0.53;
+    box(s, M, y, CW, 0.36, { fill: bgc, noLine: true });
+    s.addText(r[0], { x: M + 0.1, y, w: widths[0] - 0.15, h: 0.36, valign: 'middle', fontFace: MF, fontSize: 10.5, bold: true, color: TEAL_DARK });
+    s.addText(r[1], { x: M + widths[0], y, w: widths[1], h: 0.36, valign: 'middle', fontFace: BF, fontSize: 9, color: INK });
+    s.addText(r[2], { x: M + widths[0] + widths[1], y, w: widths[2], h: 0.36, valign: 'middle', fontFace: BF, fontSize: 8.5, color: AMBER_DK, align: 'center' });
+    y += 0.38;
   });
-  box(s, M, y - 0.03, CW, 0.36, { fill: TEAL_BG, noLine: true });
-  s.addText('记忆锚点：一个 block_id = 在所有层张量的同一行，存的是“同一组 token”的 K/V', { x: M + 0.2, y: y - 0.03, w: CW - 0.4, h: 0.36, align: 'center', valign: 'middle', fontFace: BF, fontSize: 10.5, color: TEAL_DARK });
+  box(s, M, 4.82, CW, 0.3, { fill: AMBER_BG, line: AMBER, lineW: 0.75 });
+  s.addText('例 · Llama-7B（16 GB 可用）：单块单层 256 KB × 32 层 = 8 MB/块 → num_blocks = 16 GB ÷ 8 MB = 2048 块；0 号为 null_block，实际可分配 2047 块', { x: M + 0.15, y: 4.82, w: CW - 0.3, h: 0.3, valign: 'middle', fontFace: BF, fontSize: 8, color: '7A5A26' });
   footer(s);
   s.render();
 })();
 
-(function blockTableHash() {
+(function osAnalogy() {
   const s = newSlide();
-  header(s, '模块 02 · 概念', '两把钥匙：block_table 与链式哈希', { sub: '一个解决“怎么找到我的 K/V”，一个解决“怎么复用别人的 K/V”' });
+  header(s, '模块 02 · 类比', 'PagedAttention 的灵感：操作系统虚拟内存', { sub: '论文原话："受操作系统虚拟内存分页机制启发" —— 概念几乎可以一一对应' });
+  const head = ['操作系统虚拟内存', 'vLLM PagedAttention', '一句话解释'];
+  const widths = [2.6, 2.9, 3.5];
+  gridHead(s, M, 2.14, head, widths, 0.42);
+  const rows = [
+    ['进程 Process', '请求 Request', '独立占用内存的主体'],
+    ['虚拟地址空间', '逻辑块序列', '看起来连续的"假"地址'],
+    ['页 Page', 'KV 块 block（16 token）', '固定大小的最小管理单位'],
+    ['物理页框 Frame', '物理块（张量行）', '真实的显存格子'],
+    ['页表 Page Table', 'block_table', '逻辑 → 物理的映射表'],
+    ['缺页中断', '分配新块 allocate', '不够用了就现申请'],
+    ['换出 Swap', '驱逐 Evict', '回收最久不用的页/块'],
+    ['共享内存', '前缀缓存共享 ref_cnt', '多个主体用同一份物理内存']
+  ];
+  let y = 2.52;
+  rows.forEach((r, ri) => {
+    gridRow(s, M, y, widths, r, ri, { h: 0.26, fsAll: 8.5, aligns: ['center', 'center', 'left'] });
+    y += 0.275;
+  });
+  analogyChip(s, M, 4.74, 8.9, '图书馆：老式"整面墙书架" → 新式"目录页 + 按需格子"');
+  footer(s);
+  s.render();
+})();
 
+(function pagedDiagram() {
+  const s = newSlide();
+  header(s, '模块 02 · 核心图', 'PagedAttention 图解：逻辑连续，物理离散', { sub: '一条 40 token 的序列（block_size=16）如何散落在不连续的显存格里' });
+  const LC = ['2AA6A0', 'E8A33D', '7B9EC4'];
+  // LEFT: logical blocks
+  s.addText('① 逻辑视角：序列切块', { x: M, y: 2.02, w: 2.6, h: 0.3, fontFace: BF, fontSize: 10.5, bold: true, color: INK });
+  const lbs = [
+    ['逻辑块 0 · T0-T15', '(16/16 满)', LC[0]],
+    ['逻辑块 1 · T16-T31', '(16/16 满)', LC[1]],
+    ['逻辑块 2 · T32-T39', '(8/16 半满)', LC[2]]
+  ];
+  lbs.forEach((b, i) => {
+    box(s, M, 2.38 + i * 0.56, 2.5, 0.46, { fill: WHITE, line: b[2], lineW: 1.2 });
+    s.addText([
+      para(b[0], { fontSize: 9, bold: true, color: INK }),
+      para(b[1], { fontSize: 7.5, color: MUTED })
+    ], { x: M + 0.1, y: 2.38 + i * 0.56, w: 2.3, h: 0.46, valign: 'middle', fontFace: BF });
+  });
+  // MIDDLE: block table
+  s.addText('② block_table', { x: 3.35, y: 2.02, w: 1.5, h: 0.3, fontFace: BF, fontSize: 10.5, bold: true, color: INK });
+  s.addText('（请求私有）', { x: 3.35, y: 2.26, w: 1.5, h: 0.24, fontFace: BF, fontSize: 8, color: MUTED });
+  lbs.forEach((b, i) => {
+    const pid = [7, 2, 11][i];
+    box(s, 3.35, 2.38 + i * 0.56, 1.3, 0.46, { fill: b[2], noLine: true });
+    s.addText('→ 物理 ' + pid, { x: 3.35, y: 2.38 + i * 0.56, w: 1.3, h: 0.46, align: 'center', valign: 'middle', fontFace: MF, fontSize: 11, bold: true, color: WHITE });
+    s.addShape(pres.shapes.RIGHT_ARROW, { x: 4.72, y: 2.5 + i * 0.56, w: 0.32, h: 0.2, fill: { color: b[2] }, line: { color: WHITE, width: 0 } });
+  });
+  // RIGHT: physical grid
+  s.addText('③ 物理视角：GPU 显存格子（共 16 块示意）', { x: 5.15, y: 2.02, w: 4.3, h: 0.3, fontFace: BF, fontSize: 10.5, bold: true, color: INK });
+  const gx0 = 5.15, gy0 = 2.38, cw = 0.92, ch = 0.4, gpx = 0.07, gpy = 0.08;
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      const id = r * 4 + c;
+      let fc = WHITE, tc = MUTED, lbl = String(id);
+      if (id === 7) { fc = LC[0]; tc = WHITE; lbl = '7\nT0-15'; }
+      else if (id === 2) { fc = LC[1]; tc = WHITE; lbl = '2\nT16-31'; }
+      else if (id === 11) { fc = LC[2]; tc = WHITE; lbl = '11\nT32-39'; }
+      else if (id === 0) { fc = 'E4E9EC'; tc = MUTED; lbl = '0 null'; }
+      box(s, gx0 + c * (cw + gpx), gy0 + r * (ch + gpy), cw, ch, { fill: fc, line: id === 0 ? MUTED : HAIR, lineW: 0.75 });
+      s.addText(lbl.replace('\n', ' · '), { x: gx0 + c * (cw + gpx), y: gy0 + r * (ch + gpy), w: cw, h: ch, align: 'center', valign: 'middle', fontFace: BF, fontSize: 8, bold: fc !== WHITE, color: tc });
+    }
+  }
+  s.addText('0 号 = null_block 占位 · 其余灰格 = 空闲，随时可被别的请求拿走', { x: 5.15, y: 4.32, w: 4.3, h: 0.26, fontFace: BF, fontSize: 8.5, color: MUTED });
+  box(s, M, 4.66, CW, 0.44, { fill: TEAL_BG, noLine: true });
+  s.addText([
+    para('三个直接收益：', { fontSize: 9.5, bold: true, color: TEAL_DARK }),
+    para('① 半满块也只占 1 个格子（块内碎片 <4%）  ② 物理位置随意 → 永无外部碎片  ③ 别的请求的表也可指向格子 7 → 前缀共享零拷贝', { fontSize: 8.5, color: BODY, breakLine: true })
+  ], { x: M + 0.2, y: 4.7, w: CW - 0.4, h: 0.38, valign: 'top', fontFace: BF });
+  footer(s);
+  s.render();
+})();
+
+(function twoKeys() {
+  const s = newSlide();
+  header(s, '模块 02 · 概念', '两把钥匙：block_table 与链式哈希', { sub: '一个解决"怎么找到我的 K/V"，一个解决"怎么复用别人的 K/V"' });
   // LEFT block_table
-  box(s, M, 2.15, 4.35, 0.5, { fill: TEAL_DARK, noLine: true });
-  s.addText('block_table — 请求 → 块 的映射', { x: M + 0.15, y: 2.15, w: 4.0, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 12, bold: true, color: WHITE });
-  s.addText('req_to_blocks[请求] = 一组 block_id 的有序列表，即 block_table', { x: M + 0.15, y: 2.75, w: 4.1, h: 0.6, fontFace: BF, fontSize: 10.5, color: BODY });
-  box(s, M + 0.15, 3.4, 4.05, 0.62, { fill: 'EDF4F5', line: TEAL, lineW: 1 });
-  s.addText('req_abc → [5, 12, 8, 33]', { x: M + 0.15, y: 3.4, w: 4.05, h: 0.62, align: 'center', valign: 'middle', fontFace: MF, fontSize: 14, bold: true, color: TEAL_DARK });
-  s.addText('forward 时用这些 id 作 fancy index，从 kv_caches[layer] 抓对应行', { x: M + 0.15, y: 4.1, w: 4.1, h: 0.5, fontFace: BF, fontSize: 9.5, color: MUTED });
-  analogyChip(s, M + 0.1, 4.62, 4.2, 'block_table', '一张“读书笔记”的目录页，按页码查内文');
-
+  box(s, M, 2.1, 4.35, 0.46, { fill: TEAL_DARK, noLine: true });
+  s.addText('block_table — 请求 → 块 的映射', { x: M + 0.15, y: 2.1, w: 4.0, h: 0.46, valign: 'middle', fontFace: BF, fontSize: 12, bold: true, color: WHITE });
+  s.addText('req_to_blocks[请求] = 一组 block_id 的有序列表，即 block_table', { x: M + 0.15, y: 2.66, w: 4.1, h: 0.42, fontFace: BF, fontSize: 10, color: BODY });
+  box(s, M + 0.15, 3.14, 4.05, 0.56, { fill: 'EDF4F5', line: TEAL, lineW: 1 });
+  s.addText('req_abc → [5, 12, 8, 33]', { x: M + 0.15, y: 3.14, w: 4.05, h: 0.56, align: 'center', valign: 'middle', fontFace: MF, fontSize: 14, bold: true, color: TEAL_DARK });
+  s.addText('forward 时用这些 id 作 fancy index，从 kv_caches[layer] 抓对应行', { x: M + 0.15, y: 3.76, w: 4.1, h: 0.42, fontFace: BF, fontSize: 9, color: MUTED });
+  exampleCard(s, M + 0.1, 4.24, 4.2, 0.82, '34 token 的请求', '切成 16+16+2：block_table = [5, 12, 8]；0~15 号 token 在物理块 5，16~31 在块 12，剩余 2 个在块 8（半满）', { fs: 8.5 });
   // RIGHT chained hash
-  box(s, 5.15, 2.15, 4.35, 0.5, { fill: TEAL, noLine: true });
-  s.addText('链式哈希 — 前缀缓存的核心', { x: 5.3, y: 2.15, w: 4.0, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 12, bold: true, color: WHITE });
-  s.addText('每个块哈希含“前一块的哈希”，相同前缀 → 相同哈希链', { x: 5.3, y: 2.75, w: 4.05, h: 0.6, fontFace: BF, fontSize: 10.5, color: BODY });
-  // hash chain boxes
-  const cx = 5.3, cy = 3.5, bw = 1.22, bh = 0.72;
+  box(s, 5.15, 2.1, 4.35, 0.46, { fill: TEAL, noLine: true });
+  s.addText('链式哈希 — 前缀缓存的核心', { x: 5.3, y: 2.1, w: 4.0, h: 0.46, valign: 'middle', fontFace: BF, fontSize: 12, bold: true, color: WHITE });
+  s.addText('每个块哈希含"前一块的哈希"，相同前缀 → 相同哈希链', { x: 5.3, y: 2.66, w: 4.05, h: 0.42, fontFace: BF, fontSize: 10, color: BODY });
+  const cx = 5.3, cy = 3.2, bw = 1.24, bh = 0.72;
   box(s, cx, cy, bw, bh, { fill: TEAL_BG, line: TEAL, lineW: 1.2 });
-  s.addText('H(b0)', { x: cx, y: cy + 0.04, w: bw, h: 0.28, align: 'center', fontFace: MF, fontSize: 11, bold: true, color: TEAL_DARK });
-  s.addText('hash(∅, tok0)'.replace('∅', 'seed'), { x: cx, y: cy + 0.3, w: bw, h: 0.3, align: 'center', fontFace: MF, fontSize: 8.5, color: MUTED });
+  s.addText('H(b0)', { x: cx, y: cy + 0.05, w: bw, h: 0.26, align: 'center', fontFace: MF, fontSize: 10.5, bold: true, color: TEAL_DARK });
+  s.addText('hash(seed, T0-15)', { x: cx, y: cy + 0.32, w: bw, h: 0.3, align: 'center', fontFace: MF, fontSize: 7.5, color: MUTED });
   [1, 2].forEach(i => {
     box(s, cx + i * (bw + 0.06), cy, bw, bh, { fill: TEAL_BG, line: TEAL, lineW: 1.2 });
-    s.addText('H(b' + i + ')', { x: cx + i * (bw + 0.06), y: cy + 0.04, w: bw, h: 0.28, align: 'center', fontFace: MF, fontSize: 11, bold: true, color: TEAL_DARK });
-    s.addText('hash(prev, toks)', { x: cx + i * (bw + 0.06), y: cy + 0.3, w: bw, h: 0.3, align: 'center', fontFace: MF, fontSize: 7.5, color: MUTED });
+    s.addText('H(b' + i + ')', { x: cx + i * (bw + 0.06), y: cy + 0.05, w: bw, h: 0.26, align: 'center', fontFace: MF, fontSize: 10.5, bold: true, color: TEAL_DARK });
+    s.addText(i === 1 ? 'hash(H(b0), T16-31)' : 'hash(H(b1), T32-33)', { x: cx + i * (bw + 0.06), y: cy + 0.32, w: bw, h: 0.3, align: 'center', fontFace: MF, fontSize: 6.8, color: MUTED });
   });
   [0, 1].forEach(i => {
     s.addShape(pres.shapes.RIGHT_ARROW, { x: cx + (i + 1) * bw + i * 0.06 + 0.01, y: cy + bh / 2 - 0.08, w: 0.05, h: 0.16, fill: { color: TEAL }, line: { color: WHITE, width: 0 } });
   });
-  s.addText('查找：从左到右逐个比对，遇 miss 即 break', { x: 5.3, y: 4.32, w: 4.05, h: 0.6, fontFace: BF, fontSize: 10, color: MUTED });
-  analogyChip(s, 5.2, 4.62, 4.25, '链式哈希', '从第一章读到第 29 页再往下都对得上，说明前缀已读过');
+  s.addText('查找：从左到右逐块比对，遇 miss 即 break（后面必然全 miss）', { x: 5.3, y: 3.98, w: 4.05, h: 0.4, fontFace: BF, fontSize: 9.5, color: MUTED });
+  exampleCard(s, 5.2, 4.42, 4.3, 0.64, '查表过程', 'H(b0) 命中物理块 → H(b1) 命中 → H(b2) miss → 停；命中 2 块 = 32 token 可直接复用', { fs: 8.5 });
+  footer(s);
+  s.render();
+})();
 
+(function hashChain() {
+  const s = newSlide();
+  header(s, '模块 02 · 深入', '链式哈希：像区块链一样"牵一发动全身"', { sub: 'BlockHash = hash(父块哈希, 本块 tokens, extra_keys)；链头种子 NONE_HASH 每次启动随机生成' });
+  // top: formula strip
+  box(s, M, 2.12, CW, 0.62, { fill: INK_BG, noLine: true });
+  s.addText([
+    para('H(b0) = H(seed,   T0..T15,  extra)      ', { fontFace: MF, fontSize: 10.5, color: TEAL2 }),
+    para('H(b1) = H(H(b0),  T16..T31, extra)      ', { fontFace: MF, fontSize: 10.5, color: TEAL2, breakLine: true }),
+    para('H(b2) = H(H(b1),  T32..T47, extra)   —— extra_keys 可挂 LoRA id / cache_salt', { fontFace: MF, fontSize: 10.5, color: TEAL2 })
+  ], { x: M + 0.25, y: 2.12, w: CW - 0.5, h: 0.62, valign: 'middle' });
+  // three properties
+  const props = [
+    ['同前缀 → 同哈希链', '两个请求只要前面内容一样，哈希就一样 → 可共享'],
+    ['改一处 → 全链变化', '第 2 个 token 不同，其后所有块的哈希全部改变'],
+    ['顺链查，miss 即停', '第一个 miss 后面必然全 miss，查找 O(命中长度)']
+  ];
+  let x = M;
+  props.forEach(p => {
+    box(s, x, 2.9, 2.93, 0.78, { fill: WHITE });
+    s.addText(p[0], { x: x + 0.12, y: 2.98, w: 2.7, h: 0.3, fontFace: BF, fontSize: 10, bold: true, color: TEAL_DARK });
+    s.addText(p[1], { x: x + 0.12, y: 3.28, w: 2.7, h: 0.36, fontFace: BF, fontSize: 8.5, color: BODY });
+    x += 3.03;
+  });
+  // fork example: request A and B
+  s.addText('分叉示例：请求 B 与请求 A 只有前 16 token 相同', { x: M, y: 3.78, w: 6.5, h: 0.26, fontFace: BF, fontSize: 11, bold: true, color: INK });
+  const chainA = [['H0', TEAL2, '命中'], ['H1', TEAL2, '命中'], ['H2', TEAL2, '命中']];
+  const chainB = [['H0', TEAL2, '命中'], ["H1'", RED, 'miss'], ["H2'", RED, 'miss']];
+  chainA.forEach((n, i) => {
+    box(s, M + i * 1.05, 4.06, 0.95, 0.36, { fill: 'EDF4F5', line: n[1], lineW: 1 });
+    s.addText(n[0], { x: M + i * 1.05, y: 4.06, w: 0.95, h: 0.36, align: 'center', valign: 'middle', fontFace: MF, fontSize: 9.5, bold: true, color: n[1] === RED ? RED : TEAL_DARK });
+  });
+  s.addText('请求 A：全部命中（前缀已在缓存）', { x: M + 3.3, y: 4.06, w: 3.2, h: 0.36, valign: 'middle', fontFace: BF, fontSize: 9, color: BODY });
+  chainB.forEach((n, i) => {
+    box(s, M + i * 1.05, 4.46, 0.95, 0.36, { fill: n[1] === RED ? RED_BG : 'EDF4F5', line: n[1], lineW: 1 });
+    s.addText(n[0], { x: M + i * 1.05, y: 4.46, w: 0.95, h: 0.36, align: 'center', valign: 'middle', fontFace: MF, fontSize: 9.5, bold: true, color: n[1] });
+  });
+  s.addText('请求 B：H0 命中共享 16 token，H1\' miss 即断 → 只共享前 16', { x: M + 3.3, y: 4.46, w: 3.6, h: 0.36, valign: 'middle', fontFace: BF, fontSize: 9, color: BODY });
+  box(s, M, 4.88, CW, 0.26, { fill: AMBER_BG, line: AMBER, lineW: 0.75, radius: 0.1 });
+  s.addText('类比：区块链 —— 每个新区块都记着前一区块的哈希，改写历史任何一笔，后面所有区块立即作废', { x: M + 0.15, y: 4.88, w: CW - 0.3, h: 0.26, align: 'center', valign: 'middle', fontFace: BF, fontSize: 8.5, bold: true, color: AMBER_DK });
   footer(s);
   s.render();
 })();
@@ -324,42 +637,48 @@ divider('02', '基础 · 核心概念速览', 'Block / block_table / 链式哈�
   let x = M;
   const bw2 = 1.62, gap = 0.12;
   steps.forEach((st, i) => {
-    box(s, x, 2.25, bw2, 0.95, { fill: WHITE, lineW: 1 });
-    s.addShape(pres.shapes.OVAL, { x: x + bw2 / 2 - 0.16, y: 2.34, w: 0.32, h: 0.32, fill: { color: st[2] }, line: { color: WHITE, width: 0 } });
-    s.addText(String(i + 1), { x: x + bw2 / 2 - 0.16, y: 2.34, w: 0.32, h: 0.32, align: 'center', valign: 'middle', fontFace: MF, fontSize: 11, bold: true, color: WHITE });
-    s.addText(st[0], { x: x + 0.05, y: 2.72, w: bw2 - 0.1, h: 0.28, align: 'center', fontFace: BF, fontSize: 10.5, bold: true, color: INK });
-    s.addText(st[1], { x: x + 0.06, y: 3.0, w: bw2 - 0.12, h: 0.36, align: 'center', fontFace: BF, fontSize: 8.5, color: MUTED });
-    if (i < steps.length - 1) s.addShape(pres.shapes.RIGHT_ARROW, { x: x + bw2 + 0.01, y: 2.62, w: 0.1, h: 0.2, fill: { color: TEAL2 }, line: { color: WHITE, width: 0 } });
+    box(s, x, 2.2, bw2, 0.95, { fill: WHITE, lineW: 1 });
+    s.addShape(pres.shapes.OVAL, { x: x + bw2 / 2 - 0.16, y: 2.29, w: 0.32, h: 0.32, fill: { color: st[2] }, line: { color: WHITE, width: 0 } });
+    s.addText(String(i + 1), { x: x + bw2 / 2 - 0.16, y: 2.29, w: 0.32, h: 0.32, align: 'center', valign: 'middle', fontFace: MF, fontSize: 11, bold: true, color: WHITE });
+    s.addText(st[0], { x: x + 0.05, y: 2.67, w: bw2 - 0.1, h: 0.28, align: 'center', fontFace: BF, fontSize: 10.5, bold: true, color: INK });
+    s.addText(st[1], { x: x + 0.06, y: 2.95, w: bw2 - 0.12, h: 0.36, align: 'center', fontFace: BF, fontSize: 8.5, color: MUTED });
+    if (i < steps.length - 1) s.addShape(pres.shapes.RIGHT_ARROW, { x: x + bw2 + 0.01, y: 2.57, w: 0.1, h: 0.2, fill: { color: TEAL2 }, line: { color: WHITE, width: 0 } });
     x += bw2 + gap;
   });
-  // bottom emphasis strip
-  box(s, M, 3.55, CW, 1.25, { fill: TEAL_BG });
-  s.addText('核心直觉', { x: M + 0.3, y: 3.7, w: 2, h: 0.4, fontFace: TF, fontSize: 14, bold: true, color: TEAL_DARK });
-  s.addText('调度器全程只操作 block_id（整数），不搬移任何显存；物理张量一次性申请好后不再变动，所有分配 / 共享 / 驱逐只改“引用计数 + 哈希表”。', { x: M + 0.3, y: 4.06, w: 8.4, h: 0.55, fontFace: BF, fontSize: 11, color: BODY });
-  s.addText('block_id = 物理张量第 0 维行号  —  用请求的一个 block_table，所有层共用', { x: M + 0.3, y: 4.6, w: 8.4, h: 0.3, fontFace: BF, fontSize: 10, color: TEAL_DARK, bold: true });
-  analogyChip(s, M + 0.1, 5.02, 6.0, '类比', '要用哪行搬哪行（按编号取书），而不是把整座图书馆搬进教室');
+  box(s, M, 3.44, CW, 1.0, { fill: TEAL_BG });
+  s.addText('核心直觉', { x: M + 0.3, y: 3.53, w: 2, h: 0.32, fontFace: TF, fontSize: 13.5, bold: true, color: TEAL_DARK });
+  s.addText([
+    para('调度器全程只操作 block_id（整数），不搬移任何显存；物理张量一次性申请好后不再变动，所有分配 / 共享 / 驱逐只改"引用计数 + 哈希表"。', { fontSize: 10, color: BODY, breakLine: true }),
+    para('block_id = 物理张量第 0 维行号 — 一个请求只有一张 block_table，所有层共用', { fontSize: 9.5, color: TEAL_DARK, bold: true })
+  ], { x: M + 0.3, y: 3.87, w: 8.4, h: 0.52, fontFace: BF });
+  exampleCard(s, M + 0.1, 4.52, 6.0, 0.58, '动手验证', '上例 req_abc 的 block_table=[5,12,8,33]：第 0 层取每张量第 5/12/8/33 行，第 31 层同样 —— 32 层用同一组行号', { fs: 8.5 });
+  analogyChip(s, 6.7, 4.61, 2.8, '类比：按编号取书，不搬图书馆');
   footer(s);
   s.render();
 })();
 
 // ============================================================
-// MODULE 03 — FIVE-LEVEL ARCHITECTURE
+// MODULE 03 — FIVE-LEVEL ARCHITECTURE (9 pages)
 // ============================================================
-divider('03', '核心 · 五层架构全景', '自上而下持有关系：门面 → 协调器 → 管理器 → 块池 → 物理张量', '读书笔记体系：目录页 → 章节编排 → 章节 → 单元页码 → 书架');
+divider('03', '核心 · 五层架构全景', '自上而下持有关系：门面 → 协调器 → 管理器 → 块池 → 物理张量', '读书笔记体系：目录页 → 章节编排 → 章节 → 单元页码 → 书架', [
+  '谁持有谁、谁对上暴露接口，一图理清',
+  '每层配"本层职责 + 数字例子"',
+  'CoW 复制与两阶段分配两个进阶机制'
+]);
 
 (function arch() {
   const s = newSlide();
   header(s, '模块 03 · 架构', '五层架构全景：谁持有谁，谁对上暴露接口', { sub: '调度器只需面对最顶层，其余各层用 block_id 贯通' });
   const layers = [
     ['Scheduler', '调用层', '调度器 · 唯一外部调用方', '36454F'],
-    ['KVCacheManager', '门面 L5', 'Scheduler 唯一入口', '0E7C7B'],
+    ['KVCacheManager', '门面 L5', 'Scheduler 唯一入口 · Drain 记账', '0E7C7B'],
     ['UnitaryCoordinator', '协调 L4', '单组透传 · 统一建 BlockPool', '2AA6A0'],
     ['FullAttentionManager', '管理 L3', '前缀查找 · CoW · req_to_blocks', '4FB3BF'],
     ['BlockPool', '块池 L2', 'LRU 队列 ｜ 哈希映射表', '55A6AC'],
     ['kv_caches[layer]', '物理 L1', 'torch 张量 · block_id==行号', '8FC9CD']
   ];
-  let y = 2.0;
-  const bandH = 0.4, bandGap = 0.05, LBLW = 2.0;
+  let y = 1.98;
+  const bandH = 0.38, bandGap = 0.04, LBLW = 2.0;
   layers.forEach((L, i) => {
     chip(s, M, y + bandH / 2 - 0.13, 1.75, 0.26, L[1], L[3], WHITE, 8);
     box(s, M + LBLW, y, CW - LBLW, bandH, { fill: WHITE, line: L[3], lineW: 1.1 });
@@ -368,426 +687,771 @@ divider('03', '核心 · 五层架构全景', '自上而下持有关系：门面
     if (i < layers.length - 1) s.addShape(pres.shapes.DOWN_ARROW, { x: M + LBLW + 0.35, y: y + bandH, w: 0.15, h: bandGap + 0.004, fill: { color: L[3] }, line: { color: WHITE, width: 0 } });
     y += bandH + bandGap;
   });
-  box(s, M, 4.8, CW, 0.34, { fill: TEAL_BG, noLine: true });
-  s.addText('自上而下持有：KVCacheManager → Coordinator → BlockPool + FullAttentionManager → req_to_blocks；BlockPool 持全部 KVCacheBlock，与 GPU 张量以 block_id 桥接。', { x: M + 0.2, y: 4.8, w: CW - 0.4, h: 0.34, align: 'center', valign: 'middle', fontFace: BF, fontSize: 9, color: TEAL_DARK });
+  exampleCard(s, M, 4.6, 5.9, 0.52, '贯穿例子（模块 04 展开）', '请求 R 走完五层：Scheduler 问门面要块 → 协调器透传 → 管理器查哈希命中 2 块 → 块池 touch+取新块 → 物理层对应行被读写', { fs: 8.3 });
+  box(s, 6.55, 4.6, 2.95, 0.52, { fill: TEAL_BG, noLine: true });
+  s.addText('自上而下持有；BlockPool 持全部 KVCacheBlock，与 GPU 张量以 block_id 桥接。', { x: 6.65, y: 4.6, w: 2.75, h: 0.52, valign: 'middle', fontFace: BF, fontSize: 8, color: TEAL_DARK });
   footer(s);
   s.render();
 })();
 
-// helper: level intro page used by 3 detail slides (physical / blockpool / manager)
-function levelIntro(title, sub, roles, skipFooter) {
+(function physicalInit() {
   const s = newSlide();
-  header(s, '模块 03 · 逐层', title, { sub });
-  // layer context on left, roles on right
-  box(s, M, 2.15, 2.2, 2.3, { fill: 'EDF4F5', line: TEAL, lineW: 1 });
-  s.addText('本层定位', { x: M + 0.12, y: 2.3, w: 2.0, h: 0.34, fontFace: BF, fontSize: 11.5, bold: true, color: TEAL_DARK });
-  s.addText(roles.status, { x: M + 0.14, y: 2.68, w: 1.95, h: 1.6, fontFace: BF, fontSize: 9.5, color: BODY });
-  return { s, roles };
-}
-
-(function physicalLayer() {
-  const s = newSlide();
-  header(s, '模块 03 · L1 物理层', '把“规格说明书”变成 GPU 上的张量', { sub: '一次性申请、按后端形状 reshape，之后不再变动' });
-  // 5 init steps boxes
+  header(s, '模块 03 · L1 物理层', '初始化五步：把"规格说明书"变成 GPU 张量', { sub: 'EngineCore._initialize_kv_caches()：一次性申请，之后不再变动' });
   const steps = [
-    ['① 产出 Spec', '每层 get_kv_cache_spec → FullAttentionSpec，全模型合成单组'],
-    ['② 测可用显存', 'profile_run 测量 available_memory（bytes）'],
-    ['③ 算 num_blocks', 'num_blocks = 可用显存 ÷ 单层 page_size ÷ 层数'],
-    ['④ 申请+reshape', '每层 torch.zeros → [num_blocks, heads, block_size, 2·head_dim]'],
-    ['⑤ 创建 BlockPool', 'KVCacheBlock(0..N-1)，block_id == 张量行号']
+    ['① 产出 Spec', '每层 get_kv_cache_spec → FullAttentionSpec（块大小/头数/精度），全模型合并成单组'],
+    ['② 测可用显存', 'profile_run：用 max_num_batched_tokens 个 dummy token 跑一遍前向，峰值之外的都是可用'],
+    ['③ 算 num_blocks', 'num_blocks = 可用显存 ÷ 单块单层字节 ÷ 层数（多组时取各组最小值对齐）'],
+    ['④ 申请 + reshape', '每层 torch.zeros(int8 字节池) → reshape 成 [num_blocks, heads, block_size, 2·head_dim]'],
+    ['⑤ 创建 BlockPool', 'new KVCacheBlock(0..N-1)，block_id == 张量行号；0 号摘走作 null_block']
   ];
-  let y = 2.15;
+  let y = 2.06;
   steps.forEach((st, i) => {
-    box(s, M, y, CW, 0.5, { fill: i % 2 === 0 ? WHITE : 'EDF4F5', noLine: true });
-    s.addText(st[0], { x: M + 0.15, y, w: 1.55, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 10.5, bold: true, color: TEAL_DARK });
-    s.addText(st[1], { x: M + 1.7, y, w: CW - 1.8, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 9.5, color: BODY });
-    y += 0.53;
+    box(s, M, y, CW, 0.4, { fill: i % 2 === 0 ? WHITE : 'EDF4F5', noLine: true });
+    s.addText(st[0], { x: M + 0.15, y, w: 1.6, h: 0.4, valign: 'middle', fontFace: BF, fontSize: 10, bold: true, color: TEAL_DARK });
+    s.addText(st[1], { x: M + 1.85, y, w: CW - 2.0, h: 0.4, valign: 'middle', fontFace: BF, fontSize: 9, color: BODY });
+    y += 0.42;
   });
-  // key number example
-  box(s, M, 4.92, CW, 0.5, { fill: TEAL_BG, noLine: true });
-  s.addText('例：Llama-7B，16KB / 块（bf16）· 一个逻辑块跨所有层共享同一份 block_table', { x: M + 0.2, y: 4.92, w: CW - 0.4, h: 0.5, align: 'center', valign: 'middle', fontFace: BF, fontSize: 10, color: TEAL_DARK });
+  exampleCard(s, M, 4.2, CW, 0.62, 'Llama-7B · 16 GB 可用显存 演算', '单块单层 = 2(K+V) × 16 token × 32 头 × 128 维 × 2B = 256 KB → num_blocks = 16 GB ÷ 256 KB ÷ 32 层 = 2048 块 ≈ 同时缓存 32,768 token', { fs: 9 });
+  s.addText('类比：开学前先数清楚有几间教室（显存），再给学生编学号（block_id）—— 之后教室不再增减，只换学生', { x: M + 0.1, y: 4.88, w: CW - 0.2, h: 0.24, valign: 'middle', fontFace: BF, fontSize: 8.5, color: AMBER_DK });
   footer(s);
   s.render();
 })();
 
-(function blockPoolLayer() {
+(function physicalTensor() {
   const s = newSlide();
-  header(s, '模块 03 · L2 块池层', 'BlockPool：把“显存管理”简化为“整数 ID 管理”', { sub: '只持有元数据：block_id / ref_cnt / block_hash / 空闲链表指针' });
-  // two data structures side by side
-  box(s, M, 2.15, 4.4, 1.7, { fill: 'EDF4F5', noLine: true });
-  s.addText('空间维度 · free_block_queue（LRU）', { x: M + 0.2, y: 2.25, w: 4.0, h: 0.4, fontFace: BF, fontSize: 11.5, bold: true, color: TEAL_DARK });
-  s.addText('双向链表按驱逐优先级排序：队首可被驱逐 / 复用，队尾尽量保留。无哈希块 prepend 队首，有哈希块 append 队尾。', { x: M + 0.2, y: 2.66, w: 4.0, h: 1.05, fontFace: BF, fontSize: 9.5, color: BODY });
-
-  box(s, 5.1, 2.15, 4.4, 1.7, { fill: TEAL_BG });
-  s.addText('内容维度 · 链式哈希映射表', { x: 5.3, y: 2.25, w: 4.0, h: 0.4, fontFace: BF, fontSize: 11.5, bold: true, color: TEAL_DARK });
-  s.addText('cached_block_hash_to_block：hash → block(s)，前缀命中查找的正向入口；配合 RefCnt 实现零拷贝共享。', { x: 5.3, y: 2.66, w: 4.0, h: 1.05, fontFace: BF, fontSize: 9.5, color: BODY });
-
-  // key invariant row
-  const inv = [
-    ['ref_cnt=0 ⇔ 在空闲队列', '归零才可驱逐 / 重用'],
-    ['一块一哈希', 'set_block_hash 断言保护'],
-    ['哈希不在此算', '哈希由 Request 预计算'],
-    ['事件是旁路', '仅广播给 connector']
+  header(s, '模块 03 · L1 物理层', '张量长什么样：block_id 就是行号', { sub: '不同注意力后端的形状略有差异，但"第 0 维 = 块编号"这一约定永远不变' });
+  // left: three shapes table
+  const head = ['形式', 'shape（block 维在前）', '后端'];
+  const widths = [0.85, 3.1, 1.3];
+  gridHead(s, M, 2.12, head, widths, 0.38);
+  const rows = [
+    ['A', '(N, kv_heads, bs, 2·head)', 'FlashAttn 等'],
+    ['B', '(2, N, bs, kv_heads, head)', 'ROCm'],
+    ['C', '(N, 2, bs, kv_heads, head)', 'HPC(SM90+)']
   ];
-  let x = M;
-  inv.forEach((v, i) => {
-    box(s, x, 4.1, 2.19, 0.62, { fill: WHITE });
-    s.addText(v[0], { x: x + 0.08, y: 4.16, w: 2.03, h: 0.3, align: 'center', valign: 'middle', fontFace: BF, fontSize: 9.5, bold: true, color: INK });
-    s.addText(v[1], { x: x + 0.08, y: 4.45, w: 2.03, h: 0.24, align: 'center', valign: 'middle', fontFace: BF, fontSize: 8.5, color: MUTED });
-    x += 2.25;
+  let y = 2.54;
+  rows.forEach((r, ri) => {
+    gridRow(s, M, y, widths, r, ri, { h: 0.36, fsAll: 8, aligns: ['center', 'left', 'center'], mono: [1] });
+    y += 0.38;
   });
-  analogyChip(s, 0.6, 4.86, 4.2, '类比', '练习册的页与“单元标签”：页编号=物理，单元哈希=内容指纹');
+  s.addText('N=num_blocks, bs=block_size；A 形式最后一维前半是 K、后半是 V。', { x: M, y: y + 0.02, w: 5.3, h: 0.26, fontFace: BF, fontSize: 8.5, color: MUTED });
+  box(s, M, 4.02, 5.25, 0.9, { fill: TEAL_BG, noLine: true });
+  s.addText([
+    para('申请细节：先 zeros 成 int8"字节池"，再按 dtype/stride reshape —— shape 是逻辑的，stride 是物理的（HND/NHD 布局）。', { fontSize: 8.5, color: TEAL_DARK, breakLine: true }),
+    para('给调度器一个 block_id，等于同时拿到 32 层张量同一行的读写权。', { fontSize: 8.5, bold: true, color: TEAL_DARK })
+  ], { x: M + 0.15, y: 4.02, w: 4.95, h: 0.9, valign: 'middle', fontFace: BF });
+  // right: bridge diagram (block 5 across layers)
+  s.addText('桥接图：block_id=5 在每一层都是第 5 行', { x: 6.0, y: 2.12, w: 3.5, h: 0.3, fontFace: BF, fontSize: 10.5, bold: true, color: INK });
+  const layerNames = ['层 0', '层 1', '…', '层 31'];
+  layerNames.forEach((ln, li) => {
+    const ly = 2.46 + li * 0.5;
+    s.addText(ln, { x: 6.0, y: ly, w: 0.55, h: 0.44, valign: 'middle', fontFace: BF, fontSize: 9, color: MUTED });
+    for (let c = 0; c < 7; c++) {
+      const cid = ['0', '1', '2', '3', '4', '5', '…'][c];
+      const is5 = cid === '5';
+      box(s, 6.6 + c * 0.41, ly, 0.37, 0.44, { fill: is5 ? AMBER : WHITE, line: is5 ? AMBER_DK : HAIR, lineW: 0.75 });
+      s.addText(cid, { x: 6.6 + c * 0.41, y: ly, w: 0.37, h: 0.44, align: 'center', valign: 'middle', fontFace: MF, fontSize: 8, bold: is5, color: is5 ? WHITE : MUTED });
+    }
+  });
+  s.addText('一个 block = 一组 token 在所有 32 层的 KV（同一行号跨层对齐，位置等同、无需查表）', { x: 6.0, y: 4.46, w: 3.5, h: 0.46, fontFace: BF, fontSize: 8.5, color: BODY });
   footer(s);
   s.render();
 })();
 
-(function managerLayer() {
+(function blockFields() {
   const s = newSlide();
-  header(s, '模块 03 · L3 单类型管理', 'FullAttentionManager：前缀查找 + 分配 / 释放 + CoW', { sub: '真正实现链式哈希前缀缓存共享的那一层' });
+  header(s, '模块 03 · L2 块池', 'KVCacheBlock：一个"轻量元数据壳"', { sub: '只含四类元数据，不持有任何 torch.Tensor / 显存指针 —— 百万块也只有 MB 级内存' });
+  const head = ['职责', '字段', '语义'];
+  const widths = [1.15, 2.05, 5.8];
+  gridHead(s, M, 2.12, head, widths, 0.4);
+  const rows = [
+    ['编号', 'block_id: int', '全局唯一 [0, N-1]，创建后不变；= blocks 列表下标 = 物理张量行号'],
+    ['生命周期', 'ref_cnt: int = 0', '新分配=1；被命中共享时 +1；释放时 -1；归零才能进空闲队列被驱逐/重用'],
+    ['生命周期', 'is_null: bool', 'null_block（id=0）专用：不维护 ref_cnt、不进队列、不可释放，仅对齐长度'],
+    ['哈希指纹', '_block_hash', '内容哈希 key（带 group_id）；仅当块写满并入缓存才设置；None = 未缓存/已驱逐'],
+    ['哈希指纹', '_block_hash_num_tokens', '该哈希覆盖的前缀 token 数；满块时 = block_size'],
+    ['链表指针', 'prev / next_free_block', '空闲双向链表指针，仅由 FreeKVCacheBlockQueue 操作']
+  ];
+  let y = 2.52;
+  rows.forEach((r, ri) => {
+    gridRow(s, M, y, widths, r, ri, { h: 0.31, fsAll: 8, aligns: ['center', 'left', 'left'], mono: [1] });
+    y += 0.33;
+  });
+  exampleCard(s, M, 4.54, 5.7, 0.58, '为什么这么"轻"？', '2048 个块的管理信息 ≈ 2048 × 几十字节 ≈ 0.1 MB；被管理的是 16 GB 显存 —— 账本远小于资产', { fs: 8.5 });
+  analogyChip(s, 6.35, 4.66, 3.15, '类比：练习册的"页码 + 借阅登记卡"');
+  footer(s);
+  s.render();
+})();
+
+(function blockPoolStructs() {
+  const s = newSlide();
+  header(s, '模块 03 · L2 块池', 'BlockPool 两大核心结构 + 五条铁律', { sub: '空间维度管"谁能被驱逐"，内容维度管"谁能被命中"' });
+  // left: free queue
+  box(s, M, 2.1, 4.4, 1.52, { fill: 'EDF4F5', noLine: true });
+  s.addText('空间维度 · free_block_queue（LRU）', { x: M + 0.15, y: 2.2, w: 4.1, h: 0.32, fontFace: BF, fontSize: 11.5, bold: true, color: TEAL_DARK });
+  s.addText('带假头/假尾的双向链表，按驱逐优先级排序：队首最先被驱逐 / 复用，队尾尽量保留。无哈希块放队首（prepend），有哈希块放队尾（append）。分配用 popleft_n 从队首拿。', { x: M + 0.15, y: 2.54, w: 4.1, h: 1.0, fontFace: BF, fontSize: 8.8, color: BODY });
+  // queue mini-diagram
+  const qy = 3.72;
+  s.addShape(pres.shapes.RIGHT_ARROW, { x: M + 0.15, y: qy + 0.1, w: 3.2, h: 0.14, fill: { color: TEAL2 }, line: { color: WHITE, width: 0 } });
+  s.addText('队首（先驱逐）', { x: M + 0.15, y: qy - 0.14, w: 1.6, h: 0.24, fontFace: BF, fontSize: 8, bold: true, color: RED });
+  s.addText('队尾（多保留）', { x: M + 2.6, y: qy - 0.14, w: 1.6, h: 0.24, align: 'right', fontFace: BF, fontSize: 8, bold: true, color: GREEN });
+  [0, 1, 2, 3, 4].forEach(i => {
+    box(s, M + 0.3 + i * 0.62, qy + 0.3, 0.56, 0.34, { fill: i < 2 ? 'FDF7F7' : TEAL_BG, line: i < 2 ? RED : TEAL, lineW: 0.75 });
+    s.addText(i < 2 ? '无hash' : '有hash', { x: M + 0.3 + i * 0.62, y: qy + 0.3, w: 0.56, h: 0.34, align: 'center', valign: 'middle', fontFace: BF, fontSize: 6.5, color: i < 2 ? RED : TEAL_DARK });
+  });
+  // right: hash maps
+  box(s, 5.1, 2.1, 4.4, 1.52, { fill: TEAL_BG, noLine: true });
+  s.addText('内容维度 · 双向哈希映射', { x: 5.25, y: 2.2, w: 4.1, h: 0.32, fontFace: BF, fontSize: 11.5, bold: true, color: TEAL_DARK });
+  s.addText([
+    para('正向 cached_block_hash_to_block：', { fontSize: 9.5, bold: true, color: INK }),
+    para('hash → block(s)，前缀命中查找的入口', { fontSize: 8.8, color: BODY, breakLine: true }),
+    para('反向 cached_block_hashes_by_block：', { fontSize: 9.5, bold: true, color: INK }),
+    para('block_id → 别名哈希集合，驱逐时反向清理', { fontSize: 8.8, color: BODY })
+  ], { x: 5.25, y: 2.56, w: 4.1, h: 1.0, valign: 'top', fontFace: BF });
+  exampleCard(s, 5.15, 3.72, 4.3, 0.66, '命中示例', '查 (H0, group 0) → 得 block_1；释放 block_1 时反查它挂的哈希，同步把映射表条目删干净', { fs: 8.5 });
+  // invariants
+  s.addText('五条铁律（源码断言保护）', { x: M, y: 4.42, w: 4, h: 0.28, fontFace: BF, fontSize: 11, bold: true, color: INK });
+  const inv = [
+    'ref_cnt=0 ⇔ 在空闲队列', '一块只挂一个主哈希', '正反映射表严格对齐', 'null_block 永远特判', '同 hash 可挂多个物理块'
+  ];
+  inv.forEach((v, i) => {
+    const bx = M + i * 1.8;
+    box(s, bx, 4.72, 1.74, 0.3, { fill: WHITE, line: TEAL, lineW: 0.75 });
+    s.addText(v, { x: bx + 0.04, y: 4.72, w: 1.66, h: 0.3, valign: 'middle', align: 'center', fontFace: BF, fontSize: 7.2, bold: true, color: TEAL_DARK });
+  });
+  footer(s);
+  s.render();
+})();
+
+(function managerDuties() {
+  const s = newSlide();
+  header(s, '模块 03 · L3 单类型管理', 'FullAttentionManager：前缀查找 + 分配 / 释放 + CoW', { sub: '真正实现链式哈希前缀缓存共享的那一层；req_to_blocks（block_table 真身）就存在这里' });
   const duties = [
     ['find_longest_cache_hit', '在哈希表里查最长已计算前缀', 'classmethod'],
-    ['add_local_computed_blocks', 'touch 命中块，ref_cnt++，防驱逐', '阶段3'],
+    ['add_local_computed_blocks', 'touch 命中块，ref_cnt++，防驱逐', '阶段 2'],
     ['get_num_blocks_to_allocate', '算需要新分配多少块（纯计算）', '容量预估'],
-    ['allocate_new_blocks', '取新块、处理部分命中 CoW、记入 new_block_ids', '阶段3'],
-    ['cache_blocks', '填满的块写入哈希表，供后续命中', '阶段5'],
-    ['free / pop_blocks_for_free', '逆序释放，ref_cnt--，归零回队', '阶段6']
+    ['allocate_new_blocks', '取新块、处理部分命中 CoW、记入 new_block_ids', '阶段 3'],
+    ['cache_blocks', '填满的块写入哈希表，供后续命中', '阶段 3 尾'],
+    ['free / pop_blocks_for_free', '逆序释放，ref_cnt--，归零回队', '阶段 E/F']
   ];
-  let y = 2.15;
+  let y = 2.12;
   duties.forEach((d, i) => {
-    box(s, M, y, 4.4, 0.48, { fill: i % 2 === 0 ? WHITE : 'EDF4F5', noLine: true });
-    s.addText(d[0], { x: M + 0.12, y, w: 2.35, h: 0.48, valign: 'middle', fontFace: MF, fontSize: 9, bold: true, color: TEAL_DARK });
-    s.addText(d[2], { x: M + 2.5, y, w: 1.75, h: 0.48, align: 'right', valign: 'middle', fontFace: BF, fontSize: 8.5, color: MUTED });
-    box(s, 5.1, y, 4.4, 0.48, { fill: WHITE, noLine: true });
-    s.addText(d[1], { x: 5.22, y, w: 4.2, h: 0.48, valign: 'middle', fontFace: BF, fontSize: 9.5, color: BODY });
-    y += 0.515;
+    box(s, M, y, 4.4, 0.42, { fill: i % 2 === 0 ? WHITE : 'EDF4F5', noLine: true });
+    s.addText(d[0], { x: M + 0.12, y, w: 2.35, h: 0.42, valign: 'middle', fontFace: MF, fontSize: 8.5, bold: true, color: TEAL_DARK });
+    s.addText(d[2], { x: M + 2.5, y, w: 1.75, h: 0.42, align: 'right', valign: 'middle', fontFace: BF, fontSize: 8, color: MUTED });
+    box(s, 5.1, y, 4.4, 0.42, { fill: WHITE, noLine: true });
+    s.addText(d[1], { x: 5.22, y, w: 4.2, h: 0.42, valign: 'middle', fontFace: BF, fontSize: 9, color: BODY });
+    y += 0.44;
   });
-  box(s, M, 5.0, CW, 0.4, { fill: TEAL_BG, noLine: true });
-  s.addText('记住：req_to_blocks[请求] 就存在这一层 —— 它才是 block_table 的真正存储位置', { x: M + 0.2, y: 5.0, w: CW - 0.4, h: 0.4, align: 'center', valign: 'middle', fontFace: BF, fontSize: 10.5, bold: true, color: TEAL_DARK });
+  takeaway(s, '34 token 请求在本层：查表命中 2 块 → touch（ref_cnt++）→ 还需 1 新块 → 取 block_8 · req_to_blocks[请求]（block_table 真身）就存在这一层', 4.82, 0.32);
+  footer(s);
+  s.render();
+})();
+
+(function cowDetail() {
+  const s = newSlide();
+  header(s, '模块 03 · L3 进阶', 'CoW：共享的"半块"不能直接覆盖写', { sub: 'Copy-on-Write：部分命中时先复制一份，再往副本上写' });
+  // problem
+  box(s, M, 2.1, 4.4, 1.66, { fill: 'FDF7F7', line: RED, lineW: 0.9 });
+  s.addText('问题：部分命中 = 满块 + 半块', { x: M + 0.15, y: 2.2, w: 4.1, h: 0.3, fontFace: BF, fontSize: 11.5, bold: true, color: RED });
+  s.addText('命中 38 token = 2 个满块 + 6 token 半块。半块正被别的请求共享（ref_cnt≥2），你若直接往里写新 KV，会污染别人的数据。', { x: M + 0.15, y: 2.52, w: 4.1, h: 0.86, fontFace: BF, fontSize: 9.3, color: BODY });
+  s.addText('解法：复制一份私有副本（CoW），在副本上续写。', { x: M + 0.15, y: 3.38, w: 4.1, h: 0.32, fontFace: BF, fontSize: 9.5, bold: true, color: TEAL_DARK });
+  // diagram
+  const dy = 3.9;
+  box(s, M + 0.1, dy, 1.5, 0.66, { fill: TEAL_BG, line: TEAL, lineW: 1.2 });
+  s.addText([
+    para('源块 (共享)', { fontSize: 8.5, bold: true, color: TEAL_DARK }),
+    para('ref_cnt = 2', { fontSize: 7.5, color: MUTED })
+  ], { x: M + 0.1, y: dy, w: 1.5, h: 0.66, align: 'center', valign: 'middle', fontFace: BF });
+  s.addShape(pres.shapes.RIGHT_ARROW, { x: M + 1.68, y: dy + 0.22, w: 0.55, h: 0.22, fill: { color: AMBER }, line: { color: WHITE, width: 0 } });
+  s.addText('复制 32 token', { x: M + 1.55, y: dy - 0.2, w: 0.95, h: 0.2, align: 'center', fontFace: BF, fontSize: 6.5, color: AMBER_DK });
+  box(s, M + 2.3, dy, 1.5, 0.66, { fill: AMBER_BG, line: AMBER, lineW: 1.2 });
+  s.addText([
+    para('cow_block (私有)', { fontSize: 8.5, bold: true, color: AMBER_DK }),
+    para('ref_cnt = 1 · 可写', { fontSize: 7.5, color: MUTED })
+  ], { x: M + 2.3, y: dy, w: 1.5, h: 0.66, align: 'center', valign: 'middle', fontFace: BF });
+  s.addText('Worker 在 GPU 上执行 src→dst 拷贝（一条 kernel）', { x: M + 0.1, y: dy + 0.72, w: 4.2, h: 0.26, fontFace: BF, fontSize: 7.5, color: MUTED });
+  // right: four steps
+  box(s, 5.1, 2.1, 4.4, 0.44, { fill: TEAL, noLine: true });
+  s.addText('CoW 四步链路（源码顺序）', { x: 5.25, y: 2.1, w: 4.1, h: 0.44, valign: 'middle', fontFace: BF, fontSize: 11.5, bold: true, color: WHITE });
+  const csteps = [
+    ['① 预约', 'add_local_computed_blocks 把 (块位置, 源块) 记入 _partial_hit_reqs'],
+    ['② 容量 +1', 'get_num_blocks_to_allocate 为 CoW 额外多算 1 块'],
+    ['③ 取新块替换', 'allocate_new_blocks：取 cow_block，原地替换 req_blocks[该位置]'],
+    ['④ 下发拷贝', 'take_kv_cache_block_copies 排空任务，Worker 执行 GPU 拷贝']
+  ];
+  let y = 2.62;
+  csteps.forEach((c) => {
+    box(s, 5.1, y, 4.4, 0.48, { fill: WHITE });
+    s.addText(c[0], { x: 5.22, y, w: 1.35, h: 0.48, valign: 'middle', fontFace: BF, fontSize: 9.5, bold: true, color: TEAL_DARK });
+    s.addText(c[1], { x: 6.55, y, w: 2.9, h: 0.48, valign: 'middle', fontFace: BF, fontSize: 8.3, color: BODY });
+    y += 0.5;
+  });
+  analogyChip(s, 5.15, 4.66, 4.3, '类比：公共笔记不能涂改 → 先整页复印，再在自己的复印件上续写 · CoW 只在"部分命中且半块被共享"时触发');
   footer(s);
   s.render();
 })();
 
 (function coordinatorLayer() {
   const s = newSlide();
-  header(s, '模块 03 · L4 协调器', 'UnitaryKVCacheCoordinator：连接各层的一张“直通车”', { sub: '单组场景基本透明透传，存在的意义是让接口统一' });
-  // concept
-  box(s, M, 2.15, CW, 0.6, { fill: 'EDF4F5', line: TEAL, lineW: 1 });
-  s.addText('基类负责 ① 创建唯一的 BlockPool（所有组共享编号空间）② 为每个 KV 组创建对应 Manager；Unitary 把请求原样下放给唯一的 FullAttentionManager。', { x: M + 0.2, y: 2.25, w: CW - 0.4, h: 0.42, valign: 'middle', fontFace: BF, fontSize: 10.5, color: BODY });
-  // two-phase allocation highlight
-  box(s, M, 3.0, CW, 0.5, { fill: TEAL_DARK, noLine: true });
-  s.addText('两阶段分配（修复 issue #33775 的竞态）', { x: M + 0.2, y: 3.0, w: 6, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 12, bold: true, color: WHITE });
+  header(s, '模块 03 · L4 协调器', 'UnitaryKVCacheCoordinator：直通车与两阶段分配', { sub: '单组场景基本透明透传；两阶段分配是为混合模型修的竞态（issue #33775）' });
+  box(s, M, 2.1, CW, 0.56, { fill: 'EDF4F5', line: TEAL, lineW: 1 });
+  s.addText('基类负责 ① 创建唯一的 BlockPool（所有组共享编号空间）② 为每个 KV 组创建对应 Manager；Unitary 把请求原样下放给唯一的 FullAttentionManager。', { x: M + 0.2, y: 2.16, w: CW - 0.4, h: 0.46, valign: 'middle', fontFace: BF, fontSize: 10, color: BODY });
+  // race story
+  box(s, M, 2.82, CW, 0.46, { fill: INK_BG, noLine: true });
+  s.addText([
+    para('竞态故事：', { fontSize: 10.5, bold: true, color: AMBER }),
+    para('组 0 先分配新块 → 触发驱逐 → 恰好驱逐了组 1 还没来得及 touch 的命中块 → 前缀缓存失效！', { fontSize: 10, color: WHITE })
+  ], { x: M + 0.2, y: 2.82, w: CW - 0.4, h: 0.46, valign: 'middle', fontFace: BF });
   const phases = [
-    ['阶段 1 · touch 命中块', '先让所有命中块 ref_cnt++，从空闲队列摘出，防止在后面分配时被驱逐'],
-    ['阶段 2 · 分配新块', '容量检查通过后，再从 free 队列取新块，写入 new_block_ids 等待 Worker 清零'],
-    ['缓存回写', '计算完成的满块经 cache_blocks 写入链式哈希映射表']
+    ['阶段 1 · 全组 touch 命中块', '先让所有组的命中块 ref_cnt++ 并摘出空闲队列 —— 占座防驱逐', TEAL_DARK],
+    ['阶段 2 · 再分配新块', '容量检查通过后，各组才从 free 队列取新块；此时驱逐不会伤到已占座的块', TEAL],
+    ['缓存回写', '计算完成的满块经 cache_blocks 写入链式哈希映射表（幂等）', TEAL2]
   ];
   let x = M;
   phases.forEach((p, i) => {
-    box(s, x, 3.62, 2.96, 1.0, { fill: WHITE });
-    s.addText(p[0], { x: x + 0.12, y: 3.72, w: 2.7, h: 0.34, align: 'center', fontFace: BF, fontSize: 10.5, bold: true, color: TEAL_DARK });
-    s.addText(p[1], { x: x + 0.16, y: 4.06, w: 2.65, h: 0.5, align: 'center', fontFace: BF, fontSize: 8.5, color: BODY });
-    if (i < phases.length - 1) s.addShape(pres.shapes.RIGHT_ARROW, { x: x + 2.99, y: 4.0, w: 0.16, h: 0.22, fill: { color: TEAL2 }, line: { color: WHITE, width: 0 } });
+    box(s, x, 3.4, 2.96, 1.06, { fill: WHITE, line: p[2], lineW: 1.1 });
+    s.addText(p[0], { x: x + 0.12, y: 3.5, w: 2.72, h: 0.32, align: 'center', fontFace: BF, fontSize: 10, bold: true, color: p[2] });
+    s.addText(p[1], { x: x + 0.16, y: 3.84, w: 2.65, h: 0.56, align: 'center', fontFace: BF, fontSize: 8.3, color: BODY });
+    if (i < phases.length - 1) s.addShape(pres.shapes.RIGHT_ARROW, { x: x + 2.99, y: 3.82, w: 0.16, h: 0.22, fill: { color: TEAL2 }, line: { color: WHITE, width: 0 } });
     x += 3.02;
   });
-  box(s, M, 4.92, CW, 0.42, { fill: TEAL_BG, noLine: true });
-  s.addText('对比：mixed 模型的 HybridCoordinator 需跨组对齐命中（不动点迭代）；纯 FullAttention 永远第三个返回值 = 0。', { x: M + 0.2, y: 4.92, w: CW - 0.4, h: 0.42, align: 'center', valign: 'middle', fontFace: BF, fontSize: 9.5, color: TEAL_DARK });
+  analogyChip(s, M + 0.05, 4.56, 4.6, '类比：先给所有到场客人发座位牌（touch 占座），再安排新客入座 —— 顺序反了就会坐错');
+  exampleCard(s, 5.25, 4.56, 4.25, 0.58, 'Unitary vs Hybrid', '单组（纯 FullAttention）：直通透传，第三返回值恒 0；多组（Gemma3 混合）：不动点迭代跨组对齐命中，"全系统最复杂的类"', { fs: 8.3 });
   footer(s);
   s.render();
 })();
 
 (function facadeLayer() {
   const s = newSlide();
-  header(s, '模块 03 · L5 顶层门面', 'KVCacheManager：Scheduler 与 KV 子系统的唯一通道', { sub: '把下面四层的复杂度全部封装进一个简单接口' });
+  header(s, '模块 03 · L5 顶层门面', 'KVCacheManager：Scheduler 与 KV 子系统的唯一通道', { sub: '把下面四层的复杂度全部封装进一个简单接口 —— 典型的门面（Facade）模式' });
   const api = [
-    ['查', 'get_computed_blocks', '前缀缓存查找'],
-    ['分', 'allocate_slots', '准入检查 → 两阶段分配 → 缓存'],
-    ['清', 'take_new_block_ids', '收集需清零的新块，交给 Worker'],
-    ['拷', 'take_kv_cache_block_copies', '收集 CoW 拷贝任务'],
-    ['放', 'free / pop_blocks_for_free', '立即释放或逆序延迟释放']
+    ['查', 'get_computed_blocks', '前缀缓存查找（最多命中 num_tokens-1，最后一个必须重算）'],
+    ['分', 'allocate_slots', '容量检查 → 两阶段分配 → 缓存；失败返回 None 触发抢占'],
+    ['清', 'take_new_block_ids', '收集需清零的新块，交给 Worker（防读到旧数据）'],
+    ['拷', 'take_kv_cache_block_copies', '收集 CoW 拷贝任务（src → dst）'],
+    ['放', 'free / pop_blocks_for_free', '立即释放，或抢占场景延迟逆序释放'],
+    ['报', 'take_events', 'BlockStored 等事件，供 KV Connector 消费']
   ];
-  let y = 2.15;
+  let y = 2.12;
   api.forEach((a, i) => {
-    box(s, M, y, CW, 0.46, { fill: i % 2 === 0 ? WHITE : 'EDF4F5', noLine: true });
-    chip(s, M + 0.12, y + 0.09, 0.32, 0.28, a[0], TEAL, WHITE, 9);
-    s.addText(a[1], { x: M + 0.56, y, w: 3.3, h: 0.46, valign: 'middle', fontFace: MF, fontSize: 10, bold: true, color: TEAL_DARK });
-    s.addText(a[2], { x: M + 5.0, y, w: 4.4, h: 0.46, valign: 'middle', fontFace: BF, fontSize: 10, color: BODY });
-    y += 0.5;
+    box(s, M, y, CW, 0.4, { fill: i % 2 === 0 ? WHITE : 'EDF4F5', noLine: true });
+    chip(s, M + 0.12, y + 0.06, 0.32, 0.28, a[0], TEAL, WHITE, 9);
+    s.addText(a[1], { x: M + 0.56, y, w: 3.1, h: 0.4, valign: 'middle', fontFace: MF, fontSize: 9.5, bold: true, color: TEAL_DARK });
+    s.addText(a[2], { x: M + 3.75, y, w: 5.7, h: 0.4, valign: 'middle', fontFace: BF, fontSize: 9, color: BODY });
+    y += 0.42;
   });
-  box(s, M, 4.95, CW, 0.46, { fill: TEAL_BG, noLine: true });
-  s.addText('Drain 模式：取清单 = 一边记账一边取 & 取完清空 → 把 GPU 待办一次性打包给 Worker（CPU/GPU 解耦）', { x: M + 0.2, y: 4.95, w: CW - 0.4, h: 0.46, align: 'center', valign: 'middle', fontFace: BF, fontSize: 10, color: TEAL_DARK });
-  footer(s);
-  s.render();
-})();
-
-// ============================================================
-// MODULE 04 — REQUEST JOURNEY
-// ============================================================
-divider('04', '进阶 · 一条请求的完整旅程', '以示例请求 R 为线索，串起分配 → 命中 → 缓存 → 释放', '像跟拍一部小说：借书、做笔记、书被别人共享、最后还书');
-
-(function sampleReq() {
-  const s = newSlide();
-  header(s, '模块 04 · 示例请求 R', '我们全程观察同一个请求', { sub: 'prompt = 70 token，max_tokens = 32，block_size = 16' });
-  // request card
-  box(s, M, 2.15, CW, 0.62, { fill: INK_BG });
+  box(s, M, 4.68, CW, 0.46, { fill: TEAL_BG, noLine: true });
   s.addText([
-    para('请求 R  ·  ', { fontFace: MF, fontSize: 12, bold: true, color: TEAL2 }),
-    para('prompt = “请用中文解释数据库索引并举例区分 B+ 树 / 哈希索引…”（70 token）  ·  ', { fontFace: BF, fontSize: 10, color: 'C9E0EA' }),
-    para('max_tokens = 32', { fontFace: BF, fontSize: 10, color: WHITE })
-  ], { x: M + 0.2, y: 2.15, w: CW - 0.4, h: 0.62, valign: 'middle' });
-
-  // trace blocks
-  const trace = [
-    ['入队', '4 个满块哈希预计算，存于 request.block_hashes'],
-    ['prefill', '查表命中前 2 块（hit=32）→ 新分 3 块 → block_table = [hit,hit,新,新,新]'],
-    ['decode（32 步）', '第 5 块填 10 → 第 6 块填 16 → 第 7 块填 6，满块随时入表'],
-    ['释放', '逆序归还 7→6→5→4→3；命中块仅减计数不回收']
-  ];
-  let y = 2.95;
-  trace.forEach((t, i) => {
-    box(s, M, y, 2.3, 0.5, { fill: TEAL_BG, noLine: true });
-    s.addText(t[0], { x: M, y, w: 2.3, h: 0.5, align: 'center', valign: 'middle', fontFace: BF, fontSize: 10.5, bold: true, color: TEAL_DARK });
-    s.addText(t[1], { x: M + 2.4, y, w: CW - 2.5, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 9.5, color: BODY });
-    y += 0.55;
-  });
-  // block_table visual
-  const boxes = ['命中', '命中', '新', '新', '新'];
-  let x = M + 2.4;
-  boxes.forEach((b, i) => {
-    box(s, x, 5.05, 0.82, 0.4, { fill: b === '命中' ? TEAL2 : AMBER, noLine: true });
-    s.addText(b + ' b' + i, { x, y: 5.05, w: 0.82, h: 0.4, align: 'center', valign: 'middle', fontFace: MF, fontSize: 8, bold: true, color: WHITE });
-    x += 0.88;
-  });
-  s.addText('block_table（下标 0~4）', { x: M + 0.2, y: 5.05, w: 2.0, h: 0.4, valign: 'middle', fontFace: BF, fontSize: 9.5, color: INK, bold: true });
-  analogyChip(s, 6.4, 4.98, 3.1, '跟拍视角', '从“拿到新书”一路上演到“划重点 + 还书”');
+    para('Drain（排空）模式：', { fontSize: 9.5, bold: true, color: TEAL_DARK }),
+    para('门面边干活边"记账"，每轮调度后四个 take_* 一次取走账本并清空 —— CPU/GPU 解耦（类比仓库管理员：干活记账，下班交接）；watermark 预留空闲块防频繁抢占', { fontSize: 8.5, color: BODY })
+  ], { x: M + 0.2, y: 4.68, w: CW - 0.4, h: 0.46, valign: 'middle', fontFace: BF });
   footer(s);
   s.render();
 })();
 
-(function lifecycle() {
+// ============================================================
+// MODULE 04 — REQUEST JOURNEY (divider + 8 pages)
+// ============================================================
+divider('04', '一条请求的旅程', '示例请求 R 全程跟拍：从查命中、领块、写 KV 到释放回收', '示例请求 R 的一生：查户口（命中）→ 领柜子（分配）→ 存东西（写 KV）→ 还柜子（释放）', [
+  '一个 34 token 的请求如何在 11 块泳池里游完全程',
+  'BlockPool 状态逐步演算：7 个时间步一张表看懂',
+  '显存不够怎么办：watermark 与抢占（Preemption）',
+  '调度器主循环里 KV 相关动作的完整时序'
+]);
+
+(function stageSetting() {
   const s = newSlide();
-  header(s, '模块 04 · 生命周期', '五阶段：一图看懂请求的一生', { sub: '从入队 WAITING 到释放 (free / preempt)' });
-  const stages = [
-    ['① 等待调度', 'WAITING · 构造 Request，预计算链式哈希', 'EDF4F5', TEAL_DARK],
-    ['② 前缀缓存查找', 'get_computed_blocks → 链式哈希比对，返回命中块', 'E2F4F3', '0A5C5B'],
-    ['③ 分配 slot', 'allocate_slots · touch 命中 + 新块 + 部分命中 CoW', 'DBF1F0', '085454'],
-    ['④ GPU forward', 'attn 用 block_table 索引，读写 kv_caches[layer]', 'C9EAE8', '075151'],
-    ['⑤ 缓存新满块', 'cache_blocks · 链式哈希写入映射表', 'B7E0DE', '06413F'],
-    ['⑥ 释放 / 抢占', 'free · 逆序释放，ref_cnt--，归零入队', 'A5D6D4', '053934']
+  header(s, '模块 04 · 舞台设定', '示例请求 R 与它的 11 块泳池', { sub: '接下来 4 页都用这一套设定 —— 数字请先自己跟算一遍' });
+  // left: setup card
+  box(s, M, 2.05, 4.55, 2.4, { fill: WHITE, line: HAIR });
+  s.addText('基础参数', { x: M + 0.15, y: 2.14, w: 3, h: 0.3, fontFace: BF, fontSize: 11, bold: true, color: TEAL_DARK });
+  const setup = [
+    ['block_size', '16 token / 块（vLLM 默认）'],
+    ['物理块总数', '11 块（block_0 ~ block_10）'],
+    ['已在跑的请求 A', '占 block_1、block_3（各存 16 token，都已挂哈希）'],
+    ['新来的请求 R', '34 token = A 的前 32 token + 自己的 2 token'],
+    ['空闲队列（队首→）', '8(脏) → 2 → 4 → 5 → 6 → 7 → 9 → 10']
   ];
-  let x = M;
-  const bwz = 1.42, gap = 0.08;
-  stages.forEach((st, i) => {
-    box(s, x, 2.2, bwz, 1.15, { fill: st[2], line: st[3], lineW: 1 });
-    s.addText(st[0], { x: x + 0.05, y: 2.32, w: bwz - 0.1, h: 0.46, align: 'center', fontFace: BF, fontSize: 11, bold: true, color: st[3] });
-    s.addText(st[1], { x: x + 0.08, y: 2.82, w: bwz - 0.16, h: 0.46, align: 'center', fontFace: BF, fontSize: 7.6, color: BODY });
-    if (i < stages.length - 1) s.addShape(pres.shapes.RIGHT_ARROW, { x: x + bwz + 0.005, y: 2.68, w: 0.09, h: 0.2, fill: { color: TEAL2 }, line: { color: WHITE, width: 0 } });
-    x += bwz + gap;
+  let sy = 2.46;
+  setup.forEach(r => {
+    s.addText(r[0], { x: M + 0.15, y: sy, w: 1.75, h: 0.36, valign: 'middle', fontFace: MF, fontSize: 8.5, bold: true, color: INK });
+    s.addText(r[1], { x: M + 1.95, y: sy, w: 2.5, h: 0.36, valign: 'middle', fontFace: BF, fontSize: 8.5, color: BODY });
+    sy += 0.38;
   });
-  // status machine band
-  box(s, M, 3.7, CW, 0.5, { fill: INK_BG });
-  s.addText('状态机：WAITING →(首次调度) RUNNING →(持续 decode) → 完成 / 被抢占 → 释放', { x: M + 0.2, y: 3.7, w: CW - 0.4, h: 0.5, valign: 'middle', fontFace: MF, fontSize: 10, color: WHITE });
-  // note: 新满块同样会被缓存
-  box(s, M, 4.45, CW, 0.72, { fill: TEAL_BG });
-  s.addText('⭐ 核心结论', { x: M + 0.25, y: 4.55, w: 1.6, h: 0.4, fontFace: TF, fontSize: 13, bold: true, color: TEAL_DARK });
-  s.addText('无论 prefill 还是 decode，只要有“块写满”，随即通过 cache_blocks 被哈希进前缀缓存映射表；未满的尾块不入表，等填满的当步再入。', { x: M + 0.25, y: 4.9, w: 8.9, h: 0.3, fontFace: BF, fontSize: 9.5, color: BODY });
+  // right: pool map
+  s.addText('泳池全景（11 格）', { x: 5.35, y: 2.05, w: 4, h: 0.3, fontFace: BF, fontSize: 11, bold: true, color: TEAL_DARK });
+  const pool = [
+    ['0', 'null_block 永久保留', '16324F', WHITE],
+    ['1', 'A · rc=1 · 挂 H0', TEAL_DARK, WHITE],
+    ['3', 'A · rc=1 · 挂 H1', TEAL_DARK, WHITE],
+    ['8', '空闲（脏块，队首）', AMBER, WHITE]
+  ];
+  for (let i = 0; i <= 10; i++) {
+    const gx = 5.35 + (i % 6) * 0.72, gy = 2.42 + Math.floor(i / 6) * 0.78;
+    const spec = pool.find(p => p[0] === String(i));
+    const fill = spec ? spec[2] : 'EDF4F5';
+    const tc = spec ? spec[3] : MUTED;
+    box(s, gx, gy, 0.66, 0.66, { fill, noLine: spec ? true : false, line: HAIR, radius: 0.08 });
+    s.addText(String(i), { x: gx, y: gy + 0.06, w: 0.66, h: 0.3, align: 'center', fontFace: MF, fontSize: 13, bold: true, color: tc });
+    s.addText(spec ? (i === 0 ? '保留' : i === 8 ? '脏·队首' : 'A 占用') : '空闲', { x: gx - 0.06, y: gy + 0.38, w: 0.78, h: 0.22, align: 'center', fontFace: BF, fontSize: 7, color: tc });
+  }
+  exampleCard(s, 5.35, 4.06, 4.15, 0.86, '为什么 R 只需要 1 个新块？', '34 = 命中 32（2 个满块）+ 新增 2 → ceil(2/16) = 1 块。命中部分显存零拷贝，只共享引用。', { fs: 8.5 });
+  // bottom: hash table state
+  box(s, M, 4.56, CW, 0.5, { fill: TEAL_BG, noLine: true });
+  s.addText([
+    para('初始哈希表：', { fontSize: 9.5, bold: true, color: TEAL_DARK }),
+    para('H0 = hash(第0块token) → block_1　　H1 = hash(H0, 第1块token) → block_3　　H2 尚不存在（第2块还没人算过）', { fontSize: 9, color: BODY })
+  ], { x: M + 0.2, y: 4.56, w: CW - 0.4, h: 0.5, valign: 'middle', fontFace: BF });
   footer(s);
   s.render();
 })();
 
-(function allocateSteps() {
+(function act1Lookup() {
   const s = newSlide();
-  header(s, '模块 04 · allocate_slots', '分配槽位的内部五步（与源码顺序严格一致）', { sub: 'km:344 · 从释放旧块 → 容量检查 → touch → 新块 → 缓存' });
+  header(s, '模块 04 · 第 1 幕', 'get_computed_blocks：逐块查哈希，找到最长已算前缀', { sub: '纯查询，不改任何状态 —— "查户口"，先看能蹭多少' });
+  // chain lookup diagram
   const steps = [
-    ['① 释放滑窗外块', 'remove_skipped_blocks；FullAttention 下恒无操作（仅 SWA 生效）', 'EDF4F5'],
-    ['② 容量检查', 'available = free − reserved；required > available → 返回 None 触发抢占', 'E0F1F0'],
-    ['③ touch 命中块', 'allocate_new_computed_blocks → ref_cnt++，从空闲队列摘出防驱逐', 'D3ECEB'],
-    ['④ 分配新块', 'get_new_blocks；partial-hit 先做 CoW 替换共享尾块', 'C5E6E4'],
-    ['⑤ 缓存满块', 'cache_blocks → cache_full_blocks 写入哈希映射表（幂等）', 'B7E0DE']
+    ['第 0 块 token', 'H0 = hash(tok 0-15)', 'H0', 'block_1', true],
+    ['第 1 块 token', 'H1 = hash(H0, tok 16-31)', 'H1', 'block_3', true],
+    ['第 2 块 token', 'H2 = hash(H1, tok 32-33)', 'H2', '✗ 未命中', false]
   ];
-  let y = 2.15;
+  let y = 2.1;
   steps.forEach((st, i) => {
-    box(s, M, y, 3.3, 0.5, { fill: st[2], noLine: true });
-    s.addText(st[0], { x: M + 0.12, y, w: 3.1, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 11, bold: true, color: '085454' });
-    box(s, 3.95, y, 5.55, 0.5, { fill: WHITE, noLine: true });
-    s.addText(st[1], { x: 4.1, y, w: 5.3, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 9.3, color: BODY });
-    y += 0.55;
+    box(s, M, y, 2.5, 0.62, { fill: 'EDF4F5', noLine: true });
+    s.addText(st[0], { x: M + 0.12, y, w: 2.3, h: 0.62, valign: 'middle', fontFace: BF, fontSize: 9.5, bold: true, color: INK });
+    s.addText(st[1], { x: M + 2.62, y, w: 2.5, h: 0.62, valign: 'middle', fontFace: MF, fontSize: 8.5, color: BODY });
+    box(s, M + 5.2, y + 0.1, 0.62, 0.42, { fill: st[4] ? TEAL : RED_BG, line: st[4] ? TEAL : RED, lineW: 1, radius: 0.08 });
+    s.addText(st[2], { x: M + 5.2, y: y + 0.1, w: 0.62, h: 0.42, align: 'center', valign: 'middle', fontFace: MF, fontSize: 10, bold: true, color: st[4] ? WHITE : RED });
+    s.addShape(pres.shapes.RIGHT_ARROW, { x: M + 5.88, y: y + 0.2, w: 0.3, h: 0.22, fill: { color: st[4] ? TEAL2 : 'C9D4DA' }, line: { color: WHITE, width: 0 } });
+    box(s, M + 6.24, y, 2.2, 0.62, { fill: st[4] ? TEAL_BG : 'FDF7F7', line: st[4] ? TEAL : RED, lineW: 0.9 });
+    s.addText(st[3] + (st[4] ? ' ✓ 命中' : ' 第2块没人算过'), { x: M + 6.34, y, w: 2.0, h: 0.62, valign: 'middle', align: 'center', fontFace: BF, fontSize: 9.5, bold: st[4], color: st[4] ? TEAL_DARK : RED });
+    y += 0.72;
   });
-  box(s, M, 5.0, CW, 0.42, { fill: TEAL_BG, noLine: true });
-  s.addText('为什么 ③ 在 ② 之后？先确认能分配，再 touch，避免“touch 了却因容量不足回滚”。', { x: M + 0.2, y: 5.0, w: CW - 0.4, h: 0.42, align: 'center', valign: 'middle', fontFace: BF, fontSize: 9.5, color: TEAL_DARK });
+  exampleCard(s, M, 4.36, 4.4, 0.72, '命中结果：只"查账"不动账', '命中 2 块 = 32 token 可直接复用；剩余 2 token（含最后一个）必须本请求亲自计算，命中信息暂存请求对象上', { fs: 9 });
+  box(s, 5.1, 4.36, 4.4, 0.72, { fill: 'FDF7F7', line: RED, lineW: 0.9 });
+  s.addText([
+    para('为什么最多命中 num_tokens − 1？', { fontSize: 9.5, bold: true, color: RED }),
+    para('最后一个 token 的 KV 依赖本次前向的输出，缓存里永远不会有"未来"——哪怕只差 1 个 token', { fontSize: 8.5, color: BODY })
+  ], { x: 5.24, y: 4.42, w: 4.15, h: 0.6, valign: 'top', fontFace: BF });
   footer(s);
   s.render();
 })();
 
-(function freeLRU() {
+(function act2Allocate() {
   const s = newSlide();
-  header(s, '模块 04 · free 与 LRU', '归还与分流：谁先被驱逐，谁能多留一会儿', { sub: '逆序释放 + 双队列分流，兼顾复用率与缓存命中率' });
-  // left: reverse release
-  box(s, M, 2.15, 4.4, 1.0, { fill: 'EDF4F5', line: TEAL, lineW: 1 });
-  s.addText('逆序释放（reversed）', { x: M + 0.15, y: 2.25, w: 4.1, h: 0.34, fontFace: BF, fontSize: 11.5, bold: true, color: TEAL_DARK });
-  s.addText('尾块先归还 → 利用空闲队列 LIFO，最近用的块最先被重新分配，提高续生成复用率。', { x: M + 0.15, y: 2.6, w: 4.1, h: 0.5, fontFace: BF, fontSize: 9.5, color: BODY });
-  box(s, M, 3.35, 4.4, 1.35, { fill: WHITE });
-  s.addText('ref_cnt 分流', { x: M + 0.15, y: 3.45, w: 4.1, h: 0.34, fontFace: BF, fontSize: 11, bold: true, color: INK });
-  s.addText('· ref_cnt > 0 → 仅减计数，块保留（他人仍在共享）\n· ref_cnt == 0 → 回收到空闲队列，等待驱逐 / 重用', { x: M + 0.15, y: 3.8, w: 4.15, h: 0.85, fontFace: BF, fontSize: 9.5, color: BODY });
-
-  // right: dual queue
-  box(s, 5.1, 2.15, 4.4, 2.55, { fill: TEAL_BG });
-  s.addText('空闲队列双策略（free_block_queue）', { x: 5.25, y: 2.25, w: 4.1, h: 0.34, fontFace: BF, fontSize: 11.5, bold: true, color: TEAL_DARK });
-  s.addText('队首 ⇄ 优先驱逐 / 分配  →  ← 队尾 · 尽量保留', { x: 5.25, y: 2.58, w: 4.1, h: 0.3, fontFace: BF, fontSize: 9.5, color: MUTED });
-  // queue arrows
-  const qy = 3.0;
-  box(s, 5.25, qy, 4.1, 0.5, { fill: WHITE, line: TEAL2, lineW: 1 });
-  s.addText('prepend_n（队首）· 无哈希块', { x: 5.35, y: qy, w: 3.9, h: 0.5, align: 'center', valign: 'middle', fontFace: BF, fontSize: 9, bold: true, color: '085454' });
-  box(s, 5.25, qy + 0.62, 4.1, 0.5, { fill: WHITE, line: TEAL2, lineW: 1 });
-  s.addText('append_n（队尾）· 有哈希块', { x: 5.35, y: qy + 0.62, w: 3.9, h: 0.5, align: 'center', valign: 'middle', fontFace: BF, fontSize: 9, bold: true, color: '085454' });
-  s.addText('· 无哈希（永不命中）→ 队首，优先弹走复用（覆盖零成本）\n· 有哈希（有效缓存条目）→ 队尾，尽量多留以满足前缀命中', { x: 5.3, y: 4.18, w: 4.0, h: 0.5, fontFace: BF, fontSize: 8.8, color: BODY });
-  analogyChip(s, 5.15, 4.96, 4.3, '类比', '先还“没写笔记的本子”，有读书笔记的页多留一张给下个人借');
-  footer(s);
-  s.render();
-})();
-
-(function prefillDecode() {
-  const s = newSlide();
-  header(s, '模块 04 · prefill vs decode', '同一套动作，不同规模', { sub: '阶段 B 与阶段 D 本质相同，差异只在量级' });
-  const cols = ['维度', 'prefill（WAITING 首次）', 'decode（RUNNING 续写）'];
-  const rows = [
-    ['处理 token 数', '一次整个 prompt（如 70）', '每步 1 个'],
-    ['前缀缓存查找', '是（get_computed_blocks）', '否（续写无新命中）'],
-    ['分配块数', '一次多块（如 3）', '0 或 1 块'],
-    ['内部五步', '①~⑤ 全走（含 touch 命中块）', '①③ 空操作，②④⑤ 照走'],
-    ['状态机', 'WAITING → RUNNING', '保持 RUNNING 直到完成']
+  header(s, '模块 04 · 第 2 幕', 'allocate_slots：两阶段分配，把命中与新块写进 block_table', { sub: '先 touch 占座防驱逐，再从空闲队列队首拿新块' });
+  const acts = [
+    ['阶段 1 · touch 命中块', 'block_1 / block_3 各 ref_cnt 1→2（A 持有 + R 预约），确保接下来分配引发的驱逐不会误伤', TEAL_DARK, TEAL_BG],
+    ['阶段 2 · 取新块', '需要 1 块 ≤ 可用 8 块 → popleft_n(1) 从队首拿到 block_8（脏块优先复用，反正没有缓存价值）', TEAL, 'EDF4F5'],
+    ['落账 · 写 block_table', 'req_to_blocks[R] = [1, 3, 8]，block_8 ref_cnt=1；R 的逻辑块 0/1/2 → 物理块 1/3/8', AMBER, AMBER_BG],
+    ['派生 · 记清零任务', 'take_new_block_ids → [8]：block_8 里还是旧请求的残数据，Worker 前向前后要清零，防止读到脏数据', AMBER_DK, AMBER_BG]
   ];
-  const colW = [2.1, 3.6, 3.3];
-  const x0 = M;
-  let y = 2.15;
-  // header
-  cols.forEach((c, i) => {
-    const cx = x0 + colW.slice(0, i).reduce((a, b) => a + b, 0);
-    box(s, cx, y, colW[i], 0.44, { fill: TEAL_DARK, noLine: true });
-    s.addText(c, { x: cx, y, w: colW[i], h: 0.44, align: 'center', valign: 'middle', fontFace: BF, fontSize: 11, bold: true, color: WHITE });
+  let y = 2.08;
+  acts.forEach((a, i) => {
+    box(s, M, y, CW, 0.56, { fill: a[3], line: a[2], lineW: 0.9 });
+    s.addText(String(i + 1), { x: M + 0.12, y: y + 0.1, w: 0.36, h: 0.36, align: 'center', valign: 'middle', fontFace: MF, fontSize: 13, bold: true, color: WHITE, fill: { color: a[2] } });
+    s.addText(a[0], { x: M + 0.62, y: y + 0.05, w: 2.1, h: 0.46, valign: 'middle', fontFace: BF, fontSize: 10, bold: true, color: a[2] });
+    s.addText(a[1], { x: M + 2.78, y: y + 0.04, w: 6.55, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 8.8, color: BODY });
+    y += 0.62;
   });
-  y += 0.49;
+  exampleCard(s, M, 4.6, CW, 0.5, '容量账怎么算', '可用 = 空闲 8 块 − watermark 预留；需要 = ceil(未命中 token / 16) +（CoW 需要时 +1）。不够 → 返回 None → 触发第 7 页的抢占', { fs: 8.8 });
+  footer(s);
+  s.render();
+})();
+
+(function act3Compute() {
+  const s = newSlide();
+  header(s, '模块 04 · 第 3 幕', '前向计算与 cache_blocks：复用旧 KV，只算新 token', { sub: 'GPU 只干两件事：往 block_8 写新 KV；attention 按表 gather' });
+  // left: what GPU does
+  box(s, M, 2.05, 4.4, 2.4, { fill: WHITE, line: HAIR });
+  s.addText('GPU 侧发生了什么', { x: M + 0.15, y: 2.14, w: 3.5, h: 0.3, fontFace: BF, fontSize: 11, bold: true, color: TEAL_DARK });
+  const gpu = [
+    ['prefill（34 token）', 'tok 1-32：KV 已在 block_1/3，跳过不重算；tok 33-34：算出 K/V 写入 block_8（占 2 槽）'],
+    ['attention gather', '按 block_table [1,3,8] 把三块物理显存"拼"成逻辑连续序列参与注意力'],
+    ['decode 续写', '每生成 1 token 追加进 block_8；2+14=16 满块时触发缓存回写']
+  ];
+  let gy = 2.5;
+  gpu.forEach(g => {
+    s.addText(g[0], { x: M + 0.15, y: gy, w: 1.85, h: 0.62, valign: 'middle', fontFace: MF, fontSize: 8.5, bold: true, color: INK });
+    s.addText(g[1], { x: M + 2.05, y: gy, w: 2.2, h: 0.62, valign: 'middle', fontFace: BF, fontSize: 8, color: BODY });
+    gy += 0.66;
+  });
+  // right: cache_blocks
+  box(s, 5.1, 2.05, 4.4, 2.4, { fill: TEAL_BG, noLine: true });
+  s.addText('cache_blocks：满块入哈希表（回写）', { x: 5.25, y: 2.14, w: 4.1, h: 0.3, fontFace: BF, fontSize: 11, bold: true, color: TEAL_DARK });
+  s.addText([
+    para('block_8 满 16 token 时：', { fontSize: 9.5, bold: true, color: INK, breakLine: true }),
+    para('① 算 H2 = hash(H1, 第2块 token)', { fontSize: 9, color: BODY, breakLine: true }),
+    para('② 哈希表写入 H2 → block_8', { fontSize: 9, color: BODY, breakLine: true }),
+    para('③ 从此别的请求查到 H2 就能蹭 block_8', { fontSize: 9, color: BODY, breakLine: true }),
+    para('幂等保护：同一哈希重复写不报错、不重复占位', { fontSize: 8.5, color: MUTED })
+  ], { x: 5.25, y: 2.5, w: 4.1, h: 1.95, valign: 'top', fontFace: BF });
+  analogyChip(s, M, 4.52, 4.4, '类比：满块才"定稿"入档案室（哈希表），后来者凭目录借阅');
+  exampleCard(s, 5.1, 4.52, 4.4, 0.6, '时间线', '第 14 次生成后 block_8 满 → 回写 H2；此时哈希表已有 H0/H1/H2 三条链', { fs: 8.5 });
+  footer(s);
+  s.render();
+})();
+
+(function poolEvolution() {
+  const s = newSlide();
+  header(s, '模块 04 · 演算', 'BlockPool 11 块逐步演算：7 个时间步一张表', { sub: '全课件最重要的一页 —— 建议暂停，逐行对照上一页流程亲手推一遍' });
+  gridHead(s, M, 2.02, ['时刻', '发生什么', 'block_1', 'block_3', 'block_8', '空闲队列（队首→）与哈希表'], [0.62, 2.42, 0.92, 0.92, 0.92, 3.2], 0.34);
+  const rows = [
+    ['T0', '初始：A 在跑，R 未到', 'A rc=1\n挂H0', 'A rc=1\n挂H1', '空闲·脏\n队首', '8,2,4,5,6,7,9,10｜H0→1 H1→3'],
+    ['T1', 'R 查命中（纯查询）', '不变', '不变', '不变', '不变｜不变（get_computed_blocks 不动状态）'],
+    ['T2', 'touch 预约命中块', 'rc 1→2', 'rc 1→2', '不变', '不变｜不变'],
+    ['T3', '取新块 popleft_n(1)', 'rc=2', 'rc=2', 'R rc=1', '2,4,5,6,7,9,10｜不变（新块不挂哈希）'],
+    ['T4', '前向+decode，块满回写', 'rc=2', 'rc=2', 'R rc=1\n挂H2', '2,4,5,6,7,9,10｜+H2→8'],
+    ['T5', 'R 生成完，free 逆序 [8,3,1]', 'rc 2→1', 'rc 2→1', 'rc 1→0\n回队尾', '2,4,5,6,7,9,10,8｜哈希全保留'],
+    ['T6', 'A 也结束，free [3,1]', 'rc→0\n回队尾', 'rc→0\n回队尾', '队尾候补', '2,4,5,6,7,9,10,8,3,1｜缓存仍可被命中']
+  ];
   rows.forEach((r, ri) => {
-    const bgc = ri % 2 === 0 ? WHITE : 'EDF4F5';
-    r.forEach((cell, i) => {
-      const cx = x0 + colW.slice(0, i).reduce((a, b) => a + b, 0);
-      box(s, cx, y, colW[i], 0.52, { fill: bgc, noLine: true });
-      s.addText(cell, { x: cx + 0.08, y, w: colW[i] - 0.16, h: 0.52, align: i === 0 ? 'left' : 'center', valign: 'middle', fontFace: BF, fontSize: 9.5, bold: i === 0, color: i === 0 ? INK : BODY });
+    gridRow(s, M, 2.36 + ri * 0.34, [0.62, 2.42, 0.92, 0.92, 0.92, 3.2], r, ri, {
+      h: 0.34, fsAll: 7.2, aligns: ['center', 'left', 'center', 'center', 'center', 'left'],
+      noBoldFirst: false
     });
-    y += 0.56;
   });
-  box(s, M, y + 0.03, CW, 0.44, { fill: TEAL_BG, noLine: true });
-  s.addText('⭐ 本质：allocate_slots 分配块 → forward 写 KV → 满块 cache_blocks 入哈希 —— 每个 block 写完即成为可命中的前缀缓存条目', { x: M + 0.2, y: y + 0.03, w: CW - 0.4, h: 0.44, align: 'center', valign: 'middle', fontFace: BF, fontSize: 10, color: TEAL_DARK, bold: true });
+  takeaway(s, '看 T5/T6：释放 ≠ 删数据 —— 物理块回空闲队列当"缓存候补"，哈希条目全保留，下个同前缀请求零成本命中', 4.82, 0.32);
+  footer(s);
+  s.render();
+})();
+
+(function act4Free() {
+  const s = newSlide();
+  header(s, '模块 04 · 第 4 幕', 'free：三步逆序回收，缓存价值最大化', { sub: '还柜子的顺序有讲究：尾块先还，满块缓刑，脏块立即上岗' });
+  const fsteps = [
+    ['① 逆序遍历', '从 req_to_blocks[R] 的尾部往前走：尾块最不可能被别人共享前缀，先还它', TEAL_DARK],
+    ['② 引用计数递减', '每块 ref_cnt--：A 还在用的块只是计数回落（2→1），不会真被回收', TEAL],
+    ['③ 归零回队', 'ref_cnt=0 的块离开"在用"状态：有哈希 → append 队尾（缓存候补）；无哈希 → prepend 队首（脏块优先复用）', AMBER]
+  ];
+  let y = 2.08;
+  fsteps.forEach(f => {
+    box(s, M, y, CW, 0.66, { fill: WHITE, line: f[2], lineW: 0.9 });
+    s.addText(f[0], { x: M + 0.15, y: y + 0.06, w: 1.6, h: 0.54, valign: 'middle', fontFace: BF, fontSize: 10.5, bold: true, color: f[2] });
+    s.addText(f[1], { x: M + 1.85, y: y + 0.05, w: 7.5, h: 0.58, valign: 'middle', fontFace: BF, fontSize: 9.3, color: BODY });
+    y += 0.74;
+  });
+  exampleCard(s, M, 4.36, 4.4, 0.72, '对照演算表 T5 · 数据能留就留', 'R 释放 [8,3,1]：block_8 归零 → 挂着 H2 → append 队尾；block_3/1 只是 rc 2→1（A 还在用）', { fs: 8.5 });
+  box(s, 5.1, 4.36, 4.4, 0.72, { fill: TEAL_BG, noLine: true });
+  s.addText([
+    para('延迟释放：pop_blocks_for_free', { fontSize: 9.5, bold: true, color: TEAL_DARK, breakLine: true }),
+    para('抢占场景先把待释放块收集起来，调度一轮结束后批量逆序释放 —— 避免边调度边改池子造成的状态混乱', { fontSize: 8.5, color: BODY })
+  ], { x: 5.24, y: 4.42, w: 4.15, h: 0.62, valign: 'top', fontFace: BF });
+  footer(s);
+  s.render();
+})();
+
+(function preemption() {
+  const s = newSlide();
+  header(s, '模块 04 · 异常路径', '显存不够怎么办：watermark 与抢占（Preemption）', { sub: 'allocate_slots 返回 None 之后，调度器的应急预案' });
+  // left: story
+  box(s, M, 2.05, 4.4, 1.62, { fill: 'FDF7F7', line: RED, lineW: 0.9 });
+  s.addText('触发：容量检查失败', { x: M + 0.15, y: 2.14, w: 4, h: 0.3, fontFace: BF, fontSize: 11, bold: true, color: RED });
+  s.addText('新请求需要 3 块，空闲只剩 1 块（还要扣掉 watermark 预留）→ allocate_slots 返回 None → 不能硬塞，否则 OOM。', { x: M + 0.15, y: 2.46, w: 4.1, h: 0.66, fontFace: BF, fontSize: 9, color: BODY });
+  s.addText('watermark：常驻预留的空闲块，宁可少接活，避免"刚分完就被抢"的抖动。', { x: M + 0.15, y: 3.12, w: 4.1, h: 0.5, fontFace: BF, fontSize: 8.5, color: MUTED });
+  // right: recompute strategy
+  box(s, 5.1, 2.05, 4.4, 1.62, { fill: TEAL_BG, noLine: true });
+  s.addText('应对：RECOMPUTE 抢占三步', { x: 5.25, y: 2.14, w: 4, h: 0.3, fontFace: BF, fontSize: 11, bold: true, color: TEAL_DARK });
+  s.addText([
+    para('① 挑 running 队尾（最新入队）的请求 X，free 它的全部块（上例释放 5 块 → 空闲变 6）', { fontSize: 8.8, color: BODY, breakLine: true }),
+    para('② X 回 waiting 队首，凭 prompt 重新排队', { fontSize: 8.8, color: BODY, breakLine: true }),
+    para('③ 新请求拿到 3 块正常入队；X 下轮重算 —— 好消息：X 的满块多半已入哈希表，重算时能命中自己！', { fontSize: 8.8, color: BODY })
+  ], { x: 5.25, y: 2.48, w: 4.1, h: 1.12, valign: 'top', fontFace: BF });
+  // bottom flow
+  const flow = ['空闲不足', 'allocate_slots → None', '抢占队尾请求 X（free 全部块）', '新请求入队 / X 回 waiting', '下轮 X 重算（可命中自己缓存）'];
+  let fx = M;
+  flow.forEach((f, i) => {
+    const w = i === 2 ? 2.5 : 1.55;
+    box(s, fx, 3.86, w, 0.52, { fill: i === 0 ? 'FDF7F7' : i === 2 ? AMBER_BG : WHITE, line: i === 0 ? RED : i === 2 ? AMBER : HAIR, lineW: 0.9 });
+    s.addText(f, { x: fx + 0.05, y: 3.86, w: w - 0.1, h: 0.52, align: 'center', valign: 'middle', fontFace: BF, fontSize: 7.8, bold: i === 2, color: i === 0 ? RED : i === 2 ? AMBER_DK : BODY });
+    if (i < flow.length - 1) s.addShape(pres.shapes.RIGHT_ARROW, { x: fx + w + 0.02, y: 4.02, w: 0.14, h: 0.2, fill: { color: TEAL2 }, line: { color: WHITE, width: 0 } });
+    fx += w + 0.18;
+  });
+  analogyChip(s, M, 4.46, 4.4, '类比：高峰餐厅让新客去门口等位，会员卡（缓存）还在');
+  exampleCard(s, 5.1, 4.46, 4.4, 0.46, '设计取舍', '静态预留显存会大量浪费；动态抢占 + 分页让长尾请求也能跑完（论文成绩单）', { fs: 8.3 });
+  footer(s);
+  s.render();
+})();
+
+(function mainLoop() {
+  const s = newSlide();
+  header(s, '模块 04 · 收官', '调度器主循环：一轮 schedule 里 KV 相关的全部动作', { sub: '把前 7 页串成一条时间线 —— 这就是每毫秒都在发生的事' });
+  const loop = [
+    ['1', 'schedule()', '从 waiting 取请求，组装本轮 running 批次', BF],
+    ['2', 'get_computed_blocks', '逐请求查前缀命中（第 1 幕）', MF],
+    ['3', 'allocate_slots', '两阶段分配（第 2 幕）；失败 → 抢占（异常路径页）', MF],
+    ['4', 'Worker 执行', '先清零 take_new_block_ids 的块、执行 CoW 拷贝，再 GPU 前向（第 3 幕）', BF],
+    ['5', 'cache_blocks', '满块回写哈希表，供后续命中', MF],
+    ['6', 'free + take_events', '完成的请求释放块；事件交给 KV Connector 消费', MF]
+  ];
+  let y = 2.06;
+  loop.forEach((l, i) => {
+    box(s, M, y, CW, 0.42, { fill: i % 2 === 0 ? WHITE : 'EDF4F5', noLine: true });
+    s.addShape(pres.shapes.OVAL, { x: M + 0.1, y: y + 0.08, w: 0.26, h: 0.26, fill: { color: TEAL }, line: { color: WHITE, width: 0 } });
+    s.addText(l[0], { x: M + 0.1, y: y + 0.07, w: 0.26, h: 0.26, align: 'center', valign: 'middle', fontFace: MF, fontSize: 9, bold: true, color: WHITE });
+    s.addText(l[1], { x: M + 0.48, y, w: 2.5, h: 0.42, valign: 'middle', fontFace: l[3], fontSize: 9.5, bold: true, color: TEAL_DARK });
+    s.addText(l[2], { x: M + 3.05, y, w: 6.3, h: 0.42, valign: 'middle', fontFace: BF, fontSize: 9, color: BODY });
+    y += 0.45;
+  });
+  box(s, M, 4.8, CW, 0.32, { fill: INK_BG, noLine: true });
+  s.addText('CPU 调度只玩整数元数据（快），GPU 只认张量行号（稳）—— 两侧靠 take_* 账本每轮交接一次，互不阻塞', { x: M + 0.2, y: 4.8, w: CW - 0.4, h: 0.32, align: 'center', valign: 'middle', fontFace: BF, fontSize: 9, bold: true, color: WHITE });
   footer(s);
   s.render();
 })();
 
 // ============================================================
-// MODULE 05 — DESIGN PRINCIPLES & EXTENSIONS
+// MODULE 05 — DESIGN & EXTENSIONS (divider + 7 pages)
 // ============================================================
-divider('05', '专家 · 设计要点与扩展', '八条设计哲学 + 其他注意力类型的扩展视野', '把“记笔记”升华为一套可维护的内存管理系统');
+divider('05', '设计要点与扩展', '八条设计哲学、参数权衡、生态扩展、误区澄清与自测清单', '回头看：所有设计都在回答两个问题 —— 显存怎么省、显存怎么共享', [
+  '把源码里的"为什么"提炼成八条可迁移的设计哲学',
+  'block_size 为什么是 16：一次参数权衡的完整推演',
+  '前缀缓存的收益公式与四大实战场景',
+  '自测八问：检验你是真的懂了还是背下来了'
+]);
 
-(function principles() {
+(function philosophy() {
   const s = newSlide();
-  header(s, '模块 05 · 设计哲学', '八条设计要点：从“能跑”到“跑得更稳”', { sub: '每一条都对应源码里的一处关键选择' });
-  const ps = [
-    ['分页管理', '固定大小 block，告别内存碎片', TEAL],
-    ['逻辑-物理分离', '调度只动 block_id，零拷贝', TEAL_DARK],
-    ['引用计数共享', '同前缀 ref_cnt++，多请求共用', TEAL2],
-    ['链式哈希', '前缀一致，改一处全链变化', '4FB3BF'],
-    ['LRU 双队列', '有哈希留队尾，无哈希放队首', '7FC9CE'],
-    ['Copy-on-Write', '部分命中复制旧块，不覆盖共享', AMBER],
-    ['两阶段 touch', '先 touch 防驱逐，再分配新块', 'B57622'],
-    ['Watermark', '预留空闲块，防频繁抢占', '8C5A16']
+  header(s, '模块 05 · 哲学', '八条设计哲学：读源码前先读"为什么"', { sub: '同样适用于评价新引擎（SGLang / TensorRT-LLM）的 KV 管理设计' });
+  const phil = [
+    ['元数据与数据分离', 'CPU 侧只玩整数（block_id），GPU 张量只认行号 —— 调度零拷贝'],
+    ['分层解耦', '五层各司其职，门面封装复杂度；换注意力类型只动中间层'],
+    ['固定块大小', '分页思想消灭外碎片：浪费从 60-80% 压到 4% 以内'],
+    ['不可变哈希链', '前缀即身份：满块才入链，链上的块内容永不回写'],
+    ['引用计数共享', 'ref_cnt 让多请求共享同一物理块，命中即省显存省计算'],
+    ['两阶段分配', '先 touch 占座、再取新块，跨组竞态在源头消除'],
+    ['Drain 记账', 'take_* 账本一轮一清，CPU 调度与 GPU 执行彻底解耦'],
+    ['断言铁律', '五条 invariant 用 assert 写死在源码里 —— 文档会过期，断言不会']
   ];
-  let x = M, y = 2.15;
-  ps.forEach((p, i) => {
-    box(s, x, y, 2.19, 1.05, { fill: WHITE });
-    chip(s, x + 0.12, y + 0.12, 0.42, 0.42, String(i + 1), p[2], WHITE, 12);
-    s.addText(p[0], { x: x + 0.66, y: y + 0.12, w: 1.5, h: 0.42, valign: 'middle', fontFace: BF, fontSize: 11, bold: true, color: INK });
-    s.addText(p[1], { x: x + 0.15, y: y + 0.62, w: 1.92, h: 0.36, align: 'center', fontFace: BF, fontSize: 8.6, color: MUTED });
-    x += 2.25;
-    if ((i + 1) % 4 === 0) { x = M; y += 1.12; }
+  phil.forEach((p, i) => {
+    const x = M + (i % 2) * 4.55, y = 2.06 + Math.floor(i / 2) * 0.68;
+    box(s, x, y, 4.45, 0.6, { fill: WHITE, line: HAIR });
+    s.addText(String(i + 1).padStart(2, '0'), { x: x + 0.1, y: y + 0.06, w: 0.5, h: 0.48, align: 'center', valign: 'middle', fontFace: MF, fontSize: 14, bold: true, color: TEAL2 });
+    s.addText(p[0], { x: x + 0.62, y: y + 0.05, w: 3.7, h: 0.26, fontFace: BF, fontSize: 10, bold: true, color: INK });
+    s.addText(p[1], { x: x + 0.62, y: y + 0.3, w: 3.75, h: 0.28, fontFace: BF, fontSize: 8, color: MUTED });
   });
-  box(s, M, 5.0, CW, 0.42, { fill: TEAL_BG, noLine: true });
-  s.addText('设计主线：让“分配 / 共享 / 驱逐”全部只改元数据，物理层自始至终保持不变。', { x: M + 0.2, y: 5.0, w: CW - 0.4, h: 0.42, align: 'center', valign: 'middle', fontFace: BF, fontSize: 10, bold: true, color: TEAL_DARK });
+  takeaway(s, '一句话总结：把"显存管理"变成"整数记账"，剩下的复杂度都是为了让这本账记得快、记得对', 4.82, 0.32);
   footer(s);
   s.render();
 })();
 
-(function extensions() {
+(function blockSizeTradeoff() {
   const s = newSlide();
-  header(s, '模块 05 · 扩展', 'Full Attention 之外的世界', { sub: '其它注意力类型在主线框架上的差异（了解即可）' });
+  header(s, '模块 05 · 权衡', 'block_size 为什么是 16：一次参数推演', { sub: '没有完美的块大小，只有针对推理负载的甜点' });
+  gridHead(s, M, 2.05, ['block_size', '4K 上下文块表长度', '尾块浪费上限', 'CoW 拷贝代价', 'kernel gather 友好度'], [1.5, 2.0, 1.7, 1.9, 1.9], 0.4);
   const rows = [
-    ['Sliding Window', 'Mistral-SA / Gemma2', '只缓存最近窗口 KV，早块可驱逐'],
-    ['Mamba / SSM', 'Bamba / Jamba', '无 KV，block 存 recurrent state'],
-    ['混合模型', 'Gemma3 / Llama4', '多组 HybridCoordinator 跨组对齐命中'],
-    ['MLA', 'DeepSeek-V2/V3', 'KV 低秩压缩，物理张量形状不同'],
-    ['Cross-Attention', '编码器-解码器', '额外 encoder KV group，静态分配'],
-    ['投机解码', 'EAGLE / Medusa', 'draft 层额外 group，需 last-block drop']
+    ['4', '1024 项', '3 槽（18.8%）', '极小', '差：太碎'],
+    ['8', '512 项', '7 槽（43.7%）', '小', '较差'],
+    ['16（默认）', '256 项', '15 槽（93.7%）', '适中', '好：论文实验甜点'],
+    ['32', '128 项', '31 槽（96.9%）', '大', '更好'],
+    ['128', '32 项', '127 槽（99.2%）', '很大', '最好']
   ];
-  const head = ['类型', '代表模型', '与 Full Attention 的主要差异'];
-  const colW = [2.6, 2.7, 3.7];
-  let y = 2.15;
-  head.forEach((h, i) => {
-    const cx = M + colW.slice(0, i).reduce((a, b) => a + b, 0);
-    box(s, cx, y, colW[i], 0.44, { fill: TEAL_DARK, noLine: true });
-    s.addText(h, { x: cx, y, w: colW[i], h: 0.44, align: 'center', valign: 'middle', fontFace: BF, fontSize: 11, bold: true, color: WHITE });
-  });
-  y += 0.48;
   rows.forEach((r, ri) => {
-    const bgc = ri % 2 === 0 ? WHITE : 'EDF4F5';
-    r.forEach((cell, i) => {
-      const cx = M + colW.slice(0, i).reduce((a, b) => a + b, 0);
-      box(s, cx, y, colW[i], 0.48, { fill: bgc, noLine: true });
-      s.addText(cell, { x: cx + 0.1, y, w: colW[i] - 0.2, h: 0.48, align: i === 2 ? 'left' : 'center', valign: 'middle', fontFace: i === 0 ? MF : BF, fontSize: 9, bold: i === 0, color: i === 0 ? TEAL_DARK : BODY });
-    });
-    y += 0.52;
+    gridRow(s, M, 2.45 + ri * 0.4, [1.5, 2.0, 1.7, 1.9, 1.9], r, ri, { h: 0.4, fsAll: 9, aligns: ['center', 'center', 'center', 'center', 'left'] });
   });
-  s.addText('阅读建议：先吃透 Full Attention 主线（本文共有），再按需查阅对应扩展章节。', { x: M + 0.1, y: y + 0.08, w: CW, h: 0.36, fontFace: BF, fontSize: 10.5, color: MUTED, italic: true });
+  exampleCard(s, M, 4.52, 4.4, 0.58, '尾块浪费怎么看', '浪费上限只作用于"最后一个未满块"：块越大，单请求最多浪费 bs−1 个槽。实际平均浪费 ≈ bs/2 槽 / 请求', { fs: 8.3 });
+  box(s, 5.1, 4.52, 4.4, 0.58, { fill: TEAL_BG, noLine: true });
+  s.addText([
+    para('结论：', { fontSize: 9.5, bold: true, color: TEAL_DARK }),
+    para('16 在"块表规模 / CoW 开销 / kernel 效率"三角里最平衡；vLLM 允许按模型调整（--block-size），长文场景可实验 32', { fontSize: 8.5, color: BODY })
+  ], { x: 5.24, y: 4.56, w: 4.15, h: 0.52, valign: 'top', fontFace: BF });
   footer(s);
   s.render();
 })();
 
-(function recap() {
+(function prefixBenefit() {
   const s = newSlide();
-  header(s, '模块 05 · 回顾', '复盘 + 源码地图：接下来怎么深入', { sub: '把五模块收束成一张可自查的知识地图' });
-  const rec = [
-    ['01 动机', 'O(n²)→O(n)；三条核心设计', TEAL],
-    ['02 概念', 'Block / block_table / 链式哈希 / ref_cnt', TEAL_DARK],
-    ['03 架构', '五层，门面 → 协调器 → 管理器 → 块池 → 物理', TEAL2],
-    ['04 旅程', 'allocate_slots 五步 · 逆序释放 · prefill≈decode', AMBER],
-    ['05 哲学', '八条设计要点，元数据驱动零拷贝', '7FC9CE']
+  header(s, '模块 05 · 收益', '前缀缓存的账：公式、数字与四大场景', { sub: '为什么各大推理引擎都在卷 prefix caching' });
+  box(s, M, 2.05, CW, 0.72, { fill: INK_BG, noLine: true });
+  s.addText([
+    para('收益公式　', { fontSize: 11, bold: true, color: AMBER }),
+    para('命中 n 块 → 省 n × block_size 个 token 的 prefill 计算；显存上 n 块由所有命中请求共享，只存一份', { fontSize: 10.5, color: WHITE })
+  ], { x: M + 0.25, y: 2.05, w: CW - 0.5, h: 0.72, valign: 'middle', fontFace: BF });
+  exampleCard(s, M, 2.92, CW, 0.72, '数字例子：客服机器人', '2000-token system prompt × 100 并发：无缓存要算 200K token prefill；全命中时每个请求只算自己的 ~50 token —— prefill 计算量省约 96%，TTFT 从秒级降到百毫秒级', { fs: 9 });
+  const scenes = [
+    ['System prompt 共享', '同产品所有会话共用同一套系统提示 —— 命中率最高、最稳定的场景'],
+    ['Few-shot 批量任务', '同一组示例 + 不同问题：示例部分全命中，只有问题部分现算'],
+    ['Agent 多轮循环', '每轮把历史完整重发：历史部分全是前缀，轮数越深省得越多'],
+    ['同模板批量处理', '法律合同比对、代码仓库问答：模板与公共上下文全部复用']
   ];
-  let y = 2.15;
-  rec.forEach((r) => {
-    box(s, M, y, CW, 0.42, { fill: 'EDF4F5', noLine: true });
-    chip(s, M + 0.12, y + 0.07, 1.15, 0.28, r[0], r[2], WHITE, 8.5);
-    s.addText(r[1], { x: M + 1.45, y, w: CW - 1.6, h: 0.42, valign: 'middle', fontFace: BF, fontSize: 9.5, color: BODY });
-    y += 0.47;
+  scenes.forEach((sc, i) => {
+    const x = M + (i % 2) * 4.55, y = 3.74 + Math.floor(i / 2) * 0.56;
+    box(s, x, y, 4.45, 0.5, { fill: WHITE, line: TEAL, lineW: 0.8 });
+    s.addText(sc[0], { x: x + 0.12, y: y + 0.03, w: 4.2, h: 0.24, fontFace: BF, fontSize: 9.5, bold: true, color: TEAL_DARK });
+    s.addText(sc[1], { x: x + 0.12, y: y + 0.26, w: 4.25, h: 0.22, fontFace: BF, fontSize: 7.5, color: MUTED });
   });
-  // source map
-  box(s, M, 4.4, CW, 0.9, { fill: WHITE, line: TEAL, lineW: 1 });
-  s.addText('源码地图（自上而下翻阅）', { x: M + 0.2, y: 4.48, w: 4, h: 0.32, fontFace: TF, fontSize: 12, bold: true, color: TEAL_DARK });
-  s.addText('kv_cache_manager.py → kv_cache_coordinator.py → single_type_kv_cache_manager.py → block_pool.py → kv_cache_utils.py → gpu_model_runner.py', { x: M + 0.2, y: 4.84, w: CW - 0.4, h: 0.4, fontFace: MF, fontSize: 9, color: INK });
-  analogyChip(s, 6.15, 4.94, 3.3, '送给每位同学', '读懂“记录页 → 归属 → 命中 → 还书”，就掌握了内核心智模型');
+  takeaway(s, '开启方式：新版 vLLM 默认启用前缀缓存；监控 get_prefix_cache_hit_rate 判断效果', 4.86, 0.28);
   footer(s);
   s.render();
 })();
 
-// Thank you
+(function ecosystem() {
+  const s = newSlide();
+  header(s, '模块 05 · 生态', '扩展类型速览：新注意力 = 新 Manager 子类', { sub: '架构留好了口子 —— 加能力不改骨架' });
+  const ext = [
+    ['FullAttentionManager', '默认 · 标准全注意力（Llama / Qwen 等）', '本课件主角', TEAL],
+    ['SlidingWindowManager', '滑窗注意力（Mistral 等）：窗口外的块可直接释放，省显存', '窗口左移 → 老块出窗即弃', TEAL2],
+    ['ChunkedLocalAttentionManager', '长文局部注意力：按 chunk 组织块的生命周期', '长上下文专用', TEAL2],
+    ['HybridKVCacheCoordinator', '混合注意力（Gemma3）：滑窗组 + 全注意力组协同，不动点迭代对齐命中', '"全系统最复杂的类"', AMBER],
+    ['KVConnector 生态', 'LMCache / NIXL 等：KV 跨节点传输，支撑 PD 分离部署', '块事件 BlockStored 驱动', AMBER_DK]
+  ];
+  let y = 2.06;
+  ext.forEach((e, i) => {
+    box(s, M, y, CW, 0.46, { fill: i % 2 === 0 ? WHITE : 'EDF4F5', noLine: true });
+    s.addText(e[0], { x: M + 0.12, y, w: 2.9, h: 0.46, valign: 'middle', fontFace: MF, fontSize: 8.8, bold: true, color: e[3] });
+    s.addText(e[1], { x: M + 3.1, y, w: 4.6, h: 0.46, valign: 'middle', fontFace: BF, fontSize: 8.5, color: BODY });
+    s.addText(e[2], { x: M + 7.75, y, w: 1.6, h: 0.46, valign: 'middle', align: 'center', fontFace: BF, fontSize: 7.5, bold: true, color: MUTED });
+    y += 0.48;
+  });
+  exampleCard(s, M, 4.52, CW, 0.62, '怎么读懂一个新 Manager', '盯三件事：① 哪些块算"命中"（find_longest_cache_hit 实现）② 什么时候释放（滑窗出界即放）③ 与全注意力共用哪些基类设施', { fs: 8.5 });
+  footer(s);
+  s.render();
+})();
+
+(function misconceptions() {
+  const s = newSlide();
+  header(s, '模块 05 · 澄清', '四个常见误区：别让直觉骗了你', { sub: '每条都对应源码里一个容易被误读的设计点' });
+  const myths = [
+    ['"命中缓存会把 KV 拷一份"', '✗ 只是共享同一物理块 + ref_cnt++。显存里自始至终只有一份数据，零拷贝。', '真正拷贝的只有 CoW：部分命中的共享半块，才复制一份私有副本'],
+    ['"驱逐 = 立即清空数据"', '✗ 驱逐只是把块从哈希表摘牌、交还空闲队列。旧内容还在，等新块复用时被清零/覆盖。', '所以刚被驱逐的前缀，短时间内重新请求仍可能撞上未覆盖的数据？不 —— 摘牌后查不到了，命中必须靠哈希表'],
+    ['"所有请求的前缀都能共享"', '✗ 逐块哈希必须完全一致：同 system prompt + 同 tokenizer + 同块边界才命中。', '差一个 token、换一个模型量化版本，哈希链就全断了'],
+    ['"块越小越好（碎片少）"', '✗ 块小则块表更长、kernel gather 更碎、CoW 更频繁 —— 见上一页的权衡表。', '16 是推演出来的甜点，不是拍脑袋']
+  ];
+  myths.forEach((m, i) => {
+    const x = M + (i % 2) * 4.55, y = 2.04 + Math.floor(i / 2) * 1.5;
+    box(s, x, y, 4.45, 1.4, { fill: WHITE, line: HAIR });
+    s.addText(m[0], { x: x + 0.12, y: y + 0.05, w: 4.2, h: 0.28, fontFace: BF, fontSize: 9.5, bold: true, color: RED });
+    s.addText([
+      para(m[1], { fontSize: 8.3, bold: true, color: TEAL_DARK, breakLine: true }),
+      para(m[2], { fontSize: 7.8, color: MUTED })
+    ], { x: x + 0.12, y: y + 0.34, w: 4.22, h: 1.0, valign: 'top', fontFace: BF });
+  });
+  footer(s);
+  s.render();
+})();
+
+(function selfTest() {
+  const s = newSlide();
+  header(s, '模块 05 · 自测', '八问八答：检验你是真懂了还是背下来了', { sub: '先遮住灰色答案行，口头回答，再对照' });
+  const qs = [
+    ['为什么最多命中 num_tokens − 1 个 token？', '最后一个 token 的 KV 依赖本次前向输出，缓存里没有"未来"'],
+    ['block_table（req_to_blocks）存在哪一层？', 'FullAttentionManager —— 协调器和门面只是转发'],
+    ['ref_cnt = 0 的块一定在空闲队列吗？', '是，这是铁律之一：ref_cnt=0 ⇔ 在 free_block_queue'],
+    ['驱逐从哪里开始？顺序依据是什么？', '空闲队列队首；无哈希块 prepend 队首优先复用，有哈希块 append 队尾多保留'],
+    ['CoW 什么时候触发？', '部分命中且尾块被共享（ref_cnt≥2）时，先复制再写'],
+    ['两阶段分配防的是什么？', '跨 KV 组竞态：组 0 分配引发驱逐，恰好赶走组 1 还没 touch 的命中块'],
+    ['满块什么时候进哈希表？', '前向计算完成后由 cache_blocks 回写，且写入是幂等的'],
+    ['null_block 是干什么的？', 'block_0 永久保留：给无 KV 的层/占位场景用，不参与分配']
+  ];
+  qs.forEach((q, i) => {
+    const x = M + (i % 2) * 4.55, y = 2.03 + Math.floor(i / 2) * 0.68;
+    box(s, x, y, 4.45, 0.62, { fill: WHITE, line: HAIR });
+    s.addText('Q' + (i + 1) + '  ' + q[0], { x: x + 0.12, y: y + 0.04, w: 4.25, h: 0.26, fontFace: BF, fontSize: 8.8, bold: true, color: INK });
+    s.addText('A  ' + q[1], { x: x + 0.34, y: y + 0.32, w: 4.0, h: 0.26, fontFace: BF, fontSize: 7.8, color: MUTED });
+  });
+  takeaway(s, '能不看答案讲清 6 题以上，就可以直接去读 vllm/v1/core 源码了', 4.82, 0.3);
+  footer(s);
+  s.render();
+})();
+
+(function sourceMap() {
+  const s = newSlide();
+  header(s, '模块 05 · 地图', '源码地图与参考资料', { sub: '带着这份地图进仓库，五层架构一一对号入座' });
+  // left: source map
+  s.addText('源码地图（vllm/v1/core）', { x: M, y: 2.02, w: 4, h: 0.3, fontFace: BF, fontSize: 11, bold: true, color: TEAL_DARK });
+  const files = [
+    ['kv_cache_manager.py', 'L5 门面：allocate_slots / free / take_*'],
+    ['kv_cache_coordinator.py', 'L4 协调器：两阶段分配的编排者'],
+    ['full_attention.py', 'L3 管理器：命中查找 / 分配 / CoW'],
+    ['block_pool.py', 'L2 块池：空闲队列 + 双向哈希'],
+    ['kv_cache_utils.py', '块哈希 / 链式前缀 / 工具函数'],
+    ['gpu_model_runner.py', 'L1 物理层：张量分配与清零执行'],
+    ['kvcache_docs/（8 篇）', '本课件配套的中文源码精读笔记']
+  ];
+  let fy = 2.34;
+  files.forEach((f, i) => {
+    box(s, M, fy, 4.55, 0.35, { fill: i % 2 === 0 ? WHITE : 'EDF4F5', noLine: true });
+    s.addText(f[0], { x: M + 0.12, y: fy, w: 2.15, h: 0.35, valign: 'middle', fontFace: MF, fontSize: 7.8, bold: true, color: TEAL_DARK });
+    s.addText(f[1], { x: M + 2.3, y: fy, w: 2.2, h: 0.35, valign: 'middle', fontFace: BF, fontSize: 7.8, color: BODY });
+    fy += 0.37;
+  });
+  // right: references
+  s.addText('参考资料（推荐阅读顺序）', { x: 5.35, y: 2.02, w: 4, h: 0.3, fontFace: BF, fontSize: 11, bold: true, color: TEAL_DARK });
+  const refs = [
+    ['01', 'PagedAttention 论文（SOSP 2023, Kwon et al.）', 'arxiv.org/abs/2309.06180 —— 浪费 60-80%→<4%、吞吐 2-4× 的出处'],
+    ['02', 'vLLM 官方文档 · V1 引擎与 Prefix Caching 指南', 'docs.vllm.ai —— 官方视角的块管理与缓存开关说明'],
+    ['03', 'vLLM GitHub 仓库 vllm/v1/core', 'github.com/vllm-project/vllm —— 对照本课件逐文件阅读'],
+    ['04', '社区优质中文图解（PagedAttention 系列）', '知乎 / B 站多位作者的 OS 分页类比与图解 —— 本课件的类比思路亦借鉴于此']
+  ];
+  let ry = 2.34;
+  refs.forEach((r, i) => {
+    box(s, 5.35, ry, 4.15, 0.58, { fill: i === 0 ? AMBER_BG : WHITE, line: i === 0 ? AMBER : HAIR, lineW: 0.8 });
+    s.addText(r[0], { x: 5.45, y: ry + 0.06, w: 0.4, h: 0.46, valign: 'middle', fontFace: MF, fontSize: 11, bold: true, color: i === 0 ? AMBER_DK : TEAL2 });
+    s.addText(r[1], { x: 5.9, y: ry + 0.05, w: 3.5, h: 0.26, fontFace: BF, fontSize: 8.3, bold: true, color: INK });
+    s.addText(r[2], { x: 5.9, y: ry + 0.3, w: 3.55, h: 0.26, fontFace: BF, fontSize: 7.5, color: MUTED });
+    ry += 0.61;
+  });
+  s.addText('阅读顺序建议：论文第 3-4 节 → 本课件模块 03 → 源码 block_pool.py → full_attention.py', { x: M, y: 4.9, w: CW, h: 0.22, fontFace: BF, fontSize: 8.5, bold: true, color: TEAL_DARK, valign: 'middle' });
+  footer(s);
+  s.render();
+})();
+
+// ============================================================
+// ENDING (2 pages)
+// ============================================================
+(function summary() {
+  const s = newSlide();
+  header(s, '总结', '一页带走全部：五个模块 × 十个关键词', { sub: '忘了细节就回到这一页' });
+  const mods = [
+    ['01', '为什么', 'O(n²)→O(n) 的取舍；KV 显存账；三大浪费 60-80% → 分页 <4%'],
+    ['02', '是什么', 'Block / block_table / 链式哈希 / ref_cnt；OS 分页类比；逻辑连续物理离散'],
+    ['03', '怎么搭', '五层架构：门面 → 协调器 → 管理器 → 块池 → 物理张量；CoW 与两阶段'],
+    ['04', '怎么跑', '请求 R 全程：查命中 → 两阶段分配 → 计算回写 → 逆序释放；抢占兜底'],
+    ['05', '为什么这样设计', '八条哲学；block_size=16 权衡；前缀缓存收益；扩展生态与自测']
+  ];
+  let y = 2.06;
+  mods.forEach((m, i) => {
+    box(s, M, y, CW, 0.5, { fill: i === 3 ? TEAL_BG : WHITE, line: HAIR });
+    s.addText(m[0], { x: M + 0.12, y, w: 0.8, h: 0.5, align: 'center', valign: 'middle', fontFace: MF, fontSize: 14, bold: true, color: TEAL });
+    s.addText(m[1], { x: M + 1.0, y, w: 1.7, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 10.5, bold: true, color: INK });
+    s.addText(m[2], { x: M + 2.8, y, w: 6.5, h: 0.5, valign: 'middle', fontFace: BF, fontSize: 8.8, color: BODY });
+    y += 0.53;
+  });
+  const kws = ['PagedAttention', 'block_table', '链式哈希', 'ref_cnt', 'CoW', '两阶段分配', 'LRU 驱逐', 'watermark', '抢占 RECOMPUTE', 'Drain 记账'];
+  let kx = M;
+  kws.forEach(k => {
+    const w = 0.2 + k.length * 0.075;
+    chip(s, kx, 4.78, w, 0.3, k, TEAL_BG, TEAL_DARK, 8);
+    kx += w + 0.08;
+  });
+  footer(s);
+  s.render();
+})();
+
 (function thanks() {
   const s = newSlide(INK_BG);
-  blockGrid(s, 8.2, 0.8, 0.32, 0.1, [TEAL, TEAL2, AMBER, '1B3E5F']);
-  s.addShape(pres.shapes.RECTANGLE, { x: 0.75, y: 2.0, w: 1.4, h: 0.05, fill: { color: AMBER } });
-  s.addText('谢谢聆听', { x: 0.75, y: 2.25, w: 8.6, h: 1.05, fontFace: TF, fontSize: 46, bold: true, color: WHITE, charSpacing: 4 });
-  s.addText('愿你也能亲手读懂内核源码', { x: 0.78, y: 3.3, w: 8.6, h: 0.5, fontFace: TF, fontSize: 18, color: 'C9E0EA' });
-  s.addText('把抽象的内存管理，讲成身边的故事', { x: 0.78, y: 3.85, w: 8.6, h: 0.4, fontFace: BF, fontSize: 12, color: AMBER });
-  s.addText('vLLM V1 · KV Cache 管理机制详解 · 2026', { x: 0.78, y: 4.9, w: 8.6, h: 0.4, fontFace: BF, fontSize: 11, color: '7FA4B5' });
+  blockGrid(s, 0.7, 0.62, 0.16, 0.07, [TEAL, TEAL2, AMBER, MUTED]);
+  blockGrid(s, 7.9, 3.7, 0.5, 0.13, ['1B3E5F', '1B3E5F', TEAL, '1B3E5F']);
+  FOOTER_ZONE = true;
+  blockGrid(s, 7.1, 4.7, 0.3, 0.09, ['1B3E5F', '1B3E5F', '1B3E5F', AMBER]);
+  s.addText('COURSE COMPLETE', { x: 0.75, y: 1.5, w: 5, h: 0.35, fontFace: MF, fontSize: 12, color: '7FA4B5', charSpacing: 3 });
+  s.addText('谢谢观看 · Q&A', { x: 0.7, y: 1.95, w: 8.6, h: 1.0, fontFace: TF, fontSize: 40, bold: true, color: WHITE, charSpacing: 3 });
+  s.addText('下一步：打开 vllm/v1/core/block_pool.py，找到 free_block_queue —— 你已经认识它的每一行', { x: 0.75, y: 3.1, w: 8.4, h: 0.45, fontFace: BF, fontSize: 13, color: 'C9E0EA' });
+  s.addText([
+    para('学习路径建议', { fontSize: 11, bold: true, color: TEAL2, breakLine: true }),
+    para('① 重做模块 04 的 11 块演算（不看答案）　② 精读 block_pool.py 的 5 条断言　③ 给同学讲一遍 CoW', { fontSize: 10.5, color: '9FB8C9', breakLine: true }),
+    para('配套文档：kvcache_docs（8 篇中文源码精读）　·　论文：arxiv.org/abs/2309.06180', { fontSize: 10.5, color: '9FB8C9' })
+  ], { x: 0.75, y: 4.0, w: 8.5, h: 1.1, valign: 'top', fontFace: BF });
+  FOOTER_ZONE = false;
   s.render();
 })();
 
 // ============================================================
-// SAVE
+// WRITE FILE
 // ============================================================
-const out = "KVCache_管理机制详解.pptx";
-pres.writeFile({ fileName: out }).then(f => console.log("saved:", f)).catch(e => { console.error(e); process.exit(1); });
+const OUT = require('path').join(__dirname, 'KVCache_管理机制详解_教学版.pptx');
+pres.writeFile({ fileName: OUT }).then(() => {
+  console.log('DONE pages=' + PAGE + ' -> ' + OUT);
+  if (AUDIT.length) { console.log('AUDIT WARNINGS (' + AUDIT.length + '):'); AUDIT.forEach(a => console.log('  ' + a)); }
+  else console.log('AUDIT CLEAN');
+}).catch(e => { console.error('FAILED', e); process.exit(1); });
