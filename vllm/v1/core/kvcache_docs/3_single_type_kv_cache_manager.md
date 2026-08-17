@@ -145,48 +145,186 @@ def take_new_block_ids(self) -> list[int]:
 
 源码位置：`single_type_kv_cache_manager.py:144-230`
 
+**作用**：计算本轮需要新分配多少物理块，这是分配前的"容量预估"。返回值会传给上层 [`kv_cache_manager.py:521`] 的 `required_blocks > available_blocks` 比较，决定是否触发抢占。
+
+#### 4.2.1 完整源码 + 逐行注释
+
 ```python
 def get_num_blocks_to_allocate(
     self,
-    request_id: str,
-    num_tokens: int,                      # 需要槽位的总 token 数（含已分配）
-    new_computed_blocks: Sequence[KVCacheBlock],  # 刚命中的前缀块
-    total_computed_tokens: int,           # 本地+外部总共已计算 token 数
-    num_local_computed_tokens: int,       # 本地前缀缓存命中 token 数
-    num_tokens_main_model: int,           # 主模型 token 数（投机解码时不含 lookahead）
-    apply_admission_cap: bool = False,    # 是否应用准入上限（SWA/ChunkedLocal用）
+    request_id: str,                     # 请求 ID，用于在 req_to_blocks / num_cached_block 里查状态
+    num_tokens: int,                     # "需要槽位的总 token 数"，= total_computed_tokens + num_new_tokens + num_lookahead_tokens
+                                         #   注意：含已经计算过的 token（前缀命中的也算），是"全序列长度"，不是"本轮新算的长度"
+    new_computed_blocks: Sequence[KVCacheBlock],  # B1 刚查到的"前缀命中块"列表（满块），这些块已有归属，无需重新分配
+    total_computed_tokens: int,          # 本地命中 + 外部 connector 命中的总已计算 token 数；用于算滑窗跳过
+    num_local_computed_tokens: int,      # 仅本地前缀缓存命中的 token 数（不含 connector），= len(new_computed_blocks) * block_size
+    num_tokens_main_model: int,          # 主模型 token 数；非投机解码时 = num_tokens；投机解码时 = num_tokens - num_lookahead_tokens
+    apply_admission_cap: bool = False,   # 是否应用"每请求准入上限"（SWA / chunked-local 才用，full-attn 一般 False）
 ) -> int:
+    """
+    Get the number of blocks needed to be allocated for the request.
+    ...
+    """
+
+    # ===== 第 1 步：按"全序列长度"算总块数 =====
+    # cdiv 是向上取整除法。这里把"整个序列需要多少块"先算出来，
+    # 是容量预估的"分母"。注意此时还没扣掉前缀命中、滑窗跳过等，
+    # 是"假设全要新分配"的最大可能值。
     num_required_blocks = cdiv(num_tokens, self.block_size)
+
+    # 准入上限：只对 SWA / chunked-local 这类"回收型"spec 生效。
+    # 目的：让"准入阶段承诺的块数"和"启动时 pool sizer 给的额度"对齐，
+    # 防止 sum(每个请求的预留) > pool 总量，避免 issue #39734 那种死锁或 mid-prefill OOM。
+    # full-attn 模型 _max_admission_blocks_per_request 一般是 None，这一段不触发。
     if apply_admission_cap and self._max_admission_blocks_per_request is not None:
         num_required_blocks = min(
             num_required_blocks, self._max_admission_blocks_per_request
         )
+
+    # req_to_blocks: dict[req_id, list[KVCacheBlock]]，记录该请求"已经持有"的块。
+    # defaultdict，请求首次出现时返回空 list，num_req_blocks = 0。
+    # 这一步查的是"过去步骤已分给它的块数"，后面要从中扣减。
     num_req_blocks = len(self.req_to_blocks.get(request_id, ()))
 
+    # ===== 第 2 步：running 请求快路径 =====
+    # num_cached_block: dict[req_id, int]，只跟踪 RUNNING 请求的已缓存块数。
+    # 一个请求一旦进入 running（已经 prefill 过至少一次），后续不会再有新的前缀命中
+    # （前缀命中只发生在第一次 prefill 的 B1 阶段）。
     if request_id in self.num_cached_block:
-        # 快路径：running 请求不会再有新的前缀命中
+        # 断言：running 请求不应再传新的命中块进来
         assert len(new_computed_blocks) == 0
+        # 直接用 "总块数 - 已持有块数"。
+        # 投机解码时已持有块可能含被拒的 draft token 对应的块，
+        # 此时 num_required_blocks 可能 < num_req_blocks，所以 max(..., 0) 兜底。
         return max(num_required_blocks - num_req_blocks, 0)
 
+    # ===== 第 3 步：滑窗跳过 =====
+    # get_num_skipped_tokens：基类默认返回 0（full-attn 不跳过任何 token）。
+    # SlidingWindowManager / ChunkedLocalAttentionManager 等子类会覆盖它，
+    # 返回"窗口外、不再参与 attention"的 token 数。
     num_skipped_tokens = self.get_num_skipped_tokens(total_computed_tokens)
+
+    # ===== 第 4 步：算"已有归属"的块数 =====
+    # 命中块（new_computed_blocks）+ 已持有块（req_to_blocks）合在一起
+    # 都是"不需要新分配"的块。这两者并集而非相加更精确，但这里用相加做保守上界
+    # （因为 new_computed_blocks 是本轮新查到的，和 req_to_blocks 一般不重叠）。
     num_local_computed_blocks = len(new_computed_blocks) + num_req_blocks
+
+    # 滑窗跳过的"整块"数（窗口外不完整的尾块不算，整除截断）
     num_skipped_blocks = num_skipped_tokens // self.block_size
+
+    # 核心公式：要新分配的块 = 总块数 - 已有归属块数
+    # 这里取 max(num_skipped_blocks, num_local_computed_blocks) 而不是相加，
+    # 因为两者可能有重叠（命中的块可能恰好也在窗口外）。
+    # 取较大者是保守估计："假设它们不重叠时能省的最大块数"。
+    # 注释里说"local-computed blocks inside the window contribute to required capacity;
+    # otherwise, skipped blocks dominates"——意思是：
+    #   - 滑窗内：用 local_computed_blocks（命中的块在窗口里仍占容量）
+    #   - 滑窗外：用 skipped_blocks（窗口外的块直接不算）
+    # 取较大者覆盖两种情况。
     num_new_blocks = max(
         num_required_blocks - max(num_skipped_blocks, num_local_computed_blocks),
         0,
     )
-    # ... 部分命中 CoW 预留 +1、驱逐候选块计数等
+
+    # ===== 第 5 步：算"前缀命中块里有多少落在滑窗外" =====
+    # 前缀命中块 new_computed_blocks 是从头开始的连续块，
+    # 前 num_skipped_blocks 块可能在窗口外（窗口往前推时）。
+    # 这部分"窗口外的命中块"在后面 _get_num_evictable_blocks 时要排除掉，
+    # 因为它们 touch 后是直接被释放的（不在 free 队列里挪位）。
+    # num_req_blocks 已在 req_to_blocks 里，先扣掉，剩下的才是
+    # "new_computed_blocks 中位于窗口外的部分"。
+    num_skipped_new_computed_blocks = max(0, num_skipped_blocks - num_req_blocks)
+
+    # ===== 第 6 步：驱逐候选块计数 =====
+    # _get_num_evictable_blocks：统计 blocks 里 ref_cnt==0 且非 null 的块数。
+    # 含义：这些命中块现在还挂在 free 队列里（被人 touch 过又释放过），
+    # 所以它们当前仍被算在 block_pool.get_num_free_blocks() 里。
+    # 一旦本请求 touch 它们（allocate_new_computed_blocks 时），
+    # 它们会从 free 队列里被摘出、ref_cnt++ → free_blocks 减少。
+    # 因此这部分块必须计入 required_blocks，否则上游
+    # (kv_cache_manager.py:521) required > available 的判断会虚高估可用容量。
+    # 切片 [num_skipped_new_computed_blocks:] 是为了排除"在窗口外的命中块"，
+    # 因为那些块 touch 后会立刻被 remove_skipped_blocks 释放，不会真正占住 free 队列位。
+    num_evictable_blocks = self._get_num_evictable_blocks(
+        new_computed_blocks[num_skipped_new_computed_blocks:]
+    )
+
+    # ===== 第 7 步：部分命中 CoW 预留 +1 块 =====
+    # _has_partial_local_hit：判断前缀命中是否"落在块边界中间"。
+    #   条件：有命中块 且 num_local_computed_tokens % block_size != 0
+    #   含义：最后一块命中是"半块"（命中了部分 token，但不到块尾）。
+    # 这种半块在 allocate_new_blocks 时会触发 Copy-on-Write：
+    #   - 原命中块可能正被别的请求引用，不能直接覆盖
+    #   - 所以新拿一个空块，把原块内容拷贝过来，再追加新 token
+    # 这个 "+1" 就是给 CoW 重定向预留的那个新块。
+    if self._has_partial_local_hit(new_computed_blocks, num_local_computed_tokens):
+        num_new_blocks += 1
+
+    # 最终返回：本轮要新分配的块 + 命中块中驱逐候选块数。
+    # 注意 num_new_blocks 是"真要从 free 池拿的新块"，
+    # num_evictable_blocks 是"已被命中但要 touch 摘出 free 队列的旧块"，
+    # 两者都让 free_blocks 减少，所以一起返回给上游做容量检查。
     return num_new_blocks + num_evictable_blocks
 ```
 
-**作用**：计算本轮需要新分配多少物理块，这是分配前的"容量预估"。
+#### 4.2.2 三个辅助函数实现
 
-关键点：
-- `cdiv(num_tokens, block_size)` 向上取整得到总块数，减去已持有的块数
-- **running 请求快路径**：已在 `num_cached_block` 中的请求不会再有新前缀命中，直接用 `num_required_blocks - num_req_blocks`
-- **滑动窗口跳过**：`get_num_skipped_tokens` 算出窗口外 token 数，跳过块不占新分配
-- **部分命中 CoW 预留**：若命中落在块内边界（`_has_partial_local_hit`），额外 +1 块用于 CoW 重定向
-- 内部还统计驱逐候选块数量（`_get_num_evictable_blocks`），因为它们在 touch 后会被移出空闲队列，必须计入容量检查
+**`_get_num_evictable_blocks`**（`single_type_kv_cache_manager.py:128-130`）
+
+```python
+@classmethod
+def _get_num_evictable_blocks(cls, blocks: Sequence[KVCacheBlock]):
+    return sum(blk.ref_cnt == 0 and not blk.is_null for blk in blocks)
+```
+
+- `ref_cnt == 0`：当前没人引用，块还在 free 队列里
+- `not blk.is_null`：排除 null_block（占位符块，不占真实容量）
+- 返回的是"touch 后会从 free 队列消失"的块数
+
+**`_has_partial_local_hit`**（`single_type_kv_cache_manager.py:132-142`）
+
+```python
+def _has_partial_local_hit(
+    self,
+    new_computed_blocks: Sequence[KVCacheBlock],
+    num_local_computed_tokens: int,
+) -> bool:
+    # The local prefix-cache hit ends inside one of this manager's
+    # blocks: the shared tail block needs CoW.
+    return (
+        len(new_computed_blocks) > 0
+        and num_local_computed_tokens % self.block_size != 0
+    )
+```
+
+- 命中 token 数对 block_size 取余非 0 → 最后一块没填满 → 是半块命中
+- 半块要 CoW 重定向，所以前面 `num_new_blocks += 1`
+
+**`get_num_skipped_tokens`（基类）**（`single_type_kv_cache_manager.py:661-672`）
+
+```python
+def get_num_skipped_tokens(self, num_computed_tokens: int) -> int:
+    """
+    Get the number of tokens that will be skipped for attention computation.
+    ...
+    """
+    # The default behavior is to not skip any tokens.
+    return 0
+```
+
+- FullAttention 默认不跳过任何 token（窗口覆盖全部历史）
+- `SlidingWindowManager` 等子类会覆盖此方法，返回窗口外的 token 数
+
+#### 4.2.3 整体逻辑串起来
+
+1. 先按"全序列需要多少块"算 `num_required_blocks`（带前缀命中）
+2. running 请求直接走快路径：总块数 - 已持有块数
+3. 新请求要从总块数里减掉"已有归属的块"（命中块 + 已持有块）和"滑窗跳过的块"，取较大者保守估计
+4. 加上"半块命中"需要的 CoW 预留块
+5. 加上"还在 free 队列里的命中块"数（touch 后会从 free 队列消失，必须计入容量检查）
+
+最终返回值就是 [`allocate_slots` L521]里 `required_blocks` 的来源，和 `available_blocks = free - reserved` 比较，决定是否触发抢占。
 
 ### 4.3 核心方法：`add_local_computed_blocks`
 
