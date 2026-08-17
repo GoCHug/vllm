@@ -254,27 +254,215 @@ def free_blocks(self, ordered_blocks: Iterable[KVCacheBlock]) -> None:
 
 ### 5.5 缓存满块 `cache_full_blocks`
 
+源码位置：`block_pool.py:225-342`
+
+**作用**：把请求里**新填满的块**写入前缀缓存映射表（`cached_block_hash_to_block`），使其成为可被后续请求命中的条目。调用链：`SingleTypeKVCacheManager.cache_blocks`（§4.6）→ 本方法。
+
+**两个方向的映射**：
+- `cached_block_hash_to_block: BlockHashWithGroupId → KVCacheBlock`——正向表，查找命中用
+- `cached_block_hashes_by_block: block_id → set[BlockHashWithGroupId]`——反向表，记录块的"别名哈希"（一块多哈希时清理用）
+
+#### 5.5.1 完整源码 + 逐行注释
+
 ```python
-# block_pool.py:225-342
 def cache_full_blocks(
     self,
-    request: Request,                    # 提供 request.block_hashes（请求预计算的哈希）
-    blocks: list[KVCacheBlock],          # 请求的所有块
-    num_cached_blocks: int,              # 已缓存的块数
-    num_full_blocks: int,                # 满块数（应缓存到第几块）
-    block_size: int,
-    kv_cache_group_id: int,
-    block_mask: list[bool] | None = None,  # 可选掩码，SWA/Mamba 标记哪些块可缓存
+    request: Request,                    # 请求对象（提供预计算的 block_hashes + token_ids）
+    blocks: list[KVCacheBlock],          # 请求的全部块（req_to_blocks，顺序即 block_table 顺序）
+    num_cached_blocks: int,              # 已缓存的块数（此前轮次已写过哈希的块数）
+    num_full_blocks: int,                # 本次应缓存到的满块数（num_tokens // block_size）
+    block_size: int,                     # 本组块大小（可能 != hash_block_size）
+    kv_cache_group_id: int,              # 本 KV cache 组 ID（拼进哈希 key，组间隔离）
+    block_mask: list[bool] | None = None,  # 掩码，False 的块跳过不缓存（SWA 尾窗口 / Mamba 对齐）
 ) -> None:
+    # ===== 第 1 步：幂等检查 =====
+    # 没有新增的满块（已缓存数 >= 满块数）直接返回，重复调用安全
+    if num_cached_blocks >= num_full_blocks:
+        return
+
+    # ===== 第 2 步：切出待缓存的新满块 =====
+    # 例：blocks 共 5 块，此前缓存到第 2 块，现共 4 块满 → 缓存 blocks[2:4]
+    new_full_blocks = blocks[num_cached_blocks:num_full_blocks]
+    # 掩码长度必须与新满块数一致（由 manager 的 reachable_block_mask 保证）
+    assert block_mask is None or len(block_mask) == len(new_full_blocks)
+
+    # ===== 第 3 步：取哈希（不算哈希，只做粒度对齐） =====
+    # request.block_hashes 在 Request 创建/追加 token 时就算好了（hash_block_size 粒度）。
+    # 本组 block_size 可能是 hash_block_size 的倍数（混合组场景），需要按 block_size
+    # 粒度"合并视图"；相等则直接复用（kv_cache_utils.py:2300 resolve_block_hashes）
+    block_hashes = resolve_block_hashes(
+        request.block_hashes, self.hash_block_size, block_size
+    )
+    # 从"已缓存位置"切到末尾，下标 i 与 new_full_blocks[i] 对齐
+    new_block_hashes = block_hashes[num_cached_blocks:]
+
+    # 事件收集器：仅 enable_kv_cache_events 时启用（默认 None 不收集）
+    new_hashes: list[ExternalBlockHash] | None = (
+        [] if self.enable_kv_cache_events else None
+    )
+
+    # ===== 第 4 步：逐块写入哈希表 =====
+    for i, blk in enumerate(new_full_blocks):
+        # 跳过 null 块（滑窗/Mamba 对齐的占位）和被掩码排除的块
+        # （这些块永远不会被 find_longest_cache_hit 查到，不该进哈希表）
+        if blk.is_null or (block_mask is not None and not block_mask[i]):
+            continue
+        block_hash = new_block_hashes[i]
+        # 该哈希覆盖的累积 token 数 = (块位置+1) * block_size
+        # 记到 blk.block_hash_num_tokens，供部分尾块哈希（partial tail）判断用
+        num_hash_tokens = (num_cached_blocks + i + 1) * block_size
+
+        # 哈希 + group_id 拼成复合 key——不同组即使 token 相同哈希也不同，组间隔离
+        block_hash_with_group_id = make_block_hash_with_group_id(
+            block_hash, kv_cache_group_id
+        )
+        if blk.block_hash is not None:
+            # 块已有主哈希：唯一合法场景是"部分尾块 → 满块晋升"
+            # （此前以 partial hash 缓存过，如 fine-grained lookup 的尾块）
+            # 断言旧哈希覆盖的 token 数确实更少（是部分哈希不是同哈希重写）
+            assert (
+                blk.block_hash_num_tokens is not None
+                and blk.block_hash_num_tokens < num_hash_tokens
+            )
+            # 清掉旧哈希条目（主哈希+别名都清，见 :571），避免过期别名残留
+            removed_hashes = self._remove_cached_block_hashes(blk)
+            # 开事件时为每个被移除的哈希发 BlockRemoved 事件
+            self._emit_block_removed_events(removed_hashes)
+        # 写入新哈希（:607）：
+        #   - blk.block_hash 为 None → 设为主哈希（set_block_hash，记录 num_tokens）
+        #   - blk.block_hash 已有   → 记入别名集 cached_block_hashes_by_block
+        #   - 已存在相同映射则跳过（幂等）
+        #   - 最后插入正向表 cached_block_hash_to_block
+        self._insert_block_hash(
+            block_hash_with_group_id,
+            blk,
+            num_tokens=num_hash_tokens,
+        )
+        if new_hashes is not None:
+            new_hashes.append(maybe_convert_block_hash(block_hash))
+
+    # ===== 第 5 步：发 BlockStored 事件（仅 enable_kv_cache_events 时） =====
+    if self.enable_kv_cache_events:
+        # 父哈希 = 第一个新块之前那块的哈希（链式哈希的前驱）；
+        # 从头缓存（num_cached_blocks==0）则无父
+        if num_cached_blocks == 0:
+            parent_block_hash: ExternalBlockHash | None = None
+        else:
+            parent_block_hash = maybe_convert_block_hash(
+                block_hashes[num_cached_blocks - 1]
+            )
+
+        # 本次缓存覆盖的 token 区间
+        start_token_idx = num_cached_blocks * block_size
+        end_token_idx = num_full_blocks * block_size
+
+        # 逐块生成 extra_keys：多模态特征 / cache_salt（仅首块）等附加键。
+        # 与上面循环一样跳过 null/掩码块，保证与 new_hashes 长度对齐
+        extra_keys_list: list[tuple[Any, ...] | None] = []
+        curr_mm_idx = 0        # 多模态 item 游标（跨块推进）
+        for i in range(num_cached_blocks, num_full_blocks):
+            if blocks[i].is_null:
+                continue
+            if block_mask is not None and not block_mask[i - num_cached_blocks]:
+                continue
+            block_start = i * block_size
+            block_end = block_start + block_size
+            extra_keys, curr_mm_idx = generate_block_hash_extra_keys(
+                request, block_start, block_end, curr_mm_idx
+            )
+            extra_keys_list.append(extra_keys)
+
+        # 组装 BlockStored 事件入队，后续 drain 给外部消费者
+        # （gateway / KV connector 等通过事件感知缓存写入）
+        self.kv_event_queue.append(
+            self._build_block_stored_event(
+                request,
+                block_hashes=new_hashes,
+                parent_block_hash=parent_block_hash,
+                start_token_idx=start_token_idx,
+                end_token_idx=end_token_idx,
+                block_size=block_size,
+                kv_cache_group_id=kv_cache_group_id,
+                extra_keys_list=extra_keys_list,
+            )
+        )
 ```
 
-**作用**：当 block 被 token 填满后，把哈希条目写入映射表，使其成为可被前缀缓存命中的条目。
+#### 5.5.2 关键设计点
 
-关键点：
-- **哈希不在这里算**：`request.block_hashes` 由 `Request` 对象在 token 创建/追加时算好，这里通过 `resolve_block_hashes()`（`kv_cache_utils.py`）把哈希块粒度对齐到本组 `block_size` 后直接取用
-- `num_cached_blocks >= num_full_blocks` 时直接返回（幂等，已缓存完）
-- 对每块：若已有主哈希（partial→full 晋升场景），先 `_remove_cached_block_hashes` 清旧别名，再 `_insert_block_hash` 写入新主哈希
-- 有事件时发 `BlockStored` 事件（`_build_block_stored_event`）
+- **哈希不在这里算**：`request.block_hashes` 由 `Request` 在 token 创建/追加时预计算，本方法只通过 `resolve_block_hashes()` 做粒度对齐后取用（`block_size == hash_block_size` 时零开销复用；倍数时合并视图）
+- **幂等**：`num_cached_blocks >= num_full_blocks` 直接返回；`_insert_block_hash` 内部对相同映射也是 no-op。manager 侧用 `num_cached_block[request_id]` 记住进度，多轮调用只处理增量
+- **部分尾块 → 满块晋升**：唯一允许"新满块已带哈希"的场景。先用 `_remove_cached_block_hashes` 清掉旧的部分哈希（主哈希+别名一起清），再写入覆盖更多 token 的满块哈希，避免过期别名残留导致错误命中
+- **一块可挂多个哈希（别名）**：`_insert_block_hash` 里主哈希之外的哈希都进 `cached_block_hashes_by_block` 反向表。清理时（remove / evict）两个表一起删，防止泄漏
+- **group_id 拼进哈希 key**：不同 KV cache 组（如 full attention 组 vs SWA 组）即使 token 相同，物理 KV 布局也不同，必须组间隔离，否则跨组命中会读到错误布局的数据
+- **掩码块/null 块不进缓存**：这些块永远不会被本组的 `find_longest_cache_hit` 查到（滑窗外/状态对齐占位），写进哈希表只会污染索引
+- **事件是旁路**：`BlockRemoved`/`BlockStored` 只在 `enable_kv_cache_events` 时产生，服务于外部消费者（gateway、connector），不影响缓存本身的正确性
+
+#### 5.5.3 底层辅助：`_insert_block_hash`（主哈希 vs 别名分流）
+
+源码位置：`block_pool.py:607-627`
+
+**作用**：把一条 `(哈希 → 块)` 映射写入正向表，同时决定该哈希成为块的**主哈希**还是**别名**。三个调用方：
+- `cache_full_blocks`（:293）——满块入缓存
+- `cache_partial_block`（:508）——细粒度部分尾块条目（`block_size > hash_block_size` 场景）
+- `move_block_hashes`（:645）——CoW 哈希转移
+
+```python
+def _insert_block_hash(
+    self,
+    block_hash_with_group_id: BlockHashWithGroupId,  # 复合 key：块哈希 + group_id
+    block: KVCacheBlock,                             # 目标物理块
+    num_tokens: int | None,                          # 该哈希覆盖的累积前缀 token 数（仅主哈希记录）
+) -> None:
+    # ===== 防重 1：块的主哈希就是它 =====
+    # 完全相同的 (块, 哈希) 组合，无事可做（幂等）
+    if block.block_hash == block_hash_with_group_id:
+        return
+
+    # ===== 防重 2：这条映射已存在 =====
+    # 正向表里该哈希已经指向本块（可能以主哈希或别名形式登记过），跳过。
+    # 注意 contain 检查的是"该哈希 → 该 block_id"这一条映射，不是哈希存不存在——
+    # 同一哈希指向**别的块**不算重复（见下文 insert 的多块 dict）
+    if self.cached_block_hash_to_block.contain(
+        block_hash_with_group_id, block.block_id
+    ):
+        return
+
+    # ===== 分流：本块还没有主哈希 → 该哈希升为主哈希 =====
+    if block.block_hash is None:
+        # set_block_hash（kv_cache_utils.py:148）断言当前无哈希，写入
+        # _block_hash 和 _block_hash_num_tokens（累积前缀长度，供晋升判断）
+        block.set_block_hash(block_hash_with_group_id, num_tokens=num_tokens)
+    # ===== 分流：本块已有别的主哈希 → 该哈希只登记为别名 =====
+    else:
+        # 反向表 cached_block_hashes_by_block[block_id] 追加这个哈希，
+        # 供驱逐/清空/晋升时反查"本块身上挂了哪些哈希"一次性全删
+        self.cached_block_hashes_by_block.setdefault(block.block_id, set()).add(
+            block_hash_with_group_id
+        )
+    # ===== 写正向表 =====
+    # cached_block_hash_to_block.insert（:88）支持一哈希多块：
+    #   - key 不存在 → 直接挂单块
+    #   - key 已挂单块 → 升级成 dict{block_id: block}（同内容多份物理拷贝共存）
+    #   - key 已是 dict → 追加
+    self.cached_block_hash_to_block.insert(block_hash_with_group_id, block)
+```
+
+**执行路径一览**（4 种情况）：
+
+| 进入状态 | 走的分支 | 效果 |
+|---|---|---|
+| 主哈希 == 新哈希 | 防重 1 返回 | 无变化（幂等） |
+| 该映射已在正向表 | 防重 2 返回 | 无变化（幂等） |
+| 块无主哈希 | 主哈希分支 | 设主哈希 + 记 `num_tokens` + 写正向表 |
+| 块已有别的**不同**主哈希 | 别名分支 | 哈希进反向别名集 + 写正向表 |
+
+**关键认知**：
+
+- **主哈希与别名的区别只在"块身上"**：正向表里两者地位相同（都能被 `get_one_block` 查到）；区别是主哈希存在 `KVCacheBlock._block_hash`（随块走，还带 `num_tokens`），别名只存在 pool 的反向表里（按 block_id 聚合）。
+- **什么时候出现别名**：典型是"一块内容同时匹配多个哈希边界"。如 `block_size > hash_block_size` 时，一个物理块内的多个细粒度前缀边界都能命中它——第一个边界成为主哈希，其余是别名。`cache_partial_block` 的 docstring 说的就是这个："If the block already has a primary hash, the partial entry is tracked in `cached_block_hashes_by_block`"。
+- **为什么必须先 remove 再晋升**：部分→满块晋升若不走 `_remove_cached_block_hashes`，旧的部分哈希会变成残留别名继续指向该块——但块内容对应的正确 key 已经变了，残留别名会让后续查找命中到错误边界。这就是 §5.5.1 第 4 步先 remove 的原因。
+- **一哈希多块（dict）的语义**：`insert` 允许同一哈希指向多个物理块（如 CoW 后新旧两块内容相同）。查找时 `get_one_block` 取任意一个；`pop(key, block_id)` 只摘指定块的那条，不影响其它。
 
 ### 5.6 驱逐缓存条目 `evict_blocks`
 
