@@ -1187,30 +1187,43 @@ kv_cache_tuple = kv_cache_permute.split(self.head_size, dim=-1)
 
 物理张量就绪后，调度器拿到的是经过对齐的 `num_blocks`（写回 `cache_config.num_gpu_blocks`，`engine/core.py:314`），由 `BlockPool.__init__` 创建 `KVCacheBlock(0..N-1)` 与空闲队列——这一步属于逻辑层，详见 [`2_block_pool.md`](./2_block_pool.md)。
 
-物理层与逻辑层的桥接约定极其简单——**位置等同，无需查表**：
+物理层与逻辑层的桥接约定极其简单——**位置等同，无需查表**：`block_id` 恒等于 KV cache 张量在 `block_dim` 轴上的序号。唯一需要区分的是——**不同后端的 `block_dim` 所在轴不同**，因此"索引哪一维"取决于后端 shape 形式（详见 §8.1）。
 
 ```
 逻辑层（BlockPool）              物理层（torch.Tensor，reshape 后）
 ─────────────────────           ───────────────────────────────────
-KVCacheBlock(block_id=0)   ←→   kv_caches[layer][0]   ← 第 0 行
-KVCacheBlock(block_id=1)   ←→   kv_caches[layer][1]   ← 第 1 行
-KVCacheBlock(block_id=2)   ←→   kv_caches[layer][2]   ← 第 2 行
+                                形式A（FlashAttn/FlashInfer/CPU）：block_dim=0
+                                shape = (num_blocks, num_kv_heads, block_size, 2*head_size)
+KVCacheBlock(block_id=0)   ←→   kv_caches[layer][0]          ← dim 0 第 0 行
+KVCacheBlock(block_id=1)   ←→   kv_caches[layer][1]          ← dim 0 第 1 行
    ...                              ...
-KVCacheBlock(block_id=N-1) ←→   kv_caches[layer][N-1] ← 第 N-1 行
+KVCacheBlock(block_id=N-1) ←→   kv_caches[layer][N-1]        ← dim 0 第 N-1 行
+
+                                形式B（ROCm attn）：block_dim=1
+                                shape = (2, num_blocks, block_size, num_kv_heads, head_size)
+KVCacheBlock(block_id=0)   ←→   kv_caches[layer][:, 0]       ← dim 1 第 0 行（含 K/V 两份）
+KVCacheBlock(block_id=1)   ←→   kv_caches[layer][:, 1]       ← dim 1 第 1 行
+   ...                              ...
+KVCacheBlock(block_id=N-1) ←→   kv_caches[layer][:, N-1]     ← dim 1 第 N-1 行
 ```
+
+> ⚠️ 形式 A 的 `kv_caches[layer][0]` 直接索引 dim 0（`num_blocks`），刚好拿到 block 0。但形式 B 的 `kv_caches[layer][0]` 索引的是 dim 0（K/V 的 "2"），取到的是 K 而非 block 0——必须用 `[:, 0]` 才能定位到 block 维。两种形式的 K/V 存放方式也不同：形式 A 把 K/V 打包进最后一维 `2*head_size`（前半 K、后半 V，forward 时 `split(head_size, dim=-1)` 切分）；形式 B 把 K/V 放在独立的 dim 0（索引 0=K、1=V）。
 
 这个桥接之所以成立，依赖两个事实：
 
 1. **逻辑侧**：`BlockPool.__init__`（`block_pool.py:162-196`）一次性创建 `blocks = [KVCacheBlock(i) for i in range(num_blocks)]`，保证 `blocks[i].block_id == i`
-2. **物理侧**：[`_reshape_kv_cache_tensors`](../worker/gpu_model_runner.py#L7346) 把 int8 字节池 view 成后端期望的逻辑 shape，第 0 维（`block_dim`）大小就是 `num_blocks`
+2. **物理侧**：[`_reshape_kv_cache_tensors`](../worker/gpu_model_runner.py#L7346) 把 int8 字节池 view 成后端期望的逻辑 shape，`block_dim` 轴大小就是 `num_blocks`。`block_dim` 的具体位置由 `AttentionBackend.get_kv_cache_block_dim()`（`backend.py:100-117`）在运行时探测——它向 `get_kv_cache_shape` 传入哨兵值 `_S=1234567`，再在返回的 shape tuple 中 `shape.index(_S)` 定位 `num_blocks` 所在维度（形式 A 返回 0，形式 B 返回 1）
 
-**forward 时**，attention 算子把请求的 `block_table`（一组 `block_id`）当作 fancy index 使用：
+**forward 时**，attention 算子把请求的 `block_table`（一组 `block_id`）传入底层 kernel，kernel 按 `block_dim` 轴gather 出该 seq 的 KV。伪代码（以形式 A 为例，形式 B 需在 dim 1 索引）：
 
 ```python
 # 伪代码：attention 算子在第 L 层前向
 block_table = seq.block_table             # [b0, b1, b2, ...] 一组 block_id
-kv = kv_caches[layer][block_table]        # 用 block_id 作索引 gather 出该 seq 的 KV
-#                ↑ 第 0 维 fancy indexing，block_id == 行号
+# 形式A（block_dim=0）：直接在 dim 0 fancy indexing
+kv = kv_caches[layer][block_table]        # → (len(block_table), H, N, 2*D)
+# 形式B（block_dim=1）：在 dim 1 fancy indexing，保留 dim 0 的 K/V
+kv = kv_caches[layer][:, block_table]     # → (2, len(block_table), N, H, D)
+#                ↑ block_id == block_dim 轴上的行号
 ```
 
 **block_table 的代码归属**：`block_table` 不是 `Request` 对象的字段，而是 [`FullAttentionManager.req_to_blocks`](./single_type_kv_cache_manager.py) 持有的 `defaultdict[str, list[KVCacheBlock]]`——key 是 `request_id`，value 是该请求占用的 `KVCacheBlock` 列表。
