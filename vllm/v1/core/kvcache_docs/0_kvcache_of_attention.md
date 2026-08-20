@@ -684,68 +684,250 @@ return shape.index(_S)  # 0 = blocks-first, 1 = kv-first
 
 ## 九、典型模型 KV cache shape 速查
 
-### Llama-7B（Full Attention, FlashInfer, bf16, block_size=16）
+> 这一章把所有 KV cache 归成**三类存储家族**，每个家族内部用**同一套换算规则**理解其 shape。看得懂一遍，就能类推到任意同家族模型。
+
+### 9.0 统一心智模型（先看这个）
+
+同一份 KV cache 有**两个层面**，且两者只差"第 0 维"：
+
+```
+┌─────────────────────┬──────────────────────────────────────────────┐
+│ 层面                 │  形状里出现的东西                             │
+├─────────────────────┼──────────────────────────────────────────────┤
+│ 模型层面（逻辑）      │  seq_len —— 序列是一整段，按 token 连续排列       │
+│ vLLM存储层面（物理）  │  num_blocks —— 序列被切成固定大小块，第0维变成块号 │
+└─────────────────────┴──────────────────────────────────────────────┘
+```
+
+换算关系：
+
+```
+num_blocks = ceil(seq_len / block_size)      # block_size = 一块容纳的 token 数
+```
+
+> **一句话**：物理 shape 就是把逻辑 shape 的 `seq_len` 换成 `num_blocks`；**其余维度（头数、头维度、latent 维度、K/V 拼接方式）完全不变**。
+
+**三类存储家族**（这也是本章的核心分组）：
+
+| 家族 | 模型层面存什么 | 一句话类比 | 形状上的特征 |
+|---|---|---|---|
+| **A. K/V 头独立** | 每个 KV 头存完整 K 和 V | 每本书的每章各留一个索引页 | 有 `num_kv_heads × head_size` 维，K/V 拼在最后一维 |
+| **B. latent 打包**（MLA） | 每 token 一个压缩 latent | 每章只留一行摘要 | KV 头=1，无独立 K/V 分离，存 latent 向量 |
+| **C. 递归状态**（Mamba/GDN） | 每时间步一份状态矩阵 | 边读边在一张草稿纸上更新进度 | 无 head/token 维，扁平字节缓冲 |
+
+> block_size=16 是 vLLM 全局默认（`DEFAULT_BLOCK_SIZE`），64 是 MLA/Mamba 常配的推荐值。16 和 64 的关系见 §9.8。
+
+---
+
+### 9.0.x 速查总表
+
+| 模型 | 家族 | block_size | 模型层面 shape | vLLM 存储层面 shape（物理） |
+|---|---|---|---|---|
+| Llama-7B | A | 16 | `(seq_len, 32, 128)` ×2（K、V） | `(num_blocks, 32, 16, 256)` |
+| DeepSeek V3 | B | 64 | `(seq_len, 576)` latent | `(num_blocks, 64, 576)` |
+| DeepSeek V3.2 | B | 64 | `(seq_len, 656)` latent | `(num_blocks, 64, 656)` |
+| DeepSeek V4 | B | 64→32 | `(seq_len, 584)` latent | `(num_blocks, 32, 584)` |
+| Mamba2 | C | 64 | `(4096,3)`+`(128,64,128)` 状态 | `(num_blocks, 1, 1, 2121728)` |
+| GDN | C | 64 | `(3072,3)`+`(8,128,128)` 状态 | `(num_blocks, 1, 1, 280576)` |
+| Whisper | A（Cross） | 16 | 同 Full Attention | 同 Full Attention |
+
+---
+
+## 家族 A：全 Attention（每头独立 K/V）
+
+> 模型层面看的是"每个 KV 头"的 K、V 各自多大；vLLM 层把 K/V 拼到最后一维再切块。
+
+### 9.1 Llama-7B（Full Attention, FlashInfer, bf16, block_size=16）
+
+**模型层面** —— 每个 KV 头存完整的 K 和 V：
+
+```
+K: (num_seq, num_kv_heads, seq_len, head_size)     # 32 个头，每个头 128 维
+V: (num_seq, num_kv_heads, seq_len, head_size)
+```
+
+**vLLM 存储层面** —— 切块 + K/V 拼到最后一维：
 
 ```
 单层: (num_blocks, 32, 16, 256)  # bf16, 32 KV heads, 128 head_size
-#       B      H    N   2*128
+#       B      H    N   2*128     前 128=K，后 128=V
 # page_size_bytes = 16 * 32 * 256 * 2 = 262,144 B = 256 KB
 ```
 
-### DeepSeek V3（MLA, FlashMLA, bf16, block_size=64）
+**换算锚点**：逻辑 `seq_len` 排成 `16/块` → 物理第 0 维 `num_blocks`；比逻辑多出的常数 `256` 就是 K、V 拼接 `2*128`。
+
+---
+
+**家族 A 变体**（shape 规则相同，仅参数不同）：
+
+| 变体 | 物理 shape | 与 9.1 的差别 |
+|---|---|---|
+| Sliding Window | 同 9.1 | 仅计算时看窗口，布局不变 |
+| ROCm | `(2, num_blocks, 16, 32, 128)` | K/V 独立成 dim 0 |
+| HPC (Hopper) | `(num_blocks, 2, 16, 32, 128)` | K/V 独立成 dim 1 |
+| INT4 (Triton) | `(num_blocks, 32, 16, 2*(64+4))` | head 减半 + fp32 scale 内联 |
+
+> 变体只需对照 §1.3 的"量化改写维度"表，存储家族不变。
+
+---
+
+## 家族 B：MLA（每 token 一个 latent）
+
+> 模型层面看"每 token 存一个多长的 latent"；vLLM 层把 latent 按 `block_size` 切块。**没有 `seq_len` 维度上的头数扩展**（KV 头固定=1）。
+
+### 9.2 DeepSeek V3（MLA, FlashMLA, bf16, block_size=64）
+
+**模型层面** —— 每 token 一个压缩 latent，KV 头合并为 1：
 
 ```
-# kv_lora_rank=512, qk_rope_head_dim=64, head_size=576
+# kv_lora_rank=512, qk_rope_head_dim=64, head_size=576 (512+64)
+latent: (num_seq, seq_len, 576)   # 每 token 一个 576 维 latent
+```
+
+**vLLM 存储层面** —— latent 按 `block_size=64` 切块：
+
+```
 单层: (num_blocks, 64, 576)  # bf16
 # page_size_bytes = 64 * 576 * 2 = 73,728 B = 72 KB
 ```
 
-### DeepSeek V3.2（MLA, fp8_ds_mla, block_size=64）
+**换算锚点**：逻辑 `seq_len` 排成 `64/块` → 物理第 0 维 `num_blocks`；`576` 不变（它已经是 latent 宽度）。
+
+---
+
+### 9.3 DeepSeek V3.2（MLA, fp8_ds_mla, block_size=64）
+
+**模型层面** —— latent 量化成自定义 656B 字节布局（非简单 bf16 latent）：
 
 ```
-单层: (num_blocks, 64, 656)  # 512B NoPE + 16B scale + 128B RoPE, uint8
+latent: (num_seq, seq_len, 656)   # 512B NoPE + 16B scale + 128B RoPE, uint8
+```
+
+**vLLM 存储层面**：
+
+```
+单层: (num_blocks, 64, 656)  # uint8
 # page_size_bytes = 64 * 656 * 1 = 41,984 B = 41 KB
 ```
 
-### DeepSeek V4（MLA, fp8_ds_mla, compress_ratio=2, block_size=64）
+**换算锚点**：`656` 是一个"自定义打包宽"，替代 bf16 的 `576`（量化后维度/字节意义变了，但 shape 结构仍是 `(num_blocks, block_size, 打包宽)`）。
+
+---
+
+### 9.4 DeepSeek V4（MLA, fp8_ds_mla, compress_ratio=2, block_size=64）
+
+**模型层面** —— 一个 latent 打包宽 `584`：
+
+```
+latent: (num_seq, seq_len, 584)   # 448B NoPE + 128B RoPE + 8B fp8 scale, uint8
+```
+
+**vLLM 存储层面** —— `compress_ratio=2` 把物理块再压一半：
 
 ```
 storage_block_size = 64 // 2 = 32
-单层: (num_blocks, 32, 584)  # 448B NoPE + 128B RoPE + 8B scale, uint8
+单层: (num_blocks, 32, 584)  # uint8
 # page_size_bytes = 32 * 584 * 1 = 18,688 B = 18.25 KB
 ```
 
-### Mamba2（MambaSpec, bf16, block_size=64）
+**换算锚点**：V4 额外多一步——`64 → 32`。逻辑 `seq_len` 排成 `64/块`，但**每个物理块塞进 2×64 个 token 的 latent**，所以物理维度显示 32（详见 §2.3 compress_ratio）。
+
+> **家族 B 小结**：MLA/V3/V3.2/V4 的物理 shape 都是 `(num_blocks, storage_block_size, 打包宽)`，三者的"打包宽"不同（576 / 656 / 584），V4 还多了 `compress_ratio`。看懂一个就能类推其余。
+
+---
+
+## 家族 C：Mamba / GDN（递归状态）
+
+> 模型层面看"每时间步维护哪几份状态、各自多大"；vLLM 层把状态**扁平化成一个字节缓冲**，再按块存放。**物理 tensor 没有 head/token 维度**。
+
+### 9.5 Mamba2（MambaSpec, bf16, block_size=64）
+
+**模型层面** —— 两个递归状态，随 token 逐个更新：
 
 ```
 # 假设 intermediate_size=2048, n_groups=8, num_heads=128, head_dim=64,
 #         state_size=128, conv_kernel=4, tp=1
-# conv_dim = 2048 + 2 * 8 * 128 = 4096
-# conv_state: (4096, 3)  →  4096 * 3 * 2 = 24,576 B
-# temporal_state: (128, 64, 128)  →  128 * 64 * 128 * 2 = 2,097,152 B
-# page_size_bytes = 24,576 + 2,097,152 = 2,121,728 B ≈ 2 MB
-物理 tensor: (num_blocks, 1, 1, 2121728)
+conv_state:      (conv_dim // tp, conv_kernel-1)     = (4096, 3)
+ssm_state:       (num_heads // tp, head_dim, state_size) = (128, 64, 128)
 ```
 
-### GDN（MambaSpec, bf16, block_size=64, Qwen3-Next 配置）
+**vLLM 存储层面** —— 状态扁平化成字节缓冲，按块存放：
+
+```
+# conv_dim = 2048 + 2 * 8 * 128 = 4096
+# conv_state: (4096, 3)  →  4096 * 3 * 2 = 24,576 B
+# ssm_state:  (128, 64, 128)  →  128 * 64 * 128 * 2 = 2,097,152 B
+# page_size_bytes = 24,576 + 2,097,152 = 2,121,728 B ≈ 2 MB
+物理 tensor: (num_blocks, 1, 1, 2121728)   # int8 扁平字节缓冲
+```
+
+**换算锚点**：逻辑的"每时间步状态"没有 `seq_len` 维度可切——取而代之，物理形状恒定 `(num_blocks, 1, 1, page_size_bytes)`，一个块存"一份完整字节状态"；`bind_kv_cache` 时再切回 conv/ssm 视图（§5.4）。
+
+---
+
+### 9.6 GDN（MambaSpec, bf16, block_size=64, Qwen3-Next 配置）
+
+**模型层面** —— 同样是递归状态，temporal 部分是个门控 delta-rule 更新矩阵：
 
 ```
 # 假设 num_k_heads=8, num_v_heads=8, head_k_dim=128, head_v_dim=128,
 #         conv_kernel_size=4, tp=1, num_spec=0
+conv_state:       (conv_dim // tp, conv_kernel-1) = (3072, 3)
+temporal_state:   (num_v_heads // tp, head_v_dim, head_k_dim) = (8, 128, 128)
+```
+
+**vLLM 存储层面**：
+
+```
 # conv_dim = 128 * 8 * 2 + 128 * 8 = 3072
 # conv_state: (3072, 3)  →  3072 * 3 * 2 = 18,432 B
 # temporal_state: (8, 128, 128)  →  8 * 128 * 128 * 2 = 262,144 B
 # page_size_bytes = 18,432 + 262,144 = 280,576 B = 274 KB
-物理 tensor: (num_blocks, 1, 1, 280576)
+物理 tensor: (num_blocks, 1, 1, 280576)   # int8 扁平字节缓冲
 ```
 
-### Whisper（Cross Attention, FlashInfer, bf16, block_size=16）
+**换算锚点**：与 Mamba2 同构——物理 `(num_blocks, 1, 1, page_size_bytes)`，把 conv+v状态打包。区别只在状态内部的 split。
+
+> **家族 C 小结**：Mamba1/2、GDN、ShortConv、LinearAttn、KDA 的物理 shape 全是 `(num_blocks, 1, 1, page_size_bytes)`，只是 `page_size_bytes` 由各自的状态 tuple 决定（§5.3）。看懂一个就能类推全部。
+
+---
+
+## 家族 A 变体：Cross Attention（Whisper）
+
+### 9.7 Whisper（Cross Attention, FlashInfer, bf16, block_size=16）
+
+**模型层面** —— encoder 输出侧 K/V，静态常驻、不随生成释放：
 
 ```
-# encoder 侧输出缓存，不释放
+encoder KV: 同 Full Attention
+```
+
+**vLLM 存储层面** —— 与 Full Attention 相同，仅内存上限按 encoder 长度算：
+
+```
 单层: (num_blocks, num_kv_heads, 16, 2 * head_size)  # 同 Full Attention
 # max_memory = cdiv(max_encoder_len, block_size) * page_size_bytes
 ```
+
+**换算锚点**：它属于家族 A；唯一的框架差异是"不释放"，由 `max_memory` 公式体现（§6.1）。
+
+---
+
+## 9.8 block_size 的两种取值（为何 16 / 64）
+
+| 值 | 含义 | 为什么 |
+|---|---|---|
+| **16** | vLLM 全局默认（`DEFAULT_BLOCK_SIZE=16`，cache.py） | FlashAttention 要求 `block_size % 16 == 0`；块小 → prefix caching 复用粒度细、槽位浪费少 |
+| **64** | MLA / Mamba 常配的推荐调优值 | 块大 → kernel 一次处理更多 token、块管理/查找开销更少、吞吐更高；且 Mamba 要求 `block_size % 8 == 0` 对齐 causal_conv1d |
+
+> 两者**非类别差异**，而是"默认 vs 调优"：Full Attention 也可用 64，MLA/Mamba 也可用 16。文档用 16/64 是为了对比展示两种取值下的 memory 计算。
+
+### 9.8.x 换算口诀
+
+> 只要知道"逻辑 shape + block_size"，就能推出物理 shape：
+> **1. 换第 0 维**：`seq_len` → `num_blocks = ceil(seq_len / block_size)`
+> **2. 家族 B 额外压缩**：若 MLA 有 `compress_ratio`，`num_blocks` 后再 ÷ratio
+> **3. 家族 C 恒等**：状态无 `seq_len` 维，物理恒为 `(num_blocks, 1, 1, page_size_bytes)`
 
 ---
 
