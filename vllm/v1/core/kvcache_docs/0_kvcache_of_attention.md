@@ -24,7 +24,7 @@
 | Sliding Window | `SlidingWindowSpec` | 同 Full Attention | 同 Full Attention | Gemma3 |
 | MLA | `MLAAttentionSpec` | `(num_blocks, block_size, head_size)` | 单一 latent 向量，无独立 K/V 分离 | DeepSeek V2/V3 |
 | MLA (fp8_ds_mla V3.2) | `MLAAttentionSpec` | `(num_blocks, block_size, 656)` | 512B NoPE + 16B scale + 128B RoPE | DeepSeek V3.2 |
-| MLA (DeepSeek V4) | `MLAAttentionSpec` | `(num_blocks, block_size, 584)` | 448B NoPE + 128B RoPE + 8B fp8 scale | DeepSeek V4 |
+| MLA (DeepSeek V4) | `MLAAttentionSpec` | `(num_blocks, storage_block_size, 584)` | 448B NoPE + 128B RoPE + 8B fp8 scale | DeepSeek V4 |
 | SWA + MLA | `SlidingWindowMLASpec` | `(num_blocks, block_size, head_size)` 或 584/656 | 同 MLA | DeepSeek V4 SWA |
 | Cross Attention | `CrossAttentionSpec` | 同 Full Attention（取决于后端） | 静态 encoder KV | Whisper |
 | Sink Attention | `SinkFullAttentionSpec` | 同 Full Attention | sink block 常驻 | — |
@@ -64,6 +64,8 @@ Full Attention 的物理 KV cache shape 由 **attention backend** 的 `get_kv_ca
 ```
 
 **使用此 shape 的 backend**：
+
+> 下表"源码位置"列指向 `get_kv_cache_shape` 方法中 `return` 语句的行号（非 `def` 行号）。
 
 | Backend | 源码位置 | 备注 |
 |---|---|---|
@@ -174,7 +176,7 @@ MLA 的核心区别：**不存储分离的 K 和 V，而是存储压缩后的 la
 | FlashMLA | `mla/flashmla_sparse.py:142` |
 | FlashAttn MLA | `mla/flashattn_mla_sparse.py:114` |
 | FlashInfer MLA (SM90) | `mla/flashinfer_mla_sparse.py:134` |
-| FlashInfer MLA (SM120) | `mla/flashinfer_mla_sparse.py:229` |
+| FlashInfer MLA (SM120) | `mla/flashinfer_mla_sparse.py:230` |
 | ROCm Aiter MLA | `mla/rocm_aiter_mla_sparse.py:303` |
 | XPU MLA | `mla/xpu_mla_sparse.py:77` |
 
@@ -203,8 +205,9 @@ DeepSeek V3.2 MLA 的 `kv_lora_rank=512`、`qk_rope_head_dim=64`，head_size 语
 
 | Backend | 源码位置 |
 |---|---|
-| FlashMLA (V4) | `mla/flashmla_sparse.py:140`（model_version == "deepseek_v4"） |
 | Sparse SWA (V4) | `mla/sparse_swa.py:149` |
+
+> **注意**：`flashmla_sparse.py` 不含 `deepseek_v4` 分支，其第 140 行的 `return (num_blocks, block_size, 656)` 是 V3.2 fp8_ds_mla 的 return，不是 V4。V4 的 584B 布局目前仅在 `sparse_swa.py` 中实现。
 
 ### 2.2 page_size_bytes
 
@@ -544,7 +547,7 @@ conv state 的两维顺序取决于 `is_conv_state_dim_first()`——某些设�
 ### 5.6 Mamba cache mode
 
 ```python
-# mamba_utils.py:709-718
+# MambaSpec.max_memory_usage_bytes (kv_cache_interface.py:709-718)
 if mamba_cache_mode == "all":
     # 每个 token 位置都有独立 state block
     max_blocks = cdiv(max_model_len, block_size) + num_speculative_blocks
@@ -726,7 +729,7 @@ num_blocks = ceil(seq_len / block_size)      # block_size = 一块容纳的 toke
 | Llama-7B | A | 16 | `(seq_len, 32, 128)` ×2（K、V） | `(num_blocks, 32, 16, 256)` |
 | DeepSeek V3 | B | 64 | `(seq_len, 576)` latent | `(num_blocks, 64, 576)` |
 | DeepSeek V3.2 | B | 64 | `(seq_len, 656)` latent | `(num_blocks, 64, 656)` |
-| DeepSeek V4 | B | 64→32 | `(seq_len, 584)` latent | `(num_blocks, 32, 584)` |
+| DeepSeek V4 | B | 64（compress_ratio=2 → storage=32） | `(seq_len, 584)` latent | `(num_blocks, 32, 584)` |
 | Mamba2 | C | 64 | `(4096,3)`+`(128,64,128)` 状态 | `(num_blocks, 1, 1, 2121728)` |
 | GDN | C | 64 | `(3072,3)`+`(8,128,128)` 状态 | `(num_blocks, 1, 1, 280576)` |
 | Whisper | A（Cross） | 16 | 同 Full Attention | 同 Full Attention |
@@ -830,7 +833,7 @@ storage_block_size = 64 // 2 = 32
 # page_size_bytes = 32 * 584 * 1 = 18,688 B = 18.25 KB
 ```
 
-**换算锚点**：V4 额外多一步——`64 → 32`。逻辑 `seq_len` 排成 `64/块`，但**每个物理块塞进 2×64 个 token 的 latent**，所以物理维度显示 32（详见 §2.3 compress_ratio）。
+**换算锚点**：V4 额外多一步——`64 → 32`。`compress_ratio=2` 使 `storage_block_size = block_size // 2 = 32`，即物理 block 的第 1 维从 64 压缩到 32（每个物理块存 32 个 token 的 latent 而非 64 个），配合 V4 的 584B 打包布局（详见 §2.3 compress_ratio）。
 
 > **家族 B 小结**：MLA/V3/V3.2/V4 的物理 shape 都是 `(num_blocks, storage_block_size, 打包宽)`，三者的"打包宽"不同（576 / 656 / 584），V4 还多了 `compress_ratio`。看懂一个就能类推其余。
 
@@ -926,7 +929,7 @@ encoder KV: 同 Full Attention
 
 > 只要知道"逻辑 shape + block_size"，就能推出物理 shape：
 > **1. 换第 0 维**：`seq_len` → `num_blocks = ceil(seq_len / block_size)`
-> **2. 家族 B 额外压缩**：若 MLA 有 `compress_ratio`，`num_blocks` 后再 ÷ratio
+> **2. 家族 B 额外压缩**：若 MLA 有 `compress_ratio`，第 1 维的 `block_size` → `storage_block_size = block_size // compress_ratio`
 > **3. 家族 C 恒等**：状态无 `seq_len` 维，物理恒为 `(num_blocks, 1, 1, page_size_bytes)`
 
 ---
