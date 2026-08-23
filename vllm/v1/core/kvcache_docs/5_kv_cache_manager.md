@@ -1,5 +1,12 @@
 # KVCacheManager 详解
 
+> 五层架构第 5 层（最顶门面，Scheduler 唯一交互入口）｜[总览](./0_kv_cache_management_arch.md) ｜下层 ➔ [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md)
+> 时序位置：[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) **B1～E 每一步都从它入口**
+>
+> 源文件：`vllm/vllm/v1/core/kv_cache_manager.py`
+>
+> 主线：纯 Full Attention 单 group（内部持 `UnitaryKVCacheCoordinator`）。**本文重点：Scheduler 在时序 B1~E 阶段真正调用的方法（`get_computed_blocks` / `allocate_slots` / `take_new_block_ids` / `take_kv_cache_block_copies` / `free` / `pop_blocks_for_free`）逐行看源码；其余查询/统计/事件方法一张表带过。**
+
 ## 一、是什么
 
 `KVCacheManager` 是五层 KV Cache 管理架构中的**第五层——最顶层门面**，也是 Scheduler 与 KV Cache 子系统交互的**唯一入口**。
@@ -11,26 +18,6 @@
 ---
 
 ## 二、干什么用
-
-### 在五层架构中的位置
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Scheduler（调度器，只和KVCacheManager交互）                   │
-│     ↓ 调用                                                    │
-│ 第五层：KVCacheManager  ← 本文讲解（唯一门面）                │
-├─────────────────────────────────────────────────────────────┤
-│ 第四层：KVCacheCoordinator                                    │
-│  └── UnitaryKVCacheCoordinator（单组透传）                   │
-├─────────────────────────────────────────────────────────────┤
-│ 第三层：SingleTypeKVCacheManager                              │
-│  └── FullAttentionManager（链式哈希前缀缓存）                 │
-├─────────────────────────────────────────────────────────────┤
-│ 第二层：BlockPool（块池，管理 free_block_queue 和哈希映射）    │
-├─────────────────────────────────────────────────────────────┤
-│ 第一层：物理 KV Cache 张量（GPU 上真实存储 K/V 的大张量）       │
-└─────────────────────────────────────────────────────────────┘
-```
 
 ### 调度流程中 KVCacheManager 的职责与调用时序
 
@@ -398,7 +385,9 @@ class KVCacheManager:
 阶段3: 为待计算的 token（new + lookahead）分配新块
 ```
 
-下面按"前置准备 → 阶段1 → 阶段2 → 阶段3"的顺序逐行注释源码。
+> 注意：这里的 `阶段1/2/3` 是 `allocate_slots` **方法内部**的三个子阶段，与时序文档 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) 的应用级阶段 **A~F**（A入队/B调度/C forward/D decode/E释放/F抢占）不是同一层级，勿混用。下文以"子阶段①/②/③"指代之。
+
+下面按"前置准备 → 子阶段① → 子阶段② → 子阶段③"的顺序逐行注释源码。
 
 #### 函数签名与参数
 
@@ -456,7 +445,7 @@ if has_scheduled_reqs and request.status in (
     watermark_blocks = self.watermark_blocks
 ```
 
-#### 阶段1：释放 comp 中不需要的块，检查空闲块是否足够
+#### 子阶段①：释放 comp 中不需要的块，检查空闲块是否足够
 
 源码docstring：*"Free unnecessary blocks in `comp` and check if we have sufficient free blocks (return None if not)."*
 
@@ -527,7 +516,7 @@ if required_blocks > available_blocks:
     return None   # 空间不足，需要抢占或等待
 ```
 
-#### 阶段2：处理前缀 token（comp + new_comp + ext_comp）
+#### 子阶段②：处理前缀 token（comp + new_comp + ext_comp）
 
 源码docstring：*"Handle prefix tokens (comp + new_comp + ext_comp): Free unnecessary blocks / Allocate new blocks for ext_comp tokens inside sliding window"*
 
@@ -550,7 +539,7 @@ if (
     )
 ```
 
-#### 阶段3：为待计算的 token（new + lookahead）分配新块
+#### 子阶段③：为待计算的 token（new + lookahead）分配新块
 
 源码docstring：*"Allocate new blocks for tokens to be computed (new + lookahead)"*
 
@@ -596,13 +585,13 @@ return self.create_kv_cache_blocks(new_blocks)
 34token prompt，命中32token（2块），num_new_tokens=2：
 
 - **前置准备**：`num_local_computed_tokens = 0 + 32 = 32`，`total_computed_tokens = 32`
-- **阶段1**：
+- **子阶段①**：
   - `num_tokens_need_slot = min(32 + 2, max_model_len) = 34`
   - `remove_skipped_blocks`：FullAttention下no-op
   - `num_blocks_to_allocate = ceil(34/16) - 2 = 3 - 2 = 1`块
   - 空间检查：假设空闲块足够，通过
-- **阶段2**：`allocate_new_computed_blocks` → touch命中blockA、blockB，ref_cnt都+1
-- **阶段3**：
+- **子阶段②**：`allocate_new_computed_blocks` → touch命中blockA、blockB，ref_cnt都+1
+- **子阶段③**：
   - `allocate_new_blocks` → 从free_block_queue分配blockC，`new_block_ids=[blockC.block_id]`
   - `num_tokens_to_cache = min(32+2, 34) = 34`
     - `num_full_blocks = 34 // 16 = 2`，`num_cached_block = 2`（prefix hit已缓存前2块）
@@ -756,19 +745,21 @@ Copy-on-Write拷贝任务：当多个请求共享同一块，其中一个请求�
 
 ---
 
-## 六、方法调用总览
+## 六、方法调用总览（对照时序阶段）
 
-一个请求从分配到释放，KVCacheManager 的方法按以下顺序被调用：
+一个请求从分配到释放，Scheduler 在时序 B1~E 阶段逐一调用 KVCacheManager 的方法：
 
-| 步骤 | 方法 | 说明 |
-|------|------|------|
-| 步开始 | `new_step_starts()` | 重置内部状态（清空 new_block_ids 等） |
-| 前缀查找 | `get_computed_blocks(req)` | 返回命中块和命中 token 数 |
-| 分配 | `allocate_slots(req, ...)` | 内部包含准入检查、两阶段分配、cache_blocks |
-| Drain | `take_new_block_ids()` / `take_kv_cache_block_copies()` | 给 Worker 准备 GPU 数据 |
-| （forward） | — | KVCacheManager 不参与 |
-| 补缓存（可选） | `cache_blocks(req, ...)` | async PP / KV Connector 场景外部追加 |
-| 释放 | `free(req)` 或 `pop_blocks_for_free(req)` | 正常结束直接释放；抢占先弹出再逆序释放 |
+| 时序阶段 | 方法 | 说明 |
+|---------|------|------|
+| 步开始 | `new_step_starts()` | 重置内部状态（清空 `new_block_ids` 等） |
+| **B1 前缀查找** | `get_computed_blocks(req)` | 返回命中块和命中 token 数 → 下放 `coordinator.find_longest_cache_hit` |
+| **B2 分配** | `allocate_slots(req, ...)` | 内部含准入检查、两阶段分配、`cache_blocks`（见 §5.3） |
+| **B3 组装** | `take_new_block_ids()` / `take_kv_cache_block_copies()` | 给 Worker 准备清零/CoW 清单 |
+| （GPU forward） | — | KVCacheManager 不参与 |
+| 补缓存（可选） | `cache_blocks(req, ...)` | async PP / KV Connector 场景 forward 后外部追加 |
+| **E 释放** | `free(req)` / `pop_blocks_for_free(req)` | 正常结束直接释放；抢占先弹出再逆序释放 |
+
+时序图可见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) §3.2-§3.5。
 
 ---
 

@@ -4,7 +4,23 @@
 >
 > Sliding Window Attention、Mamba、混合模型等更复杂的场景在各文档末尾以"扩展"章节简要提及，核心逻辑仍然基于 Full Attention 框架。
 
-| 子文档 | 层 | 主题（Full Attention 主线） |
+## 本套文档怎么读（阅读地图）
+
+KV Cache 文档分两层组织：**三篇 `0_` 总览**（从三个视角看同一套机制）+ **五篇分层详解**（`1`~`5`，自底向上）。
+
+**三篇总览，分工互补，别混着看：**
+
+| 文档 | 视角 | 解决什么问题 | 什么时候看 |
+|---|---|---|---|
+| **本文档** `0_kv_cache_management_arch.md` | **静态架构** | vLLM 的 KV Cache 管理长什么样：为什么需要、五层如何组织、核心概念（block / block_table / 链式哈希） | 第一本，建立全局框架 |
+| [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) | **动态时序** | 一条请求从入队到释放，在 Scheduler / 各管理层 / Worker 之间如何逐步调用（含 Mermaid 时序图与源码行号） | 想把"一次运行"完整走一遍时 |
+| [`0_kvcache_of_attention.md`](./0_kvcache_of_attention.md) | **存储格式** | 不同 attention/SSM（Full / MLA / Mamba-GDN）的 KV cache 存什么、物理 shape 什么样、block_size / page_size_bytes 怎么算 | 研究某种模型的 KV 缓存字节布局时 |
+
+> 一句话分工：**本文档讲"层"，时序文档讲"流"，attention 文档讲"形状"。** 三者不重复——本文档只在 §5 概述请求的五阶段流向，把逐层调用细节交给时序文档。
+
+**五篇分层详解（自底向上，与本文档 §3 的五层一一对应）：**
+
+| 分层文档 | 层 | 主题（Full Attention 主线） |
 |---|---|---|
 | [`1_physical_memory.md`](./1_physical_memory.md) | 物理显存层（最底） | KV 物理张量的申请、reshape，`block_id == 张量行号`的桥接关系 |
 | [`2_block_pool.md`](./2_block_pool.md) | 逻辑块池层 | `KVCacheBlock`、空闲队列、链式哈希表、`BlockPool` 分配/释放/缓存/驱逐 |
@@ -49,6 +65,8 @@ GPU forward 计算                    →  attn backend 用 block_table 索引�
 释放/抢占 (free / preempt)          →  逆序释放，ref_cnt--，归零块入空闲队列
 ```
 
+> 这五步是**请求生命周期的宏观概括**，对应时序文档的规范化阶段 **`A入队 → B调度(B1前缀查找/B2分配/B3组装) → C GPU forward → D decode续写 → E 释放 → F 抢占`**。这里的"五阶段"是粗粒度周览，逐层源码调用链与行号见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) §3；后文 `allocate_slots` 内部子阶段用 `①②③` 表示，勿与"阶段X"混淆。
+
 ### 2.2 数据流：从 token 到物理显存
 
 当一条请求进入调度器，它的 token 列表按 `block_size` 分块。调度器不直接操作 GPU 显存，而是：
@@ -58,6 +76,8 @@ GPU forward 计算                    →  attn backend 用 block_table 索引�
 4. GPU forward 时，attention 算子用 `block_table` 作 fancy index，从物理 KV 张量中 gather 对应的 K/V 行。
 
 **核心直觉**：调度器全程只操作 `block_id`（整数），不搬移任何显存；物理张量一次性申请好后不再变动，所有分配/共享/驱逐只改引用计数和哈希表。
+
+> 上面五阶段"哪一层调用哪一层"的**逐层调用链、源码行号与 Mermaid 时序图**，见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md)；`block_hash` / `block_table` / `ref_cnt` 等实体细节见 [`2_block_pool.md`](./2_block_pool.md) 与本文 §4。
 
 ---
 
@@ -69,22 +89,22 @@ GPU forward 计算                    →  attn backend 用 block_table 索引�
 ┌──────────────────────────────────────────────────────────────────┐
 │                        Scheduler (调度器)                         │
 ├──────────────────────────────────────────────────────────────────┤
-│            KVCacheManager + KVCacheBlocks (顶层接口)              │  详见 §5
+│            KVCacheManager + KVCacheBlocks (顶层接口)              │  见 5_kv_cache_manager.md
 │              对 Scheduler 暴露统一 API，隐藏内部结构               │
 ├──────────────────────────────────────────────────────────────────┤
-│              UnitaryKVCacheCoordinator (协调器-单组直通)          │  详见 §4
+│              UnitaryKVCacheCoordinator (协调器-单组直通)          │  见 4_kv_cache_coordinator.md
 │              单 Full Attention 组：直接转发给下层manager           │
 ├──────────────────────────────────────────────────────────────────┤
-│                  FullAttentionManager (单类型管理)                │  详见 §3
+│                  FullAttentionManager (单类型管理)                │  见 3_single_type_kv_cache_manager.md
 │      前缀查找(链式哈希)、分配/释放、Copy-on-Write、block_table维护  │
 ├──────────────────────────────────────────────────────────────────┤
-│                    BlockPool (逻辑块池)                            │  详见 §2
+│                    BlockPool (逻辑块池)                            │  见 2_block_pool.md
 │     逻辑块分配/释放/缓存/驱逐（仅持 block_id，不持显存指针）        │
 │       ┌─────────────────┴──────────────────┐                     │
 │    FreeKVCacheBlockQueue             BlockHashToBlockMap          │
 │     (LRU 空闲块队列)                 (链式哈希→block映射)          │
 ├──────────────────────────────────────────────────────────────────┤
-│           GPUModelRunner.kv_caches[layer] (物理显存层)            │  详见 §1
+│           GPUModelRunner.kv_caches[layer] (物理显存层)            │  见 1_physical_memory.md
 │      torch.Tensor [num_blocks, num_kv_heads, block_size, 2*head_dim]
 │        ↑ block_id 直接索引第0维：block_table[b]即张量行号          │
 │        （维度顺序由 attention backend 决定，此处为主流 blocks-first）│
@@ -102,13 +122,13 @@ GPU forward 计算                    →  attn backend 用 block_table 索引�
 
 | 文件 | 职责 | 层 |
 |------|------|------|
-| `kv_cache_manager.py` | 顶层管理器，对 Scheduler 暴露统一接口（`get_computed_blocks`/`allocate_slots`/`free` 等） | 顶层 §5 |
-| `kv_cache_coordinator.py` | 协调器：单组直通（Full Attention）或多组对齐（混合模型） | 协调层 §4 |
-| `single_type_kv_cache_manager.py` | `FullAttentionManager`：前缀查找、block分配/释放、CoW | 单类型层 §3 |
-| `block_pool.py` | 逻辑 block 池：分配/释放/缓存哈希/LRU驱逐 | 块池层 §2 |
+| `kv_cache_manager.py` | 顶层管理器，对 Scheduler 暴露统一接口（`get_computed_blocks`/`allocate_slots`/`free` 等） | 顶层 · `5_kv_cache_manager.md` |
+| `kv_cache_coordinator.py` | 协调器：单组直通（Full Attention）或多组对齐（混合模型） | 协调层 · `4_kv_cache_coordinator.md` |
+| `single_type_kv_cache_manager.py` | `FullAttentionManager`：前缀查找、block分配/释放、CoW | 单类型层 · `3_single_type_kv_cache_manager.md` |
+| `block_pool.py` | 逻辑 block 池：分配/释放/缓存哈希/LRU驱逐 | 块池层 · `2_block_pool.md` |
 | `kv_cache_utils.py` | `KVCacheBlock`、`BlockHash`、空闲队列、block hash计算工具 | 块池 + 物理层 |
-| `gpu_model_runner.py` | 物理显存申请（`torch.zeros` → reshape）并绑定到 attention 层 | 物理层 §1 |
-| `kv_cache_interface.py` | `KVCacheSpec` / `KVCacheConfig` 定义 | 物理层 §1 |
+| `gpu_model_runner.py` | 物理显存申请（`torch.zeros` → reshape）并绑定到 attention 层 | 物理层 · `1_physical_memory.md` |
+| `kv_cache_interface.py` | `KVCacheSpec` / `KVCacheConfig` 定义 | 物理层 · `1_physical_memory.md` |
 
 ---
 
@@ -158,13 +178,11 @@ H(b2) = hash(H(b1), tokens[2*block_size:3*block_size])
 
 ---
 
-## 5. 端到端旅程（Full Attention）
+## 5. 系统初始化：五层如何装配（启动时一次性）
 
-以 Llama-7B（全 Full Attention，`block_size=16`，共32层）为例，走一遍完整流程，每一步标注调用链和源码术语。
+> 本节是**静态装配**——引擎启动时如何创建出 §3 的五层对象，不针对某条具体请求。一条请求的**动态流转**（前缀查找→分配→forward→释放的逐层调用链与源码行号）本套文档交给时序文档 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md)，本节不再重复。
 
----
-
-### 5.1 系统初始化（一次性，启动时执行）
+### 5.1 从引擎初始化到管理层创建
 
 调用链从引擎初始化开始：`EngineCore._initialize_kv_caches()` → `GPUWorker.initialize_from_config()` → 创建各管理层。
 
@@ -173,7 +191,7 @@ H(b2) = hash(H(b1), tokens[2*block_size:3*block_size])
    - 纯FullAttention模型所有层spec相同，`is_kv_cache_spec_uniform=True`，合并为1个KV cache group
    - 单token单layer的KV字节数：`kv_dim_bytes = 2 × num_kv_heads × head_size × dtype_size`（`2` for K+V）
 2. **计算 `page_size`**：每个逻辑block的物理字节数 = `block_size × kv_dim_bytes`，即 `FullAttentionSpec.real_page_size_bytes`（`kv_cache_interface.py:327-342`）。这是**单层**一个 block 的字节数；模型所有层共享同一套 `block_id`，所以一个 block 跨所有层总占用 `num_layers × page_size_bytes`，但 `num_blocks` 配容量按**单层** page_size 计算
-3. **计算 `num_blocks`**：`num_gpu_blocks = available_gpu_memory // page_size_bytes`（`num_blocks = raw_tensor.numel() // spec.page_size_bytes`，见 `gpu_model_runner.py:7388`），分布式下所有worker取最小值对齐
+3. **计算 `num_blocks`**：`num_gpu_blocks = available_gpu_memory // page_size_bytes`（`num_blocks = raw_tensor.numel() // spec.page_size_bytes`，见 `gpu_model_runner.py:7389`），分布式下所有worker取最小值对齐
 4. **申请物理KV张量**：`GPUModelRunner._allocate_kv_cache_tensors()` → `_reshape_kv_cache_tensors()` → `bind_kv_cache()`：
    - 创建Python列表 `kv_caches = []`，为每一层单独调用 `torch.zeros(...)` 申请独立张量，共 `num_layers` 张
    - 每张张量经 `_reshape_attention_kv_cache()` 按backend要求 permute 后形状为主流 `[num_blocks, num_kv_heads, block_size, 2*head_dim]`（FlashInfer/FlashAttn 默认，维度顺序由 `get_kv_cache_shape()` 决定；ROCm 等用 `[2, num_blocks, block_size, num_kv_heads, head_dim]`，见总览文档 §1.3/§八 block_dim）
@@ -190,92 +208,27 @@ H(b2) = hash(H(b1), tokens[2*block_size:3*block_size])
 
 ---
 
-### 5.2 请求进入：前缀缓存查找（每轮调度执行）
+### 5.2 请求流转总览（逐层调用细节见时序文档）
 
-假设prompt共 **34个token**（`block_size=16`）：
+一条请求自入队到释放，宏观上走五个阶段，各阶段在层间的调用关系（左侧箭头）如下：
+
 ```
-token位置：  0  1  2 ... 15 | 16 17 ...  31 | 32 33
-            └─── block 0 ──┘ └─── block 1 ──┘ └─b2(未满)
+入队 (WAITING)                                              Scheduler → (构造 Request, 预计算链式哈希)
+   │
+   ▼
+前缀缓存查找  get_computed_blocks        Scheduler → KVCacheManager → Coordinator → Manager → BlockPool(查哈希表)
+   │
+   ▼
+分配 slots    allocate_slots             KM → CO：remove_skipped → get_num_blocks → touch命中块 → 分配新块 → cache满块
+   │
+   ▼
+GPU forward   execute_model              Worker：清零新块 → attention kernel 用 block_table 索引 kv_caches[layer][block_id]
+   │
+   ▼
+释放 / 抢占   free                       KM → CO → Manager → BlockPool：逆序释放，ref_cnt-- 归0块入空闲队列
 ```
 
-请求进入WAITING队列，Scheduler调度时首先查找前缀缓存：
-
-1. **Scheduler调用**：`kv_cache_manager.get_computed_blocks(request)`
-2. **`KVCacheManager`透传**：调用 `self.coordinator.find_longest_cache_hit(token_ids, block_hashes, ...)`
-3. **`UnitaryKVCacheCoordinator`透传**：直接调用 `self.managers[0].find_longest_cache_hit(...)`（即`FullAttentionManager.find_longest_cache_hit`）
-4. **`FullAttentionManager`计算链式哈希**：
-   - 从左到右按**完整block（16token）**为单位计算链式哈希：
-     - `H(b0) = hash(parent_hash=None, token_ids=token[0:16])`
-     - `H(b1) = hash(parent_hash=H(b0), token_ids=token[16:32])`
-   - 不足16token的部分（token32、33）不计算完整哈希
-5. **查哈希映射表**：从左到右逐个哈希查 `block_pool.cached_block_hash_to_block`：
-   - `H(b0)` 存在 → 命中，返回 `block5`
-   - `H(b1)` 存在 → 命中，返回 `block12`
-   - 下一个哈希不存在（b2未满），停止查找
-6. **逐层返回结果**：
-   - `FullAttentionManager.find_longest_cache_hit` 是 **classmethod**，返回 `(hit_blocks, hit_length)`：`hit_blocks` 是 `((block5, block12),)`（外层tuple是group维度，纯FullAttention只有1个group），`hit_length=32`（命中token数）
-   - `UnitaryKVCacheCoordinator.find_longest_cache_hit` 透传结果并补第3个返回值 0（`num_uncached`，仅多group混合模型用），返回 `(hit_blocks, hit_length, 0)`
-   - `KVCacheManager.get_computed_blocks` 用 `create_kv_cache_blocks(hit_blocks)` 包装成 `KVCacheBlocks`，最终返回 `(KVCacheBlocks, num_tokens, shared_prefix_boundary)`
-7. **结果**：命中2个完整block，共 `2×16=32` 个token的KV已经缓存，可以直接复用，不需要重新prefill
-
----
-
-### 5.3 分配slots（找到前缀后执行）
-
-拿到命中块后，Scheduler调用 `kv_cache_manager.allocate_slots(request, num_new_tokens=2, new_computed_blocks=computed_blocks, ...)` 分配需要的新块。`allocate_slots`（`kv_cache_manager.py:344-565`）内部按以下真实顺序执行：
-
-1. **计算总量**：`num_local_computed_tokens = request.num_computed_tokens + num_new_computed_tokens`；`total_computed_tokens = min(local + external, max_model_len)`
-2. **watermark 判定**：仅当 `has_scheduled_reqs` 为真且请求状态为 `WAITING`/`PREEMPTED` 时，`watermark_blocks = self.watermark_blocks`（给这些请求预留空闲块）
-3. **滑动窗口释放**：调用 `coordinator.remove_skipped_blocks()` 释放滑窗外的块（FullAttention 不涉及，无操作）。**注意顺序：它在 `get_num_blocks_to_allocate` 之前**，先释放再算，减少驱逐数
-4. **容量检查**：调用 `coordinator.get_num_blocks_to_allocate()` 计算需分配块数；`available_blocks = block_pool.get_num_free_blocks() - reserved_blocks`；若 `required_blocks = num_blocks_to_allocate + watermark_blocks > available_blocks` 则返回 `None`（调度失败，触发抢占）
-5. **触摸命中块**：调用 `coordinator.allocate_new_computed_blocks()` → 内部 `FullAttentionManager.add_local_computed_blocks()` → `block_pool.touch(blocks)`
-   - `touch` 逻辑：遍历每个block，若 `ref_cnt == 0`，则从 `free_block_queue.remove(block)`，然后 `ref_cnt += 1`
-   - **为什么在容量检查之后才touch？** 先确认能分配，再 touch 命中块，避免"touch 了却因容量不足要回滚"
-6. **分配新块**：调用 `coordinator.allocate_new_blocks()` → `FullAttentionManager.allocate_new_blocks()`
-   - 从 `free_block_queue.popleft()` 头部弹出 `block8`，`block8.ref_cnt = 1`
-   - `FullAttentionManager` 把 `block8.block_id` 加入自己的 `new_block_ids` 列表，等待Worker清零
-7. **缓存已确认的token**：调用 `coordinator.cache_blocks(request, num_tokens_to_cache)`，其中 `num_tokens_to_cache = min(total_computed_tokens + num_new_tokens, request.num_tokens)`（只缓存"已定稿"token，排除可能被拒的draft token）
-   - 已经是完整缓存块的`block5`、`block12`不动；`block8`只有2个token未满，`num_full_blocks = 34//16 = 2`，不缓存`block8`
-   - 若 `enable_caching=False` 或 `delay_cache_blocks=True`（P/D 场景），跳过本步
-8. **返回结果**：返回 `create_kv_cache_blocks(new_blocks)`，请求现在持有3个块 `(block5, block12, block8)`
-
----
-
-### 5.4 GPU Forward + 新块缓存（Worker侧执行）
-
-Scheduler构造`SchedulerOutput`，把KV相关数据drain给Worker：
-
-1. **Drain新块id**：Scheduler调用 `kv_cache_manager.take_new_block_ids()`
-   - `KVCacheManager` 遍历所有 `coordinator.single_type_managers`，调用每个manager的 `take_new_block_ids()` 汇总
-   - `FullAttentionManager.take_new_block_ids()` 返回自己的 `new_block_ids = [8]` 并清空列表
-   - 最终返回 `[8]` 给Worker
-2. **Worker清零新块**：Worker拿到新块id列表，对每个block_id对应的所有层物理显存行执行zero初始化，避免读到旧KV数据
-3. **构造block_table**：Scheduler把 `KVCacheBlocks.get_block_ids()` 返回的 `[[5, 12, 8]]` 传给Worker，Worker转成tensor传给attention kernel
-4. **Prefill阶段**：
-   - Attention kernel通过`block_table`做fancy indexing，直接读取`kv_caches[layer][5]`、`kv_caches[layer][12]`中已缓存的KV
-   - 计算新token（位置32、33）的KV，写入每层 `kv_caches[layer][8]` 的对应位置
-5. **Decode阶段（后续逐token生成）**：
-   - 每生成1个token：如果当前块（block8）还没满，直接写下一个位置，不缓存
-   - 当前块写满16个token后：`FullAttentionManager.cache_blocks(request, num_tokens)` 通过 `block_pool.cache_full_blocks` 计算完整链式哈希，插入 `block_pool.cached_block_hash_to_block[H(b2)] = block8`，供后续请求前缀命中
-   - 块满了继续生成：回到5.3分配下一个新块
-
----
-
-### 5.5 请求结束：释放（请求完成/被抢占时执行）
-
-请求生成完毕（或被抢占需要换出），Scheduler调用 `kv_cache_manager.free(request)`：
-
-1. **释放partial-tail pin（可选）**：如果有卸载中的块，先释放pin
-2. **`KVCacheManager.free()` → `coordinator.free(request_id)`**
-3. **`UnitaryKVCacheCoordinator.free()` → `FullAttentionManager.free()`**
-4. **逆序释放块**：按持有顺序**逆序**释放 → 先`block8`，再`block12`，最后`block5`
-   - 逆序释放利用LIFO特性，让最新分配的尾块（block8）最先回到队列头部，提高续生成场景块复用率
-5. **对每个block调用`block_pool.free_blocks()`**，执行：
-   - 先 `block.ref_cnt -= 1`
-   - 若 `ref_cnt > 0`：还有其他请求共享这个前缀块，仅减计数，块保留不回收
-   - 若 `ref_cnt == 0`：根据块是否有哈希分流到`free_block_queue`的不同位置——
-     - **有完整哈希**：`free_block_queue.append(block)` → 追加到**尾部**（LRU保护，尽量晚分配出去，保留供前缀命中）
-     - **无哈希**（比如block8请求结束时还没填满）：`free_block_queue.prepend(block)` → 插入到**头部**（优先被下一次分配弹走重用，里面没有可缓存数据，覆盖不可惜）
+> 这张图的**每一层调用链、每个箭头的源码行号、以及包含 70-token 全流程的 Mermaid 时序详解**，见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) 的 §1~§3。本文档到宏观五阶段为止，深入逐步骤请转至该文档。
 
 ## 6. 设计要点总结
 

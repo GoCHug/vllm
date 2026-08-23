@@ -1,5 +1,12 @@
 # KVCacheCoordinator 详解
 
+> 五层架构第 4 层｜[总览](./0_kv_cache_management_arch.md) ｜下层 ➔ [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md) ｜上层 ➔ [`5_kv_cache_manager.md`](./5_kv_cache_manager.md)
+> 时序位置：[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) B1/B2/E 阶段（前缀查找、touch、分配、缓存、释放）
+>
+> 源文件：`vllm/vllm/v1/core/kv_cache_coordinator.py`
+>
+> 主线：纯 Full Attention 单 group → `UnitaryKVCacheCoordinator`（透传层）。**本文重点：时序路径上把 KM 的动作下放给 SingleTypeManager 的入口方法；纯 FullAttention 下 Coordinator 只是薄薄一层"透传 + 基类建 BlockPool"，其余多组逻辑一句话带过。**
+
 ## 一、是什么
 
 `KVCacheCoordinator` 是五层 KV Cache 管理架构中的**第四层——跨组协调层**。
@@ -11,28 +18,6 @@
 ---
 
 ## 二、干什么用
-
-### 在五层架构中的位置
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 第五层：KVCacheManager（唯一门面，Scheduler 唯一交互入口）    │
-├─────────────────────────────────────────────────────────────┤
-│ 第四层：KVCacheCoordinator  ← 本文讲解                       │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │ 纯FullAttention场景：UnitaryKVCacheCoordinator        │  │
-│  │  → 直接透传给下层 FullAttentionManager                 │  │
-│  │  → 基类统一创建和管理 BlockPool                        │  │
-│  └───────────────────────────────────────────────────────┘  │
-├─────────────────────────────────────────────────────────────┤
-│ 第三层：SingleTypeKVCacheManager                            │
-│  └── FullAttentionManager（链式哈希前缀缓存）               │
-├─────────────────────────────────────────────────────────────┤
-│ 第二层：BlockPool（块池，管理 free_block_queue 和哈希映射）  │
-├─────────────────────────────────────────────────────────────┤
-│ 第一层：物理 KV Cache 张量（GPU 上真实存储 K/V 的大张量）     │
-└─────────────────────────────────────────────────────────────┘
-```
 
 ### 核心职责（纯 FullAttention 场景）
 
@@ -65,11 +50,11 @@ Scheduler.allocate_slots()
     ↓
 KVCacheManager.allocate_slots()
     ↓
-KVCacheCoordinator.allocate_new_computed_blocks()  ← 本层入口2（阶段1：touch）
+KVCacheCoordinator.allocate_new_computed_blocks()  ← 本层入口2（两阶段协议·阶段①：touch 命中块）
     ↓ （透传）
 FullAttentionManager.add_local_computed_blocks()  → touch命中块，ref_cnt++
     ↓
-KVCacheCoordinator.allocate_new_blocks()  ← 本层入口3（阶段2：分配）
+KVCacheCoordinator.allocate_new_blocks()  ← 本层入口3（两阶段协议·阶段②：分配新块）
     ↓ （透传）
 FullAttentionManager.allocate_new_blocks()  → 从free_block_queue分配1个新块，new_block_ids收集
     ↓
@@ -224,7 +209,7 @@ class KVCacheCoordinator(ABC):
         return num_blocks_to_allocate
 ```
 
-### 4.3 核心方法：两阶段分配之阶段1——touch命中块 `allocate_new_computed_blocks`
+### 4.3 核心方法：两阶段分配之阶段①——touch命中块 `allocate_new_computed_blocks`
 
 源码位置：`kv_cache_coordinator.py:192-236`
 
@@ -273,7 +258,7 @@ class KVCacheCoordinator(ABC):
 
 **纯FullAttention单组场景下**：虽然只有一个组不存在跨组竞争，但仍然遵循相同的两阶段流程，保证接口统一。
 
-### 4.4 核心方法：两阶段分配之阶段2——分配新块 `allocate_new_blocks`
+### 4.4 核心方法：两阶段分配之阶段②——分配新块 `allocate_new_blocks`
 
 源码位置：`kv_cache_coordinator.py:238-271`
 

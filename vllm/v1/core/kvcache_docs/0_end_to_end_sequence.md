@@ -2,7 +2,8 @@
 
 > 主线：纯 Full Attention 模型（Llama / Qwen / Mistral），单 KV cache group。
 > 用 Mermaid 时序图串起一条请求从进入 Scheduler 到最终释放的全过程，每个箭头标注真实源码调用点。
-> 概念细节见 [`0_kv_cache_management_arch.md`](./0_kv_cache_management_arch.md) 及 1~5 子文档。
+>
+> **本套文档三篇总览的分工**：本时序文档讲**"流"**（请求怎么逐步走）；[`0_kv_cache_management_arch.md`](./0_kv_cache_management_arch.md) 讲**"层"**（五层静态架构与核心概念）；[`0_kvcache_of_attention.md`](./0_kvcache_of_attention.md) 讲**"形状"**（各种 attention 的 KV cache 字节布局）。
 
 **统一缩写**（下文所有时序图与行号均用此约定）：
 
