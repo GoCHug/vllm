@@ -1,0 +1,365 @@
+<mxfile host="app.diagrams.net" agent="drawio">
+  <diagram id="kvcache_of_attn_sch_v5" name="KVCache of Attention · 示意图">
+    <mxGraphModel dx="1172" dy="622" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3350" pageHeight="2500" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="ax_legend" parent="1" style="text;html=1;strokeColor=none;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=13;rounded=1;" value="统一坐标约定：◆ 每格（横条）= 1 个 token 的 K/V，横向宽 = num_heads·head_dim　◆ 横向 = num_tokens（batch 内所有 token 沿横向依次排开，每格横向拉长）　◆ 纵轴 = 层（layer 0,1,…,L-1，每层各存一份）　◆ GDN 递归状态固定尺寸、无 token 轴、仅纵轴=层　每家族一行：①模型层 ②tp2 ③pp2 ④原生连续(不用page) ⑤vLLM分块 —— ④⑤为「连续 vs 分块」对比" vertex="1">
+          <mxGeometry height="32" width="3270" x="40" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="fambg_a" parent="1" style="rounded=0;fillColor=#F6F9FE;strokeColor=#D0D9EA;html=1;opacity=70;" value="" vertex="1">
+          <mxGeometry height="620" width="3230" x="50" y="85" as="geometry" />
+        </mxCell>
+        <mxCell id="fambg_b" parent="1" style="rounded=0;fillColor=#F6F9FE;strokeColor=#D0D9EA;html=1;opacity=70;" value="" vertex="1">
+          <mxGeometry height="620" width="3230" x="50" y="765" as="geometry" />
+        </mxCell>
+        <mxCell id="fambg_c" parent="1" style="rounded=0;fillColor=#F6F9FE;strokeColor=#D0D9EA;html=1;opacity=70;" value="" vertex="1">
+          <mxGeometry height="620" width="3230" x="50" y="1445" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_title" parent="1" style="text;html=1;strokeColor=none;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=14;rounded=1;" value="家族 A · Full Attention（Llama）　每头独立 K/V　block=16 · H=32 · head=128" vertex="1">
+          <mxGeometry height="30" width="3270" x="40" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_p1lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#EAF1FB;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="① 模型层面（每层）" vertex="1">
+          <mxGeometry height="26" width="620" x="50" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_ah" edge="1" parent="1" style="endArrow=classic;endFill=1;html=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="160" y="166" as="sourcePoint" />
+            <mxPoint x="648" y="166" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="fa_ahl" connectable="0" parent="fa_ah" style="edgeLabel;html=1;fontSize=10;fontStyle=1;" value="num_tokens（每格=1 token，格宽=num_heads·head_dim）⟶" vertex="1">
+          <mxGeometry relative="1" x="0.15" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="fa_av" edge="1" parent="1" style="endArrow=classic;endFill=1;html=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="196" as="sourcePoint" />
+            <mxPoint x="140" y="400" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="fa_avl" connectable="0" parent="fa_av" style="edgeLabel;html=1;fontSize=10;fontStyle=1;" value="层 layer ⟶" vertex="1">
+          <mxGeometry relative="1" x="-0.25" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="fa_ll0" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=right;fontSize=9;" value="layer0" vertex="1">
+          <mxGeometry height="16" width="42" x="92" y="196" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_ll1" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=right;fontSize=9;" value="layer1" vertex="1">
+          <mxGeometry height="16" width="42" x="92" y="282" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_llx" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=right;fontSize=9;" value="layerL-1" vertex="1">
+          <mxGeometry height="16" width="42" x="92" y="368" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_l0t0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="K|V" vertex="1">
+          <mxGeometry height="62" width="86" x="160" y="196" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_l0t1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="K|V" vertex="1">
+          <mxGeometry height="62" width="86" x="246" y="196" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_l0t2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="K|V" vertex="1">
+          <mxGeometry height="62" width="86" x="332" y="196" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_l0t3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="K|V" vertex="1">
+          <mxGeometry height="62" width="86" x="418" y="196" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_l0t4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="K|V" vertex="1">
+          <mxGeometry height="62" width="86" x="504" y="196" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_l1t0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="K|V" vertex="1">
+          <mxGeometry height="62" width="86" x="160" y="282" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_l1t1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="K|V" vertex="1">
+          <mxGeometry height="62" width="86" x="418" y="282" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_lLt0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="K|V" vertex="1">
+          <mxGeometry height="62" width="86" x="160" y="368" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_lLt1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="K|V" vertex="1">
+          <mxGeometry height="62" width="86" x="418" y="368" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_p1note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="每格（横条）= 1 个 token 的 K|V，横向宽 = num_heads·head_dim = 32·128。&lt;br&gt;横向 = num_tokens（batch 内所有 token 沿横向依次排开）；每格横向拉长。&lt;br&gt;纵轴=层：layer0/1/…L-1 各存一份（每层结构相同）。&lt;br&gt;&lt;b&gt;shape: K(L, num_tokens, H·head)=K(L, num_tokens, 4096)+V(L, num_tokens, 4096)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="78" width="620" x="120" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_p2lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#E1D5E7;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="② tp=2 切分（每 tp rank）" vertex="1">
+          <mxGeometry height="26" width="620" x="700" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_tpA" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#E1D5E7;strokeColor=#9673A6;" value="TP0 · heads 0-15" vertex="1">
+          <mxGeometry height="230" width="150" x="800" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_tpB" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#E1D5E7;strokeColor=#9673A6;" value="TP1 · heads 16-31" vertex="1">
+          <mxGeometry height="230" width="140" x="970" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_tpline" edge="1" parent="1" style="endArrow=none;dashed=1;strokeColor=#FF0000;html=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="962" y="202" as="sourcePoint" />
+            <mxPoint x="962" y="448" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="fa_tpl" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="TP 沿横向 num_heads·head_dim 一劈为二 → 每格横条宽减半（每 rank 分到 heads/2）。&lt;br&gt;· num_tokens / token 排列不变　· 层数不变&lt;br&gt;&lt;b&gt;每 rank: 每 token 宽 = H/2·head = 16·128；K(heads/2, num_tokens, head)=K(16, num_tokens, 128)+V(16, num_tokens, 128)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="86" width="470" x="770" y="486" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_p3lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#FFE6CC;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="③ pp=2 切分（每 worker 一层段）" vertex="1">
+          <mxGeometry height="26" width="620" x="1350" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_pp0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="worker(PP0,·)  层 0-15" vertex="1">
+          <mxGeometry height="150" width="440" x="1440" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_pp1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="worker(PP1,·)  层 16-31" vertex="1">
+          <mxGeometry height="150" width="440" x="1440" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_ppl" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="PP 只缩层集合，每 worker 持一段（layer_names 过滤）。&lt;br&gt;&lt;b&gt;shape 不变，只少层&lt;/b&gt;" vertex="1">
+          <mxGeometry height="64" width="470" x="1440" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_p4lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#F8CECC;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="④ 原生连续（不用 page，每 worker/层）" vertex="1">
+          <mxGeometry height="26" width="620" x="2010" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_cbox" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#F8CECC;strokeColor=#B85450;" value="连续 KV 张量（一长条）&lt;br&gt;&lt;b&gt;K(32, num_tokens, 128)&lt;/b&gt;&lt;br&gt;&lt;b&gt;V(32, num_tokens, 128)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="220" width="240" x="2070" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_cnote" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="一整段连续分配，长度=num_tokens，不按 16-token 页切，token 增长要整体迁移。&lt;br&gt;&lt;b&gt;shape: K(heads, num_tokens, head)=K(32, num_tokens, 128)+V(32, num_tokens, 128)&lt;/b&gt;&lt;br&gt;对比：vLLM 把它切成独立块、按需扩容（右图）。" vertex="1">
+          <mxGeometry height="100" width="520" x="2050" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_p5lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#D5E8D4;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="⑤ vLLM 分块（page，每 worker/层）" vertex="1">
+          <mxGeometry height="26" width="630" x="2680" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_b0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" value="block i-1&lt;br&gt;16 tok" vertex="1">
+          <mxGeometry height="220" width="120" x="2700" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_b1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;fillColor=#D5E8D4;strokeColor=#82B366;" value="block i&lt;br&gt;16 tok·H16" vertex="1">
+          <mxGeometry height="220" width="120" x="2820" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_b2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" value="block i+1" vertex="1">
+          <mxGeometry height="220" width="120" x="2940" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="fa_bnote" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="num_tokens 切成 16-token 块（纵向16格），横向仍 H=16。&lt;br&gt;&lt;b&gt;shape: (num_blocks, block_i, kv_heads, head*2) = (num_blocks, 16, 16, 256)&lt;/b&gt;&lt;br&gt;block 字节=16·16·256·2=&lt;b&gt;131,072 B&lt;/b&gt;；连续 1 条 → N 个独立 16tok 块。" vertex="1">
+          <mxGeometry height="100" width="560" x="2700" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_title" parent="1" style="text;html=1;strokeColor=none;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=14;rounded=1;" value="家族 B · MLA（DeepSeek-V3）　每 token 一个压缩 latent　block=64 · latent=576" vertex="1">
+          <mxGeometry height="30" width="3270" x="40" y="760" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_p1lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#EAF1FB;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="① 模型层面（每层）" vertex="1">
+          <mxGeometry height="26" width="620" x="50" y="810" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_hax" edge="1" parent="1" style="endArrow=classic;endFill=1;html=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="160" y="844" as="sourcePoint" />
+            <mxPoint x="648" y="844" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mb_hl" connectable="0" parent="mb_hax" style="edgeLabel;html=1;fontSize=10;fontStyle=1;" value="num_tokens（每格=1 token，格宽=latent_dim）⟶" vertex="1">
+          <mxGeometry relative="1" x="0.15" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mb_av" edge="1" parent="1" style="endArrow=classic;endFill=1;html=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="874" as="sourcePoint" />
+            <mxPoint x="140" y="1078" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mb_avl" connectable="0" parent="mb_av" style="edgeLabel;html=1;fontSize=10;fontStyle=1;" value="层 layer ⟶" vertex="1">
+          <mxGeometry relative="1" x="-0.25" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mb_ll0" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=right;fontSize=9;" value="layer0" vertex="1">
+          <mxGeometry height="16" width="42" x="92" y="874" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_ll1" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=right;fontSize=9;" value="layer1" vertex="1">
+          <mxGeometry height="16" width="42" x="92" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_llx" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=right;fontSize=9;" value="layerL-1" vertex="1">
+          <mxGeometry height="16" width="42" x="92" y="1046" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_l0t0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="latent" vertex="1">
+          <mxGeometry height="62" width="86" x="160" y="874" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_l0t1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="latent" vertex="1">
+          <mxGeometry height="62" width="86" x="246" y="874" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_l0t2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="latent" vertex="1">
+          <mxGeometry height="62" width="86" x="332" y="874" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_l0t3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="latent" vertex="1">
+          <mxGeometry height="62" width="86" x="418" y="874" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_l0t4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="latent" vertex="1">
+          <mxGeometry height="62" width="86" x="504" y="874" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_l1t0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="latent" vertex="1">
+          <mxGeometry height="62" width="86" x="160" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_l1t1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="latent" vertex="1">
+          <mxGeometry height="62" width="86" x="418" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_lLt0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="latent" vertex="1">
+          <mxGeometry height="62" width="86" x="160" y="1046" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_lLt1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="latent" vertex="1">
+          <mxGeometry height="62" width="86" x="418" y="1046" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_p1note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="每格（横条）= 1 个 token 的 latent，横向宽 = latent_dim = 576（NoPE 512 | RoPE 64）。&lt;br&gt;横向 = num_tokens（batch 内所有 token 的 latent 沿横向依次排开）；每格横向拉长。&lt;br&gt;纵轴=层（每层各存一份）。&lt;br&gt;&lt;b&gt;shape: latent(L, num_tokens, δ)=latent(L, num_tokens, 576)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="78" width="620" x="120" y="1140" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_p2lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#E1D5E7;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="② tp=2 切分（每 tp rank）" vertex="1">
+          <mxGeometry height="26" width="620" x="700" y="810" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_tp0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fontSize=10;fillColor=#E1D5E7;strokeColor=#9673A6;" value="TP0 · 复制完整 latent（δ=576）&lt;br&gt;每 rank 各存一份，非切片" vertex="1">
+          <mxGeometry height="90" width="450" x="800" y="920" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_tp1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fontSize=10;fillColor=#E1D5E7;strokeColor=#9673A6;" value="TP1 · 复制完整 latent（δ=576）&lt;br&gt;每 rank 各存一份，非切片" vertex="1">
+          <mxGeometry height="90" width="450" x="800" y="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_repA_t0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=8;fillColor=#FFF2CC;strokeColor=#D6B656;" value="t0" vertex="1">
+          <mxGeometry height="56" width="100" x="815" y="945" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_repA_t1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=8;fillColor=#FFF2CC;strokeColor=#D6B656;" value="t1" vertex="1">
+          <mxGeometry height="56" width="100" x="925" y="945" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_repA_t2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=8;fillColor=#FFF2CC;strokeColor=#D6B656;" value="t2" vertex="1">
+          <mxGeometry height="56" width="100" x="1035" y="945" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_repA_t3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=8;fillColor=#FFF2CC;strokeColor=#D6B656;" value="t3" vertex="1">
+          <mxGeometry height="56" width="100" x="1145" y="945" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_repB_t0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=8;fillColor=#FFF2CC;strokeColor=#D6B656;" value="t0" vertex="1">
+          <mxGeometry height="56" width="100" x="815" y="1075" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_repB_t1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=8;fillColor=#FFF2CC;strokeColor=#D6B656;" value="t1" vertex="1">
+          <mxGeometry height="56" width="100" x="925" y="1075" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_repB_t2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=8;fillColor=#FFF2CC;strokeColor=#D6B656;" value="t2" vertex="1">
+          <mxGeometry height="56" width="100" x="1035" y="1075" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_repB_t3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=8;fillColor=#FFF2CC;strokeColor=#D6B656;" value="t3" vertex="1">
+          <mxGeometry height="56" width="100" x="1145" y="1075" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_tpl" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=10;fillColor=#F5F5F5;strokeColor=#999;" value="KV 在 TP 上【复制】而非切片，分工：&lt;br&gt;· &lt;b&gt;latent 投影复制&lt;/b&gt;：kv_a_proj_with_mqa=ReplicatedLinear → 每 rank 算&lt;b&gt;完整&lt;/b&gt; latent(δ=576)+k_pe，各自缓存整份（非切片）；&lt;br&gt;· &lt;b&gt;latent→head 投影切片&lt;/b&gt;：kv_b_proj(W_UK/W_UV)=ColumnParallelLinear → 沿 head 维列切，每 rank 用本地投影从完整 latent 重建所辖 heads 的 K/V；Q 沿 head 列切、o_proj 行并行。&lt;br&gt;→ KV cache 每 rank 冗余存完整 latent（latent 很短），换免每步对 latent 做 all-gather；权重显存仍随投影/头切分而分摊。" vertex="1">
+          <mxGeometry height="100" width="480" x="770" y="1180" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_p3lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#FFE6CC;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="③ pp=2 切分（每 worker）" vertex="1">
+          <mxGeometry height="26" width="620" x="1350" y="810" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_pp0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="worker(PP0,·)  前段层" vertex="1">
+          <mxGeometry height="120" width="440" x="1440" y="920" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_pp1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="worker(PP1,·)  后段层" vertex="1">
+          <mxGeometry height="120" width="440" x="1440" y="1070" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_ppl" parent="1" style="text;html=1;strokeColor=none;fillColor=#F5F5F5;rounded=1;" value="层按段分配，latent 宽 576 不变；每 worker 内 tp2，KV latent 仍&lt;b&gt;完整复制&lt;/b&gt;（不缩维）。" vertex="1">
+          <mxGeometry height="30" width="440" x="1440" y="1220" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_p4lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#F8CECC;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="④ 原生连续（不用 page，每 worker/层）" vertex="1">
+          <mxGeometry height="26" width="620" x="2010" y="810" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_cbox" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#F8CECC;strokeColor=#B85450;" value="连续 latent（一长条）&lt;br&gt;&lt;b&gt;latent(num_tokens, 576)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="220" width="240" x="2070" y="920" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_cnote" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="非分块：连续存放全部 token 的 latent 向量，num_tokens 增长要整体迁移。&lt;br&gt;&lt;b&gt;shape: latent(tokens, latent_dim) = latent(num_tokens, 576)&lt;/b&gt;&lt;br&gt;对比：vLLM 按 64 token 切块（右图）。" vertex="1">
+          <mxGeometry height="86" width="520" x="2050" y="1180" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_p5lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#D5E8D4;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="⑤ vLLM 分块（page，每 worker/层）" vertex="1">
+          <mxGeometry height="26" width="630" x="2680" y="810" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_b0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" value="block i-1&lt;br&gt;64 tok" vertex="1">
+          <mxGeometry height="220" width="96" x="2700" y="920" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_b1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;fillColor=#D5E8D4;strokeColor=#82B366;" value="block i&lt;br&gt;64 tok·576" vertex="1">
+          <mxGeometry height="220" width="96" x="2796" y="920" as="geometry" />
+        </mxCell>
+        <mxCell id="mb_bnote" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="纵向 64 个 token 一个 block。&lt;br&gt;&lt;b&gt;shape: (num_blocks, block_i, latent_dim) = (num_blocks, 64, 576)&lt;/b&gt;&lt;br&gt;block 字节=64·576·2=&lt;b&gt;73,728 B/rank&lt;/b&gt;；tp2 每 rank 仍存&lt;b&gt;完整&lt;/b&gt; latent（复制，不缩维）。" vertex="1">
+          <mxGeometry height="100" width="560" x="2700" y="1180" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_title" parent="1" style="text;html=1;strokeColor=none;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=14;rounded=1;" value="家族 C · GDN（Qwen3-Next）　递归状态　block=64 · k/v=8 头×128（state 含 //tp）" vertex="1">
+          <mxGeometry height="30" width="3270" x="40" y="1440" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_p1lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#EAF1FB;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="① 模型层面（每层，固定尺寸）" vertex="1">
+          <mxGeometry height="26" width="620" x="50" y="1490" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_hlab" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;" value="横向 = v_heads（每格 1 头 = v_dim·k_dim = 128·128）⟶" vertex="1">
+          <mxGeometry height="20" width="300" x="140" y="1530" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_h0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="h0&lt;br&gt;128×128" vertex="1">
+          <mxGeometry height="80" width="74" x="140" y="1554" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_h1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="h1&lt;br&gt;128×128" vertex="1">
+          <mxGeometry height="80" width="74" x="226" y="1554" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_h2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="h2&lt;br&gt;128×128" vertex="1">
+          <mxGeometry height="80" width="74" x="312" y="1554" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_h3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;" value="h3&lt;br&gt;128×128" vertex="1">
+          <mxGeometry height="80" width="74" x="398" y="1554" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_hlab2" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;" value="…共 8 头" vertex="1">
+          <mxGeometry height="30" width="80" x="484" y="1574" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_tmpnote" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;" value="temporal_state：每格 = (v_dim=128 × k_dim=128) 的递归累积矩阵——到&lt;b&gt;当前 token&lt;/b&gt;为止的线性注意力累计态" vertex="1">
+          <mxGeometry height="22" width="520" x="130" y="1650" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_conv" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" value="conv_state：最近 kernel-1=3 个 token 的 conv 输入（causal_conv 短上下文窗口），无 head 维" vertex="1">
+          <mxGeometry height="46" width="460" x="140" y="1690" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_p1note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=10;fillColor=#F5F5F5;strokeColor=#999;" value="&lt;b&gt;所存内容&lt;/b&gt;：每序列仅一份固定尺寸递归状态（&lt;b&gt;非每 token 存 K/V&lt;/b&gt;），就地更新 → 无 seq_len/token 轴。&lt;br&gt;· &lt;b&gt;temporal_state&lt;/b&gt;=(v_heads, v_dim, k_dim)：到&lt;b&gt;当前 token&lt;/b&gt;为止的 gated-delta 递归&lt;b&gt;累积态&lt;/b&gt;（累计 K^T·V+归一化），新 token 就地覆盖。&lt;br&gt;· &lt;b&gt;conv_state&lt;/b&gt;=(conv_dim, k-1)：最近 &lt;b&gt;kernel-1=3&lt;/b&gt; 个 token 的 conv 输入（causal_conv 窗口），译码顶出最旧。&lt;br&gt;&lt;b&gt;shape: conv(conv_dim,k-1)=conv(3072,3)；temporal(v_heads,v_dim,k_dim)=temporal(8,128,128)&lt;/b&gt;&lt;br&gt;源码 mamba_utils.py:247 / §5.3" vertex="1">
+          <mxGeometry height="150" width="500" x="110" y="1770" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_keynote" parent="1" style="text;html=1;strokeColor=none;fillColor=#FFF2CC;align=center;verticalAlign=middle;fontSize=10;rounded=1;" value="★ 与你直觉的对应：temporal_state = “到当前 token（最后一个）为止的递归累积态”；&lt;div&gt;conv_state = “最近 kernel-1 个 token”。两者每序列各一份、就地更新 → &lt;b&gt;与 num_tokens 无关&lt;/b&gt;。&lt;/div&gt;" vertex="1">
+          <mxGeometry height="56" width="500" x="110" y="1940" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_p2lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#E1D5E7;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="② tp=2 切分（每 tp rank）" vertex="1">
+          <mxGeometry height="26" width="620" x="700" y="1490" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_tpL" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#E1D5E7;strokeColor=#9673A6;" value="TP0 · v_heads 0-3" vertex="1">
+          <mxGeometry height="180" width="140" x="800" y="1554" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_tpR" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#E1D5E7;strokeColor=#9673A6;" value="TP1 · v_heads 4-7" vertex="1">
+          <mxGeometry height="180" width="120" x="980" y="1554" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_tpl" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="temporal：num_v_heads//tp=4、dim 不变；conv：conv_dim//tp=1536。&lt;br&gt;（state 定义自带 //tp，§5.3）&lt;br&gt;&lt;b&gt;每 rank: conv(conv_dim/tp, k-1) = conv(1536,3), temporal(v_heads/tp, v_dim, k_dim) = temporal(4,128,128)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="110" width="500" x="770" y="1770" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_p3lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#FFE6CC;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="③ pp=2 切分（每 worker）" vertex="1">
+          <mxGeometry height="26" width="620" x="1350" y="1490" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_pp0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="worker(PP0,·)  前段 GDN 层" vertex="1">
+          <mxGeometry height="150" width="440" x="1440" y="1554" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_pp1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" value="worker(PP1,·)  后段 GDN 层" vertex="1">
+          <mxGeometry height="150" width="440" x="1440" y="1750" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_ppl" parent="1" style="text;html=1;strokeColor=none;fillColor=#F5F5F5;rounded=1;" value="层按段分配，状态 shape（//tp 后）不变。" vertex="1">
+          <mxGeometry height="30" width="440" x="1440" y="1950" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_p4lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#F8CECC;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="④ 原生连续（不用 page，每 worker/层）" vertex="1">
+          <mxGeometry height="26" width="620" x="2010" y="1490" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_cbox" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=11;fillColor=#F8CECC;strokeColor=#B85450;" value="连续状态&lt;br&gt;&lt;b&gt;conv(3072,3)&lt;/b&gt;&lt;br&gt;&lt;b&gt;temporal(8,128,128)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="200" width="240" x="2070" y="1588" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_cnote" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="非分块：每层固定一份递归状态，连续存放（尺寸与 seq 无关）。&lt;br&gt;&lt;b&gt;shape: conv(conv_dim, k-1)=conv(3072,3), temporal(v_heads, v_dim, k_dim)=temporal(8,128,128)&lt;/b&gt;&lt;br&gt;对比：vLLM 扁平化为字节缓冲再按页切（右图）。" vertex="1">
+          <mxGeometry height="110" width="520" x="2050" y="1810" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_p5lbl" parent="1" style="text;html=1;strokeColor=none;fillColor=#D5E8D4;align=center;verticalAlign=middle;fontStyle=1;fontSize=12;rounded=1;" value="⑤ vLLM 分块（page，每 worker/层）" vertex="1">
+          <mxGeometry height="26" width="630" x="2680" y="1490" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_b0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" value="block i-1&lt;br&gt;1×1×page" vertex="1">
+          <mxGeometry height="200" width="96" x="2700" y="1588" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_b1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;fillColor=#D5E8D4;strokeColor=#82B366;" value="block i&lt;br&gt;1×1×page" vertex="1">
+          <mxGeometry height="200" width="96" x="2796" y="1588" as="geometry" />
+        </mxCell>
+        <mxCell id="gc_bnote" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#F5F5F5;strokeColor=#999;" value="状态扁平成字节缓冲再分块。&lt;br&gt;&lt;b&gt;shape: (num_blocks, 1, 1, page_bytes)&lt;/b&gt;&lt;br&gt;block 字节(tp2 每 rank)=1536·3·2 + 4·128·128·2&lt;br&gt;=9,216+131,072=&lt;b&gt;140,288 B&lt;/b&gt;（tp1 全局 280,576 B）。&lt;br&gt;&lt;b&gt;page 固定、不随 block_size 缩放&lt;/b&gt;；与主注意力 page 不同时用 padding(page_size_padded) 对齐。" vertex="1">
+          <mxGeometry height="145" width="560" x="2700" y="1810" as="geometry" />
+        </mxCell>
+
+        <!-- 补充：page_size vs block_size（不同 attention 是否不同） -->
+        <mxCell id="gc_psnote" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" value="&lt;b&gt;补充 · page_size vs block_size：因 attention 而异吗？&lt;/b&gt;&lt;br&gt;· &lt;b&gt;page_size_bytes&lt;/b&gt; = block_size(每块 token 数) × 每 token 的 KV 字节（FULL/MLA/SW/AttentionSpec）；GDN/Mamba = 固定 state 字节和，&lt;b&gt;不随 block_size 缩放&lt;/b&gt;。&lt;br&gt;· 不同家族原生 page 不同：Full=kv_heads·head·2·dtype、MLA=latent(576)·dtype、GDN=状态固定尺寸。&lt;br&gt;· vLLM 强制统一为单一 page 字节（get_uniform_page_size 断言唯一 / unify_kv_cache_spec_page_size）：&lt;b&gt;AttentionSpec → 放大 block_size(×ratio)&lt;/b&gt;；&lt;b&gt;MambaSpec/GDN → padding&lt;/b&gt;(page_size_padded) 对齐。&lt;br&gt;→ 同一模型内 block_size 默认统一(16)，但统一 page 时&lt;b&gt;部分层块内 token 数被放大&lt;/b&gt;；最终所有层共用一个 page 字节，真实差异 = 每 token KV 字节 与 对齐后的块内 token 数。" vertex="1">
+          <mxGeometry height="150" width="3240" x="60" y="2090" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
