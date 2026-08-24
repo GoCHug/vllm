@@ -15,10 +15,10 @@
 |---|---|
 | Spec 定义（block_size、page_size_bytes、各 Spec 字段） | `vllm/v1/kv_cache_interface.py` |
 | Backend 物理 shape（`get_kv_cache_shape`） | `vllm/v1/attention/backends/*.py`、`vllm/v1/attention/backends/mla/*.py` |
-| 混合模型分组 / page 统一 | `vllm/v1/core/kv_cache_utils.py`（`get_kv_cache_groups` 等） |
+| 混合模型分组 / page 统一 / 物理布局 | `vllm/v1/core/kv_cache_utils.py`（`get_kv_cache_groups`、`get_kv_cache_config_from_groups`、`_get_packed_kv_cache_layout`） |
 | SSM 状态 shape | `vllm/model_executor/layers/mamba/mamba_utils.py`（`MambaStateShapeCalculator`） |
 | SSM 抽象层（`bind_kv_cache`） | `vllm/model_executor/layers/mamba/abstract.py` |
-| KV cache 分配 / reshape | `vllm/v1/worker/gpu_model_runner.py`（`_reshape_kv_cache_tensors`） |
+| KV cache 分配 / reshape | `vllm/v1/worker/gpu_model_runner.py`（`_initialize_kv_cache_tensors`）、`vllm/v1/worker/gpu/attn_utils.py`（`_reshape_attention_kv_cache`） |
 
 本文聚焦一个核心问题：**每种 attention/SSM 类型的 KV cache，物理 tensor 最终是什么 shape、里面存的是什么数据、每块占多少字节。**
 
@@ -35,12 +35,12 @@ Attention 在生成第 i 个 token 时，需要拿新 query 去和前面**所有
 
 ## 1.2 同一份 KV cache 的两个层面
 
-看 KV cache shape 前，先分清它在两处"长什么样"。两者**只差第 0 维**：
+看 KV cache shape 前，先分清它在两处"长什么样"。两者的差别集中在**序列相关的维度**——逻辑上的一维 `seq_len` 被拆成了两个维度：
 
-| 层面 | 含义 | 第 0 维 / 关键维度 | 一句话 |
+| 层面 | 含义 | 序列相关维度 | 一句话 |
 |---|---|---|---|
-| **模型层面（逻辑）** | 模型前向里"这层 cache 从概念上是段多长的序列" | `seq_len` | 序列是连续的一整段，按 token 排 |
-| **vLLM 层面（物理）** | 实际分配在显存里的 tensor | `num_blocks` | 序列被切成固定大小的块，第 0 维变成块号 |
+| **模型层面（逻辑）** | 模型前向里"这层 cache 从概念上是段多长的序列" | `seq_len`（1 维） | 序列是连续的一整段，按 token 排 |
+| **vLLM 层面（物理）** | 实际分配在显存里的 tensor | `num_blocks`（块号）+ `block_size`（块内 token） | 序列被切成固定大小的块，新增第 0 维 `num_blocks` 作块号，原 `seq_len` 维变为 `block_size` |
 
 换算关系（贯穿全文的唯一口诀）：
 
@@ -48,7 +48,7 @@ Attention 在生成第 i 个 token 时，需要拿新 query 去和前面**所有
 num_blocks = ceil(seq_len / block_size)     # block_size = 一块容纳的 token 数
 ```
 
-> 物理 shape 就是把逻辑 shape 里的 `seq_len` 换成 `num_blocks`；**其余维度（头数、头维度、latent 宽度、K/V 拼接方式）完全不变**。后续所有家族的 shape，都只在这条规则上做"家族特化"。
+> 物理 shape 就是把逻辑 shape 里的 `seq_len` 维**拆成两个维度**——新增第 0 维 `num_blocks`（块号），原 `seq_len` 维变为 `block_size`（块内 token 数）；**其余维度（头数、头维度、latent 宽度、K/V 拼接方式）完全不变**。后续所有家族的 shape，都只在这条规则上做"家族特化"。
 
 ## 1.3 三大家族（先记住这个分组）
 
@@ -68,13 +68,13 @@ num_blocks = ceil(seq_len / block_size)     # block_size = 一块容纳的 token
 家族C：一个块 = 一份固定尺寸的递归状态                （字节固定，与 token 数无关）
 ```
 
-**一个普遍误区**：满脑子"每 token 存一份 K/V"。家族 C 并不是——它每序列只持有一份**就地更新的状态矩阵**，`num_tokens` 只影响它能切多少块、不影响每块字节。
+**一个普遍误区**：满脑子"每 token 存一份 K/V"。家族 C 并不是——它存的是**就地更新的递归状态矩阵**，每个 block 恒为一份固定尺寸的状态字节，`num_tokens` 不影响每块字节。但"常驻几份状态"取决于 `mamba_cache_mode`：默认 `"none"`（prefix caching 关闭）仅常驻 1 份当前运行状态；开启 prefix caching 后 `"all"` 模式会在每个 block 边界（位置 `i*block_size`）存一份累积状态 checkpoint，使前缀块可被复用（详见 §5.6）。
 
 ## 1.4 换算口诀（给后面每题套用）
 
 只要知道"逻辑 shape + block_size"，就能推出物理 shape：
 
-> **第 1 步 · 换第 0 维**：`seq_len` → `num_blocks = ceil(seq_len / block_size)`（全家族通用）
+> **第 1 步 · 拆序列维**：`seq_len`（1 维）→ `num_blocks`（块号）+ `block_size`（块内 token），其中 `num_blocks = ceil(seq_len / block_size)`（全家族通用）
 > **第 2 步 · 家族 B 压缩**：MLA 若带 `compress_ratio`，块内 token 数 `block_size` → `storage_block_size = block_size // compress_ratio`
 > **第 3 步 · 家族 C 恒等**：状态无 `seq_len` 维，物理恒为 `(num_blocks, 1, 1, page_size_bytes)`
 
@@ -860,11 +860,13 @@ else:  # "none"
     max_blocks = 1 + num_speculative_blocks
 ```
 
-| cache mode | 常驻 block 数 | 说明 |
-|---|---|---|
-| `none`（默认） | `1 + num_spec` | 仅当前步状态 |
-| `align` | `2 + num_spec` | 前一步 + 当前步 + 投机 |
-| `all` | `cdiv(max_model_len, block_size) + num_spec` | 类似 attention，每 token 一 block（支持 prefix caching） |
+| cache mode | 常驻 block 数 | 每 block 存什么 | prefix caching |
+|---|---|---|---|
+| `none`（默认） | `1 + num_spec` | 仅当前步的运行状态，就地更新 | 不支持 |
+| `align` | `2 + num_spec` | 最近一个 block 边界的累积状态 checkpoint；block_table 按位置索引，更早的 state 被 null | 支持（仅尾部命中） |
+| `all` | `cdiv(max_model_len, block_size) + num_spec` | **每个 block 边界（位置 `i*block_size`）一份累积状态 checkpoint**，类似 attention 全量块命中 | 支持（全量块复用） |
+
+> **关键语义区别**：家族 A 的 block `i` 存第 `i*block_size`~`(i+1)*block_size-1` 个 token **各自的** K/V（每 token 独立）；家族 C 的 block `i` 存"处理完前 `i*block_size` 个 token 后的**累积运行状态**"——不是某个最后 token 的独立状态，而是所有 token 到此点的累积效应（`conv_state` = 最近 `conv_kernel-1` 个 token 的滑窗，`ssm_state` = 包含 0..`i*block_size-1` 全部 token 信息的递归矩阵）。因此 prefix caching 命中时可直接从最近 block 边界 checkpoint 恢复，只需重算 boundary 之后的 token。
 
 ## 5.7 换算示例：Mamba2 / GDN
 
@@ -959,8 +961,8 @@ page_size_bytes = 18,432 + 262,144 = 280,576 B = 274 KB
 |---|---|---|
 | `is_kv_cache_spec_uniform` | 所有层 Spec **完全相同** | 否（单 group） |
 | `UniformTypeKVCacheSpecs.from_specs` | 全同类型且 token 槽数相同（全 full / 全 SWA 同窗口） | 否（单 group） |
-| `group_and_unify_kv_cache_specs` | DeepSeek-V4 特例（多 spec 但每层槽数相同） | 否 |
-| **兜底路径**（line 1811-1818） | 其余混合情况 | **是** → `unify_kv_cache_spec_page_size` |
+| `group_and_unify_kv_cache_specs` | DeepSeek-V4 特例（多 spec 但每层槽数相同） | 否（物理布局走 §6.5.7 Packed 路径） |
+| **兜底路径**（line 1811-1818） | 其余混合情况 | **是** → `unify_kv_cache_spec_page_size`（物理布局走 §6.5.7 通用多张量） |
 
 > 绝大多数**单 group 模型（全 full / 全 SWA / 全 MLA）根本不走统一**，直接命中前两个分支。真正的统一大多发生在混合模型。
 
@@ -981,7 +983,7 @@ page_size_bytes = 18,432 + 262,144 = 280,576 B = 274 KB
 
 ### 6.5.3 分 group 机制
 
-把 `kv_cache_spec` 中**同一 type 的层聚成一组**（`same_type_layers`，按 `KVCacheSpec` 值去重），再按 `min_num_layers` 为 group size 拆分、末尾补 padding 层。每个 group 由 KVCacheManager 分配独立 block table，model runner 对组内每层复用它。
+把 `kv_cache_spec` 中**spec 完全相同（值相等）的层聚成一组**（`same_type_layers`，以 `KVCacheSpec` 作 dict key 去重——不是按"类型"宽泛归类，而是按完整 spec 值），再按 `group_size` 拆分、末尾补 padding 层（`kv_cache_utils.py:1205-1258`）。`group_size` 默认取 `min_num_layers`（各类层中的最小数量）；当 `max_num_layers < min_num_layers × 1.5` 时改取 `max_num_layers` 以减少 padding 层（如 gpt-oss-20b 12 sw + 13 full → group_size=13）。每个 group 由 KVCacheManager 分配独立 block table；**物理显存如何组织见 §6.5.7**。
 
 ```
 例：10 层 full + 20 层 sliding window（模式 1×full : 2×sw 重复 10 次）
@@ -1023,13 +1025,98 @@ for layer_name, layer_spec in kv_cache_spec.items():
 
 当 attention 层 page **不能整除** max，且后端通过 `AttentionSpec.indexes_kv_by_block_stride=True` 声明可用分块 stride 读取时，也走 padding（`page_size_padded=max_page_size`），通过 strided view 读取补齐的 page。否则（既不整除、又不支持 stride）直接 `NotImplementedError`。
 
-### 6.5.6 最终结论
+### 6.5.6 统一 page 的结论
 
 - **分 group**：GDN 层与 MLA 层各自成组、独立 block table；但所有组的物理 `page_size_bytes` 都被统一为全局最大。
 - **block_size 表面统一、内部各异**：全局对外仍是一个 `CacheConfig.block_size`，但统一 page 后 **MLA 层块内 token 数被放大 `ratio` 倍**，GDN 层 token 数不变。
 - **共用一个 page 字节**：最终所有层 `page_size_bytes` 相同——这正是 `is_kv_cache_page_size_uniform()`（`kv_cache_utils.py:1056`）校验的结论；统一失败则 `NotImplementedError`。
 
-> 一句话：**GDN 靠 padding 垫字节，MLA 靠加大每块 token 数摊平字节，两者殊途同归到一个 page 字节。**
+> 一句话：**GDN 靠 padding 垫字节，MLA 靠加大每块 token 数摊平字节，两者殊途同归到一个 page 字节。** 统一 page 之后，物理显存如何组织见 §6.5.7。
+
+### 6.5.7 物理显存布局：通用多张量 vs Packed 打包
+
+> 上面 §6.5.3–6.5.6 讲的是"如何分组 + 如何统一 `page_size_bytes`"，本节回答最后一个问题：**分组和统一 page 之后，物理显存到底怎么布局、block_id 怎么映射到物理内存？**
+>
+> **核心前提**：无论哪条路径，BlockPool **全局只有一个**（`kv_cache_coordinator.py:90`），管理 `num_blocks` 个 block ID。每个 group 有自己的 `SingleTypeKVCacheManager`，但都从**同一个 BlockPool** 取 block ID。区别只在于：**一个 block ID 在物理显存中映射到多大、怎么切分。** 入口在 `get_kv_cache_config_from_groups`（`kv_cache_utils.py:1340-1422`）。
+
+#### 路径 1：通用多张量（默认，绝大多数混合模型）
+
+兜底分支（`kv_cache_utils.py:1390-1416`）创建 `group_size` 个 `KVCacheTensor`（物理显存缓冲），每个大小 = `page_size × num_blocks`：
+
+```python
+group_size = max(len(group.layer_names) for group in kv_cache_groups)
+num_blocks = available_memory // (page_size * group_size)   # get_num_blocks()
+for i in range(group_size):
+    shared_by = [group_j.layer_names[i] for j in ...]      # 各组同位置层
+    kv_cache_tensors.append(KVCacheTensor(size=page_size * num_blocks, shared_by=shared_by))
+```
+
+**BlockPool 只有一个**，`num_blocks` 个 block ID。分配时每个 group 的 manager **独立**调用 `block_pool.get_new_blocks()`（`single_type_kv_cache_manager.py:365`），**各 group 拿到不同的 block ID**——因为是顺序从共享队列里 pop。`shared_by` 列表中的各层来自不同 group，它们共享同一张量但通过不同 block ID 访问不同 page，物理上不冲突。
+
+```
+例：3 group (full.0,full.1), (sw.0,sw.2), (sw.1,pad)，group_size=2
+
+张量 0: shared_by=[full.0, sw.0, sw.1]  ← 各组第 0 层
+张量 1: shared_by=[full.1, sw.2]         ← 各组第 1 层
+
+BlockPool: ── 一个共享池，num_blocks 个 block ID ──
+  group 0 manager 取 ID [5,6,7]  → full.0 写张量0的page 5,6,7; full.1 写张量1的page 5,6,7
+  group 1 manager 取 ID [8,9,10] → sw.0  写张量0的page 8,9,10; sw.2  写张量1的page 8,9,10
+  group 2 manager 取 ID [11,12]  → sw.1  写张量0的page 11,12
+
+  ← 同一张量的不同 page 由不同 group 各自使用，不冲突
+```
+
+→ **此路径下：block_id N → page N（`page_size` 字节）映射到某个张量；每个 block ID 任一时刻只被一个 group 持有**
+
+#### 路径 2：Packed 布局（DeepSeek V4 默认 / 实验性 opt-in）
+
+触发条件：`_use_packed_kv_cache_config`（`kv_cache_utils.py:1287-1306`）——DSv4 全部 group 为 `UniformTypeKVCacheSpecs`，或用户开启 `enable_cross_layers_blocks=True`。
+
+`_get_packed_kv_cache_layout`（`kv_cache_utils.py:1262-1284`）：
+
+```python
+for group in kv_cache_groups:
+    byte_offset = 0
+    for layer_name in group.layer_names:
+        page_size = spec.page_size_bytes
+        layers_by_offset[byte_offset].append(layer_name)
+        byte_offset += page_size          # 逐层累加字节偏移
+    block_stride = max(block_stride, byte_offset)  # 块总宽 = Σ各层 page
+```
+
+**同一 group 内的多层在物理上并排放进一个 block slab**：layer 0 在 offset=0，layer 1 在 offset=page_size，layer 2 在 offset=2×page_size……物理块的 `block_stride = Σ(组内各层 page_size_bytes)`。
+
+各层通过 strided view 只看自己的切片（`attn_utils.py:226-234`）：
+
+```python
+if packing is not None:
+    offset, block_stride = packing
+    page_bytes = prod(kv_cache_shape[1:]) * get_dtype_size(dtype)
+    kv_cache = (kv_raw_tensor.view(-1, block_stride)[:, offset:offset+page_bytes]
+                .view(dtype).view(permuted_kv_cache_shape))
+```
+
+→ **此路径下：block_id N → `block_stride` 字节的 chunk；同一 group 内所有层共享同一个 block ID，各按字节偏移取自己那片**
+
+不同 group 之间，block layout **可重叠**——因为一个 block ID 同一时刻只归一个 group（源码注释原文："A block ID is owned by one cache group at a time, so layouts from different groups may overlap"）。
+
+#### 两条路径对比
+
+| 维度 | 通用多张量（默认） | Packed 布局（DSv4 / opt-in） |
+|---|---|---|
+| BlockPool | **1 个**（全局共享 `num_blocks` 个 block ID） | **1 个**（同左） |
+| `KVCacheTensor` 数量 | `group_size` 个（每组同位置层共享一个） | 每 group 一个（layers 在块内按偏移并排） |
+| 一个 block ID 映射 | `page_size` 字节（某一层的一页） | `block_stride` 字节（整组所有层的一片） |
+| `KVCacheTensor.block_stride` | 0（未 packed） | Σ(组内各层 page_size) |
+| `KVCacheTensor.offset` | 0 | 该层在块内的字节起始位置 |
+| 总显存 | `group_size × page_size × num_blocks` | `block_stride × num_blocks`（≈ 同左） |
+| `num_blocks` 计算 | `available // (page_size × group_size)` | `available // block_stride` |
+| 各 group 怎么拿 block | 各 manager 独立 `get_new_blocks()`，拿到不同 ID | 同左，各 group 拿不同 ID |
+| 同 group 内层间关系 | 共享 block ID + 共享 block table | 共享 block ID，各层按字节偏移切分 |
+| 对 backend 是否透明 | 是 | 是（strided view 仅取自己切片） |
+
+> **与 §1.3"最小内存单元"的关系**：§1.3"家族 A：一个块 = block_size 个 token 的 K/V"描述的是**每层每块**的存储语义——无论物理显存走哪条路径，从 backend 和 Spec 的视角看，每层始终是 `(num_blocks, ...)` 的独立张量视图。block ID 到物理内存的映射差异（单层一页 vs 多层并排）完全在更底层用 stride/offset 实现，对上层透明。
 
 ## 6.6 GDN vs MLA：page_size 与 block_size 对比
 
@@ -1086,13 +1173,14 @@ return shape.index(_S)  # 0 = blocks-first, 1 = kv-first
 # 第八部分　设计要点小结
 
 1. **两大家族**：Attention（`AttentionSpec`）按 token 存 K/V / latent，有 `num_kv_heads × head_size` 维；SSM（`MambaSpec`）按递归状态存，是扁平字节缓冲。
-2. **心智模型**：物理 shape = 逻辑 shape 把 `seq_len` 换成 `num_blocks`（家族 B 再压缩块容量、家族 C 恒为扁平缓冲）。
+2. **心智模型**：物理 shape = 逻辑 shape 把 `seq_len` 维拆成 `num_blocks`（块号）+ `block_size`（块内 token）两个维度（家族 B 再压缩块容量、家族 C 恒为扁平缓冲）。
 3. **Shape 由 backend 决定**：同一 Spec 在不同 backend 下逻辑 shape 可不同（形式 A/B/C），但 `page_size_bytes`（字节数）一致。
 4. **MLA 是特例**：不存分离 K/V，存 latent `(B, N, D)`，无 `num_kv_heads` 维（=1）。fp8_ds_mla 用自定义字节布局（656B / 584B）。
 5. **Mamba/GDN 扁平存储**：物理 `(num_blocks, 1, 1, page_size_bytes)`，`bind_kv_cache` 时按 conv + ssm state 的 shape 切分 view。
 6. **`block_size` 全局统一、语义略不同；`page_size_bytes` 才是真正各异的量**。混合模型通过"分 group + 统一 page"管理：GDN padding、MLA 放大 block_size。
 7. **量化改维度而非 dtype**：物理 dtype 通常固定为 uint8，量化改变 `head_dim`（INT4 减半、NVFP4 展开）或最后一维内联 scale。
 8. **stride 与 shape 分离**：`_reshape_attention_kv_cache` 先 view 出物理 contiguous 的 permuted shape，再 permute 回逻辑 shape，shape 不变、内存访问更优。
+9. **物理显存布局两条路径**（§6.5.7）：BlockPool **全局只有一个**（`num_blocks` 个 block ID），各 group 的 `SingleTypeKVCacheManager` 独立从共享池取 block ID。通用多张量（默认）创建 `group_size` 个 `KVCacheTensor`，不同 group 取到不同 block ID → 访问同一张量的不同 page；Packed 打包（DSv4）将同组多层 K/V 按字节偏移并排进一个 block slab，一个 block ID 映射 `block_stride` 字节。**两种路径对 backend 透明**——每层始终是 `(num_blocks, ...)` 的独立张量视图。
 
 ---
 
