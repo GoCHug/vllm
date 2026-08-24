@@ -42,7 +42,7 @@ vLLM V1 的 KV Cache 管理围绕三条核心设计：
 
 ---
 
-## 2. 一条 Full Attention 请求的 KV Cache 生命周期
+## 2. 一条请求的 KV Cache 生命周期（Full Attention 模型）
 
 ### 2.1 请求生命周期五阶段
 
@@ -65,7 +65,7 @@ GPU forward 计算                    →  attn backend 用 block_table 索引�
 释放/抢占 (free / preempt)          →  逆序释放，ref_cnt--，归零块入空闲队列
 ```
 
-> 这五步是**请求生命周期的宏观概括**，对应时序文档的规范化阶段 **`A入队 → B调度(B1前缀查找/B2分配/B3组装) → C GPU forward → D decode续写 → E 释放 → F 抢占`**。这里的"五阶段"是粗粒度周览，逐层源码调用链与行号见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) §3；后文 `allocate_slots` 内部子阶段用 `①②③` 表示，勿与"阶段X"混淆。
+> 这五步是**请求生命周期的宏观概括**，对应时序文档的规范化阶段 **`阶段0物理显存初始化(前传) → A入队 → B调度(B1前缀查找/B2分配/B3组装) → C GPU forward → D decode续写 → E 释放 → F 抢占`**。这里的"五阶段"是粗粒度周览，逐层源码调用链与行号见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) §3（§3.0 为启动期前传，§3.1~§3.6 为运行时各阶段）；后文 `allocate_slots` 内部子阶段用 `①②③` 表示，勿与"阶段X"混淆。
 
 ### 2.2 数据流：从 token 到物理显存
 
@@ -75,9 +75,7 @@ GPU forward 计算                    →  attn backend 用 block_table 索引�
 3. 每个请求只维护一个 `block_table = [5, 12, 8, 33]`——一组整数 `block_id`。
 4. GPU forward 时，attention 算子用 `block_table` 作 fancy index，从物理 KV 张量中 gather 对应的 K/V 行。
 
-**核心直觉**：调度器全程只操作 `block_id`（整数），不搬移任何显存；物理张量一次性申请好后不再变动，所有分配/共享/驱逐只改引用计数和哈希表。
-
-> 上面五阶段"哪一层调用哪一层"的**逐层调用链、源码行号与 Mermaid 时序图**，见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md)；`block_hash` / `block_table` / `ref_cnt` 等实体细节见 [`2_block_pool.md`](./2_block_pool.md) 与本文 §4。
+**核心**：调度器全程只操作 `block_id`（整数），不搬移任何显存；物理张量一次性申请好后不再变动，所有分配/共享/驱逐只改引用计数和哈希表。
 
 ---
 
