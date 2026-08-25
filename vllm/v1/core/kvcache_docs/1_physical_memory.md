@@ -6,7 +6,7 @@
 >
 > 主线：纯 Full Attention 单 group 模型（Llama / Qwen / Mistral）。SWA、Mamba、混合模型仅文末简提。
 >
-> **与端到端时序的关系**：本文所有方法都在**启动期一次性执行**（`EngineCore._initialize_kv_caches`），不属于 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) 的 B/E 每步时序。端到端时序文档的 [§3.0](./0_end_to_end_sequence.md#30-阶段-0物理显存初始化启动期前传) 给出了物理显存初始化的概览时序图，本文 §三 则展开每一步的详细推导与源码调用链。物理层只产出两样东西供时序路径消费：
+> **与端到端时序的关系**：本文所有方法都在启动期一次性执行（`EngineCore._initialize_kv_caches`），归属于"物理显存分配阶段"，不属于 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) 的 B/E 每步运行时序。端到端时序文档的 [§3.0](./0_end_to_end_sequence.md#30-阶段-0物理显存初始化启动期前传) 已经是物理显存初始化的概览时序图，因此**本文不再重复画时序图**，只展开分配阶段每一步的形态与推导。物理层只产出两样东西供时序路径消费：
 > 1. **`num_blocks`** → 第 2 层 `BlockPool` 据此建块（时序里被分配/释放/驱逐）；
 > 2. **`kv_caches[layer]` 物理张量** → 时序 §3.3 GPU forward 按 `block_id` 读写。
 >
@@ -38,72 +38,20 @@
 
 ---
 
-## 三、初始化五步流程（启动期一次完成）
+## 三、物理显存分配阶段详解（启动期一次完成）
 
-`EngineCore._initialize_kv_caches()`（`engine/core.py:254`）是物理显存层的唯一入口，启动期一次性执行完毕。
+> 一句话：**把"每层 KV 存什么（spec）"变成"能给多少显存（available → `num_blocks`）"，最终落地成"驻留在 GPU 上、能被 `block_id` 直接索引的物理张量"。** 这是启动期一次性执行的**分配阶段**，之后运行时不再触碰物理显存——调度全程只搬 `block_id` 整数。
 
-### 3.1 总览时序图
+分配阶段从 `EngineCore._initialize_kv_caches()`（`engine/core.py:254`）这一个入口起步，按推进顺序做四件事：
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant EC as EngineCore
-    participant ME as ModelExecutor
-    participant W as GPUWorker
-    participant MR as GPUModelRunner
-    participant KU as kv_cache_utils
-    participant AB as AttnBackend
+1. **算规格**（§3.1）—— 每层产出 `FullAttentionSpec`，得到 `page_size_bytes`
+2. **测预算**（§3.2）—— profile 一次 dummy forward，量出可用 KV 显存 `available_memory`
+3. **做编排**（§3.3）—— 合并 worker → 分组 → 算 `num_blocks` → 显存校验 → 全 worker 对齐
+4. **落张量**（§3.4）—— 申请 int8 字节池 → reshape 成后端逻辑 shape → bind 绑定到层
 
-    Note over EC,AB: 步骤0 各层产出 KVCacheSpec
-    EC->>+ME: get_kv_cache_specs()  (core.py:261)
-    ME->>+W: collective_rpc → 各 worker 遍历 attention 层
-    Note over W: attn_module.get_kv_cache_spec()<br/>→ FullAttentionSpec
-    W-->>-ME: dict[layer_name, FullAttentionSpec] per worker
-    ME-->>-EC: kv_cache_specs: list[dict]
+> 时序归属：分配阶段只发生在启动期（`EngineCore._initialize_kv_caches`），**不属于运行时每一轮调度的时序**。一条请求从入队到释放的**运行时时序图**见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md)；静态装配概览见 [`0_kv_cache_management_arch.md`](./0_kv_cache_management_arch.md) §5。本文不再放时序图，只把物理显存分配这一步一步的形态与推导讲透。
 
-    Note over EC,KU: 步骤1 profile_run 测可用显存
-    EC->>+ME: determine_available_memory()  (core.py:294)
-    ME->>+W: collective_rpc("determine_available_memory")
-    Note over W: request_memory() → requested = total × util
-    W->>+MR: profile_run()  (gpu_worker.py:459)
-    Note over MR: dummy forward, 测峰值显存
-    MR-->>-W: 完成
-    Note over W: available = requested - non_kv - cudagraph
-    W-->>-ME: available_gpu_memory (bytes)
-    ME-->>-EC: list[int]
-
-    Note over EC,KU: 步骤2 合并/分组/算 num_blocks/对齐
-    EC->>+KU: get_kv_cache_configs(config, specs, available)  (core.py:303)
-    Note over KU: ① 合并全 worker spec<br/>② get_kv_cache_groups 分组<br/>③ get_num_blocks = avail // page_size // layers<br/>④ _check_enough_kv_cache_memory 校验<br/>⑤ min(num_blocks) 对齐 + shrink
-    KU-->>-EC: list[KVCacheConfig]
-
-    Note over EC: 步骤3 生成 Scheduler 配置
-    EC->>+KU: generate_scheduler_kv_cache_config()  (core.py:313)
-    KU-->>-EC: scheduler_kv_cache_config
-    Note over EC: num_gpu_blocks = num_blocks<br/>block_size = min(group.block_size)
-
-    Note over EC,AB: 步骤4 Worker 申请+绑定张量
-    EC->>+ME: initialize_from_config(kv_cache_configs)  (core.py:324)
-    ME->>+W: collective_rpc("initialize_from_config")
-    W->>+MR: initialize_kv_cache(kv_cache_config)  (gpu_worker.py:649)
-    MR->>MR: initialize_attn_backend()  (gpu_model_runner:6994)
-    MR->>MR: _allocate_kv_cache_tensors()  (gpu_model_runner:7286)
-    Note over MR: torch.zeros(size, dtype=int8) 字节池
-    MR->>+AB: get_kv_cache_shape()  (gpu_model_runner:7346)
-    AB-->>-MR: kv_cache_shape
-    MR->>MR: _reshape_attention_kv_cache()  (attn_utils:212)
-    MR->>MR: bind_kv_cache()  (utils:450)
-    MR-->>-W: 完成
-    W-->>-ME: 完成
-    ME-->>-EC: 完成
-
-    Note over EC: 步骤5 编译预热 → 交棒逻辑层
-    EC->>+ME: compile_or_warm_up_model()  (core.py:326)
-    ME-->>-EC: 完成
-    Note over EC: Scheduler 读 num_gpu_blocks → BlockPool 建块<br/>物理张量已就绪
-```
-
-### 3.2 步骤0：各层产出 KVCacheSpec
+### 3.1 第 1 步 · 算规格：各层产出 KVCacheSpec
 
 **调用链**：`EngineCore` → `ModelExecutor.get_kv_cache_specs()`（core.py:261）→ 各 worker `get_kv_cache_spec()`（attn_utils.py:62）。
 
@@ -133,7 +81,7 @@ def get_kv_cache_spec(vllm_config: VllmConfig) -> dict[str, KVCacheSpec]:
 > **PP 影响**：`get_kv_cache_spec()` 只返回本 PP stage 负责的层（`get_layers_start_end_indices`，model.py:1409）。
 > **TP 影响**：`num_kv_heads` 已按 `tensor_parallel_size` 切分（`get_num_kv_heads`，model.py:1386），同 PP stage 的 TP rank spec 等值。
 
-### 3.3 步骤1：profile_run 测可用显存
+### 3.2 第 2 步 · 测预算：profile_run 量出可用显存
 
 **调用链**：`EngineCore` → `ModelExecutor.determine_available_memory()`（core.py:294）→ `GPUWorker.determine_available_memory()`（gpu_worker.py:459）。
 
@@ -157,7 +105,7 @@ available_kv_cache_memory = requested_memory
 
 > 如果显式设置了 `cache_config.kv_cache_memory_bytes`，则跳过自动 profile，直接使用用户指定的字节数。
 
-### 3.4 步骤2：合并 / 分组 / 算 num_blocks / 对齐
+### 3.3 第 3 步 · 做编排：合并 / 分组 / num_blocks / 对齐
 
 **调用链**：`EngineCore` → `get_kv_cache_configs()`（kv_cache_utils.py:2073）。
 
@@ -262,7 +210,7 @@ class KVCacheGroupSpec:
     kv_cache_spec: KVCacheSpec   # 该组的 spec
 ```
 
-### 3.5 步骤3：Worker 申请 + 绑定张量
+### 3.4 第 4 步 · 落张量：申请 int8 池 / reshape / 绑定
 
 **调用链**：`EngineCore` → `ModelExecutor.initialize_from_config()`（core.py:324）→ `GPUWorker.initialize_from_config()`（gpu_worker.py:649）→ `GPUModelRunner.initialize_kv_cache()`（gpu_model_runner.py:7606）。
 
@@ -338,7 +286,7 @@ def bind_kv_cache(kv_caches, forward_context, runner_kv_caches, num_attn_module=
 
 绑定后，forward 时 attention layer 从 `forward_context` 取自己的 KV cache；ModelRunner 侧 `self.kv_caches` 用于清零、CoW 拷贝等调度操作。
 
-### 3.6 步骤4：交棒逻辑层
+### 3.5 交棒：编译预热 → 交给逻辑层
 
 `EngineCore._initialize_kv_caches()` 最后：
 
