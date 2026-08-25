@@ -1072,7 +1072,54 @@ BlockPool: ── 一个共享池，num_blocks 个 block ID ──
   ← 同一张量的不同 page 由不同 group 各自使用，不冲突
 ```
 
-→ **此路径下：block\_id N → page N（`page_size`** **字节）映射到某个张量；每个 block ID 任一时刻只被一个 group 持有**
+#### 2D 格子模型：一个 block ID 到底占多少字节
+
+> 这是理解 `num_blocks = available // (page_size × group_size)` 的关键。
+
+**三个量先分清**（容易混淆）：
+
+| 量 | 含义 | 决定什么 |
+|---|---|---|
+| `num_groups` | 几类 attention = 几个 manager | 一个序列位置需要几个 block ID（每 group 各取一个不同的） |
+| `group_size` | 每个 group 最多几层 = **列数** = 张量个数 | 一个 block ID 跨几页（每张量各锁一页） |
+| `page_size` | 每页字节数 | 每页大小 |
+
+block_id 是**跨所有 `group_size` 个张量的统一行号**——锁定每个张量的同一页，不管那个 group 实际用几层：
+
+```
+                  张量0 (full.0, sw.0, sw.1)      张量1 (full.1, sw.2)
+              ┌────────────────────────┐     ┌──────────────────────┐
+page 0 [id=0] │  ·                      │     │  ·                    │  空闲
+   ...
+page 5 [id=5] │ full.0 (Group 0 占)     │     │ full.1 (Group 0 占)   │  ← 整行被 Group 0 锁定
+page 6 [id=6] │ sw.0   (Group 1 占)     │     │ sw.2   (Group 1 占)   │  ← 整行被 Group 1 锁定
+page 7 [id=7] │ sw.1   (Group 2 占)     │     │ (浪费)                │  ← Group 2 只有1层，右列空占
+   ...
+              └────────────────────────┘     └──────────────────────┘
+
+每行 = 1 个 block_id, 宽度 = group_size × page_size（整行锁，不管你用几列）
+```
+
+- block_id=5 被 Group 0 占 → 张量0 和张量1 的第 5 页都归 Group 0
+- block_id=7 被 Group 2 占 → sw.1 只用张量0 第 7 页，张量1 第 7 页**空占浪费**（因为 block_id 是行号，不能只锁一列）
+
+因此：
+
+```
+每个 block_id 的物理代价 = group_size × page_size  ← 一个 block ID 跨所有张量各锁一页
+num_blocks = available_memory // (group_size × page_size)
+总显存     = group_size × page_size × num_blocks ≈ available_memory
+```
+
+一个请求的 1 个序列位置 = 各 group 各取不同 block_id = `num_groups` 个 block ID：
+
+```
+3 个 group 各取 1 个 ID → 3 个 block ID → 3 × (group_size × page_size) 字节
+```
+
+> **一个 block_id ≠ 一个 group 的物理大小。一个 block_id = 一行（跨所有 `group_size` 个张量）。`group_size` 是列数（张量数），`num_groups` 是 manager 数（决定每步取几行）。两者独立。**
+
+→ **此路径下：block\_id N → page N（`page_size` 字节）映射到某个张量；每个 block ID 任一时刻只被一个 group 持有**
 
 ### 路径 2：Packed 布局（DeepSeek V4 默认 / 实验性 opt-in）
 

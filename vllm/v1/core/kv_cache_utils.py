@@ -1402,12 +1402,12 @@ def get_kv_cache_config_from_groups(  # 根据 KV cache 分组和各层 spec 生
             [group.kv_cache_spec for group in kv_cache_groups]  # 传入每个 group 的 kv_cache_spec
         )
         assert group_size > 0, "group_size must be greater than 0"  # 防御性断言
-        num_blocks = get_num_blocks(  # 根据 group_size、可用显存和 page size 计算 block 数
-            vllm_config, group_size, available_memory, page_size  # 传入相关参数
+        num_blocks = get_num_blocks(  # BlockPool 总共 num_blocks 个 block ID
+            vllm_config, group_size, available_memory, page_size
         )
         kv_cache_tensors = []  # 初始化张量列表
-        for i in range(group_size):  # 对每个内存池索引 i 循环
-            shared_by = []  # 记录共享该内存池的 layer 名
+        for i in range(group_size):  # 建 group_size 个张量，每个大小 = page_size * num_blocks
+            shared_by = []
             for j in range(len(kv_cache_groups)):  # 遍历所有 group
                 if i < len(kv_cache_groups[j].layer_names):  # 如果 group j 有第 i 个 layer
                     shared_by.append(kv_cache_groups[j].layer_names[i])  # 把该 layer 名加入共享列表
