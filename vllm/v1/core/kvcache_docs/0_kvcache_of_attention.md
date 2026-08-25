@@ -961,7 +961,7 @@ page_size_bytes = 18,432 + 262,144 = 280,576 B = 274 KB
 | 分支                                   | 触发条件                                 | 是否统一 page                                                   |
 | ------------------------------------ | ------------------------------------ | ----------------------------------------------------------- |
 | `is_kv_cache_spec_uniform`           | 所有层 Spec **完全相同**                    | 否（单 group）                                                  |
-| `UniformTypeKVCacheSpecs.from_specs` | 全同类型且 token 槽数相同（全 full / 全 SWA 同窗口） | 否（单 group）                                                  |
+| `UniformTypeKVCacheSpecs.from_specs` | 全同类型且 token 槽数相同（全 full / 全 SWA 同窗口）但 `num_kv_heads`/`head_size` 等各异 | 否（单 group）                                                  |
 | `group_and_unify_kv_cache_specs`     | DeepSeek-V4 特例（多 spec 但每层槽数相同）       | 否（page 已一致则不走 packed；否则走 §7.7 Packed 路径）                   |
 | **兜底路径**（`kv_cache_utils.py:1811-1820`） | 其余混合情况                               | **是** → `unify_kv_cache_spec_page_size`（物理布局走 §7.7 通用多张量） |
 
