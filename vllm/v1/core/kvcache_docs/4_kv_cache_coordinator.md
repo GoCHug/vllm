@@ -7,7 +7,7 @@
 >
 > 主线：纯 Full Attention 单 group → `UnitaryKVCacheCoordinator`（透传层）。**本文重点：时序路径上把 KM 的动作下放给 SingleTypeManager 的入口方法；纯 FullAttention 下 Coordinator 只是薄薄一层"透传 + 基类建 BlockPool"，其余多组逻辑一句话带过。**
 
-## 一、是什么
+## 一、概览
 
 `KVCacheCoordinator` 是五层 KV Cache 管理架构中的**第四层——跨组协调层**。
 
@@ -17,7 +17,7 @@
 
 ---
 
-## 二、干什么用
+## 二、职责与定位
 
 ### 核心职责（纯 FullAttention 场景）
 

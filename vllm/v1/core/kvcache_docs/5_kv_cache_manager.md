@@ -7,7 +7,7 @@
 >
 > 主线：纯 Full Attention 单 group（内部持 `UnitaryKVCacheCoordinator`）。**本文重点：Scheduler 在时序 B1~E 阶段真正调用的方法（`get_computed_blocks` / `allocate_slots` / `take_new_block_ids` / `take_kv_cache_block_copies` / `free` / `pop_blocks_for_free`）逐行看源码；其余查询/统计/事件方法一张表带过。**
 
-## 一、是什么
+## 一、概览
 
 `KVCacheManager` 是五层 KV Cache 管理架构中的**第五层——最顶层门面**，也是 Scheduler 与 KV Cache 子系统交互的**唯一入口**。
 
@@ -17,7 +17,7 @@
 
 ---
 
-## 二、干什么用
+## 二、职责与定位
 
 ### 调度流程中 KVCacheManager 的职责与调用时序
 

@@ -7,7 +7,7 @@
 >
 > 主线：纯 Full Attention 单 group，核心是子类 `FullAttentionManager`。**本文重点：时序路径上被 Coordinator 直接下放的方法逐行看源码（短注释）；其余辅助方法一张表带过。**
 
-## 一、是什么
+## 一、概览
 
 `SingleTypeKVCacheManager` 是五层架构的**第三层——单类型 KV 缓存管理器**，负责管理**一种具体 Attention/SSM 类型**的 KV Cache 分配、命中查找、释放等逻辑。纯 FullAttention 模型（Llama/Qwen/Mistral）核心用其子类 `FullAttentionManager`，实现**链式哈希前缀缓存**。
 

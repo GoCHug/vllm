@@ -1363,8 +1363,8 @@ def get_kv_cache_config_from_groups(  # 根据 KV cache 分组和各层 spec 生
         )
 
     # Determine how model runners should initialize the KV cache tensors.
-    if len(kv_cache_groups) == 1 and isinstance(  # 如果只有 1 个 group
-        kv_cache_groups[0].kv_cache_spec, UniformTypeKVCacheSpecs  # 且其 spec 为 UniformTypeKVCacheSpecs
+    if len(kv_cache_groups) == 1 and isinstance(  # 如果只有 1 个 group 且其 spec 为 UniformTypeKVCacheSpecs
+        kv_cache_groups[0].kv_cache_spec, UniformTypeKVCacheSpecs
     ):
         # Special case: all layers have the same type of KV cache but with
         # different hidden sizes. Allocate different amount of memory for each
@@ -1387,7 +1387,7 @@ def get_kv_cache_config_from_groups(  # 根据 KV cache 分组和各层 spec 生
         num_blocks, kv_cache_tensors = _get_kv_cache_config_packed(  # 交给 packed 布局专用函数处理
             vllm_config, kv_cache_groups, available_memory  # 传入配置、分组、可用显存
         )
-    else:  # 通用多 group 分支
+    else:  # 通用分支
         # General case:
         # We will have group_size memory pools, each is shared by one layer from
         # each group. As layers of different groups have different block table,
