@@ -7,7 +7,7 @@
 >
 > 主线：纯 Full Attention 单 group（内部持 `UnitaryKVCacheCoordinator`）。**本文重点：Scheduler 在时序 B1~E 阶段真正调用的方法（`get_computed_blocks` / `allocate_slots` / `take_new_block_ids` / `take_kv_cache_block_copies` / `free` / `pop_blocks_for_free`）逐行看源码；其余查询/统计/事件方法一张表带过。**
 
-## 一、概览
+## 1. 概览
 
 `KVCacheManager` 是五层 KV Cache 管理架构中的**第五层——最顶层门面**，也是 Scheduler 与 KV Cache 子系统交互的**唯一入口**。
 
@@ -17,7 +17,7 @@
 
 ---
 
-## 二、职责与定位
+## 2. 职责与定位
 
 ### 调度流程中 KVCacheManager 的职责与调用时序
 
@@ -90,7 +90,7 @@ KVCacheManager 是 Scheduler 操作 KV Cache 的**唯一入口**。vLLM 的推�
 ---
 
 
-## 三、文件结构
+## 3. 文件结构
 
 ```
 kv_cache_manager.py
@@ -147,7 +147,7 @@ kv_cache_manager.py
 
 ---
 
-## 四、KVCacheBlocks 详解
+## 4. KVCacheBlocks 详解
 
 这是 Scheduler 和 KVCacheManager 之间交换块数据的**不可变数据类**，目的是隐藏内部数据结构，提供类型安全的接口。
 
@@ -217,7 +217,7 @@ class KVCacheBlocks:
 
 ---
 
-## 五、KVCacheManager 详解
+## 5. KVCacheManager 详解
 
 ### 5.1 构造函数
 
@@ -745,7 +745,7 @@ Copy-on-Write拷贝任务：当多个请求共享同一块，其中一个请求�
 
 ---
 
-## 六、方法调用总览（对照时序阶段）
+## 6. 方法调用总览（对照时序阶段）
 
 一个请求从分配到释放，Scheduler 在时序 B1~E 阶段逐一调用 KVCacheManager 的方法：
 
@@ -763,7 +763,7 @@ Copy-on-Write拷贝任务：当多个请求共享同一块，其中一个请求�
 
 ---
 
-## 七、设计要点小结
+## 7. 设计要点小结
 
 1. **门面模式**：KVCacheManager是典型的Facade门面，为Scheduler提供一个简化的单一入口，封装了下面4层的所有复杂度
 2. **三阶段分配**：`allocate_slots`是核心，逻辑分为：准入检查 → 两阶段touch+allocate → 缓存写入，每一步都有明确的职责

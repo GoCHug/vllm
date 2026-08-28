@@ -6,13 +6,13 @@
 >
 > **阅读路径（三遍读法）**
 >
-> 1. 看 **一、**（KV Cache 概述）与 **二、**（PagedAttention 概述）建立心智模型；再看 **三、**，理解 Spec 类型体系（什么是 Spec、继承关系、三类 Spec 对比与详解）。
-> 2. 通读 **四～六、**，按家族逐一理解每种类型存什么、shape 是什么、字节怎么算。
-> 3. 需要横向对比或被混合模型卡住时，看 **七、**（block\_size / page\_size\_bytes 机制）、**八、**（混合模型分 group 与统一 page）、与 **九、**（block\_dim 索引）。
+> 1. 看 **1.**（KV Cache 概述）与 **2.**（PagedAttention 概述）建立心智模型；再看 **3.**，理解 Spec 类型体系（什么是 Spec、继承关系、三类 Spec 对比与详解）。
+> 2. 通读 **4～6.**，按家族逐一理解每种类型存什么、shape 是什么、字节怎么算。
+> 3. 需要横向对比或被混合模型卡住时，看 **7.**（block\_size / page\_size\_bytes 机制）、**8.**（混合模型分 group 与统一 page）、与 **9.**（block\_dim 索引）。
 
 ***
 
-# 一、KV Cache 概述
+# 1. KV Cache 概述
 
 ## 1.1 什么是 KV cache
 
@@ -44,7 +44,7 @@ vLLM 把"每 token 该缓存什么"归成三大家族——**看懂一类，这�
 
 > **常见误区**：别默认"每 token 一份 K/V"。家族 C 存的是**就地更新的状态矩阵**，每 block 恒为一份固定状态字节。是否常驻多份取决于 `mamba_cache_mode`：默认 `"none"` 常驻 1 份；`"all"` 在每个块边界存累积状态 checkpoint 以支持 prefix caching（§6.6）。
 
-# 二、PagedAttention 概述
+# 2. PagedAttention 概述
 
 > 家族 A/B/C 回答"一个块里**存什么**"，PagedAttention 回答"这些块在显存里**怎么摆**"——前者是内容，后者是容器。
 
@@ -90,7 +90,7 @@ num_blocks = ceil(seq_len / block_size)
 | **第 2 步 · 压缩块容量** | 仅家族 B（MLA） | 若带 `compress_ratio`：`storage_block_size = block_size // compress_ratio` |
 | **第 3 步 · 恒定状态** | 仅家族 C（Mamba/GDN） | 状态无 `seq_len` 维，物理恒为 `(num_blocks, 1, 1, page_size_bytes)` |
 
-# 三、Spec 类型体系
+# 3. Spec 类型体系
 
 ## 3.1 什么是 Spec
 
@@ -366,7 +366,7 @@ def page_size_bytes(self) -> int:
 
 ***
 
-# 四、家族 A：每头独立 K/V（Full Attention · 典型模型 Llama）
+# 4. 家族 A：每头独立 K/V（Full Attention · 典型模型 Llama）
 
 > **一句话**：每个 KV 头各存一份完整 K 和 V，vLLM 把 K/V 拼进块 shape 后按 `block_size` 切块（三种打包方式由 backend 决定，只动维度、不动字节数）。
 > **贯穿示例**：Llama-3-8B 用 **GQA** —— `num_heads=32` 个 Query 头共享 `num_kv_heads=8` 个 KV 头、`head_dim=128`。下述 shape 均以它为例。
@@ -470,7 +470,7 @@ page_size_bytes = 16 * 8 * 256 * 2 = 65,536 B = 64 KB
 
 ***
 
-# 五、家族 B：latent 打包（MLA · 典型模型 DeepSeek-V3）
+# 5. 家族 B：latent 打包（MLA · 典型模型 DeepSeek-V3）
 
 > **一句话**：不存分离的 K/V，而把每个 token 的 K/V 压进一个低秩 latent，KV cache 只存 latent，`num_kv_heads` 合并为 1（=1，已并进 latent 宽度）。
 > **贯穿示例**：DeepSeek-V3 —— latent 宽 `576 = 512`(NoPE) + `64`(RoPE)，即 `kv_lora_rank=512`、`qk_rope_head_dim=64`。V3.2 / V4 是同族变体（§5.3）。
@@ -542,7 +542,7 @@ page_size_bytes = 64 * 576 * 2 = 73,728 B = 72 KB
 
 ***
 
-# 六、家族 C：递归状态（Mamba / GDN · 典型模型 Qwen3-Next）
+# 6. 家族 C：递归状态（Mamba / GDN · 典型模型 Qwen3-Next）
 
 > **一句话**：SSM 每时间步只就地更新几份**状态矩阵**，不逐 token 存 K/V。vLLM 把这些状态扁平成一个字节缓冲按块存放，物理 shape 恒为 `(num_blocks, 1, 1, page_size_bytes)`，没有 head/token 维。
 > **贯穿示例**：Qwen3-Next 的 **GDN** —— `num_k_heads=8, num_v_heads=8, head_k_dim=128, head_v_dim=128, conv_kernel_size=4, bf16`。
@@ -686,9 +686,9 @@ page_size_bytes = 24,576 + 2,097,152 = 2,121,728 B ≈ 2 MB
 
 ***
 
-# 七、横向机制（一）：block_size 与 page_size_bytes
+# 7. 横向机制（一）：block_size 与 page_size_bytes
 
-> 前面的家族部分（**四～六、**）是一个家族一个家族地看。这一部分**跳出家族**，只看所有 Spec 共用的两个核心量：**block\_size（每块 token 数）**、**page\_size\_bytes（每块物理字节）**。这一部分回答三个问题：
+> 前面的家族部分（**4～6.**）是一个家族一个家族地看。这一部分**跳出家族**，只看所有 Spec 共用的两个核心量：**block\_size（每块 token 数）**、**page\_size\_bytes（每块物理字节）**。这一部分回答三个问题：
 > 1. 这两个量各是什么、谁来决定？（§7.1）
 > 2. 每个 Spec 的 `page_size_bytes` 怎么算？（§7.3）
 > 3. 同一个 `block_size` 在各家族里语义有何不同？（§7.4）
@@ -740,9 +740,9 @@ page_size_bytes = 24,576 + 2,097,152 = 2,121,728 B ≈ 2 MB
 
 > 三者最小内存单元本质不同：Attention 以"`block_size` 个 token 的 K/V"为块，MLA 以"`storage_block_size` 个 token 的 latent"为块，Mamba/GDN 以"一份固定状态"为块。`block_size` 只在家族 A/B 线性决定 page，在家族 C 只影响块行数。
 
-# 八、横向机制（二）：混合模型的分 group 与统一 page
+# 8. 横向机制（二）：混合模型的分 group 与统一 page
 
-> 这一部分回答 **七、**抛出的最后一个问题：当一个模型同时包含多种 attention/SSM 层（如 Qwen3-Next、DeepSeek V4、LLaMA4）时，各层 `page_size_bytes` 天然**各不相同**，vLLM 如何用"分 group + 统一 page 字节"把它们管理起来。
+> 这一部分回答 **7.** 抛出的最后一个问题：当一个模型同时包含多种 attention/SSM 层（如 Qwen3-Next、DeepSeek V4、LLaMA4）时，各层 `page_size_bytes` 天然**各不相同**，vLLM 如何用"分 group + 统一 page 字节"把它们管理起来。
 >
 > 阅读顺序：先看**为什么需要统一**（§8.1）→ **如何分 group**（§8.3）→ **统一 page 的两条路线**（§8.4，GDN padding / MLA 放大块）→ **物理显存怎么组织**（§8.7，通用多张量 vs Packed）。§8.8 给一张 GDN vs MLA 的对比总表。
 
@@ -952,7 +952,7 @@ if packing is not None:
 
 ***
 
-# 九、附：block_dim 与统一索引
+# 9. 附：block_dim 与统一索引
 
 > 家族 A/B/C 的 `num_blocks` 在 shape 中**未必都在第 0 位**（如家族 A 的 ROCm 形式 B）。`block_dim` 就是"`num_blocks` 在 shape 里的位置索引"，决定 `block_table` 用哪个维做 fancy index。
 
@@ -976,7 +976,7 @@ return shape.index(_S)  # 0 = blocks-first, 1 = kv-first
 
 ***
 
-# 十、设计要点小结
+# 10. 设计要点小结
 
 1. **两大家族**：Attention（`AttentionSpec`）按 token 存 K/V / latent，有 `num_kv_heads × head_size` 维；SSM（`MambaSpec`）按递归状态存，是扁平字节缓冲。
 2. **心智模型**：物理 shape = 逻辑 shape 把 `seq_len` 维拆成 `num_blocks`（块号）+ `block_size`（块内 token）两个维度（家族 B 再压缩块容量、家族 C 恒为扁平缓冲）。
