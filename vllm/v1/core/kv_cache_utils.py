@@ -1409,10 +1409,10 @@ def get_kv_cache_config_from_groups(  # 根据 KV cache 分组和各层 spec 生
         for i in range(group_size):  # 建 group_size 个张量，每个大小 = page_size * num_blocks
             shared_by = []
             for j in range(len(kv_cache_groups)):  # 遍历所有 group
-                if i < len(kv_cache_groups[j].layer_names):  # 如果 group j 有第 i 个 layer
-                    shared_by.append(kv_cache_groups[j].layer_names[i])  # 把该 layer 名加入共享列表
+                if i < len(kv_cache_groups[j].layer_names): # 处理“某组层数不足”的 padding 情况
+                    shared_by.append(kv_cache_groups[j].layer_names[i])  # 把该 layer 名加入共享列表，共享的意思是各拿大块中一个page的内存，不冲突
             kv_cache_tensors.append(  # 生成一个 KVCacheTensor
-                KVCacheTensor(size=page_size * num_blocks, shared_by=shared_by)  # 大小=每页×block 数，shared_by 为上面收集的 layer
+                KVCacheTensor(size=page_size * num_blocks, shared_by=shared_by)  # 大小=每页×block 数
             )
 
     return KVCacheConfig(  # 统一返回生成的 KVCacheConfig
