@@ -6,9 +6,9 @@
 >
 > **阅读路径（三遍读法）**
 >
-> 1. 只看 **第一部分**，建立"逻辑层面 vs 物理层面 + 三大家族"的心智模型。
+> 1. 看 **第一部分**，建立"逻辑层面 vs 物理层面 + 三大家族"的心智模型；再看 **第二部分**，理解 Spec 类型体系（什么是 Spec、继承关系、三类 Spec 对比与详解）。
 > 2. 通读 **第三\~五部分**，按家族逐一理解每种类型存什么、shape 是什么、字节怎么算。
-> 3. 需要横向对比或被混合模型卡住时，看 **第六部分**（block\_size / page\_size\_bytes 机制）、**第七部分**（混合模型分 group 与统一 page）、与 **第二、八部分**（Spec 体系、索引）。
+> 3. 需要横向对比或被混合模型卡住时，看 **第六部分**（block\_size / page\_size\_bytes 机制）、**第七部分**（混合模型分 group 与统一 page）、与 **第八部分**（block\_dim 索引）。
 
 **源文件索引**
 
@@ -27,122 +27,142 @@
 
 # 第一部分　心智模型：KV cache 到底存什么
 
-## 1.1 为什么需要 KV cache
+## 1.1 概括
 
-Attention 在生成第 i 个 token 时，需要拿新 query 去和前面**所有** token 的 Key/Value 做点积。为省去重复计算，把已算出的 K/V 缓存下来，这就是 KV cache。它的两个关键设计约束是：
+推理时，生成第 i 个 token 需要拿新 query 与之前**所有** token 的 K/V 做点积。为了避免重复计算，把已算出的 K/V 缓存下来——这就是 KV cache。
+本篇要回答的核心问题是：**每种 attention/SSM 类型的 KV cache，物理 tensor 最终是什么 shape、里面存的是什么数据、每块占多少字节。**
 
-- **按请求定长**：每个序列的 token 数动态增长 → 必须分块（block）按需分配，不能一口气预分配整段连续内存。
-- **分层存**：每一层 attention 各有一份缓存（L 层 → L 份）。
 
-## 1.2 同一份 KV cache 的两个层面
+## 1.2 逻辑 vs 物理：序列维的拆分
 
-看 KV cache shape 前，先分清它在两处"长什么样"。两者的差别集中在**序列相关的维度**——逻辑上的一维 `seq_len` 被拆成了两个维度：
+同一个 KV cache，在模型前向和 vLLM 存储两个层面的"长相"不同。核心区别只有一个：**逻辑上的一维 `seq_len` 被拆成了两个物理维度**。
 
-| 层面              | 含义                          | 序列相关维度                                   | 一句话                                                               |
-| --------------- | --------------------------- | ---------------------------------------- | ----------------------------------------------------------------- |
-| **模型层面（逻辑）**    | 模型前向里"这层 cache 从概念上是段多长的序列" | `seq_len`（1 维）                           | 序列是连续的一整段，按 token 排                                               |
-| **vLLM 层面（物理）** | 实际分配在显存里的 tensor            | `num_blocks`（块号）+ `block_size`（块内 token） | 序列被切成固定大小的块，新增第 0 维 `num_blocks` 作块号，原 `seq_len` 维变为 `block_size` |
+| 层面 | 含义 | 序列相关维度 | 一句话 |
+|---|---|---|---|
+| **模型层（逻辑）** | 前向计算时概念上的连续序列 | `seq_len`（1 维） | 序列是连续的一整段，按 token 排列 |
+| **vLLM 层（物理）** | 实际分配在显存里的 tensor | `num_blocks` + `block_size` | 序列被切成固定大小的块，新增第 0 维做块号 |
 
-换算关系（贯穿全文的唯一口诀）：
-
-```
-num_blocks = ceil(seq_len / block_size)     # block_size = 一块容纳的 token 数
-```
-
-> 物理 shape 就是把逻辑 shape 里的 `seq_len` 维**拆成两个维度**——新增第 0 维 `num_blocks`（块号），原 `seq_len` 维变为 `block_size`（块内 token 数）；**其余维度（头数、头维度、latent 宽度、K/V 拼接方式）完全不变**。后续所有家族的 shape，都只在这条规则上做"家族特化"。
-
-## 1.3 三大家族（先记住这个分组）
-
-不同 attention 机制"每 token 该缓存什么"差得很远，vLLM 把它们的 KV cache 归成三类家庭。**看懂一类，这类里的所有模型就都会了。**
-
-| 家族                     | 每 token 缓存什么                    | 形状特征                                      | 代表 Spec               | 典型模型               |
-| ---------------------- | ------------------------------- | ----------------------------------------- | --------------------- | ------------------ |
-| **A. 每头独立 K/V**        | 每个 KV 头各存完整 K 和 V               | 有 `num_kv_heads × head_size` 维，K/V 拼/放在某维 | `FullAttentionSpec` 等 | Llama、Qwen、Mistral |
-| **B. latent 打包（MLA）**  | 每 token 一个**压缩 latent**（替代 K/V） | 无 kv\_heads（=1），存 latent 向量               | `MLAAttentionSpec`    | DeepSeek V2/V3/V4  |
-| **C. 递归状态（Mamba/GDN）** | 每时间步一份**状态矩阵**（非每 token）        | 无 head/token 维，扁平字节缓冲                     | `MambaSpec`           | Qwen3-Next、Mamba2  |
-
-三种家族代表"最小内存单元"的本质区别：
+核心换算口诀（贯穿全文）：
 
 ```
-家族A：一个块 = block_size 个 token 的 K/V            （字节随 token 数线性缩放）
-家族B：一个块 = storage_block_size 个 token 的 latent （字节随 token 数线性缩放）
-家族C：一个块 = 一份固定尺寸的递归状态                （字节固定，与 token 数无关）
+num_blocks = ceil(seq_len / block_size)
 ```
 
-**一个普遍误区**：满脑子"每 token 存一份 K/V"。家族 C 并不是——它存的是**就地更新的递归状态矩阵**，每个 block 恒为一份固定尺寸的状态字节，`num_tokens` 不影响每块字节。但"常驻几份状态"取决于 `mamba_cache_mode`：默认 `"none"`（prefix caching 关闭）仅常驻 1 份当前运行状态；开启 prefix caching 后 `"all"` 模式会在每个 block 边界（位置 `i*block_size`）存一份累积状态 checkpoint，使前缀块可被复用（详见 §5.6）。
+> **一条规则**：物理 shape = 逻辑 shape 的 `seq_len` 维拆成 `num_blocks`（块号）+ `block_size`（块内 token），其余维度（头数、头维度、latent 宽度等）完全不变。后续所有家族的 shape 都只在这条规则上做"家族特化"。
 
-## 1.4 换算口诀（给后面每题套用）
+## 1.3 三大家族：一个块里存什么
 
-只要知道"逻辑 shape + block\_size"，就能推出物理 shape：
+不同 attention 机制"每 token 该缓存什么"差异极大，vLLM 归成三大家族。**看懂一类，这类里所有模型就都会了。**
 
-> **第 1 步 · 拆序列维**：`seq_len`（1 维）→ `num_blocks`（块号）+ `block_size`（块内 token），其中 `num_blocks = ceil(seq_len / block_size)`（全家族通用）
-> **第 2 步 · 家族 B 压缩**：MLA 若带 `compress_ratio`，块内 token 数 `block_size` → `storage_block_size = block_size // compress_ratio`
-> **第 3 步 · 家族 C 恒等**：状态无 `seq_len` 维，物理恒为 `(num_blocks, 1, 1, page_size_bytes)`
+| 家族 | 每 token 缓存什么 | 形状特征 | 代表 Spec | 典型模型 |
+|---|---|---|---|---|
+| **A. 每头独立 K/V** | 每个 KV 头各存完整 K 和 V | 有 `num_kv_heads × head_size` 维 | `FullAttentionSpec` 等 | Llama、Qwen、Mistral |
+| **B. latent 打包（MLA）** | 每 token 一个压缩 latent（替代 K/V） | 无 `num_kv_heads` 维（=1），存 latent 向量 | `MLAAttentionSpec` | DeepSeek V2/V3/V4 |
+| **C. 递归状态（Mamba/GDN）** | 每时间步一份状态矩阵（非每 token） | 无 head/token 维，扁平字节缓冲 | `MambaSpec` | Qwen3-Next、Mamba2 |
 
-## 1.5 ★ 速查总表（全类型一张表）
+三种家族"最小内存单元"的本质区别：
 
-> 一个 Spec = 一种 KV cache 存储格式。下表把三类家族的所有常见类型一次列全，先建立全局印象，细节见对应部分。
+```
+家族A：一个块 = block_size 个 token 的 K/V            → 字节随 token 数线性缩放
+家族B：一个块 = storage_block_size 个 token 的 latent → 字节随 token 数线性缩放
+家族C：一个块 = 一份固定尺寸的递归状态                → 字节固定，与 token 数无关
+```
 
-**A. Attention 系列（继承** **`AttentionSpec`）**
+> **常见误区**：不要默认"每 token 存一份 K/V"。家族 C 存的是**就地更新的递归状态矩阵**，每个 block 恒为一份固定尺寸的状态字节。是否常驻多份状态取决于 `mamba_cache_mode`：默认 `"none"` 仅常驻 1 份；`"all"` 模式在每个 block 边界存一份累积状态 checkpoint 以支持 prefix caching（详见 §5.6）。
 
-| Attention 类型             | Spec 类                                        | 典型逻辑 / 物理 shape                               | K/V 存放方式                             | 详见   | 典型模型               |
-| ------------------------ | --------------------------------------------- | --------------------------------------------- | ------------------------------------ | ---- | ------------------ |
-| Full Attention           | `FullAttentionSpec`                           | `(B, num_kv_heads, N, 2*head_size)`           | 最后一维前半 K、后半 V                        | §3   | Llama、Qwen、Mistral |
-| Full Attention (Diff-KV) | `FullAttentionSpec` (`head_size_v≠head_size`) | `(B, num_kv_heads, N, head_size+head_size_v)` | 前 head\_size 为 K，后 head\_size\_v 为 V | §3.3 | MiMo-V2            |
-| Full Attention (ROCm)    | `FullAttentionSpec`                           | `(2, B, N, num_kv_heads, head_size)`          | dim0 的 2 分别 K/V                      | §3.2 | Llama on AMD       |
-| Full Attention (HPC)     | `FullAttentionSpec`                           | `(B, 2, N, num_kv_heads, head_size)`          | dim1 的 2 分别 K/V                      | §3.2 | Hopper             |
-| Sliding Window           | `SlidingWindowSpec`                           | 同 Full Attention                              | 同 Full，仅计算看窗口                        | §3.7 | Gemma3             |
-| Cross Attention          | `CrossAttentionSpec`                          | 同 Full                                        | 缓存 encoder 静态 K/V                    | §3.6 | Whisper            |
-| Sink Attention           | `SinkFullAttentionSpec`                       | 同 Full                                        | sink block 常驻                        | §3.6 | —                  |
-| RSWEA                    | `RSWASpec`                                    | 同 Full                                        | gap block 驱逐                         | §3.6 | —                  |
-| Chunked Local            | `ChunkedLocalAttentionSpec`                   | 同 Full                                        | 块内局部注意力                              | §3.6 | GLM-4v             |
-| TurboQuant               | `TQFullAttentionSpec`                         | `(B, num_kv_heads, N, slot_size_aligned)`     | K+V 交织打包成 slot                       | §3.6 | —                  |
-| Encoder-Only             | `EncoderOnlyAttentionSpec`                    | **无 KV cache**（max\_memory=0）                 | —                                    | §3.6 | BERT               |
-| MLA                      | `MLAAttentionSpec`                            | `(B, N, head_size)`（576）                      | 单一 latent，无 K/V 分离                   | §4   | DeepSeek V2/V3     |
-| MLA (fp8\_ds\_mla V3.2)  | `MLAAttentionSpec`                            | `(B, N, 656)`                                 | 512B NoPE + 16B scale + 128B RoPE    | §4.3 | DeepSeek V3.2      |
-| MLA (DeepSeek V4)        | `MLAAttentionSpec`                            | `(B, storage_N, 584)`                         | 448B NoPE + 128B RoPE + 8B scale     | §4.3 | DeepSeek V4        |
-| SWA + MLA                | `SlidingWindowMLASpec`                        | 同 MLA（576/656/584）                            | 同 MLA，滑动窗口驱逐                         | §4.5 | DeepSeek V4 SWA    |
+## 1.4 从逻辑到物理：三步换算
 
-**B. SSM 系列（继承** **`MambaSpec`，非 AttentionSpec）**——物理 shape 全为 `(num_blocks, 1, 1, page_size_bytes)`，只是内部状态 shapes 不同：
+只需"逻辑 shape + block_size"即可推出物理 shape：
 
-| SSM 类型      | Spec `mamba_type` | 状态子张量 shapes                                                                                         | 典型模型                   |
-| ----------- | ----------------- | ---------------------------------------------------------------------------------------------------- | ---------------------- |
-| Mamba1      | `MAMBA1`          | conv `(intermediate//tp, conv_kernel-1)` + ssm `(intermediate//tp, state_size)`                      | Mamba、Jamba            |
-| Mamba2      | `MAMBA2`          | conv `(conv_dim//tp, conv_kernel-1+num_spec)` + ssm `(num_heads//tp, head_dim, state_size)`          | Mamba2、Falcon-Mamba    |
-| GDN         | `GDN_ATTN`        | conv `(conv_dim//tp, conv_kernel-1+num_spec)` + temporal `(num_v_heads//tp, head_v_dim, head_k_dim)` | Qwen3-Next、OLMo-Hybrid |
-| Short Conv  | `SHORT_CONV`      | conv `(intermediate//tp, conv_kernel-1)`                                                             | —                      |
-| Linear Attn | `LINEAR`          | state `(num_heads//tp, head_dim, head_dim)`                                                          | —                      |
-| KDA         | (注册)              | conv `(conv_dim//tp, conv_kernel-1)` + recurrent `(num_heads//tp, head_dim, head_dim)`               | Kimi-Linear            |
+| 步骤 | 适用家族 | 操作 |
+|---|---|---|
+| **第 1 步 · 拆序列维** | 全家族通用 | `seq_len` → `num_blocks` + `block_size`，其中 `num_blocks = ceil(seq_len / block_size)` |
+| **第 2 步 · 压缩块容量** | 仅家族 B（MLA） | 若带 `compress_ratio`：`storage_block_size = block_size // compress_ratio` |
+| **第 3 步 · 恒定状态** | 仅家族 C（Mamba/GDN） | 状态无 `seq_len` 维，物理恒为 `(num_blocks, 1, 1, page_size_bytes)` |
 
-> **两大系列的关键区别**：Attention 的每个 block 存 `block_size` 个 token 的 K/V / latent，张量有 `num_kv_heads`、`head_size` 等维度；SSM 的每个 block 存**一份递归状态**（conv + ssm/temporal），是一个扁平字节缓冲，`bind_kv_cache` 时才按状态 shape 切分 view（详见 §5.4）。
+# 第二部分　Spec 类型体系
 
-***
+## 2.1 什么是 Spec
 
-# 第二部分　Spec 类型体系（一张图掌握所有 Spec）
+Spec（规格）是描述"一层 KV cache 存什么格式"的不可变对象。每层 attention/SSM 在初始化时会生成一个 Spec 实例，它封装了该层的 block_size、头数、头维度、dtype、量化模式等全部存储参数。vLLM 的显存分配、block 管理、分组策略都以 Spec 为输入——**理解 Spec 体系，就掌握了所有类型 KV cache 的"格式定义语言"。**
 
-> KV cache 的"格式"由 Spec 对象描述。每个 Spec 是 `KVCacheSpec` 的一个（不可变 dataclass）子类，一个 Spec 实例就代表某层 KV cache 的存储格式。
+所有 Spec 都继承自 `KVCacheSpec`（`vllm/v1/kv_cache_interface.py`），是 `@dataclass(frozen=True)` 不可变对象——一旦创建不能修改，保证多 TP/PP rank 间可安全比较、共享和深拷贝。
 
-## 2.1 一个 Spec 管什么（三个必懂字段）
+一个 Spec 管三个核心字段：
+
+| 字段 | 含义 | 由谁决定 | 是否随类型变化 |
+|---|---|---|---|
+| `block_size` | 每块容纳的 token 数 | 全体 Spec 共用一个全局值（`CacheConfig.block_size`） | 否（类型内不变） |
+| `page_size_bytes` | 每块物理字节数 | 各子类各自实现（多态 property） | **是**（真正的类型差异） |
+| `storage_block_size` | 物理块实际 token 数 | 基类默认 = `block_size`，`MLAAttentionSpec` 覆写 | 仅 MLA 特化 |
+
+> 外层计算 `num_blocks`（需要多少块）时用的就是 `page_size_bytes`——它是不同类型 Spec 之间**唯一真正各异的量**。
+
+### KVCacheSpec 源码
+
+> `vllm/v1/kv_cache_interface.py:99-172`
 
 ```python
-# kv_cache_interface.py
-class KVCacheSpec:                    # 基类
-    block_size: int                   # 每块容纳的 token 数（全局统一取 CacheConfig.block_size）
+@dataclass(frozen=True)            # 不可变 dataclass，创建后字段不可修改
+class KVCacheSpec:
+    """描述一层 KV cache 格式的基类。"""
+
+    block_size: int                # 唯一实例字段：每块容纳的 token 数（全局统一）
 
     @property
-    def page_size_bytes(self) -> int: # 每块（block）占多少字节 —— 各子类多态实现
-        ...
+    def page_size_bytes(self) -> int:        # 每块物理字节数，子类各自实现
+        raise NotImplementedError            # → 不同类型间唯一真正各异的量
 
     @property
-    def storage_block_size(self) -> int:  # 物理块实际容纳的 token 数（默认 = block_size）
-        return self.block_size
+    def storage_block_size(self) -> int:     # 物理块实际 token 数
+        return self.block_size               # 默认=block_size，MLA 覆写为 block_size//compress_ratio
+
+    def max_memory_usage_bytes(self, vllm_config: VllmConfig) -> int:  # 该层最大显存(字节)
+        raise NotImplementedError                       # 外层据此估算 num_blocks
+
+    def max_num_blocks_per_req(self, vllm_config: VllmConfig, max_len: int) -> int:
+        return cdiv(max_len, self.block_size)                     # ⌈max_len/block_size⌉
+
+    def copy_with_new_block_size(self, block_size: int) -> Self:
+        return replace(self, block_size=block_size)  # frozen→用 replace 生成新副本
+
+    @classmethod
+    def merge(cls, specs: list[Self]) -> Self:             # 同组 spec 必须相等，取深拷贝
+        assert all(spec == specs[0] for spec in specs[1:]), (
+            "All layers in the same KV cache group must be the same."
+        )
+        return copy.deepcopy(specs[0])
+
+    def is_uniform_with_collection(self, kv_cache_specs: dict[str, KVCacheSpec]) -> bool:
+        uniform_type_base_spec = KVCacheSpecRegistry.get_uniform_type_base_spec(self)
+        return all(isinstance(spec, uniform_type_base_spec) 
+                   for spec in kv_cache_specs.values()) # 该 KVCacheSpec 是否与所有层的全部规格保持一致
 ```
 
-| 字段                   | 含义                                    | 是谁                    | 是否随类型变化        |
-| -------------------- | ------------------------------------- | --------------------- | -------------- |
-| `block_size`         | 每块 token 数                            | 全体 Spec 共用一个全局值       | **否**（类型内不变）   |
-| `page_size_bytes`    | 每块物理字节数                               | 各子类各自实现               | **是**（真正的类型差异） |
-| `storage_block_size` | 物理块实际 token 数（MLA 量化时 `< block_size`） | `MLAAttentionSpec` 覆写 | 仅 MLA 特化       |
+### 多态落地：三种 `page_size_bytes`
+
+A 算 K/V 头维度展开
+B 算每 token 固定字节数
+C 算状态字节和
+
+```python
+# ① 家族 A：FullAttentionSpec —— 按 KV 头维度展开
+def real_page_size_bytes(self) -> int:
+    return (self.block_size * self.num_kv_heads
+            * (self.head_size + self.head_size_v) * get_dtype_size(self.dtype))
+
+# ② 家族 B：MLAAttentionSpec —— 按 per-token 固定字节数
+def storage_block_size(self) -> int:                  # 覆写基类
+    return self.block_size // self.compress_ratio
+def real_page_size_bytes(self) -> int:
+    if self.cache_dtype_str == "fp8_ds_mla":
+        return self.block_size * 656                  # V3.2 主线 MLA 自定义布局
+
+# ③ 家族 C：MambaSpec —— 状态子张量字节求和
+def page_size_bytes(self) -> int:
+    return sum(prod(shape) * get_dtype_size(dtype)
+               for shape, dtype in zip(self.shapes, self.dtypes))
+```
 
 ## 2.2 Spec 继承关系图
 
@@ -150,237 +170,212 @@ class KVCacheSpec:                    # 基类
 KVCacheSpec (frozen dataclass, block_size)
 ├── AttentionSpec (num_kv_heads, head_size, dtype, kv_quant_mode, ...)
 │   ├── FullAttentionSpec (head_size_v, sliding_window, attention_chunk_size, non_causal)
-│   │   ├── TQFullAttentionSpec (tq_slot_size)
+│   │   ├── TQFullAttentionSpec (tq_slot_size)          — TurboQuant 量化
 │   │   ├── MLAAttentionSpec (cache_dtype_str, alignment, compress_ratio, model_version)
-│   │   │   └── HiddenStateCacheSpec
-│   │   ├── RSWASpec (rswa_window)
-│   │   └── SinkFullAttentionSpec (sink_len)
+│   │   │   └── HiddenStateCacheSpec                    — 隐藏状态缓存标记
+│   │   ├── RSWASpec (rswa_window)                      — 参考滑动窗口注意力
+│   │   └── SinkFullAttentionSpec (sink_len)             — Sink 注意力
 │   ├── SlidingWindowSpec (sliding_window, head_size_v)
 │   │   └── SlidingWindowMLASpec (cache_dtype_str, alignment, compress_ratio, model_version)
 │   ├── ChunkedLocalAttentionSpec (attention_chunk_size)
-│   ├── CrossAttentionSpec
-│   └── EncoderOnlyAttentionSpec  (max_memory = 0)
+│   ├── CrossAttentionSpec                               — 交叉注意力
+│   └── EncoderOnlyAttentionSpec (max_memory = 0)        — 无 KV cache
 ├── MambaSpec (shapes, dtypes, mamba_type, mamba_cache_mode, ...)
 │   └── 用于 Mamba1/Mamba2/GDN/ShortConv/LinearAttn/KDA
-└── UniformTypeKVCacheSpecs (kv_cache_specs: dict) — 跨层统一类型但参数不同
+└── UniformTypeKVCacheSpecs (kv_cache_specs: dict)      — 跨层统一类型但参数不同
 ```
 
-## 2.3 关键 Spec 字段速览
+## 2.3 三类 Spec 对比
 
-| 家族 | Spec                | 附加字段                                                           | 用途                    |
-| -- | ------------------- | -------------------------------------------------------------- | --------------------- |
-| A  | `FullAttentionSpec` | `head_size_v`                                                  | K 与 V 头维度可不同（Diff-KV） |
-| B  | `MLAAttentionSpec`  | `cache_dtype_str`、`alignment`、`compress_ratio`、`model_version` | latent 打包/量化/压缩       |
-| C  | `MambaSpec`         | `shapes`、`dtypes`、`mamba_type`、`mamba_cache_mode`              | 状态子张量形状与缓存模式          |
+> 三大家族各有一个"根 Spec"：`FullAttentionSpec`（家族 A）、`MLAAttentionSpec`（家族 B）、`MambaSpec`（家族 C）。它们的继承链、存储内容和 `page_size_bytes` 计算方式截然不同。
 
-***
+| 维度 | **FullAttentionSpec**（家族 A） | **MLAAttentionSpec**（家族 B） | **MambaSpec**（家族 C） |
+|---|---|---|---|
+| 继承链 | `AttentionSpec → KVCacheSpec` | `FullAttentionSpec → AttentionSpec → KVCacheSpec` | `KVCacheSpec`（无 `AttentionSpec` 父类） |
+| 每 token 缓存什么 | 每 KV 头各一份完整 K 和 V | 一个压缩 latent 向量（替代 K/V） | 一份递归状态（conv + ssm） |
+| `num_kv_heads` 维 | 有（`num_kv_heads ≥ 1`） | 无（固定为 1，已合并进 latent 宽度） | 无（扁平字节缓冲） |
+| `head_size` 维 | 有（K/V 各 `head_size` 或 `head_size_v`） | 有（latent 宽度，如 576/656/584） | 无（状态子张量 shapes 由 `shapes` 字段描述） |
+| 典型物理 shape | `(num_blocks, num_kv_heads, block_size, 2*head_size)` | `(num_blocks, block_size, head_size)` | `(num_blocks, 1, 1, page_size_bytes)` |
+| `page_size_bytes` 公式 | `block_size × num_kv_heads × (head_size + head_size_v) × dtype_size` | `storage_block_size × per_token_bytes`（576/656/584） | `Σ(prod(shape) × dtype_size)`（状态字节和） |
+| `block_size` 语义 | 每块存 `block_size` 个 token 的 K/V | 每块存 `storage_block_size` 个 token 的 latent | 每块存一份固定状态（与 `block_size` 无关） |
+| 量化支持 | FP8/INT8/INT4/NVFP4（改 `head_dim`） | `fp8_ds_mla`（自定义字节布局） | 无（状态 dtype 由 `dtypes` 字段指定） |
+| `storage_block_size` | = `block_size`（无压缩） | `= block_size // compress_ratio`（MLA 特有） | = `block_size`（不适用，无 token 维） |
+| 典型模型 | Llama、Qwen、Mistral | DeepSeek V2/V3/V4 | Mamba2、Qwen3-Next (GDN) |
 
-## 2.4 不同模型类型对应的 Spec 类（速查总表）
+## 2.4 FullAttentionSpec 详解
 
-| 模型 / 注意力类型                                  | Spec 类                                   | 继承链                                                   | 备注                                 |
-| ------------------------------------------- | ---------------------------------------- | ----------------------------------------------------- | ---------------------------------- |
-| 标准 Full Attention（如 Llama、Qwen、Mistral 纯解码） | `FullAttentionSpec`                      | `AttentionSpec` → `KVCacheSpec`                       | 最常见；支持量化、fp8 等                     |
-| 混合模型含 SWA 层（hybrid allocator 关闭时）           | `FullAttentionSpec`（记录 `sliding_window`） | 同上                                                    | SWA 在 KV cache 层面视为 full attention |
-| 有滑动窗口注意力（独立模式）                              | `SlidingWindowSpec`                      | `AttentionSpec` → `KVCacheSpec`                       | 块大小独立，内存按 SW 窗口计算                  |
-| RoPE 随步长注意力（RSWA）                           | `RSWASpec`                               | `FullAttentionSpec` → `AttentionSpec` → `KVCacheSpec` | Ring Attention 变种                  |
-| Chunked Local Attention（如 GLM-4v）           | `ChunkedLocalAttentionSpec`              | `AttentionSpec` → `KVCacheSpec`                       | 块内局部注意力                            |
-| Sink Attention                              | `SinkFullAttentionSpec`                  | `FullAttentionSpec` → `AttentionSpec` → `KVCacheSpec` | 保留 sink tokens 的 full attention    |
-| MLA（Multi-head Latent Attention）            | `MLAAttentionSpec`                       | `FullAttentionSpec` → `AttentionSpec` → `KVCacheSpec` | 共用 KV latent                       |
-| Mamba / RWKV 等线性注意力                         | `MambaSpec`                              | `KVCacheSpec`（无 `AttentionSpec` 父类）                   | 非注意力机制，KV cache 布局完全不同             |
-| TurboQuant 量化                               | `TQFullAttentionSpec`                    | `FullAttentionSpec` → `AttentionSpec` → `KVCacheSpec` | 特殊量化后端                             |
+`FullAttentionSpec` 是家族 A 的核心 Spec，描述"每 KV 头各存一份完整 K 和 V"的存储格式。
 
-> `MambaSpec` 不继承 `AttentionSpec`，因为其 KV cache 布局与注意力模型完全不同。所有 Spec 类均为 `@dataclass(frozen=True)`，定义在 `vllm/v1/kv_cache_interface.py`，外层入口在 `vllm/v1/worker/gpu/attn_utils.py:get_kv_cache_spec()`。
-
-## 2.5 KVCacheSpec 基类深挖
-
-`KVCacheSpec`（`kv_cache_interface.py:99-173`）是每层 KV cache 的"规格说明书"，定义为**冻结 dataclass**——一旦创建不可修改，保证多 TP/PP rank 间可安全比较、共享和深拷贝。
-
-#### 2.5.1 字段定义
-
-```python
-@dataclass(frozen=True)
-class KVCacheSpec:
-    """Definition of the KV cache format of a single layer."""
-    block_size: int
-    # 一个块容纳的 token 数，所有 KV 缓存按块管理的基本单位
-    # 纯 Full Attention 场景下通常为 16，SWA/Mamba 可能不同
-```
-
-> `frozen=True` 冻结不可变：spec 一旦生成不能修改，`engine/core.py` 初始化阶段会断言同组所有层的 spec 必须一致。`block_size` 是唯一的基类字段——所有类型的 KV 缓存（Attention/Mamba/MLA）都按块管理；其余维度（头数、头大小、dtype 等）由子类补充。
-
-#### 2.5.2 三个核心方法
-
-```python
-    @property
-    def page_size_bytes(self) -> int:   # 抽象：单 block 在单层占用的字节数
-        raise NotImplementedError        # 计算 num_blocks 的核心输入，子类必须实现
-
-    @property
-    def storage_block_size(self) -> int: # 存储层实际块大小，默认 = block_size
-        return self.block_size
-
-    def copy_with_new_block_size(self, block_size: int) -> Self:
-        # 不可变对象的"修改"：dataclasses.replace 返回新对象（DCP 等场景用）
-        return replace(self, block_size=block_size)
-```
-
-## 2.6 AttentionSpec 深挖（存储核心）
-
-这是所有注意力 KV cache 的**中间基类**（仅比 `MambaSpec` 一系），补齐注意力计算相关的维度、dtype、量化模式等字段。**`real_page_size_bytes`** **就是家族 A/B 的"每块字节数"根源**。
-
-#### 2.6.1 字段定义
-
-```python
-@dataclass(frozen=True, kw_only=True)
-class AttentionSpec(KVCacheSpec):
-    num_kv_heads: int        # KV 头数：GQA/MQA 时小于 query 头数
-    head_size: int           # 每个注意力头的维度（Llama 系列 128）
-    dtype: torch.dtype       # KV 缓存存储 dtype（bf16=2B / fp16=2B / int8=1B）
-    kv_quant_mode: KVQuantMode = KVQuantMode.NONE  # 量化模式
-    page_size_padded: int | None = None  # 手动指定 padded 后的 page 字节（内存对齐）
-    indexes_kv_by_block_stride: bool = False       # 某些后端优化用
-```
-
-#### 2.6.2 `real_page_size_bytes`：纯 KV 数据大小 + 量化原理
-
-计算**纯 KV 数据本身**的字节数，不含量化 scale、不含内存对齐 padding：
-
-> ⚠️ 这是\*\*每块（block）每层（layer）\*\*的大小。单层单 block = `2 × block_size × num_kv_heads × head_dim × dtype_size`；模型总 KV = `层数 × 页数 × real_page_size_bytes`。
-
-```python
-    @property
-    def real_page_size_bytes(self) -> int:
-        if self.kv_quant_mode.is_nvfp4:
-            head_dim = nvfp4_kv_cache_full_dim(self.head_size)      # fp4数据 + fp8 scale 打包
-        elif self.kv_quant_mode == KVQuantMode.INT4_PER_TOKEN_HEAD:
-            head_dim = self.head_size // 2                           # 2 个 int4 打包到 1 字节
-        else:
-            head_dim = self.head_size                                # 不量化/FP8/INT8
-        return (2 * self.block_size * self.num_kv_heads
-                * head_dim * get_dtype_size(self.dtype))
-```
-
-> **Llama-7B bf16 例子**：`2 × 16 × 32 × 128 × 2 = 262,144 B = 256 KB`（单层单 block）。
-
-**为什么量化改的是** **`head_dim`** **而不是** **`dtype_size`？**
-物理存储的 dtype 宽度是固定的（`uint8`=1 字节、`bf16`=2 字节），量化改变的是最后一维的**物理元素个数**，而非元素字节数。字节数 = `head_dim × dtype_size`，两个因子相乘决定总字节。
-
-| 量化模式      | `head_dim`                          | 原因                           | scale 存储方式         |
-| --------- | ----------------------------------- | ---------------------------- | ------------------ |
-| bf16（不量化） | 128（=head\_size）                    | 1 值 1 位置，无打包                 | 无需 scale           |
-| FP8/INT8  | 128                                 | 1 字节存 1 值                    | 外挂（独立张量）           |
-| INT4      | `head_size // 2` = 64               | 2 个 int4 打包到 1 字节            | 外挂（per-token-head） |
-| NVFP4     | `head_size//2 + head_size//16` = 72 | fp4 打包(64) + fp8 scale 内嵌(8) | **内嵌在同一张量末尾**      |
-
-**dtype / head\_dim 映射**（`kv_cache_dtype_str_to_dtype()` 查表 → `AttentionSpec.dtype`）：
-
-| 量化模式                 | cache\_dtype 字符串                  | torch dtype   | dtype\_size | head\_dim                      |
-| -------------------- | --------------------------------- | ------------- | ----------- | ------------------------------ |
-| 不量化                  | `"auto"`/`"bfloat16"`/`"float16"` | bf16/fp16     | 2           | head\_size                     |
-| FP8（per-tensor）      | `"fp8"`                           | `torch.uint8` | 1           | head\_size                     |
-| INT8（per-token-head） | `"int8_per_token_head"`           | `torch.int8`  | 1           | head\_size                     |
-| FP8（per-token-head）  | `"fp8_per_token_head"`            | `torch.uint8` | 1           | head\_size                     |
-| INT4（per-token-head） | `"int4_per_token_head"`           | `torch.uint8` | 1           | `head_size // 2`               |
-| NVFP4                | `"nvfp4"`                         | `torch.uint8` | 1           | `head_size//2 + head_size//16` |
-
-> FP8/INT4/NVFP4 虽然精度不同，但物理存储 dtype 都是 `uint8`（1 字节），区别仅在 `head_dim` 与 `kv_quant_mode`。
-
-#### 2.6.3 `unpadded_page_size_bytes`：加上量化 scale
-
-per-token-head 量化时，scale 显存虽由 backend 管理，但要从 KV cache 分配里切，必须计入预算：
-
-```python
-    @property
-    def unpadded_page_size_bytes(self) -> int:
-        unpadded = self.real_page_size_bytes
-        if self.kv_quant_mode.is_per_token_head:
-            unpadded += 2 * self.block_size * self.num_kv_heads * get_dtype_size(torch.float32)   # 每 token 每 K/V 头一个 fp32 scale
-        return unpadded
-```
-
-#### 2.6.4 `page_size_bytes`：最终用于显存计算的值
-
-外层计算 `num_blocks` 实际用这个值——手动设置了 `page_size_padded`（内存对齐）则用 padded 值，否则自动算：
-
-```python
-    @property
-    def page_size_bytes(self) -> int:
-        if self.page_size_padded is not None:
-            assert self.page_size_padded >= self.unpadded_page_size_bytes
-            return self.page_size_padded
-        return self.unpadded_page_size_bytes
-```
-
-**字节数三层关系**：
-
-```
-real_page_size_bytes    → 纯 KV 数据本身
-    ↓ + per-token-head scale
-unpadded_page_size_bytes → 数据 + scale，无 padding
-    ↓（若设置 page_size_padded 则替换为 padded 值）
-page_size_bytes          → 最终用于 num_blocks 计算的值
-```
-
-#### 2.6.5 `max_num_blocks_per_req`：CP 场景修正
-
-```python
-    def max_num_blocks_per_req(self, vllm_config, max_len) -> int:
-        kv_shard_count = vllm_config.parallel_config.decode_context_parallel_size
-        return cdiv(max_len, self.block_size * kv_shard_count)  # 序列被 CP 切分，每 rank 只存 1/CP
-```
-
-## 2.7 FullAttentionSpec 深挖
-
-#### 2.7.1 字段定义
+### 字段定义
 
 ```python
 @dataclass(frozen=True, kw_only=True)
 class FullAttentionSpec(AttentionSpec):
-    head_size_v: int = None   # K 与 V 头维度可不同（MiMo-V2）；默认 == head_size
-    sliding_window: int | None = None      # 滑动窗口（混合模式下按 Full 分配）
-    attention_chunk_size: int | None = None# 分块局部注意力，与 sliding_window 互斥
-    non_causal: bool = False  # 非因果（Prefix LM / Encoder-Decoder），不改布局但影响调度
+    head_size_v: int = None          # K 与 V 头维度可不同（Diff-KV）；默认 == head_size
+    sliding_window: int | None = None # 滑动窗口（混合模式下按 Full 分配）
+    attention_chunk_size: int | None = None  # 分块局部注意力，与 sliding_window 互斥
+    non_causal: bool = False          # 非因果（Prefix LM / Encoder-Decoder）
 ```
 
-因 spec 冻结，初始化默认值用 `object.__setattr__` 兜底（`__post_init__` 里把 `head_size_v=None` 设回 `head_size`）。
+> `AttentionSpec` 基类提供 `num_kv_heads`、`head_size`、`dtype`、`kv_quant_mode` 等字段。`FullAttentionSpec` 在此基础上补充 K/V 可能不同维、滑动窗口等语义。
 
-#### 2.7.2 `real_page_size_bytes`：K、V 各自的 `head_dim` 相加
+### `page_size_bytes` 计算
 
-与 `AttentionSpec` 的区别：Full 分别维护 K、V 两份张量，`last_dim = K维 + V维`，各自按量化规则计算再相加。公式：`block_size × num_kv_heads × last_dim × dtype_size`：
+`FullAttentionSpec` 的 `real_page_size_bytes` 分别维护 K、V 两份张量，`last_dim = K维 + V维`，各自按量化规则计算再相加：
 
-| 量化模式                   | `last_dim`（=K + V）                                                          |
-| ---------------------- | --------------------------------------------------------------------------- |
-| NVFP4                  | `nvfp4_kv_cache_full_dim(head_size) + nvfp4_kv_cache_full_dim(head_size_v)` |
-| INT4\_PER\_TOKEN\_HEAD | `head_size // 2 + head_size_v // 2`                                         |
-| 其他（bf16/FP8/INT8）      | `head_size + head_size_v`                                                   |
+| 量化模式 | `last_dim`（= K + V） |
+|---|---|
+| 不量化（bf16/fp16） | `head_size + head_size_v` |
+| FP8 / INT8 | `head_size + head_size_v`（dtype 变 uint8/int8，维度不变） |
+| INT4 | `head_size // 2 + head_size_v // 2`（2 个 int4 打包到 1 字节） |
+| NVFP4 | `nvfp4_kv_cache_full_dim(head_size) + nvfp4_kv_cache_full_dim(head_size_v)` |
 
-> Diff-KV（`head_size_v ≠ head_size`）正是靠这里的"分别相加"支持——这也解释了家族 A 物理 shape 最后一维 `head_size + head_size_v` 的由来。
+公式：`page_size_bytes = block_size × num_kv_heads × last_dim × dtype_size`
 
-#### 2.7.3 `merge`：多层 Spec 合并为组规格
+> Diff-KV（`head_size_v ≠ head_size`）正是靠"K、V 维度分别相加"支持。
 
-`merge(specs)` 是分组核心：`create_kv_cache_group_specs` 按层分组后，对每组调用 `merge()` 生成代表 spec。为什么要合并？同组各层 KV 在 GPU 上**各有独立张量**（`kv_caches[layer_name]`），但共享同一个 BlockPool、同一个 `page_size_bytes`、同一个 block\_table 结构——因此只需一组统一参数即可管理整组。
+### 语义变体
 
-第一步类型校验：所有层必须是 `FullAttentionSpec`，禁止混入 `MLAAttentionSpec`。
-第二步收集可兼容参数：`sliding_window`/`attention_chunk_size` 用 set 去重，交给 `merge_window_sizes`。
-第三步创建 merged spec。
-第四步一致性校验：校验 `AttentionSpec` 基类字段完全相等；`sliding_window` 与 `attention_chunk_size` 互斥。
+以下 Spec **物理 shape 全部同 Full Attention**，区别只在"谁来读写、什么时候释放"：
 
-**FullAttentionSpec 合并规则总结**：
+| Spec | 区别 |
+|---|---|
+| `SlidingWindowSpec` | 布局同 Full，仅 attention 计算时看最近 `sliding_window` 个 token |
+| `CrossAttentionSpec` | 缓存 encoder 输出，不释放 |
+| `SinkFullAttentionSpec` | 前 `sink_len` 个 token 的 block 永久驻留不驱逐 |
+| `RSWASpec` | prefill 全局可见，最近 `rswa_window` 个生成 token 保留，gap block 驱逐 |
+| `ChunkedLocalAttentionSpec` | 长序列切 chunk 独立计算，块内局部注意力 |
+| `TQFullAttentionSpec` | K+V 交织打包进单个 slot |
+| `EncoderOnlyAttentionSpec` | **无 KV cache**（`max_memory = 0`） |
 
-| 字段                                                                  | 合并策略                     |
-| ------------------------------------------------------------------- | ------------------------ |
-| `block_size`/`num_kv_heads`/`head_size`/`head_size_v`/`dtype` 等基类字段 | 必须全相等，否则断言失败             |
-| `sliding_window` / `attention_chunk_size`                           | 收集所有非 None 值，必须一致，不一致报错  |
-| `non_causal`                                                        | 保守：只要一层非因果，整个组标记为非因果     |
-| 其他字段                                                                | 取第一个 spec 的值（一致性校验保证全相等） |
+### `merge`：多层 Spec 合并为组规格
 
-## 2.8 分组：为何能把多层合并为一个 group
+同组各层 KV 在 GPU 上各有独立张量，但共享同一个 BlockPool 和 `page_size_bytes`。`merge(specs)` 将同组多层合并为一个代表 Spec：
 
-`create_kv_cache_group_specs`（`kv_cache_utils.py:882-909`）按分组逐组调用 `spec.merge(layer_specs)`：组内兼容则晋升为单一"代表 spec"，不兼容则断言失败。
+| 字段 | 合并策略 |
+|---|---|
+| `block_size`/`num_kv_heads`/`head_size`/`head_size_v`/`dtype` 等基类字段 | 必须全相等，否则断言失败 |
+| `sliding_window` / `attention_chunk_size` | 收集所有非 None 值，必须一致，不一致报错 |
+| `non_causal` | 保守：只要一层非因果，整个组标记为非因果 |
+| 其他字段 | 取第一个 spec 的值（一致性校验保证全相等） |
 
-**纯 Full Attention 模型（如 Llama）**：所有层 spec 完全相等，`merge()` 直接深拷贝，因此**全模型只有一个 KV cache group**。单 group 意味着无需跨组协调，BlockPool 全局唯一，`block_table` 跨所有层通用——这是后续五层架构的关键前提。
+## 2.5 MLAAttentionSpec 详解
 
-> **不同** **`page_size_bytes`** **的层**：分组前会调用 `unify_kv_cache_spec_page_size()`（`kv_cache_utils.py:1070`）统一页大小，不是简单取最大，而是分三步：① 最大页是当前页整数倍 → 等比例放大该层 `block_size`；② Mamba 层无法靠放大 block\_size 对齐 → 用 `page_size_padded` 补到最大；③ 都不可行 → 抛 `NotImplementedError`。这正是混合模型统一 page 的机制。
+`MLAAttentionSpec` 是家族 B 的核心 Spec，描述 MLA（Multi-head Latent Attention）的 latent 存储格式。
+
+### 为什么只存一个 latent
+
+MLA 的核心是**低秩联合投影**：K、V 先把维度压到一个小得多的 latent（`c_t ∈ ℝᶜ`），KV cache 只缓存它；推理时用投影矩阵把 `c_t` 还原成各头的 K/V。因此缓存的是**一个 latent 向量**而不是 `num_kv_heads` 份 K/V——shape 没有 `num_kv_heads` 维（固定为 1）。
+
+### 字段定义
+
+```python
+@dataclass(frozen=True, kw_only=True)
+class MLAAttentionSpec(FullAttentionSpec):
+    cache_dtype_str: str | None = None       # 量化 dtype 字符串（如 "fp8_ds_mla"）
+    alignment: int | None = None              # 内存对齐参数（自动 padding）
+    compress_ratio: int = 1                  # 块容量压缩比（DeepSeek V4）
+    model_version: str | None = None         # 模型版本标识（如 "deepseek_v4"）
+```
+
+> `MLAAttentionSpec` 继承 `FullAttentionSpec` 但覆写了 `real_page_size_bytes` 和 `storage_block_size`，因此**存储格式完全不同**。
+
+### `storage_block_size`：块容量压缩
+
+```python
+@property
+def storage_block_size(self) -> int:
+    return self.block_size // self.compress_ratio
+```
+
+DeepSeek V4 引入 `compress_ratio`，把逻辑 `block_size` 压缩到更小的物理块容量。例：`block_size=64, compress_ratio=4` → `storage_block_size=16`。
+
+### `page_size_bytes` 计算
+
+`MLAAttentionSpec` 覆写了 `real_page_size_bytes`，按 `cache_dtype_str` 分支：
+
+| 版本 | `cache_dtype_str` | 每 token 字节构成 | `real_page_size_bytes` |
+|---|---|---|---|
+| V3（bf16） | 非 `fp8_ds_mla` | `head_size` × `dtype_size`（如 576 × 2） | `storage_block_size × num_kv_heads × head_dim × dtype_size` |
+| V3.2（fp8） | `fp8_ds_mla` | 512B NoPE + 16B fp8 scale + 128B RoPE = 656B | `block_size × 656` |
+| V4（fp8） | `fp8_ds_mla` + `model_version="deepseek_v4"` | 448B NoPE + 128B RoPE + 8B fp8 scale = 584B | `storage_block_size × 584` |
+
+> 三版本的 latent 宽度：V3 = 576（bf16）、V3.2 = 656（uint8 自定义布局）、V4 = 584（uint8 自定义布局）。V3 与 V3.2 的 latent 宽同为 576，区别只在 fp8 打包后的宽度。
+
+### `alignment` padding
+
+`__post_init__` 自动调用 `_apply_alignment_padding()`：当 `alignment` 非 None 且 `real_page_size_bytes` 不能对齐时，自动设置 `page_size_padded` 补齐——这是 MLA 特有的自动对齐机制，不改 `block_size`。
+
+### `SlidingWindowMLASpec`
+
+`SlidingWindowMLASpec` 继承 `SlidingWindowSpec`，用 MLA 的 latent 存储格式 + 滑动窗口的驱逐策略。其 `real_page_size_bytes` 镜像 `MLAAttentionSpec`，用于 DeepSeek V4 的 SWA+MLA 层。
+
+## 2.6 MambaSpec 详解
+
+`MambaSpec` 是家族 C 的唯一 Spec，描述 SSM/Mamba/GDN 的递归状态存储格式。
+
+### 字段定义
+
+```python
+@dataclass(frozen=True, kw_only=True)
+class MambaSpec(KVCacheSpec):
+    shapes: tuple[tuple[int, ...], ...]           # 各状态子张量的形状
+    dtypes: tuple[torch.dtype, ...]               # 各状态子张量的 dtype
+    page_size_padded: int | None = None           # 手动 padding 后的 page 字节
+    mamba_type: MambaAttentionBackendEnum = MAMBA2  # SSM 子类型
+    mamba_cache_mode: str = "none"                # 缓存模式（none/align/all）
+    num_speculative_blocks: int = 0               # 投机解码额外块数
+```
+
+> `MambaSpec` **不继承 `AttentionSpec`**，因为其 KV cache 布局与注意力模型完全不同——没有 `num_kv_heads`、`head_size` 等维度，是一个扁平字节缓冲。
+
+### `page_size_bytes`：状态字节和
+
+```python
+@property
+def page_size_bytes(self) -> int:
+    page_size = sum(
+        prod(shape) * get_dtype_size(dtype)
+        for (shape, dtype) in zip(self.shapes, self.dtypes)
+    )
+    if self.page_size_padded is not None:
+        return self.page_size_padded
+    return page_size
+```
+
+即 `page_size_bytes = Σ(各状态子张量的元素总数 × 各自 dtype 字节数)`。与家族 A/B 的本质区别：`page_size_bytes` **与 `block_size` 无关**——每个 block 存的是一份固定尺寸的状态，不随 token 数缩放。
+
+### 物理 tensor 与状态切分
+
+所有 SSM 类型的物理 shape 统一为 `(num_blocks, 1, 1, page_size_bytes)`——一个扁平 int8 字节缓冲。`bind_kv_cache` 在 forward 时按各状态 shape 切分 view：
+
+```
+物理 tensor: (num_blocks, 1, 1, page_size_bytes)  ← int8 扁平缓冲
+                                    ↓ bind_kv_cache 切分
+                    conv_state: (num_blocks, conv_dim, conv_kernel-1)
+                    ssm_state:  (num_blocks, num_heads, head_dim, state_size)
+```
+
+### 各 SSM 子类型的状态 shapes
+
+| SSM 子类型 | `mamba_type` | 状态子张量 shapes | `self.kv_cache` 元组 |
+|---|---|---|---|
+| Mamba1 | `MAMBA1` | conv `(intermediate//tp, conv_kernel-1)` + ssm `(intermediate//tp, state_size)` | 2-tuple |
+| Mamba2 | `MAMBA2` | conv `(conv_dim//tp, conv_kernel-1+num_spec)` + ssm `(num_heads//tp, head_dim, state_size)` | 2-tuple |
+| GDN | `GDN_ATTN` | conv `(conv_dim//tp, conv_kernel-1+num_spec)` + temporal `(num_v_heads//tp, head_v_dim, head_k_dim)` | 2-tuple |
+| Short Conv | `SHORT_CONV` | conv `(intermediate//tp, conv_kernel-1)` | 1-tuple |
+| Linear Attn | `LINEAR` | state `(num_heads//tp, head_dim, head_dim)` | 1-tuple |
+| KDA | (注册) | conv `(conv_dim//tp, conv_kernel-1)` + recurrent `(num_heads//tp, head_dim, head_dim)` | 2-tuple |
+
+### `mamba_cache_mode`：常驻几个状态块
+
+| cache mode | 常驻 block 数 | 每 block 存什么 | prefix caching |
+|---|---|---|---|
+| `none`（默认） | `1 + num_spec` | 仅当前步运行状态，就地更新 | 不支持 |
+| `align` | `2 + num_spec` | 最近 block 边界的累积状态 checkpoint | 支持（仅尾部命中） |
+| `all` | `cdiv(max_model_len, block_size) + num_spec` | 每个 block 边界一份累积状态 checkpoint | 支持（全量块复用） |
+
+> **关键语义区别**：家族 A 的 block `i` 存第 `i*block_size`~`(i+1)*block_size-1` 个 token **各自的** K/V；家族 C 的 block `i` 存"处理完前 `i*block_size` 个 token 后的**累积运行状态**"——不是某个 token 的独立状态，而是所有 token 到此点的累积效应。
 
 ***
 
