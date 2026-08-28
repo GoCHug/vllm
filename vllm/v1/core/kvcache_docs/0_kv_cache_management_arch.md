@@ -22,11 +22,11 @@ KV Cache 文档分两层组织：**三篇 `0_` 总览**（从三个视角看同�
 
 | 分层文档 | 层 | 主题（Full Attention 主线） |
 |---|---|---|
-| [`1_physical_memory.md`](./1_physical_memory.md) | 物理显存层（最底） | KV 物理张量的申请、reshape，`block_id == 张量行号`的桥接关系 |
-| [`2_block_pool.md`](./2_block_pool.md) | 逻辑块池层 | `KVCacheBlock`、空闲队列、链式哈希表、`BlockPool` 分配/释放/缓存/驱逐 |
-| [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md) | 单类型管理层 | `SingleTypeKVCacheManager` 基类 + `FullAttentionManager` 核心逻辑（前缀查找/分配/释放/CoW） |
-| [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md) | 协调器层 | `UnitaryKVCacheCoordinator`（单 Full Attention 组直通），混合模型协调器作为扩展 |
-| [`5_kv_cache_manager.md`](./5_kv_cache_manager.md) | 顶层接口层（最顶） | `KVCacheManager` + `KVCacheBlocks`，Scheduler 唯一入口，完整请求生命周期 |
+| [`1_physical_memory.md`](./1_physical_memory.md) | 第1层 · 物理显存层（最底） | KV 物理张量的申请、reshape，`block_id == 张量行号`的桥接关系 |
+| [`2_block_pool.md`](./2_block_pool.md) | 第2层 · 逻辑块池层 | `KVCacheBlock`、空闲队列、链式哈希表、`BlockPool` 分配/释放/缓存/驱逐 |
+| [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md) | 第3层 · 单类型管理层 | `SingleTypeKVCacheManager` 基类 + `FullAttentionManager` 核心逻辑（前缀查找/分配/释放/CoW） |
+| [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md) | 第4层 · 协调器层 | `UnitaryKVCacheCoordinator`（单 Full Attention 组直通），混合模型协调器作为扩展 |
+| [`5_kv_cache_manager.md`](./5_kv_cache_manager.md) | 第5层 · 顶层接口层（最顶） | `KVCacheManager` + `KVCacheBlocks`，Scheduler 唯一入口，完整请求生命周期 |
 
 ---
 
@@ -81,52 +81,64 @@ GPU forward 计算                    →  attn backend 用 block_table 索引�
 
 ## 3. 五层架构（Full Attention 视角）
 
-纯 Full Attention 模型只有一个 KV cache group，五层关系如下：
+纯 Full Attention 模型只有一个 KV cache group。**五层自下而上编号**：第1层=物理显存 → 第2层=块池 → 第3层=单类型管理 → 第4层=协调器 → 第5层=顶层门面（`KVCacheManager`）。下图按"上层在下层之上"自上而下排列；`Scheduler` 是调用者、不算层。
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        Scheduler (调度器)                         │
-├──────────────────────────────────────────────────────────────────┤
-│            KVCacheManager + KVCacheBlocks (顶层接口)              │  见 5_kv_cache_manager.md
-│              对 Scheduler 暴露统一 API，隐藏内部结构               │
-├──────────────────────────────────────────────────────────────────┤
-│              UnitaryKVCacheCoordinator (协调器-单组直通)          │  见 4_kv_cache_coordinator.md
-│              单 Full Attention 组：直接转发给下层manager           │
-├──────────────────────────────────────────────────────────────────┤
-│                  FullAttentionManager (单类型管理)                │  见 3_single_type_kv_cache_manager.md
-│      前缀查找(链式哈希)、分配/释放、Copy-on-Write、block_table维护  │
-├──────────────────────────────────────────────────────────────────┤
-│                    BlockPool (逻辑块池)                            │  见 2_block_pool.md
-│     逻辑块分配/释放/缓存/驱逐（仅持 block_id，不持显存指针）        │
-│       ┌─────────────────┴──────────────────┐                     │
-│    FreeKVCacheBlockQueue             BlockHashToBlockMap          │
-│     (LRU 空闲块队列)                 (链式哈希→block映射)          │
-├──────────────────────────────────────────────────────────────────┤
-│           GPUModelRunner.kv_caches[layer] (物理显存层)            │  见 1_physical_memory.md
-│      torch.Tensor [num_blocks, num_kv_heads, block_size, 2*head_dim]
-│        ↑ block_id 直接索引第0维：block_table[b]即张量行号          │
-│        （维度顺序由 attention backend 决定，此处为主流 blocks-first）│
-└──────────────────────────────────────────────────────────────────┘
-                          底层物理显存
+┌───────────────────────────────────────────────────────────────┐
+│  ▲ 五层架构（Full Attention 视角 · 唯一 KV cache group）        │
+│  层号自下而上：第1层物理显存 … 第5层门面；下图自上而下排列           │
+├───────────────────────────────────────────────────────────────┤
+│  Scheduler（调度器 · 调用者）                                 │
+│  只通过第5层门面统一调用，不直接触碰 KV cache 内部结构             │
+├───────────────────────────────────────────────────────────────┤
+│  第5层 · 顶层门面   KVCacheManager                             │
+│     持有 1 个第4层；对 Scheduler 暴露统一 API                   │
+├───────────────────────────────────────────────────────────────┤
+│  第4层 · 协调器    KVCacheCoordinator                        │
+│             本文 UnitaryKVCacheCoordinator                  │
+│     · 持有 N 个第3层（每 spec group 1 个，主线 N=1）             │
+│     · 持有 1 个第2层 BlockPool（所有第3层共享）                   │
+├───────────────────────────────────────────────────────────────┤
+│  第3层 ×N · 单类型管理  SingleTypeKVCacheManager               │
+│             本文 N=1 FullAttentionManager                     │
+│     前缀查找(链式哈希)/分配释放/CoW/block_table 维护              │
+├───────────────────────────────────────────────────────────────┤
+│  第2层 ×1 · 逻辑块池  BlockPool（唯一，所有第3层共享）             │
+│     逻辑块分配/释放/缓存哈希/LRU驱逐（仅 block_id，无显存）        │
+│        ┌──────────────────┴───────────────┐                   │
+│    FreeKVCacheBlockQueue              BlockHashToBlockMap     │
+│     (LRU 空闲块队列)                 (链式哈希→block映射)      │
+├───────────────────────────────────────────────────────────────┤
+│  第1层 · 物理显存  GPUModelRunner.kv_caches[layer]             │
+│     torch [num_blocks, num_kv_heads, block_size, 2*head_dim]  │
+│     block_id 直接索引第0维，即物理张量行号                        │
+└───────────────────────────────────────────────────────────────┘
 ```
 
-**自上而下的持有关系**：
-- `KVCacheManager` 持有一个 `KVCacheCoordinator`（Full Attention 下是 `UnitaryKVCacheCoordinator`）
-- `UnitaryKVCacheCoordinator` 持有一个 `BlockPool` 和一个 `FullAttentionManager`
-- `FullAttentionManager` 持有请求到 block 的映射 `req_to_blocks`（即 block_table）
-- `BlockPool` 持有全部 `KVCacheBlock`（仅 `block_id` + 元数据），与物理张量通过 `block_id` 一一对应
+**文本持有关系（tree 状展开，数字 = 持有数量）**：第5层持有 **1** 个第4层 → 第4层持有 **N** 个第3层 ＋ **1** 个第2层 → 每个第3层引用**同一个**第2层。
+
+```
+Scheduler（调度器 · 调用者）
+└─1→ KVCacheManager（第5层 · 顶层门面）── 对 Scheduler 暴露统一 API
+    └─1→ UnitaryKVCacheCoordinator（第4层 · 协调器）
+        ├─1→ 第3层 FullAttentionManager （前缀查找/分配释放/CoW/block_table 维护）
+        └─1→ 第2层 BlockPool（唯一，所有第3层共享）── 仅索引 block_id
+             │    FreeKVCacheBlockQueue(LRU) + BlockHashToBlockMap(链式哈希)
+             └─1→ 第1层 物理显存 GPUModelRunner.kv_caches[layer]
+                  （block_id == 第0维行号；BlockPool 只管行号使用权，真正读写 K/V 由注意力算子完成）
+```
 
 ### 3.1 关键文件职责
 
 | 文件 | 职责 | 层 |
 |------|------|------|
-| `kv_cache_manager.py` | 顶层管理器，对 Scheduler 暴露统一接口（`get_computed_blocks`/`allocate_slots`/`free` 等） | 顶层 · `5_kv_cache_manager.md` |
-| `kv_cache_coordinator.py` | 协调器：单组直通（Full Attention）或多组对齐（混合模型） | 协调层 · `4_kv_cache_coordinator.md` |
-| `single_type_kv_cache_manager.py` | `FullAttentionManager`：前缀查找、block分配/释放、CoW | 单类型层 · `3_single_type_kv_cache_manager.md` |
-| `block_pool.py` | 逻辑 block 池：分配/释放/缓存哈希/LRU驱逐 | 块池层 · `2_block_pool.md` |
-| `kv_cache_utils.py` | `KVCacheBlock`、`BlockHash`、空闲队列、block hash计算工具 | 块池 + 物理层 |
-| `gpu_model_runner.py` | 物理显存申请（`torch.zeros` → reshape）并绑定到 attention 层 | 物理层 · `1_physical_memory.md` |
-| `kv_cache_interface.py` | `KVCacheSpec` / `KVCacheConfig` 定义 | 物理层 · `1_physical_memory.md` |
+| `kv_cache_manager.py` | 顶层门面，对 Scheduler 暴露统一接口（`get_computed_blocks`/`allocate_slots`/`free` 等） | 第5层 · 顶层门面 · `5_kv_cache_manager.md` |
+| `kv_cache_coordinator.py` | 协调器：单组直通（Full Attention）或多组对齐（混合模型） | 第4层 · 协调器 · `4_kv_cache_coordinator.md` |
+| `single_type_kv_cache_manager.py` | `FullAttentionManager`：前缀查找、block分配/释放、CoW | 第3层 · 单类型管理 · `3_single_type_kv_cache_manager.md` |
+| `block_pool.py` | 逻辑 block 池：分配/释放/缓存哈希/LRU驱逐 | 第2层 · 逻辑块池 · `2_block_pool.md` |
+| `kv_cache_utils.py` | `KVCacheBlock`、`BlockHash`、空闲队列、block hash计算工具 | 块池+物理层（第2/1层） |
+| `gpu_model_runner.py` | 物理显存申请（`torch.zeros` → reshape）并绑定到 attention 层 | 第1层 · 物理层 · `1_physical_memory.md` |
+| `kv_cache_interface.py` | `KVCacheSpec` / `KVCacheConfig` 定义 | 第1层 · 物理层 · `1_physical_memory.md` |
 
 ---
 
@@ -173,6 +185,8 @@ H(b2) = hash(H(b1), tokens[2*block_size:3*block_size])
 - 分配一个 `block_id` 的物理意义 = 在每一层的 KV 张量上占用一行（16个token的K/V），所有层共享同一套 `block_id`
 - 前缀缓存命中 = 两个请求的 block_table 里有相同的 `block_id`，指向同一物理行，`ref_cnt++`，**零显存拷贝**
 - 驱逐 = 把 `ref_cnt=0` 且无哈希（或LRU最旧）的 block 从缓存中移除，放回空闲队列头部（优先重新分配）
+- **`BlockPool` 与物理显存是"行索引使用权"关系，不是物理操作者**：它只决定某个 `block_id` 能否分配/共享/释放（改 `ref_cnt`、空闲队列、哈希表），**从不读写物理张量数据**。真正的 K/V 数据搬运发生在 GPU forward——注意力算子拿每个请求的 `block_table` 作索引，从 `kv_caches[layer][block_id]` 中 gather/写入对应行
+- 一句话边界：**第2层管"哪个行号能用"，第1层是"那些行的数据"，算子负责"真正读写这些行"**——调度环节全程只改 `block_id` 归属，零显存拷贝
 
 ---
 
@@ -200,9 +214,9 @@ H(b2) = hash(H(b1), tokens[2*block_size:3*block_size])
    - 所有block初始放入 `free_block_queue`（`FreeKVCacheBlockQueue`双向链表），`ref_cnt=0`
    - 初始化空的 `cached_block_hash_to_block`（`BlockHashToBlockMap`，前缀缓存哈希映射）
 6. **创建管理层**：
-   - ① `FullAttentionManager(kv_cache_spec, block_pool, ...)`：单类型管理器，持有BlockPool引用
-   - ② `UnitaryKVCacheCoordinator(managers=[full_attention_manager], ...)`：单组协调器，直接透传给manager
-   - ③ `KVCacheManager(coordinator, block_pool, watermark_blocks, ...)`：顶层门面，Scheduler唯一交互入口
+   - ① `FullAttentionManager(kv_cache_spec, block_pool, ...)`：第3层单类型管理器，持有BlockPool引用
+   - ② `UnitaryKVCacheCoordinator(managers=[full_attention_manager], ...)`：第4层单组协调器，直接透传给manager
+   - ③ `KVCacheManager(coordinator, block_pool, watermark_blocks, ...)`：第5层门面，Scheduler唯一交互入口
 
 ---
 
