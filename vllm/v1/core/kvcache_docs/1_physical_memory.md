@@ -8,7 +8,7 @@
 
 ---
 
-## 一、概览
+## 1. 概览
 
 物理显存层把"每层 KV cache 的规格说明书（`KVCacheSpec`）"转换成一块**真正驻留在 GPU 上的 `torch.Tensor`**。做三件事：
 
@@ -26,16 +26,16 @@
 
 ---
 
-## 三、初始化流程
+## 2. 初始化流程
 
 从 `EngineCore._initialize_kv_caches()`（core.py:248）这一个入口起步，按推进顺序做四件事：
 
-1. **算规格**（§3.1）—— 每层 `FullAttentionSpec`，得到 `page_size_bytes`
-2. **测预算**（§3.2）—— profile 一次 dummy forward，量出可用显存大小 `available_memory`
-3. **做编排**（§3.3）—— 合并 → 分组 → 算 `num_blocks` → 校验 → 全 worker 对齐
-4. **落张量 + 编译预热**（§3.4）—— 申请 int8 字节张量 → reshape 成后端逻辑 shape → bind 绑定 → `_dummy_run` 编译 + CUDAGraph capture
+1. **算规格**（§2.1）—— 每层 `FullAttentionSpec`，得到 `page_size_bytes`
+2. **测预算**（§2.2）—— profile 一次 dummy forward，量出可用显存大小 `available_memory`
+3. **做编排**（§2.3）—— 合并 → 分组 → 算 `num_blocks` → 校验 → 全 worker 对齐
+4. **落张量 + 编译预热**（§2.4）—— 申请 int8 字节张量 → reshape 成后端逻辑 shape → bind 绑定 → `_dummy_run` 编译 + CUDAGraph capture
 
-### 3.0 调用链总览
+### 2.0 调用链总览
 
 以纯 Full Attention 模型（Llama-8B，32 层，全模型**单 group**）为例。
 
@@ -44,21 +44,21 @@ EngineCore._initialize_kv_caches()                        # engine/core.py:248  
 │
 ├─ ⓘ  register_all_kvcache_specs(vllm_config)            # FullAttentionSpec ↔ FullAttentionManager 注册表
 │
-├─ √ ① §3.1 算规格  model_executor.get_kv_cache_specs()
+├─ √ ① §2.1 算规格  model_executor.get_kv_cache_specs()
 │     ├─ RPC 到 worker.get_kv_cache_spec() → GPUModelRunner.get_kv_cache_spec() 
 │     └─ 返回 -> list[dict[str, KVCacheSpec]]，每个worker上每层Attention KV cache类型，dict[layer name, FullAttentionSpec]
 │
 ├─ ⓘ  扫描 spec.non_causal                                # 非因果层，关闭 chunked prefill / 前缀缓存
 │
-├─ √ ② §3.2 测预算  model_executor.determine_available_memory()
+├─ √ ② §2.2 测预算  model_executor.determine_available_memory()
 │     ├─ RPC 到 worker.determine_available_memory() → GPUModelRunner.profile_run()
 │     └─ 返回每个worker的 available_kv_cache_memory_bytes 字节数-> list[int]
 │
-├─ √ ③ §3.3 做编排  get_kv_cache_configs(...)
+├─ √ ③ §2.3 做编排  get_kv_cache_configs(...)
 │     ├─ 合并各worker的spec获得整个模型的 KVCacheSpecs → 根据整个模型的Specs生成 groups → 算num_blocks → 对齐min num_blocks
 │     └─ 返回 -> list[KVCacheConfig]，每个worker上的KVCacheConfig（统一num_blocks）
 │
-└─ √ ④ §3.4 落张量  model_executor.initialize_from_config(...)
+└─ √ ④ §2.4 落张量  model_executor.initialize_from_config(...)
       ├─ RPC 到各worker.initialize_from_config() → GPUModelRunner.initialize_kv_cache()
       │     ├─ 3a _allocate_kv_cache_tensors  以 torch.int8 申请字节池
       │     ├─ 3b _reshape_kv_cache_tensors   view+permute 成后端逻辑 shape
@@ -82,9 +82,9 @@ def register_all_kvcache_specs(vllm_config):
     )
 ```
 
-> 这是一张"spec 类型 → 管理类"的查表：§3.3 分组完成后，按 `KVCacheGroupSpec.kv_cache_spec` 的类型查表实例化对应 manager；FullAttention 主线只用到 `FullAttentionManager`。
+> 这是一张"spec 类型 → 管理类"的查表：§2.3 分组完成后，按 `KVCacheGroupSpec.kv_cache_spec` 的类型查表实例化对应 manager；FullAttention 主线只用到 `FullAttentionManager`。
 
-### 3.1 第 1 步 · 算规格：各层产出 KVCacheSpec
+### 2.1 第 1 步 · 算规格：各层产出 KVCacheSpec
 
 **调用链**：`EngineCore` → `ModelExecutor.get_kv_cache_specs()`（core.py:255）→ RPC 到各 worker → `GPUWorker.get_kv_cache_spec()`（gpu_worker.py:633）→ **`GPUModelRunner.get_kv_cache_spec()`（gpu_model_runner.py:7782）**。
 
@@ -125,7 +125,7 @@ if any(getattr(spec, "non_causal", False)
 
 > 非因果层与 chunked prefill / 前缀缓存依赖的"因果注意力"假设冲突，会破坏 prefill 正确性；纯 Full Attention 全因果，此分支不触发。
 
-### 3.2 第 2 步 · 测预算：profile 量出可用显存
+### 2.2 第 2 步 · 测预算：profile 量出可用显存
 
 **调用链**：`EngineCore` → `ModelExecutor.determine_available_memory()`（core.py:291）→ RPC 到各 worker → `GPUWorker.determine_available_memory()`（gpu_worker.py:459）→ **内部 `self.model_runner.profile_run()`**（dummy forward 量峰值）→ 写回 `self.available_kv_cache_memory_bytes`（gpu_worker.py:542）→ 返回每个 worker 的 `available_memory` 字节数 `list[int]`。
 
@@ -143,7 +143,7 @@ available_kv_cache_memory = requested_memory
 
 > 若显式设置 `cache_config.kv_cache_memory_bytes`，则跳过自动 profile，直接使用用户指定字节数。
 
-### 3.3 第 3 步 · 做编排：合并 / 分组 / num_blocks / 对齐
+### 2.3 第 3 步 · 做编排：合并 / 分组 / num_blocks / 对齐
 
 **调用链**：`EngineCore` → `get_kv_cache_configs()`（kv_cache_utils.py:2073），顶层入口，依次五步：
 
@@ -177,7 +177,7 @@ def is_kv_cache_spec_uniform(kv_cache_spec) -> bool:
 
 **③ 计算 num_blocks**
 
-`get_kv_cache_config_from_groups()`（kv_cache_utils.py:1340）里，单 group 的**普通 `AttentionSpec`（如 `FullAttentionSpec`）走通用（else）路径**——因为 §3.3② 分组时 `merge()` 把 32 层合并成一份普通 spec，而不是 `UniformTypeKVCacheSpecs`。同 group 内 N 层各分一份独立张量：
+`get_kv_cache_config_from_groups()`（kv_cache_utils.py:1340）里，单 group 的**普通 `AttentionSpec`（如 `FullAttentionSpec`）走通用（else）路径**——因为 §2.3② 分组时 `merge()` 把 32 层合并成一份普通 spec，而不是 `UniformTypeKVCacheSpecs`。同 group 内 N 层各分一份独立张量：
 
 ```python
 num_blocks = available_memory // page_size // num_layers
@@ -238,7 +238,7 @@ class KVCacheGroupSpec:
     kv_cache_spec: KVCacheSpec   # 该组的 spec
 ```
 
-### 3.4 第 4 步 · 落张量：申请 int8 池 / reshape / 绑定 + 编译预热
+### 2.4 第 4 步 · 落张量：申请 int8 池 / reshape / 绑定 + 编译预热
 
 **调用链**：`EngineCore` → `ModelExecutor.initialize_from_config()`（core.py:329 / abstract.py:118）——内部**连续两个 RPC**：
 
@@ -333,23 +333,23 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
 `_dummy_run()`（gpu_model_runner.py:5817）用 `num_tokens` 个 dummy token 跑一次真实前向，触发 torch.compile 编译与内核 warmup。至此物理层全部就绪，可进入第 2 层 `BlockPool` 建块。
 
 
-## 四、关键公式汇总（速查）
+## 3. 关键公式汇总（速查）
 
 | 公式 | 含义 | 出处 |
 |------|------|------|
-| `page_size_bytes = block_size × num_kv_heads × head_size × dtype_size × 2` | 一层一块（一页）的字节数 | §3.1 |
-| `available = total × util − weights − activations − cudagraph` | 可用 KV 显存预算 | §3.2 |
-| `num_blocks = available // page_size // num_layers` | 总页数 / 组内层数 | §3.3③ |
-| `min(num_blocks)` + 按比例缩 `KVCacheTensor.size` | 多 worker 对齐，保证最穷 worker 可容纳 | §3.3⑤ |
+| `page_size_bytes = block_size × num_kv_heads × head_size × dtype_size × 2` | 一层一块（一页）的字节数 | §2.1 |
+| `available = total × util − weights − activations − cudagraph` | 可用 KV 显存预算 | §2.2 |
+| `num_blocks = available // page_size // num_layers` | 总页数 / 组内层数 | §2.3③ |
+| `min(num_blocks)` + 按比例缩 `KVCacheTensor.size` | 多 worker 对齐，保证最穷 worker 可容纳 | §2.3⑤ |
 
 ---
 
-## 五、PP / TP 下 KV cache 的物理分布（Full Attention 主线）
+## 4. PP / TP 下 KV cache 的物理分布（Full Attention 主线）
 
 - **PP 按层切分**：`model.py:1409-1420` `get_layers_start_end_indices()` 按 `pp_rank` 切层范围，`get_kv_cache_spec()` 只返回本 worker 负责的层。
 - **TP 按 KV 头切分**：`model.py:1386-1395` `get_num_kv_heads()` 除以 `tensor_parallel_size`，同一 PP stage 的不同 TP rank 存同层但不同头子集。
 
-**关键推论**：同一 PP stage 的不同 TP rank `num_kv_heads` 相同（都是切分后的值）→ `FullAttentionSpec` 相等 → §3.3 合并断言通过。但 **spec 相等 ≠ 物理相同**：每个 TP rank 独立分配自己的 `1/tensor_parallel_size` 份 KV 张量；调度器只管 `block_id`，对 TP 内部头分布透明。
+**关键推论**：同一 PP stage 的不同 TP rank `num_kv_heads` 相同（都是切分后的值）→ `FullAttentionSpec` 相等 → §2.3 合并断言通过。但 **spec 相等 ≠ 物理相同**：每个 TP rank 独立分配自己的 `1/tensor_parallel_size` 份 KV 张量；调度器只管 `block_id`，对 TP 内部头分布透明。
 
 **具体例子 · PP2 × TP2 = 4 卡**（沿用主线 Llama-8B：32 层，GQA 8 个 KV 头，全模型单 group）
 
@@ -362,18 +362,18 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
 | W2 | 1 | 0 | L16–L31（16 层） | 4 |
 | W3 | 1 | 1 | L16–L31（16 层） | 4 |
 
-沿着 §3 流程走一遍：
+沿着 §2 流程走一遍：
 
 - **① 算规格**：每个 worker 各产出 16 个 `FullAttentionSpec`，`num_kv_heads=4`（TP 已切）。
 - **③ 做编排·合并**：`merged_kv_cache_specs` 合并出 32 个层名不同的 spec——W0/W1 层名同为 `layers.0`~`layers.15` 且字段全等 → 合并断言通过；W2/W3 同理。PP0 与 PP1 层名不同，合并结果天然分层、互不覆盖。
 - **③ 做编排·分组**：32 层 `FullAttentionSpec` 字段一致 → `is_kv_cache_spec_uniform=True` → 全模型 1 个 group（32 层）。
-- **③ 做编排·num_blocks + 对齐**：每卡独立算 `num_blocks`（如各卡 8GB 可用 → 8192 块），再取 4 个 worker 的 `min_num_blocks` 统一（§3.3⑤）。
+- **③ 做编排·num_blocks + 对齐**：每卡独立算 `num_blocks`（如各卡 8GB 可用 → 8192 块），再取 4 个 worker 的 `min_num_blocks` 统一（§2.3⑤）。
 
 **物理分布（关键）**：4 张卡各存 16 层 KV 物理张量；同一 PP stage 的两个 TP rank 存**同层、不同 KV 头子集**（各 4 头，占各自卡 `1/2` 头维）。同一请求的 KV 被切成多段：`block_table` 跨 PP 按阶段分段索引，跨 TP 各 rank 只读自己的头子集。调度器仍只认 `block_id`，对 PP/TP 布局完全透明。
 
 ---
 
-## 六、物理 - 逻辑桥接：`block_id == 张量行号`
+## 5. 物理 - 逻辑桥接：`block_id == 张量行号`
 
 物理张量就绪后，`BlockPool` 只持 `block_id`，通过"位置等同"自然索引，无需查表。唯一要区分的是**不同后端的 `block_dim` 所在轴不同**：
 
@@ -397,7 +397,7 @@ kv = kv_caches[layer][block_ids]                  # 形式A：dim0 fancy indexin
 
 ---
 
-## 七、设计要点小结
+## 6. 设计要点小结
 
 1. **规格先行**：所有显存计算源自 spec 的 `page_size_bytes`；同 PP stage 的 TP rank spec 必须等值。
 2. **四步流水线**：`spec → profile → get_kv_cache_configs → allocate/reshape/bind → BlockPool`。

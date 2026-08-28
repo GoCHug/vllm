@@ -7,7 +7,7 @@
 >
 > 主线：纯 Full Attention 单 group → `UnitaryKVCacheCoordinator`（透传层）。**本文重点：时序路径上把 KM 的动作下放给 SingleTypeManager 的入口方法；纯 FullAttention 下 Coordinator 只是薄薄一层"透传 + 基类建 BlockPool"，其余多组逻辑一句话带过。**
 
-## 一、概览
+## 1. 概览
 
 `KVCacheCoordinator` 是五层 KV Cache 管理架构中的**第四层——跨组协调层**。
 
@@ -17,7 +17,7 @@
 
 ---
 
-## 二、职责与定位
+## 2. 职责与定位
 
 ### 核心职责（纯 FullAttention 场景）
 
@@ -69,7 +69,7 @@ FullAttentionManager.cache_blocks()  → 计算链式哈希，满块写入cached
 
 ---
 
-## 三、类继承结构
+## 3. 类继承结构
 
 ```
 KVCacheCoordinator（ABC 抽象基类）—— 定义跨组协调的标准接口，统一创建BlockPool
@@ -85,7 +85,7 @@ KVCacheCoordinator（ABC 抽象基类）—— 定义跨组协调的标准接口
 
 ---
 
-## 四、KVCacheCoordinator 基类详解
+## 4. KVCacheCoordinator 基类详解
 
 基类负责创建BlockPool、创建所有组的SingleTypeKVCacheManager，并定义所有Coordinator共用的基础方法。
 
@@ -384,7 +384,7 @@ class KVCacheCoordinator(ABC):
 
 ---
 
-## 五、UnitaryKVCacheCoordinator 详解（纯 FullAttention 核心）
+## 5. UnitaryKVCacheCoordinator 详解（纯 FullAttention 核心）
 
 这是纯 Full Attention 模型使用的协调器，也是最简单的实现。
 
@@ -486,7 +486,7 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
 
 ---
 
-## 六、其他 Coordinator 简要概述
+## 6. 其他 Coordinator 简要概述
 
 以下子类用于多组或特殊场景，纯 Full Attention 单组模型不会用到，了解即可。
 
@@ -515,7 +515,7 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
 
 ---
 
-## 七、设计要点小结（纯 FullAttention 视角）
+## 7. 设计要点小结（纯 FullAttention 视角）
 
 1. **BlockPool统一管理**：基类`__init__`中创建唯一的BlockPool实例，所有SingleTypeKVCacheManager共享，保证block_id全局唯一
 2. **透传层设计**：UnitaryKVCacheCoordinator 是典型的"透明代理"，存在的意义是**接口统一**——让上层KVCacheManager可以用完全相同的代码处理单组和多组场景

@@ -7,7 +7,7 @@
 >
 > 主线：纯 Full Attention 单 group，核心是子类 `FullAttentionManager`。**本文重点：时序路径上被 Coordinator 直接下放的方法逐行看源码（短注释）；其余辅助方法一张表带过。**
 
-## 一、概览
+## 1. 概览
 
 `SingleTypeKVCacheManager` 是五层架构的**第三层——单类型 KV 缓存管理器**，负责管理**一种具体 Attention/SSM 类型**的 KV Cache 分配、命中查找、释放等逻辑。纯 FullAttention 模型（Llama/Qwen/Mistral）核心用其子类 `FullAttentionManager`，实现**链式哈希前缀缓存**。
 
@@ -15,7 +15,7 @@
 
 ---
 
-## 二、类继承结构
+## 2. 类继承结构
 
 ```
 SingleTypeKVCacheManager（ABC 抽象基类）—— 统一接口，子类实现差异部分
@@ -32,7 +32,7 @@ SingleTypeKVCacheManager（ABC 抽象基类）—— 统一接口，子类实现
 
 ---
 
-## 三、时序映射（纯 FullAttention 场景）
+## 3. 时序映射（纯 FullAttention 场景）
 
 对应 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) 的端到端流程，`FullAttentionManager` 承担：
 
@@ -48,7 +48,7 @@ SingleTypeKVCacheManager（ABC 抽象基类）—— 统一接口，子类实现
 
 ---
 
-## 四、时序路径核心方法（逐行注释）
+## 4. 时序路径核心方法（逐行注释）
 
 ### 4.1 `get_num_blocks_to_allocate`：算新块数（`base` 基类）
 
@@ -267,7 +267,7 @@ def find_longest_cache_hit(cls, block_hashes, max_length, kv_cache_group_ids,
 
 ---
 
-## 五、其余方法速览（不在时序主路径，大概讲作用）
+## 5. 其余方法速览（不在时序主路径，大概讲作用）
 
 | 方法 | 源码 | 作用 | 被谁调 |
 |---|---|---|---|
@@ -282,7 +282,7 @@ def find_longest_cache_hit(cls, block_hashes, max_length, kv_cache_group_ids,
 
 ---
 
-## 六、其他 Manager 简要概述（了解即可）
+## 6. 其他 Manager 简要概述（了解即可）
 
 | 子类 | 源码 | 特点 |
 |---|---|---|
@@ -295,7 +295,7 @@ def find_longest_cache_hit(cls, block_hashes, max_length, kv_cache_group_ids,
 
 ---
 
-## 七、设计要点小结（纯 FullAttention 视角）
+## 7. 设计要点小结（纯 FullAttention 视角）
 
 1. `req_to_blocks` 是请求 block_table 的真正存储位置（非 `Request` 字段）。
 2. **链式哈希** + **引用计数共享**：命中块只 `touch` 不复制，最后释放才回收。
