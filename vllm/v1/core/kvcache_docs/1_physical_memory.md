@@ -4,51 +4,60 @@
 >
 > 源文件：`vllm/vllm/v1/kv_cache_interface.py`、`vllm/vllm/v1/core/kv_cache_utils.py`、`vllm/vllm/v1/engine/core.py`、`vllm/vllm/v1/worker/gpu_worker.py`、`vllm/vllm/v1/worker/gpu_model_runner.py`、、`vllm/vllm/v1/worker/utils.py`
 >
-> 主线：纯 Full Attention **单 group** 模型（Llama / Qwen / Mistral）。SWA、Mamba、混合模型仅文末[扩展](#扩展其他注意力类型极简)简提。
+> 主线：纯 Full Attention 模型 Llama-3-8B 模型。
 
 ---
 
-## 1. 概览
+## 1. 物理显存申请流程总览
 
-物理显存层把"每层 KV cache 的规格说明书（`KVCacheSpec`）"转换成一块**真正驻留在 GPU 上的 `torch.Tensor`**。做三件事：
+物理显存层的核心职责是：将每层 KV cache 的抽象规格说明书（`KVCacheSpec`）物化为一块**真正驻留在 NPU/GPU 设备上的 `torch.Tensor`**，并在其上建立 `block_id` 与物理行号的一一映射，从而为上层零拷贝调度提供物理基座。
 
-1. 按模型配置得到每层 `KVCacheSpec`，即`FullAttentionSpec`，合并兼容层组成一个类型为 `KVCacheGroupSpec` 的 group，其 `kv_cache_spec` 成员为 `FullAttentionSpec`；
-2. 申请 GPU 原始字节缓冲，reshape 成注意力算子期望的逻辑形状；
-3. 把物理张量绑定到每层 attention，建立 **`block_id == 张量第 0 维行号`** 的桥接。
+### 1.1 初始化流水线
 
-**零拷贝调度的物理基础**：物理张量就绪后，上层 `BlockPool` 只持有 `block_id` ，所有调度决策（分配/释放/共享/驱逐）都不碰物理显存。
+从 `EngineCore._initialize_kv_caches()`（core.py:248）起步，物理显存初始化沿**四阶段单向管线**推进，将 KV cache 抽象规格逐级物化为设备张量：
 
-| 产出物 | 消费方 | 用途 |
+```
+模型层配置 ──①──▶ KVCacheSpec ──②──▶ available_memory ──③──▶ KVCacheConfig ──④──▶ kv_caches[layer]
+                 (每层规格)             (显存预算)              (编排结果)              (物理张量)
+```
+
+前三步（①②③）统属**规格推导**——产出 `KVCacheConfig`（含 `num_blocks`、分组方案、张量尺寸），此时尚未触及设备显存；第四步（④）完成**物理分配**（int8 字节池申请 → reshape 为后端逻辑 shape）与**桥接绑定**（`block_id ↔ 张量行号`），并触发编译预热。
+
+| 阶段 | 职责 | 入口调用 | 输入 → 产出 |
+|------|----------|----------|-------------|
+| ① 算规格 | 遍历全模型 Attention 层，采集 `FullAttentionSpec`，推导单页字节量 `page_size_bytes`；同类层合并为 `KVCacheGroupSpec` | `GPUModelRunner.get_kv_cache_spec()` | `vllm_config` → `dict[layer, FullAttentionSpec]` |
+| ② 测预算 | profile dummy forward，量出 KV cache 可用显存（总显存 × 利用率 − 权重 − 激活 − CUDAGraph 预留） | `GPUModelRunner.profile_run()` | 设备显存快照 → `available_memory: int` |
+| ③ 做编排 | 合并全 worker spec → 分组 → 导出 `num_blocks`（`available // page_size // num_layers`）→ 预算校验 → 跨 worker `min(num_blocks)` 对齐 | `get_kv_cache_configs()` | specs + budget → `KVCacheConfig` |
+| ④ 落张量 | `torch.int8` 字节池申请 → `view + permute` 零拷贝 reshape → bind 绑定 `block_id == block_dim 维索引` → `_dummy_run` 编译 + CUDAGraph capture | `GPUModelRunner.initialize_kv_cache()` | `KVCacheConfig` → `kv_caches[layer]: Tensor` |
+
+> **零拷贝调度的物理基础**：物理张量就绪后，上层 `BlockPool` 只持有 `block_id`，所有调度决策（分配/释放/共享/驱逐）均不触碰物理显存——调度层与物理层完全解耦，`block_id` 是唯一的交互接口。
+
+### 1.2 交付物与消费方
+
+| 交付物 | 消费方 | 用途 |
 |--------|--------|------|
-| `kv_caches[layer_name]` 物理张量 | Attention 算子 | forward 时按 `block_table` 索引读写 K/V |
-| `num_blocks` 整数 | `BlockPool`（第 2 层） | 决定逻辑块总数，创建 `KVCacheBlock(0..N-1)` |
+| `num_blocks` | `BlockPool` | 决定逻辑块总数，创建 `KVCacheBlock(0 .. num_blocks-1)` |
+| `kv_caches[layer_name]` | Attention 算子 | forward 时按 `block_table` 索引 `block_id` 读写 K/V |
 | `KVCacheConfig` | Scheduler / Worker | 同步 group 划分、`block_size` 等元数据 |
 
 ---
 
-## 2. 初始化流程
-
-从 `EngineCore._initialize_kv_caches()`（core.py:248）这一个入口起步，按推进顺序做四件事：
-
-1. **算规格**（§2.1）—— 每层 `FullAttentionSpec`，得到 `page_size_bytes`
-2. **测预算**（§2.2）—— profile 一次 dummy forward，量出可用显存大小 `available_memory`
-3. **做编排**（§2.3）—— 合并 → 分组 → 算 `num_blocks` → 校验 → 全 worker 对齐
-4. **落张量 + 编译预热**（§2.4）—— 申请 int8 字节张量 → reshape 成后端逻辑 shape → bind 绑定 → `_dummy_run` 编译 + CUDAGraph capture
+## 2. 初始化流程详解
 
 ### 2.0 调用链总览
 
-以纯 Full Attention 模型（Llama-8B，32 层，全模型**单 group**）为例。
+以纯 Full Attention 模型（Llama-3-8B，32 层，全模型**单 group**）为例。
 
 ```text
 EngineCore._initialize_kv_caches()                        # engine/core.py:248  启动期唯一入口
 │
-├─ ⓘ  register_all_kvcache_specs(vllm_config)            # FullAttentionSpec ↔ FullAttentionManager 注册表
+├─ ※  register_all_kvcache_specs(vllm_config)            # FullAttentionSpec ↔ FullAttentionManager 注册表
 │
 ├─ √ ① §2.1 算规格  model_executor.get_kv_cache_specs()
 │     ├─ RPC 到 worker.get_kv_cache_spec() → GPUModelRunner.get_kv_cache_spec() 
 │     └─ 返回 -> list[dict[str, KVCacheSpec]]，每个worker上每层Attention KV cache类型，dict[layer name, FullAttentionSpec]
 │
-├─ ⓘ  扫描 spec.non_causal                                # 非因果层，关闭 chunked prefill / 前缀缓存
+├─ ※  扫描 spec.non_causal                                # 非因果层，关闭 chunked prefill / 前缀缓存
 │
 ├─ √ ② §2.2 测预算  model_executor.determine_available_memory()
 │     ├─ RPC 到 worker.determine_available_memory() → GPUModelRunner.profile_run()
@@ -67,7 +76,7 @@ EngineCore._initialize_kv_caches()                        # engine/core.py:248  
             └─ 编译 + CUDAGraph capture
 ```
 
-**ⓘ 前置 · 注册 spec ↔ manager 映射**（single_type_kv_cache_manager.py:1881）
+**※ 前置 · 注册 spec ↔ manager 映射**（single_type_kv_cache_manager.py:1881）
 
 进入正题前，`EngineCore` 进程内先执行 `register_all_kvcache_specs(vllm_config)`，把 `FullAttentionSpec` 注册到 `FullAttentionManager`：
 
@@ -112,7 +121,7 @@ def get_kv_cache_spec(self) -> dict[str, KVCacheSpec]:
 
 纯 Full Attention 模型产出 `FullAttentionSpec`（`kv_cache_interface.py`）
 
-**ⓘ 边注 · 扫描 `non_causal`**（core.py:263）——specs 收集齐后，EngineCore 检查是否有层标记 `non_causal=True`（如 Prefix LM attention）：
+**※ 边注 · 扫描 `non_causal`**（core.py:263）——specs 收集齐后，EngineCore 检查是否有层标记 `non_causal=True`（如 Prefix LM attention）：
 
 ```python
 # core.py:263
@@ -181,7 +190,7 @@ def is_kv_cache_spec_uniform(kv_cache_spec) -> bool:
 
 ```python
 num_blocks = available_memory // page_size // num_layers
-# num_layers = group_size = 该 group 包含的层数（Llama-8B：32）
+# num_layers = group_size = 该 group 包含的层数（Llama-3-8B：32）
 # page_size = get_uniform_page_size() = FullAttentionSpec.page_size_bytes（单层每页字节）
 # 生成 group_size 个张量，每个 size = page_size × num_blocks，shared_by 为单层
 ```
@@ -351,7 +360,7 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
 
 **关键推论**：同一 PP stage 的不同 TP rank `num_kv_heads` 相同（都是切分后的值）→ `FullAttentionSpec` 相等 → §2.3 合并断言通过。但 **spec 相等 ≠ 物理相同**：每个 TP rank 独立分配自己的 `1/tensor_parallel_size` 份 KV 张量；调度器只管 `block_id`，对 TP 内部头分布透明。
 
-**具体例子 · PP2 × TP2 = 4 卡**（沿用主线 Llama-8B：32 层，GQA 8 个 KV 头，全模型单 group）
+**具体例子 · PP2 × TP2 = 4 卡**（沿用主线 Llama-3-8B：32 层，GQA 8 个 KV 头，全模型单 group）
 
 4 个 worker 的职责划分：
 

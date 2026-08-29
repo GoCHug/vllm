@@ -35,7 +35,7 @@
 
 简单说：**在纯FullAttention场景下，Coordinator基类负责创建BlockPool，Unitary子类几乎是透明透传**，它的存在主要是为了统一多组和单组的接口，让上层KVCacheManager不需要关心底层是单组还是多组。
 
-### 端到端流程中的位置（以34token prompt为例）
+### 端到端流程中的位置（以示例 R：prompt = 70 token / max_tokens = 32 token 为例）
 
 ```
 Scheduler.get_computed_blocks()
@@ -56,7 +56,7 @@ FullAttentionManager.add_local_computed_blocks()  → touch命中块，ref_cnt++
     ↓
 KVCacheCoordinator.allocate_new_blocks()  ← 本层入口3（两阶段协议·阶段②：分配新块）
     ↓ （透传）
-FullAttentionManager.allocate_new_blocks()  → 从free_block_queue分配1个新块，new_block_ids收集
+FullAttentionManager.allocate_new_blocks()  → 从free_block_queue分配3个新块，new_block_ids收集
     ↓
 模型forward计算
     ↓
@@ -478,11 +478,11 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
         # hit_blocks格式: ([hit_block0, hit_block1],)  ← 外层tuple是组维度
 ```
 
-**端到端例子**：34token prompt，block_size=16
-- `block_hashes = [hash(t0-15), hash(t16-31), hash(t32-33)]`（前两个是满块哈希，第三个是不完整块）
-- `max_cache_hit_length=34`
-- 查找结果：`hit_blocks = ([cached_block_A, cached_block_B],), hit_length=32`
-- 含义：命中了前2个满块，共32token，还需要2个新token
+**端到端例子**：示例 R（prompt = 70 token，block_size=16）
+- `block_hashes = [hash(t0-15), hash(t16-31), hash(t32-47), hash(t48-63), hash(t64-69)]`（前4个是满块哈希，第5个是不完整块）
+- `max_cache_hit_length=69`（70 − 1）
+- 查找结果：命中前2个满块，`hit_blocks = ([cached_block_A, cached_block_B],), hit_length=32`
+- 含义：命中了前2个满块，共32token，剩余38 token 需重新计算
 
 ---
 

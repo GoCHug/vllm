@@ -76,7 +76,7 @@ class KVCacheBlock:
 
 ## 3. 时序路径核心方法（结合源码逐行）
 
-> 以下方法按**时序文档**的调用点组织（括号内为阶段/来源行号），每条给真实源码（2026 库 `block_pool.py`）与逐行注释。**r 是贯穿全篇的示例请求**（见时序文档 §2：prompt 70 token，`block_size=16`）。
+> 以下方法按**时序文档**的调用点组织（括号内为阶段/来源行号），每条给真实源码（2026 库 `block_pool.py`）与逐行注释。**R 是贯穿全篇的示例请求**（见时序文档 §2：纯 Full Attention 模型 Llama-3-8B，prompt = 70 token / max_tokens = 32 token，`block_size=16`）。
 
 ### 3.1 `get_cached_block` —— B1 前缀命中查找（`block_pool.py:198-223`）
 
@@ -100,7 +100,7 @@ def get_cached_block(
 
 - **只读不写**：不改 `ref_cnt`、不回写 `request.block_hashes`。真正的共享要等 B2 的 `touch`。
 - 单 group 下发 `[0]`，即查 `cached_block_hash_to_block[(hash, 0)]`。
-- r：B1 查前 2 个满块命中 → 各返回 `[block]`。
+- R：B1 查前 2 个满块命中 → 各返回 `[block]`。
 
 ### 3.2 `get_num_free_blocks` —— B2 容量检查（`block_pool.py:799-805`）
 
@@ -139,7 +139,7 @@ def get_new_blocks(self, num_blocks: int) -> list[KVCacheBlock]:
 ```
 
 - **为什么分配前要清缓存**：空闲队列里的块可能 `ref_cnt=0` 但仍挂在哈希表（队尾待命中）。被弹出来分配新内容时，必须先删旧哈希，否则新内容会被旧 hash 错误命中。
-- r：prefill 拿 3 块（后 38 token 切成 16+16+6）。
+- R：prefill 拿 3 块（后 38 token 切成 16+16+6）。
 
 ### 3.4 `touch` —— B2 命中复用（`block_pool.py:702-717`）
 
@@ -154,7 +154,7 @@ def touch(self, blocks: Sequence[KVCacheBlock]) -> None:
         block.ref_cnt += 1
 ```
 
-r：B1 命中的前 2 块 `ref_cnt` 1→2（若彼时在空闲队列则先 `remove`），与其它请求共享物理块。
+R：B1 命中的前 2 块 `ref_cnt` 1→2（若彼时在空闲队列则先 `remove`），与其它请求共享物理块。
 
 ### 3.5 `cache_full_blocks` —— B2 缓存满块（`block_pool.py:225-342`）
 
@@ -197,7 +197,7 @@ def cache_full_blocks(
 - **group_id 拼进 key**：不同组 token 相同布局也不同，必须组间隔离，否则跨组误命中。
 - 事件是**旁路**，只服务外部消费者。
 
-r：命中块 0/1 哈希早已存在 → 幂等早退；真正入表的是新满块 2、3；未满的第 5 块不入。**这正是"新块同样会被缓存，与命中无关"的机制来源。**
+R：命中块 0/1 哈希早已存在 → 幂等早退；真正入表的是新满块 2、3；未满的第 5 块不入。**这正是"新块同样会被缓存，与命中无关"的机制来源。**
 
 #### 子辅助 `_insert_block_hash`（`block_pool.py:607-627`）
 
@@ -246,7 +246,7 @@ def free_blocks(self, ordered_blocks: Iterable[KVCacheBlock]) -> None:
 - **为什么要求逆序**：调用方按"尾块先、老块后"传，尾部块先入队、前缀老块后入队，保证 LRU 顺序正确。
 - `ref_cnt>0` 的共享块只减计数不回收（归 0 才进队列）。
 
-r：逆序归还第 7→6→5→4→3 块；命中块 0/1 因仍被其它请求共享只减计数；有哈希块 append 队尾。
+R：逆序归还第 7→6→5→4→3 块；命中块 0/1 因仍被其它请求共享只减计数；有哈希块 append 队尾。
 
 ---
 
