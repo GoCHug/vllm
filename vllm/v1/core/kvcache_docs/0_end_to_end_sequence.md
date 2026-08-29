@@ -38,7 +38,7 @@ Llama-3-8B 是纯 Full Attention，KV 管理只经过 **五个类**，正好对�
 8. **释放**：请求完成，按 `block_table` **逆序**归还块——`ref_cnt` 归零才回收，有哈希的进队尾保护、无哈希的进队首优先复用。
 
 ```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "boxTextMargin": 4, "messageAlign": "center", "mirrorActors": true, "height": 45}}}%%
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     autonumber
     participant Client
@@ -158,7 +158,7 @@ decode 续写 32 步（每步 1 输出 token）
 > 2. `kv_caches[layer]` 物理张量 → `GPUModelRunner` 申请，§3.3 按 `block_id` 读写
 
 ```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "boxTextMargin": 4, "messageAlign": "center", "mirrorActors": true, "height": 45}}}%%
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     autonumber
     participant EngineCore
@@ -198,7 +198,7 @@ sequenceDiagram
 ### 3.1 ① 入队
 
 ```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "boxTextMargin": 4, "messageAlign": "center", "mirrorActors": true, "height": 45}}}%%
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     autonumber
     participant Client
@@ -230,7 +230,7 @@ sequenceDiagram
 #### 3.2.1 ③ 前缀缓存查找（get_computed_blocks）
 
 ```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "boxTextMargin": 4, "messageAlign": "center", "mirrorActors": true, "height": 45}}}%%
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     autonumber
     participant Scheduler
@@ -262,7 +262,7 @@ sequenceDiagram
 #### 3.2.2 ④ 分配物理块（allocate_slots · 内部 5 步）
 
 ```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "boxTextMargin": 4, "messageAlign": "center", "mirrorActors": true, "height": 45}}}%%
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     autonumber
     participant Scheduler
@@ -277,7 +277,7 @@ sequenceDiagram
     KVCacheManager->>UnitaryKVCacheCoordinator: ② get_num_blocks_to_allocate（容量检查）
     Note over FullAttentionManager: num_new = max(cdiv(num_tokens, block_size)<br/>　− num_local_computed, 0) 纯计算<br/>num_local_computed = 已算块数 + 已持块数
     KVCacheManager->>BlockPool: get_num_free_blocks()
-    Note over KVCacheManager: available = free − reserved，required = num_blocks + watermark<br/>required > available → return None → 抢占 §3.6
+    Note over KVCacheManager: available = free − reserved，required = num_blocks + watermark<br/>required &gt; available → return None → 抢占 §3.6
     KVCacheManager->>UnitaryKVCacheCoordinator: ③ allocate_new_computed_blocks（touch 命中块）
     Note over UnitaryKVCacheCoordinator: 两阶段先 add_local 逐组 touch（ref_cnt++）<br/>再 allocate_external（主线无 ext_comp，跳过）
     KVCacheManager->>UnitaryKVCacheCoordinator: ④ allocate_new_blocks（待计算新块）
@@ -342,7 +342,7 @@ sequenceDiagram
 ### 3.3 ⑥ GPU 写 KV（GPUModelRunner forward）
 
 ```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "boxTextMargin": 4, "messageAlign": "center", "mirrorActors": true, "height": 45}}}%%
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     autonumber
     participant EngineCore
@@ -371,7 +371,7 @@ sequenceDiagram
 `schedule()` 每步**先遍历所有 RUNNING 请求**（:473，外层是 `while req_index < len(running) and budget > 0` 的请求遍历，而非单请求），每请求 append 1 token，全部处理完后**一次性** `execute_model + sample_tokens`（多请求共享同一 batch）。与 prefill 走**同一套** `allocate_slots`（内部 5 步），差异仅在量级：通常无前缀命中（③跳过），当前块未满则 0 块、写满则 1 块。
 
 ```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "boxTextMargin": 4, "messageAlign": "center", "mirrorActors": true, "height": 45}}}%%
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     autonumber
     participant EngineCore
@@ -380,7 +380,7 @@ sequenceDiagram
     participant UnitaryKVCacheCoordinator
     participant FullAttentionManager
     participant BlockPool
-    loop 调度 RUNNING（:473）：while req_index < len(running) and budget > 0
+    loop 调度 RUNNING（:473）：while req_index &lt; len(running) and budget &gt; 0
         EngineCore->>Scheduler: schedule()（调度 RUNNING 请求）
         Scheduler->>KVCacheManager: ④ allocate_slots(request, num_new_tokens=1)
         Note over KVCacheManager: 与 prefill 同一套内部 5 步；续写无前缀命中<br/>① 不弹块、③ 跳过，②④⑤ 照走
@@ -408,7 +408,7 @@ sequenceDiagram
 ### 3.5 ⑧ 请求结束 → 释放
 
 ```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "boxTextMargin": 4, "messageAlign": "center", "mirrorActors": true, "height": 45}}}%%
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     autonumber
     participant Scheduler
@@ -441,7 +441,7 @@ sequenceDiagram
 `allocate_slots` 返回 `None` 时反复抢占直到成功或无可抢占（scheduler.py:565 的 `while True`）：
 
 ```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "boxTextMargin": 4, "messageAlign": "center", "mirrorActors": true, "height": 45}}}%%
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     autonumber
     participant Scheduler
