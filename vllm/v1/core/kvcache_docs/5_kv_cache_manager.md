@@ -335,10 +335,10 @@ class KVCacheManager:
         return blocks, num_new_computed_tokens, shared_prefix_boundary
 ```
 
-**端到端例子**：34token prompt
-- `request.num_tokens = 34`
-- `max_cache_hit_length = 33`（减1）
-- `request.block_hashes = [hash(t0-15), hash(t16-31), hash(t32-33)]`
+**端到端例子**：示例 R（prompt = 70 token）
+- `request.num_tokens = 70`
+- `max_cache_hit_length = 69`（减1）
+- `request.block_hashes = [hash(t0-15), hash(t16-31), hash(t32-47), hash(t48-63), hash(t64-69)]`
 - 查找返回：命中前2个满块，共32token
 - 返回：`(KVCacheBlocks([blockA, blockB]), 32, 0)`
 
@@ -571,7 +571,7 @@ num_tokens_to_cache = min(
 # cache_blocks 只缓存"满块"（num_tokens // block_size），尾块不缓存
 # hash 基于 token ID（不依赖KV数据），所以 forward 之前就能算 hash 并写入
 # cache_blocks 是幂等的：已缓存的块（num_cached_block >= num_full_blocks）直接跳过
-#   - prompt阶段：前2块已在prefix cache中，num_cached_block=2 >= num_full_blocks=2 → no-op
+#   - prompt阶段：前2块已在prefix cache中，num_cached_block=2 < num_full_blocks=4 → 缓存新满块2、3
 #   - decode阶段：每满一个block_size的块，这里就会把它写入哈希表
 # 外部调用方（async PP / KV Connector）也会在forward之后追加调用 cache_blocks
 self.coordinator.cache_blocks(request, num_tokens_to_cache)
@@ -582,21 +582,21 @@ return self.create_kv_cache_blocks(new_blocks)
 
 #### 端到端例子
 
-34token prompt，命中32token（2块），num_new_tokens=2：
+示例 R（prompt = 70 token），命中32token（2块），num_new_tokens=38：
 
 - **前置准备**：`num_local_computed_tokens = 0 + 32 = 32`，`total_computed_tokens = 32`
 - **子阶段①**：
-  - `num_tokens_need_slot = min(32 + 2, max_model_len) = 34`
+  - `num_tokens_need_slot = min(32 + 38, max_model_len) = 70`
   - `remove_skipped_blocks`：FullAttention下no-op
-  - `num_blocks_to_allocate = ceil(34/16) - 2 = 3 - 2 = 1`块
+  - `num_blocks_to_allocate = ceil(70/16) - 2 = 5 - 2 = 3`块
   - 空间检查：假设空闲块足够，通过
 - **子阶段②**：`allocate_new_computed_blocks` → touch命中blockA、blockB，ref_cnt都+1
 - **子阶段③**：
-  - `allocate_new_blocks` → 从free_block_queue分配blockC，`new_block_ids=[blockC.block_id]`
-  - `num_tokens_to_cache = min(32+2, 34) = 34`
-    - `num_full_blocks = 34 // 16 = 2`，`num_cached_block = 2`（prefix hit已缓存前2块）
-    - `num_cached_block(2) >= num_full_blocks(2)` → 提前返回，no-op
-  - 返回：`KVCacheBlocks(([blockC],))`
+  - `allocate_new_blocks` → 从free_block_queue分配blockC、blockD、blockE，`new_block_ids=[blockC_id, blockD_id, blockE_id]`
+  - `num_tokens_to_cache = min(32+38, 70) = 70`
+    - `num_full_blocks = 70 // 16 = 4`，`num_cached_block = 2`（prefix hit已缓存前2块）
+    - `num_cached_block(2) < num_full_blocks(4)` → 缓存新满块2、3（blockC、blockD），未满块4不入
+  - 返回：`KVCacheBlocks(([blockC, blockD, blockE],))`
 
 ### 5.4 块释放方法
 
