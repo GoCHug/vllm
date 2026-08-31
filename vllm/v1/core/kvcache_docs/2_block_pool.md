@@ -76,7 +76,7 @@ class KVCacheBlock:
 
 ## 3. 时序路径核心方法（结合源码逐行）
 
-> 以下方法按**时序文档**的调用点组织（括号内为阶段/来源行号），每条给真实源码（2026 库 `block_pool.py`）与逐行注释。**R 是贯穿全篇的示例请求**（见时序文档 §2：纯 Full Attention 模型 Llama-3-8B，prompt = 70 token / max_tokens = 32 token，`block_size=16`）。
+> 以下方法按**时序文档**的调用点组织（括号内为阶段/来源行号），每条给真实源码（2026 库 `block_pool.py`）与逐行注释。**R 是贯穿全篇的示例请求**（见时序文档 §2：纯 Full Attention 模型 Llama-3-8B（pp2tp2，4卡环境），prompt = 70 token / max_tokens = 32 token，`block_size=16`）。
 
 ### 3.1 `get_cached_block` —— B1 前缀命中查找（`block_pool.py:198-223`）
 
