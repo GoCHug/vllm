@@ -1,10 +1,10 @@
 <mxfile host="app.diagrams.net" agent="CodeFuse">
   <diagram id="I-bsk_bkUGp3pnq0Q73C" name="PP2·TP2 下 Worker Spec 合并与投影全流程（含 page_size_bytes）">
-    <mxGraphModel dx="3752" dy="1732" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="1876" dy="866" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="8P-3Xleb93J090cqpLFW-1" parent="1" style="text;html=1;fontSize=22;fontStyle=1;align=center;" value="Worker Spec 合并 ——&gt; 分组 ——&gt; 投影 ——&gt; 全局统一 block 空间（含 page_size_bytes）" vertex="1">
+        <mxCell id="8P-3Xleb93J090cqpLFW-1" parent="1" style="text;html=1;fontSize=22;fontStyle=1;align=center;" value="Worker Spec 合并 ——&amp;gt; 分组 ——&amp;gt; 投影 ——&amp;gt; 全局统一 block 空间" vertex="1">
           <mxGeometry height="46" width="1500" x="390" y="280" as="geometry" />
         </mxCell>
         <mxCell id="8P-3Xleb93J090cqpLFW-2" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#555555;" value="Llama-3-8B · 32 层 · Query头=32 · KV头(num_kv_heads)=8 · head_dim=128 · dtype=fp16(2B) · PP=2 · TP=2（共 4 卡）· TP 切 KV 头 → 每卡 4 头 · 每卡可用显存 1GiB（教学简化）" vertex="1">
