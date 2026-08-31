@@ -1,6 +1,6 @@
 # vLLM V1 KV Cache 管理机制（Full Attention 主线）
 
-> 本文档以**纯 Full Attention 模型**（如 Llama、Qwen、Mistral 等经典 Decoder-only 模型）为主线，系统梳理 vLLM V1 架构中 KV Cache 从显存申请、逻辑建池到调度使用的完整链路。
+> 本文档以**纯 Full Attention 模型 Llama-3-8B（pp2tp2，4卡环境）**为主线，系统梳理 vLLM V1 架构中 KV Cache 从显存申请、逻辑建池到调度使用的完整链路。
 >
 > Sliding Window Attention、Mamba、混合模型等更复杂的场景在各文档末尾以"扩展"章节简要提及，核心逻辑仍然基于 Full Attention 框架。
 

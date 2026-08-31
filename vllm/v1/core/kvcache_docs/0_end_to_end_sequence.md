@@ -1,6 +1,8 @@
-# 一条请求的KVCache管理端到端时序（Llama-3-8B 视角）
+# 一条请求的KVCache管理端到端时序（Llama-3-8B pp2tp2 视角）
 
-> 主线：**纯 Full Attention 模型 Llama-3-8B**，一个KVCacheGroupSpec，类型为FullAttentionSpec。用时序图串起一条请求从进入 Scheduler 到最终释放的全过程。
+> 主线：**纯 Full Attention 模型 Llama-3-8B（pp2tp2，4卡环境）**，一个KVCacheGroupSpec，类型为FullAttentionSpec。用时序图串起一条请求从进入 Scheduler 到最终释放的全过程。
+>
+> **部署拓扑**：PP2 × TP2 = 4 卡，每个 worker 负责 16 层、4 个 KV 头（TP2 切分 8→4）。调度器视角下全模型仍为单 group（32 层），对 PP/TP 布局透明。
 
 ---
 
@@ -20,19 +22,26 @@ Llama-3-8B 为纯 Full Attention 模型，仅维护单个 KV cache group。其 K
 
 ---
 
-## 1. Llama-3-8B 的 KV Cache 配置与物理初始化
+## 1. Llama-3-8B（pp2tp2）的 KV Cache 配置与物理初始化
 
-下文所有阶段共用同一个请求示例，模型参数固定为 Llama-3-8B。
+下文所有阶段共用同一个请求示例，模型参数固定为 Llama-3-8B，部署于 pp2tp2（4卡）环境。
 
-Llama-3-8B 采用 GQA（Grouped Query Attention），其 KV cache 相关参数如下：
+Llama-3-8B 采用 GQA（Grouped Query Attention），其模型级 KV cache 参数如下：
 
 | 参数 | 值 | 说明 |
 |---|---|---|
-| `num_hidden_layers` | 32 | 层数；每层各持一份 KV 张量，但**共享同一套 block_id** |
+| `num_hidden_layers` | 32 | 全模型层数；每层各持一份 KV 张量，但**共享同一套 block_id** |
 | `num_attention_heads` | 32 | 查询头数 |
 | `num_key_value_heads`（=`num_kv_heads`） | 8 | KV 头数；`32/8 = 4` 个查询头共享 1 个 KV 头 |
 | `head_dim`（=`head_size`） | 128 | 每 head 维度 |
 | `hidden_size` | 4096 | 隐层宽度 `= num_attention_heads × head_dim` |
+
+**pp2tp2 部署切分**：
+
+| 切分维度 | 全模型 | 每 worker | 说明 |
+|----------|--------|-----------|------|
+| PP2（按层切） | 32 层 | 16 层 | `get_layers_start_end_indices()` 按 `pp_rank` 切层范围 |
+| TP2（按 KV 头切） | 8 KV 头 | 4 KV 头 | `get_num_kv_heads()` 除以 `tensor_parallel_size` |
 
 vLLM侧 KV cache 配套参数：
 
@@ -41,17 +50,17 @@ vLLM侧 KV cache 配套参数：
 | `block_size` | 16 | 每块容纳 token 数（page 粒度） |
 | `dtype` | `fp16` | KV 元素精度（2 字节/元素） |
 
-基于上述基础参数，KV cache 的物理规模可逐级推导：
+基于上述参数，**每 worker** 的 KV cache 物理规模可逐级推导（`num_kv_heads=4`、`num_layers` 取 projected group 的 16，即 PP2 切分后每 worker 实际层数）：
 
 | 派生量 | 计算式 | 值 | 说明 |
 |---|---|---|---|
-| `page_size_bytes` | `2 × block_size × num_kv_heads × head_dim × 2B`<br>= `2 × 16 × 8 × 128 × 2` | 65,536 B<br>（64 KB） | 单个逻辑块占用字节数，因子 2 为 K、V 各一份 |
-| `num_blocks`（示例可用显存2GB） | `2 GB ÷ page_size ÷ num_layers`<br>= `2,147,483,648 ÷ 65,536 ÷ 32` | 1024 | 可分配逻辑块总数，`BlockPool` 建立 `KVCacheBlock(0..1023)` 索引 |
-| `kv_caches[layer]` | `(num_blocks, num_kv_heads, block_size, 2×head_dim)` | `(1024, 8, 16, 256)` | 每层 KV 张量形状，有 num_blocks 个 page_size_bytes |
+| `page_size_bytes` | `2 × block_size × num_kv_heads × head_dim × 2B`<br>= `2 × 16 × 4 × 128 × 2` | 32,768 B<br>（32 KB） | 单层单块字节数（TP2 后 4 头），因子 2 为 K、V 各一份 |
+| `num_blocks`（示例每卡可用显存 2GB） | `2 GB ÷ page_size ÷ num_layers`<br>= `2,147,483,648 ÷ 32,768 ÷ 16` | 4096 | 跨 worker `min` 对齐后的逻辑块总数，`BlockPool` 建立 `KVCacheBlock(0..4095)` |
+| `kv_caches[layer]` | `(num_blocks, num_kv_heads, block_size, 2×head_dim)` | `(4096, 4, 16, 256)` | 每层 KV 张量形状（TP2 后 4 头），每 worker 16 个层张量 |
 
-物理显存初始化启动期**一次性**执行 `EngineCore._initialize_kv_caches`（core.py:254），通过 profile_run 实测可用显存后算出 `num_blocks`，然后一次性申请 group_size（即num_layers） 个张量（大小 num_blocks * page_size_bytes）。产出两样供运行时消费：
-1. `num_blocks`（1024）→ `BlockPool.__init__` 建 `KVCacheBlock(0..1023)`，`block_id`为0-1023，运行时 `KVCacheManager` 的"分配/释放"只操作 `block_id`  + `ref_cnt`
-2. `kv_caches[layer]` 物理张量 → `GPUModelRunner` 申请，`block_id` 即物理张量第 0 维行号，运行时按 `block_id` 读写
+物理显存初始化启动期**一次性**执行 `EngineCore._initialize_kv_caches`（core.py:254），通过 profile_run 实测可用显存后算出 `num_blocks`，然后每 worker 一次性申请 16 个张量（大小 num_blocks × page_size_bytes）。产出两样供运行时消费：
+1. `num_blocks`（4096，跨 worker 对齐）→ `BlockPool.__init__` 建 `KVCacheBlock(0..4095)`，`block_id`为0-4095，运行时 `KVCacheManager` 的"分配/释放"只操作 `block_id`  + `ref_cnt`
+2. `kv_caches[layer]` 物理张量 → 每 worker 的 `GPUModelRunner` 申请 16 层，`block_id` 即物理张量第 0 维行号，运行时按 `block_id` 读写
 
 该物理显存初始化时序图如下：
 
@@ -67,7 +76,7 @@ sequenceDiagram
 
     Note over EngineCore,kv_cache_utils: 步骤1 各层产出 FullAttentionSpec
     EngineCore->>ModelExecutor: get_kv_cache_specs()（收集每层 spec）
-    ModelExecutor->>GPUWorker: 遍历 attention 层 → get_kv_cache_spec()<br/>→ FullAttentionSpec(block_size=16, num_kv_heads=8, head_size=128)<br/>（即 num_key_value_heads=8、head_dim=128）
+    ModelExecutor->>GPUWorker: 遍历 attention 层（每 worker 16 层） → get_kv_cache_spec()<br/>→ FullAttentionSpec(block_size=16, num_kv_heads=4, head_size=128)<br/>（TP2 切分后每 worker 4 个 KV 头）
     GPUWorker-->>ModelExecutor: dict[layer, FullAttentionSpec]
     ModelExecutor-->>EngineCore: kv_cache_specs
 
@@ -76,19 +85,19 @@ sequenceDiagram
     Note over ModelExecutor,GPUWorker: collective_rpc → GPUWorker.profile_run()<br/>available = total×util − non_kv − cudagraph
     ModelExecutor-->>EngineCore: available_gpu_memory
     EngineCore->>kv_cache_utils: get_kv_cache_configs(...)
-    Note over kv_cache_utils: num_blocks = available // page_size // num_hidden_layers<br/>（2GB → 1024）；多 worker 取 min 对齐
-    kv_cache_utils-->>EngineCore: KVCacheConfig(num_blocks=1024, ...)
+    Note over kv_cache_utils: num_blocks = available // page_size // 16（projected group 层数）<br/>（每卡 2GB ÷ 32KB ÷ 16 → 4096）；跨 4 worker 取 min 对齐
+    kv_cache_utils-->>EngineCore: KVCacheConfig(num_blocks=4096, ...)
 
     Note over EngineCore,GPUModelRunner: 步骤3 Worker 申请 + 绑定张量
     EngineCore->>ModelExecutor: initialize_from_config(kv_cache_configs)
     ModelExecutor->>GPUWorker: collective_rpc("initialize_from_config")
     GPUWorker->>GPUModelRunner: initialize_kv_cache(config)
-    Note over GPUModelRunner: 4a 申请 int8 字节池 (torch.zeros)<br/>4b reshape: (1024, 8, 16, 256) 每层<br/>4c 绑定到 forward_context
+    Note over GPUModelRunner: 4a 申请 int8 字节池 (torch.zeros)<br/>4b reshape: (4096, 4, 16, 256) 每层（每 worker 16 层）<br/>4c 绑定到 forward_context
 
     GPUModelRunner-->>GPUWorker: 完成
     GPUWorker-->>ModelExecutor: 完成
     ModelExecutor-->>EngineCore: 完成
-    Note over EngineCore: Scheduler 读 num_blocks → BlockPool.__init__(1024)<br/>建 KVCacheBlock(0..1023)；kv_caches[layer] 就绪，等运行时消费
+    Note over EngineCore: Scheduler 读 num_blocks → BlockPool.__init__(4096)<br/>建 KVCacheBlock(0..4095)；kv_caches[layer] 就绪（每 worker 16 层），等运行时消费
 ```
 
 
@@ -359,7 +368,7 @@ sequenceDiagram
 
 **要点**：
 - `_zero_block_ids` 只清零**本轮新分配**的块，避免读到上一请求残留的旧 KV
-- `block_table`（`req_to_blocks` 的 block_id 列表）作 fancy index，kernel 从 `kv_caches[layer][block_id]` 第 0 维 gather 对应行；同一 `block_id` 在 32 层对应同一逻辑块，全套层共用一份 block_table
+- `block_table`（`req_to_blocks` 的 block_id 列表）作 fancy index，kernel 从 `kv_caches[layer][block_id]` 第 0 维 gather 对应行；同一 `block_id` 在全模型 32 层（每 worker 16 层）对应同一逻辑块，全套层共用一份 block_table
 - `sample_tokens` 由 **EngineCore** 调用（core.py:600），仅在 `execute_model` 未产出采样时补跑
 
 **结合请求 R**：3 个新块先清零；一次 forward 写 70 token 的 K/V 到 5 块（命中块 0/1 复用不重算）；`slot_mapping` 记录每个 token 落到哪个块的哪个 slot。

@@ -4,7 +4,7 @@
 >
 > 源文件：`vllm/vllm/v1/kv_cache_interface.py`、`vllm/vllm/v1/core/kv_cache_utils.py`、`vllm/vllm/v1/engine/core.py`、`vllm/vllm/v1/worker/gpu_worker.py`、`vllm/vllm/v1/worker/gpu_model_runner.py`、、`vllm/vllm/v1/worker/utils.py`
 >
-> 主线：纯 Full Attention 模型 Llama-3-8B 模型。
+> 主线：纯 Full Attention 模型 Llama-3-8B（pp2tp2，4卡环境），每 worker 16 层 / 4 KV 头。
 
 ---
 
@@ -46,7 +46,7 @@
 
 ### 2.0 调用链总览
 
-以纯 Full Attention 模型（Llama-3-8B，32 层，全模型**单 group**）为例。
+以纯 Full Attention 模型（Llama-3-8B pp2tp2，每 worker 16 层 / 4 KV 头，合并后全模型 32 层**单 group**）为例。
 
 ```text
 EngineCore._initialize_kv_caches()                        # engine/core.py:248  启动期唯一入口
@@ -64,7 +64,8 @@ EngineCore._initialize_kv_caches()                        # engine/core.py:248  
 │     └─ 返回每个worker的 available_kv_cache_memory_bytes 字节数-> list[int]
 │
 ├─ √ ③ §2.3 做编排  get_kv_cache_configs(...)
-│     ├─ 合并各worker的spec获得整个模型的 KVCacheSpecs → 根据整个模型的Specs生成 groups → 算num_blocks → 对齐min num_blocks
+│     ├─ 合并各worker的spec → 生成 global groups（32层）→ _project 到每 worker 的 projected groups（16层）
+│     ├─ 基于 projected groups 算 num_blocks → 对齐 min num_blocks
 │     └─ 返回 -> list[KVCacheConfig]，每个worker上的KVCacheConfig（统一num_blocks）
 │
 └─ √ ④ §2.4 落张量  model_executor.initialize_from_config(...)
@@ -154,7 +155,7 @@ available_kv_cache_memory = requested_memory
 
 ### 2.3 第 3 步 · 做编排：合并 / 分组 / num_blocks / 对齐
 
-**调用链**：`EngineCore` → `get_kv_cache_configs()`（kv_cache_utils.py:2073），顶层入口，依次五步：
+**调用链**：`EngineCore` → `get_kv_cache_configs()`（kv_cache_utils.py:2073），顶层入口，依次五步（PP 下含投影）：
 
 **① 合并全 worker spec**（kv_cache_utils.py:2111）
 
@@ -165,7 +166,7 @@ for kv_cache_spec_one_worker in kv_cache_specs:
         merged_kv_cache_specs[layer_name] = layer_spec  # 跨 worker 合并
 ```
 
-> 不同 PP stage 层名不同；同 PP stage 的 TP rank spec 必须等值（断言检查，原因见 §五）。
+> 不同 PP stage 层名不同，合并天然不覆盖；同 PP stage 的不同 TP rank 提交同层 spec，断言检查必须等值（原因：TP 切分后 `num_kv_heads` 相同 → spec 字段全等，详见 §4）。
 
 **② 分组 `get_kv_cache_groups()`**（kv_cache_utils.py:1760）—— 纯 FullAttention 走 `is_kv_cache_spec_uniform()` → `_get_kv_cache_groups_uniform_spec()` → 全模型**单 group**。
 
@@ -186,13 +187,14 @@ def is_kv_cache_spec_uniform(kv_cache_spec) -> bool:
 
 **③ 计算 num_blocks**
 
-`get_kv_cache_config_from_groups()`（kv_cache_utils.py:1340）里，单 group 的**普通 `AttentionSpec`（如 `FullAttentionSpec`）走通用（else）路径**——因为 §2.3② 分组时 `merge()` 把 32 层合并成一份普通 spec，而不是 `UniformTypeKVCacheSpecs`。同 group 内 N 层各分一份独立张量：
+`get_kv_cache_config_from_groups()`（kv_cache_utils.py:1340）里，单 group 的**普通 `AttentionSpec`（如 `FullAttentionSpec`）走通用（else）路径**——因为 §2.3② 分组时 `merge()` 把合并后 32 层归成一份普通 spec，而不是 `UniformTypeKVCacheSpecs`。**关键**：`get_kv_cache_configs()` 在调用本函数前，先执行 `_project_kv_cache_groups_to_worker()` 把 global groups（32 层）投影到每 worker 的实际层（16 层），传入的是 **projected groups**，因此：
 
 ```python
-num_blocks = available_memory // page_size // num_layers
-# num_layers = group_size = 该 group 包含的层数（Llama-3-8B：32）
-# page_size = get_uniform_page_size() = FullAttentionSpec.page_size_bytes（单层每页字节）
-# 生成 group_size 个张量，每个 size = page_size × num_blocks，shared_by 为单层
+group_size = max(len(group.layer_names) for group in kv_cache_groups)  # = 16（projected 后每 worker 层数）
+num_blocks = available_memory // page_size // group_size
+# group_size = projected group 的层数（pp2tp2 下每 worker 16，不是合并的 32）
+# page_size = get_uniform_page_size() = FullAttentionSpec.page_size_bytes（单层每页字节，TP2 后 = 32KB）
+# 生成 group_size 个张量（每 worker 16 个），每个 size = page_size × num_blocks，shared_by 为单层
 ```
 
 > **唯一的单 group 快捷路径**（kv_cache_utils.py:1366）只在 `kv_cache_spec` 是 `UniformTypeKVCacheSpecs` 时触发——"同类型、每层 hidden size 不同"（如 MLA 逐层 spec）。此时它的 `page_size_bytes` 是**所有层页大小之和**（kv_cache_interface.py:829），已包含全部层，**不再除层数**：
@@ -353,14 +355,14 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
 
 ---
 
-## 4. PP / TP 下 KV cache 的物理分布（Full Attention 主线）
+## 4. PP / TP 下 KV cache 的物理分布（pp2tp2 主线）
 
 - **PP 按层切分**：`model.py:1409-1420` `get_layers_start_end_indices()` 按 `pp_rank` 切层范围，`get_kv_cache_spec()` 只返回本 worker 负责的层。
 - **TP 按 KV 头切分**：`model.py:1386-1395` `get_num_kv_heads()` 除以 `tensor_parallel_size`，同一 PP stage 的不同 TP rank 存同层但不同头子集。
 
 **关键推论**：同一 PP stage 的不同 TP rank `num_kv_heads` 相同（都是切分后的值）→ `FullAttentionSpec` 相等 → §2.3 合并断言通过。但 **spec 相等 ≠ 物理相同**：每个 TP rank 独立分配自己的 `1/tensor_parallel_size` 份 KV 张量；调度器只管 `block_id`，对 TP 内部头分布透明。
 
-**具体例子 · PP2 × TP2 = 4 卡**（沿用主线 Llama-3-8B：32 层，GQA 8 个 KV 头，全模型单 group）
+**主线部署 · PP2 × TP2 = 4 卡**（Llama-3-8B：32 层，GQA 8 个 KV 头，全模型单 group）
 
 4 个 worker 的职责划分：
 
@@ -376,7 +378,8 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
 - **① 算规格**：每个 worker 各产出 16 个 `FullAttentionSpec`，`num_kv_heads=4`（TP 已切）。
 - **③ 做编排·合并**：`merged_kv_cache_specs` 合并出 32 个层名不同的 spec——W0/W1 层名同为 `layers.0`~`layers.15` 且字段全等 → 合并断言通过；W2/W3 同理。PP0 与 PP1 层名不同，合并结果天然分层、互不覆盖。
 - **③ 做编排·分组**：32 层 `FullAttentionSpec` 字段一致 → `is_kv_cache_spec_uniform=True` → 全模型 1 个 group（32 层）。
-- **③ 做编排·num_blocks + 对齐**：每卡独立算 `num_blocks`（如各卡 8GB 可用 → 8192 块），再取 4 个 worker 的 `min_num_blocks` 统一（§2.3⑤）。
+- **③ 做编排·投影**：`_project_kv_cache_groups_to_worker()` 把 global group（32 层）投影到每 worker 实际层 → projected group（16 层）。
+- **③ 做编排·num_blocks + 对齐**：每卡基于 projected group（16 层）独立算 `num_blocks = available // page_size // 16`（如各卡 8GB 可用 → 16384 块），再取 4 个 worker 的 `min_num_blocks` 统一（§2.3⑤）。
 
 **物理分布（关键）**：4 张卡各存 16 层 KV 物理张量；同一 PP stage 的两个 TP rank 存**同层、不同 KV 头子集**（各 4 头，占各自卡 `1/2` 头维）。同一请求的 KV 被切成多段：`block_table` 跨 PP 按阶段分段索引，跨 TP 各 rank 只读自己的头子集。调度器仍只认 `block_id`，对 PP/TP 布局完全透明。
 

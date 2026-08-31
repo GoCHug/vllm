@@ -369,7 +369,7 @@ def page_size_bytes(self) -> int:
 # 4. 家族 A：每头独立 K/V（Full Attention · 典型模型 Llama）
 
 > **一句话**：每个 KV 头各存一份完整 K 和 V，vLLM 把 K/V 拼进块 shape 后按 `block_size` 切块（三种打包方式由 backend 决定，只动维度、不动字节数）。
-> **贯穿示例**：Llama-3-8B 用 **GQA** —— `num_heads=32` 个 Query 头共享 `num_kv_heads=8` 个 KV 头、`head_dim=128`。下述 shape 均以它为例。
+> **贯穿示例**：Llama-3-8B 用 **GQA** —— `num_heads=32` 个 Query 头共享 `num_kv_heads=8` 个 KV 头、`head_dim=128`。下述 shape 均以模型级配置为例；pp2tp2 部署下每 worker 实际 `num_kv_heads=4`（TP2 切分）、负责 16 层（PP2 切分）。
 
 ## 4.1 逻辑 shape：每个 KV 头各存一份 K/V
 
@@ -466,7 +466,7 @@ vLLM层: 单层 (num_blocks, 8, 16, 256)       # bf16; 前 128=K，后 128=V
 page_size_bytes = 16 * 8 * 256 * 2 = 65,536 B = 64 KB
 ```
 
-> **换算锚点**：逻辑 `seq_len` 排成 `16/块` → 物理第 0 维 `num_blocks`；常数 `256=2*128` 就是 K、V 拼接。Llama-3-8B 只有 8 个 KV 头（GQA），比满 32 头版本省 4 倍页字节。
+> **换算锚点**：逻辑 `seq_len` 排成 `16/块` → 物理第 0 维 `num_blocks`；常数 `256=2*128` 就是 K、V 拼接。Llama-3-8B 只有 8 个 KV 头（GQA），比满 32 头版本省 4 倍页字节。pp2tp2 部署下每 worker TP2 切分后 `num_kv_heads=4`，单层 shape 变为 `(num_blocks, 4, 16, 256)`，page_size = 32 KB。
 
 ***
 
