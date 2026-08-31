@@ -2,21 +2,7 @@
 
 > 本文档以**纯 Full Attention 模型 Llama-3-8B（pp2tp2，4卡环境）**为主线，系统梳理 vLLM V1 架构中 KV Cache 从显存申请、逻辑建池到调度使用的完整链路。
 >
-> Sliding Window Attention、Mamba、混合模型等更复杂的场景在各文档末尾以"扩展"章节简要提及，核心逻辑仍然基于 Full Attention 框架。
-
-## 本套文档怎么读（阅读地图）
-
-KV Cache 文档分两层组织：**三篇 `0_` 总览**（从三个视角看同一套机制）+ **五篇分层详解**（`1`~`5`，自底向上）。
-
-**三篇总览，分工互补，别混着看：**
-
-| 文档 | 视角 | 解决什么问题 | 什么时候看 |
-|---|---|---|---|
-| **本文档** `0_kv_cache_management_arch.md` | **静态架构** | vLLM 的 KV Cache 管理长什么样：为什么需要、五层如何组织、核心概念（block / block_table / 链式哈希） | 第一本，建立全局框架 |
-| [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) | **动态时序** | 一条请求从入队到释放，在 Scheduler / 各管理层 / Worker 之间如何逐步调用（含 Mermaid 时序图与源码行号） | 想把"一次运行"完整走一遍时 |
-| [`0_kvcache_of_attention.md`](./0_kvcache_of_attention.md) | **存储格式** | 不同 attention/SSM（Full / MLA / Mamba-GDN）的 KV cache 存什么、物理 shape 什么样、block_size / page_size_bytes 怎么算 | 研究某种模型的 KV 缓存字节布局时 |
-
-> 一句话分工：**本文档讲"层"，时序文档讲"流"，attention 文档讲"形状"。** 三者不重复——本文档只在 §5 概述请求的五阶段流向，把逐层调用细节交给时序文档。
+> 本文属**三篇总览**之一：本架构文档讲"**层**"（静态结构）；[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) 讲"**流**"（一条请求的时序）；[`0_kvcache_of_attention.md`](./0_kvcache_of_attention.md) 讲"**形状**"（各注意力类型的 KV 字节布局）。
 
 **五篇分层详解（自底向上，与本文档 §3 的五层一一对应）：**
 
@@ -34,38 +20,40 @@ KV Cache 文档分两层组织：**三篇 `0_` 总览**（从三个视角看同�
 
 大型语言模型自回归推理时，每个 token 的生成依赖之前所有 token 的 Key/Value 张量。如果每次生成都重新计算前面所有 token 的 K/V，复杂度是 O(n²)。KV Cache 把之前算好的 K/V 缓存起来，每次只算新 token，复杂度降为 O(n)，但代价是需要占用大量 GPU 显存。
 
-vLLM V1 的 KV Cache 管理围绕三条核心设计：
+vLLM V1 的 KV Cache 管理围绕六条核心设计（①②③ 是三个支柱，④⑤⑥ 是其派生保障）：
 
 1. **PagedAttention 分页管理**：把连续的 KV 序列切分成固定大小的 **block**（如每个 block 存 16 个 token），按块分配、回收和共享，彻底解决内存碎片问题。
 2. **逻辑管理与物理存储分离**：`BlockPool` 只管逻辑块（`KVCacheBlock`，只含 `block_id` 和元数据）；物理显存（`torch.Tensor`）由 `GPUModelRunner` 一次性申请并 reshape。两者通过 `block_id` 关联，调度决策全程零显存拷贝。
 3. **前缀缓存 + 引用计数共享**：相同前缀的 block 通过链式哈希定位，多个请求共享同一块物理空间，用 `ref_cnt` 跟踪生命周期；LRU 空闲队列决定驱逐顺序，有哈希的缓存块尽量保留。
+4. **Copy-on-Write**：部分命中（命中前缀的结尾落在 block 中间）时，为请求复制旧块内容再续写，避免覆盖其它请求仍共享的旧数据。
+5. **两阶段 touch + allocate**：先对所有命中块 `ref_cnt++`（touch，防驱逐），再分配新块，避免分配过程中命中块被驱逐。
+6. **Watermark 准入控制**：调度时预留一定数量的空闲块（`watermark_blocks`），防止出现频繁抢占。
+
+> 上面 ②③ 的更多设计细节（链式哈希前缀、LRU append/prepend、逆序释放）见 [`2_block_pool.md`](./2_block_pool.md) 与 [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md)。
 
 ---
 
 ## 2. 一条请求的 KV Cache 生命周期（Full Attention 模型）
 
-### 2.1 请求生命周期五阶段
+### 2.1 五阶段生命周期（概览）
+
+一条请求从入队到释放，跨过五个阶段；每阶段只会与 §3 的某几层交互。**以下是宏观流程**，逐阶段的层间调用链与源码行号见时序文档 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) §1~§3。
 
 ```
-等待调度 (WAITING)
-      │
-      ▼
-前缀缓存查找 (get_computed_blocks)  →  链式哈希比对，返回命中 block 列表
-      │
-      ▼
-分配 slot (allocate_slots)          →  触摸命中块(ref_cnt++) + 申请新 block + 处理部分命中CoW
-      │
-      ▼
-GPU forward 计算                    →  attn backend 用 block_table 索引物理张量读写 KV
-      │
-      ▼
-缓存新填满的 block (cache_blocks)   →  计算链式哈希，写入哈希表
-      │
-      ▼
-释放/抢占 (free / preempt)          →  逆序释放，ref_cnt--，归零块入空闲队列
+等待调度 (WAITING)  ── 请求带预计算的链式哈希入队
+   │
+   ▼
+前缀缓存查找  ── 沿 KV 链问 BlockPool：这段前缀有没有缓存块？命中即复用
+   │
+   ▼
+分配 slot  ── touch 命中块(ref_cnt++) + 申请新 block + 部分命中做 CoW，拼出 block_table
+   │
+   ▼
+GPU forward  ── 注意力算子用 block_table 索引物理张量，写入本步新 token 的 K/V
+   │
+   ▼
+缓存 / 释放 / 抢占  ── 写满的块入哈希缓存；释放 ref_cnt-- 归零块入空闲队列
 ```
-
-> 这五步是**请求生命周期的宏观概括**，对应时序文档的规范化阶段 **`阶段0物理显存初始化(前传) → A入队 → B调度(B1前缀查找/B2分配/B3组装) → C GPU forward → D decode续写 → E 释放 → F 抢占`**。这里的"五阶段"是粗粒度周览，逐层源码调用链与行号见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) §3（§3.0 为启动期前传，§3.1~§3.6 为运行时各阶段）；后文 `allocate_slots` 内部子阶段用 `①②③` 表示，勿与"阶段X"混淆。
 
 ### 2.2 数据流：从 token 到物理显存
 
@@ -142,59 +130,11 @@ Scheduler（调度器 · 调用者）
 
 ---
 
-## 4. 核心概念速览
-
-### 4.1 块实体（Block）
-
-block 是 KV cache 的最小调度单位，固定存 `block_size` 个 token。
-
-| 术语 | 含义 |
-|------|------|
-| `KVCacheBlock` | 逻辑块对象，只含 `block_id` 和元数据（ref_cnt、block_hash等），**不含显存指针** |
-| `block_id` | 逻辑块全局编号 `[0, num_blocks-1]`，同时也是物理 KV 张量 reshape 后第 0 维的行号——这是逻辑层与物理层桥接的关键 |
-| `block_size` | 一个 block 容纳的 token 数（如16），决定 block_table 的粒度 |
-| `num_blocks` | GPU 上总 block 数，由可用显存除以单个 block 物理大小算出 |
-| `null_block` | `block_id=0` 的占位块，不可分配/释放，用于对齐 block_table 长度 |
-| `ref_cnt` | 引用计数：多少请求正在使用此 block。新分配=1，命中前缀时自增（共享），释放时自减，归零才能回收到空闲队列 |
-
-### 4.2 请求→块映射（block_table）
-
-每个请求在 `FullAttentionManager.req_to_blocks[request_id]` 中维护一个 block 列表：
-
-```python
-req_to_blocks["req_abc"] = [KVCacheBlock(5), KVCacheBlock(12), KVCacheBlock(8)]
-```
-
-这就是 `block_table`——forward 时 attention 算子直接用这些 `block_id` 作为索引，从物理张量 `kv_caches[layer][block_id]` 中 gather 对应行的 K/V 数据。
-
-### 4.3 链式哈希（Chained Hash）
-
-前缀缓存的核心机制。每个 block 的哈希不仅依赖自身 token 内容，还依赖前一个 block 的哈希：
-
-```
-H(b0) = hash(tokens[0:block_size])
-H(b1) = hash(H(b0), tokens[block_size:2*block_size])
-H(b2) = hash(H(b1), tokens[2*block_size:3*block_size])
-...
-```
-
-这保证了**相同前缀 → 相同哈希链**。查找时从左到右依次比对哈希，遇到 miss 即 break，返回已命中的前缀 block 列表。
-
-### 4.4 关键直觉
-
-- 分配一个 `block_id` 的物理意义 = 在每一层的 KV 张量上占用一行（16个token的K/V），所有层共享同一套 `block_id`
-- 前缀缓存命中 = 两个请求的 block_table 里有相同的 `block_id`，指向同一物理行，`ref_cnt++`，**零显存拷贝**
-- 驱逐 = 把 `ref_cnt=0` 且无哈希（或LRU最旧）的 block 从缓存中移除，放回空闲队列头部（优先重新分配）
-- **`BlockPool` 与物理显存是"行索引使用权"关系，不是物理操作者**：它只决定某个 `block_id` 能否分配/共享/释放（改 `ref_cnt`、空闲队列、哈希表），**从不读写物理张量数据**。真正的 K/V 数据搬运发生在 GPU forward——注意力算子拿每个请求的 `block_table` 作索引，从 `kv_caches[layer][block_id]` 中 gather/写入对应行
-- 一句话边界：**第2层管"哪个行号能用"，第1层是"那些行的数据"，算子负责"真正读写这些行"**——调度环节全程只改 `block_id` 归属，零显存拷贝
-
----
-
-## 5. 系统初始化：五层如何装配（启动时一次性）
+## 4. 系统初始化：五层如何装配（启动时一次性）
 
 > 本节是**静态装配**——引擎启动时如何创建出 §3 的五层对象，不针对某条具体请求。一条请求的**动态流转**（前缀查找→分配→forward→释放的逐层调用链与源码行号）本套文档交给时序文档 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md)，本节不再重复。
 
-### 5.1 从引擎初始化到管理层创建
+### 4.1 从引擎初始化到管理层创建
 
 调用链从引擎初始化开始：`EngineCore._initialize_kv_caches()` → `GPUWorker.initialize_from_config()` → 创建各管理层。
 
@@ -206,7 +146,7 @@ H(b2) = hash(H(b1), tokens[2*block_size:3*block_size])
 3. **计算 `num_blocks`**：`num_gpu_blocks = available_gpu_memory // page_size_bytes`（`num_blocks = raw_tensor.numel() // spec.page_size_bytes`，见 `gpu_model_runner.py:7389`），分布式下所有worker取最小值对齐
 4. **申请物理KV张量**：`GPUModelRunner._allocate_kv_cache_tensors()` → `_reshape_kv_cache_tensors()` → `bind_kv_cache()`：
    - 创建Python列表 `kv_caches = []`，为每一层单独调用 `torch.zeros(...)` 申请独立张量，共 `num_layers` 张
-   - 每张张量经 `_reshape_attention_kv_cache()` 按backend要求 permute 后形状为主流 `[num_blocks, num_kv_heads, block_size, 2*head_dim]`（FlashInfer/FlashAttn 默认，维度顺序由 `get_kv_cache_shape()` 决定；ROCm 等用 `[2, num_blocks, block_size, num_kv_heads, head_dim]`，见总览文档 §1.3/§八 block_dim）
+   - 每张张量经 `_reshape_attention_kv_cache()` 按backend要求 permute 后形状为主流 `[num_blocks, num_kv_heads, block_size, 2*head_dim]`（FlashInfer/FlashAttn 默认，维度顺序由 `get_kv_cache_shape()` 决定；ROCm 等用 `[2, num_blocks, block_size, num_kv_heads, head_dim]`，各后端 logical shape 对比见 [`1_physical_memory.md`](./1_physical_memory.md) 与 [`0_kvcache_of_attention.md`](./0_kvcache_of_attention.md)）
    - `bind_kv_cache()` 把所有层张量绑定到 `ModelRunner.kv_caches` 列表，`kv_caches[i]` 就是第i层的KV cache张量
    - 设计核心：同一个 `block_id=5` 在所有层都对应第5行，全局共用一份 `block_table`，不需要每层单独一份
 5. **创建 `BlockPool`**：
@@ -220,52 +160,17 @@ H(b2) = hash(H(b1), tokens[2*block_size:3*block_size])
 
 ---
 
-### 5.2 请求流转总览（逐层调用细节见时序文档）
-
-一条请求自入队到释放，宏观上走五个阶段，各阶段在层间的调用关系（左侧箭头）如下：
-
-```
-入队 (WAITING)                                              Scheduler → (构造 Request, 预计算链式哈希)
-   │
-   ▼
-前缀缓存查找  get_computed_blocks        Scheduler → KVCacheManager → Coordinator → Manager → BlockPool(查哈希表)
-   │
-   ▼
-分配 slots    allocate_slots             KM → CO：remove_skipped → get_num_blocks → touch命中块 → 分配新块 → cache满块
-   │
-   ▼
-GPU forward   execute_model              Worker：清零新块 → attention kernel 用 block_table 索引 kv_caches[layer][block_id]
-   │
-   ▼
-释放 / 抢占   free                       KM → CO → Manager → BlockPool：逆序释放，ref_cnt-- 归0块入空闲队列
-```
-
-> 这张图的**每一层调用链、每个箭头的源码行号、以及包含 70-token 全流程的 Mermaid 时序详解**，见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) 的 §1~§3。本文档到宏观五阶段为止，深入逐步骤请转至该文档。
-
-## 6. 设计要点总结
-
-1. **PagedAttention 分页**：固定大小 block 分配，彻底解决内存碎片
-2. **逻辑-物理分离**：`BlockPool` 管逻辑 block_id，`GPUModelRunner` 管物理 tensor，通过 `block_id` 桥接，调度零拷贝
-3. **引用计数共享**：多请求命中相同前缀时 `ref_cnt++` 共享物理 block，`ref_cnt==0` 才回收
-4. **链式哈希前缀缓存**：每个 block 哈希包含父哈希，保证前缀一致性，左到右扫描遇 miss 即停
-5. **LRU 驱逐策略**：所有可分配块都在 `free_block_queue` 中；有哈希的缓存块 `append` 到尾部（尽量晚分配，保护缓存命中率），无哈希的空白块 `prepend` 到头部（优先弹走分配），逆序释放保证尾块位置
-6. **Copy-on-Write**：部分命中（结尾落在 block 内部）时复制旧块内容，避免覆盖共享数据
-7. **两阶段 touch+allocate**：先触摸所有命中块 `ref_cnt++` 防驱逐，再分配新块，避免分配过程中命中块被驱逐
-8. **Watermark 准入控制**：调度时预留一定空闲块，防止频繁抢占
-
----
-
 ## 扩展：其他注意力类型概览
 
 本文主线是最基础的 Full Attention 模型。vLLM V1 同样支持以下场景，它们在 Full Attention 基础上做扩展：
 
 | 类型 | 代表模型 | 主要差异 | 扩展位置 |
 |------|---------|---------|---------|
-| **Sliding Window Attention (SWA)** | Mistral-SA、Gemma2 | 只缓存最近 `sliding_window` 个 token 的 KV，更早的 block 可以驱逐；前缀查找从右往左找窗口内命中 | §3 扩展、§4 扩展 |
-| **Mamba/SSM** | Bamba、Jamba | 无 KV 只有 state，block 存 recurrent state 而非 K/V；缓存逻辑不同 | §3 扩展 |
-| **混合模型 (Full + SWA/Mamba)** | Gemma3、Jamba、Llama4 | 多个 KV group，Coordinator 做跨组命中交集；所有 group 共享同一个 BlockPool 但 page size 必须统一 | §4 扩展：HybridKVCacheCoordinator |
-| **MLA (Multi-head Latent Attention)** | DeepSeek-V2/V3 | KV 低秩压缩，物理张量形状不同 | §1 扩展 |
-| **Cross-Attention** | 编码器-解码器模型 | 额外的 encoder KV group，静态分配不释放 | §3 扩展 |
-| **投机解码 (EAGLE/MTP)** | EAGLE、Medusa | draft 层额外 group，需要 last-block drop 逻辑 | §4 扩展 |
+| **Sliding Window Attention (SWA)** | Mistral-SA、Gemma2 | 只缓存最近 `sliding_window` 个 token 的 KV，更早的 block 可以驱逐；前缀查找从右往左找窗口内命中 | [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md)、[`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md) |
+| **Mamba/SSM** | Bamba、Jamba | 无 KV 只有 state，block 存 recurrent state 而非 K/V；缓存逻辑不同 | [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md) 与 [`0_kvcache_of_attention.md`](./0_kvcache_of_attention.md) 家族 C |
+| **混合模型 (Full + SWA/Mamba)** | Gemma3、Jamba、Llama4 | 多个 KV group，Coordinator 做跨组命中交集；所有 group 共享同一个 BlockPool 但 page size 必须统一 | [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md)（`HybridKVCacheCoordinator`） |
+| **MLA (Multi-head Latent Attention)** | DeepSeek-V2/V3 | KV 低秩压缩，物理张量形状不同 | [`0_kvcache_of_attention.md`](./0_kvcache_of_attention.md) 家族 B、[`1_physical_memory.md`](./1_physical_memory.md) |
+| **Cross-Attention** | 编码器-解码器模型 | 额外的 encoder KV group，静态分配不释放 | [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md)（`CrossAttentionManager`） |
+| **投机解码 (EAGLE/MTP)** | EAGLE、Medusa | draft 层额外 group，需要 last-block drop 逻辑 | [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md)、[`5_kv_cache_manager.md`](./5_kv_cache_manager.md) |
 
 阅读建议：先按本文档顺序自底向上（1→2→3→4→5）吃透 Full Attention 主线，再按需查阅对应扩展章节理解复杂场景。

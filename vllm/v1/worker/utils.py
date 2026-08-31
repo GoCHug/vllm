@@ -475,9 +475,10 @@ def bind_kv_cache(
     # Convert kv_caches dict to a list of tensors in the order of layer_index.
     index2name = defaultdict(list)
     for layer_name in kv_caches:
+        # 5 → "model.layers.5.self_attn.attn"
         index2name[extract_layer_index(layer_name, num_attn_module)].append(layer_name)
-
-    for layer_index in sorted(index2name.keys()):
+        
+    for layer_index in sorted(index2name.keys()): # 按层号升序：0,1,…,15
         layer_names = index2name[layer_index]
         if len(layer_names) > 1:
             # One typical case is encoder-decoder model, e.g., bart.
@@ -499,7 +500,7 @@ def bind_kv_cache(
             else:
                 raise NotImplementedError
         for layer_name in layer_names:
-            runner_kv_caches.append(kv_caches[layer_name])
+            runner_kv_caches.append(kv_caches[layer_name]) # 按层号顺序把 16 个张量塞进列表
 
     # Bind kv_caches to forward context. Each layer's bind_kv_cache unpacks
     # its raw allocation into the per-layer view(s) it needs (e.g. Mamba

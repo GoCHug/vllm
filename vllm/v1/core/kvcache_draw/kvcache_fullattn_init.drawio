@@ -1,0 +1,136 @@
+<mxfile host="65bd71144e">
+    <diagram id="I-bsk_bkUGp3pnq0Q73C" name="分配阶段视角（初始化 · 全局 group 记账 vs 投影 group 算账）">
+        <mxGraphModel dx="1511" dy="648" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1300" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="KV Cache 分配阶段视角（初始化 · Llama-3-8B pp2tp2）" style="text;html=1;fontSize=22;fontStyle=1;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="30" width="1500" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="params" value="Llama-3-8B · 32 层 · 32 Q头 · 8 KV头 · head_dim=128 · fp16(2B) · block_size=16　|　PP=2 × TP=2（4 卡）· 每卡 16 层 / 4 KV头 / 可用显存 2 GiB" style="text;html=1;fontSize=13;fontStyle=1;align=center;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="74" width="1500" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="s1_label" value="① ~ ④ 分配四步流水线（①②每卡各自执行，③调度器统一编排，④每卡落张量）" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="126" width="1200" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="s1_desc" value="模型层配置 ──①──▶ KVCacheSpec ──②──▶ available_memory ──③──▶ KVCacheConfig ──④──▶ kv_caches[layer]（前三步推规格，第四步才真正触碰显存）" style="text;html=1;fontSize=12;fontColor=#888888;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="152" width="1500" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="step1" value="&lt;b&gt;① 算规格（每卡）&lt;/b&gt;&#10;遍历本卡 16 层，各产出&#10;FullAttentionSpec：&#10;block_size=16 · num_kv_heads=4&#10;head_size=128 · dtype=fp16&#10;page_size_bytes = 16×4×128×2B×2&#10;= 32 KiB（单层一页）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=2;fontSize=11;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="180" width="340" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="step2" value="&lt;b&gt;② 测预算（每卡）&lt;/b&gt;&#10;profile_run 空跑一次前向&#10;量出 KV cache 可用显存：&#10;available = 2 GiB&#10;（总显存 × 利用率&#10;− 权重 − 激活 − CUDAGraph）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=2;fontSize=11;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="480" y="180" width="340" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="step3" value="&lt;b&gt;③ 做编排（调度器统一）&lt;/b&gt;&#10;合并 4 卡 spec → 32 层&#10;分组 → 全局 1 个 group（32 层）&#10;投影每卡 16 层 → 算 num_blocks&#10;= 2GiB ÷ 32KiB ÷ 16 = 4096&#10;min(4 卡) 对齐 = 4096" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=11;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="860" y="180" width="340" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="step4" value="&lt;b&gt;④ 落张量（每卡）&lt;/b&gt;&#10;torch.int8 字节池按字节申请&#10;→ view + permute 零拷贝 reshape&#10;逻辑 shape (4096, 4, 16, 256)&#10;bind_kv_cache 绑到各 attention 层&#10;→ _dummy_run 编译预热" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=2;fontSize=11;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1240" y="180" width="340" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="arrow12" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="step1" target="step2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arrow23" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="step2" target="step3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="arrow34" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="step3" target="step4" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="s2_label" value="② 做编排展开：全局 group 是「记账」的，projected group 是「算账」的" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="382" width="1200" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="s2_desc" value="get_kv_cache_configs()（kv_cache_utils.py:2073）内：先合并分组产出全局 group，再保序投影到每卡；投影结果只用于物理显存规划，不回流调度器" style="text;html=1;fontSize=12;fontColor=#888888;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="408" width="1500" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="global_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=top;spacingTop=8;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="440" width="680" height="250" as="geometry"/>
+                </mxCell>
+                <mxCell id="global_title" value="调度器侧 · 全局视图（记账单位）" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#1a4a7a;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="448" width="680" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="global_content" value="merged_kv_cache_specs：&lt;b&gt;32 层&lt;/b&gt;&#10;（W0/W1 提交 layer_0–15，W2/W3 提交 layer_16–31，同层 spec 断言全等）&#10;&#10;get_kv_cache_groups() → &lt;b&gt;全局 1 个 group（32 层）&lt;/b&gt;&#10;group_id = enumerate(全局列表) = 0 —— 编号空间的全局来源&#10;&#10;BlockPool 全局唯一：num_blocks = min(4 卡) = &lt;b&gt;4096&lt;/b&gt;&#10;（kv_cache_coordinator.py:90，调度期 block_id 分配的唯一依据）" style="text;html=1;fontSize=11;align=left;spacingLeft=16;spacingTop=10;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="110" y="474" width="660" height="210" as="geometry"/>
+                </mxCell>
+                <mxCell id="proj_arrow" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;" parent="1" source="global_box" target="proj_box" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="proj_arrow_lbl" value="保序投影（只过滤本地层，不重新分组）" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#1a4a7a;" parent="1" vertex="1">
+                    <mxGeometry x="790" y="525" width="230" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="proj_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;verticalAlign=top;spacingTop=8;" parent="1" vertex="1">
+                    <mxGeometry x="1020" y="440" width="580" height="250" as="geometry"/>
+                </mxCell>
+                <mxCell id="proj_title" value="worker 侧 · 投影视图（算账单位）" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#8a4b00;" parent="1" vertex="1">
+                    <mxGeometry x="1020" y="448" width="580" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="proj_content" value="_project_kv_cache_groups_to_worker()&#10;（kv_cache_utils.py:2031，保序过滤：全局 group 各留本卡那 16 层）&#10;&#10;投影结果只算 4 件物理事：&#10;▶ num_blocks = 2GiB ÷ 32KiB ÷ 16 = 4096（按本地层数除）&#10;▶ 显存预算校验 _check_enough_kv_cache_memory&#10;▶ 生成 KVCacheConfig → 决定建几个张量、各多大&#10;▶ min 对齐时按比例 shrink 张量（:2192）&#10;&#10;算完即弃 —— 运行期不参与任何调度决策" style="text;html=1;fontSize=11;align=left;spacingLeft=16;spacingTop=10;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="1030" y="474" width="560" height="210" as="geometry"/>
+                </mxCell>
+                <mxCell id="s3_label" value="③ 落张量与绑定：block_id == 张量行号（全局 ID，各卡本地解释）" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="736" width="1200" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="s3_desc" value="int8 池与 dtype 解耦 → view+permute 零拷贝成逻辑 shape → bind 后调度器只认 block_id，4 卡各按同一编号取本地物理行" style="text;html=1;fontSize=12;fontColor=#888888;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="762" width="1500" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#6c8ebf;strokeWidth=2;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="796" width="1500" height="86" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_title" value="BlockPool（全局唯一 · 调度器侧）· free_block_queue: 0 .. 4095 · 所有 group 共享同一空闲队列" style="text;html=1;fontSize=13;fontStyle=1;align=center;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="802" width="1500" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_c0" value="0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="160" y="836" width="70" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_c1" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="240" y="836" width="70" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_c2" value="2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="836" width="70" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_cdots" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="836" width="70" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_c4095" value="4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="480" y="836" width="70" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_note" value="← 分配阶段尚未动用；运行期由 FullAttentionManager 统一 popleft 分配（见运行时视角图）" style="text;html=1;fontSize=11;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="580" y="840" width="1000" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_w0" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=2;endArrow=block;dashed=1;exitX=0.117;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="pool_box" target="w0_card" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_w1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=2;endArrow=block;dashed=1;exitX=0.372;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="pool_box" target="w1_card" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_w2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;endArrow=block;dashed=1;exitX=0.627;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="pool_box" target="w2_card" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_w3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;endArrow=block;dashed=1;exitX=0.883;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="pool_box" target="w3_card" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="pool_w_lbl" value="同一 block_id ↔ 各卡本地物理行（min 对齐保证每卡都有 4096 行）" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="500" y="890" width="700" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_card" value="&lt;b&gt;Worker 0 · PP0·TP0&lt;/b&gt;&#10;层 0–15 · KV 头 0–3&#10;16 张量，每个 (4096, 4, 16, 256)&#10;每张量 128 MiB · 全卡 2 GiB&#10;绑定：block_id → dim0 行号&#10;forward 时只写自己的 4 头" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=11;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="912" width="350" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_card" value="&lt;b&gt;Worker 1 · PP0·TP1&lt;/b&gt;&#10;层 0–15 · KV 头 4–7&#10;16 张量，每个 (4096, 4, 16, 256)&#10;每张量 128 MiB · 全卡 2 GiB&#10;绑定：block_id → dim0 行号&#10;与 W0 同层，各存不同头子集" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=1.5;fontSize=11;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="483" y="912" width="350" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_card" value="&lt;b&gt;Worker 2 · PP1·TP0&lt;/b&gt;&#10;层 16–31 · KV 头 0–3&#10;16 张量，每个 (4096, 4, 16, 256)&#10;每张量 128 MiB · 全卡 2 GiB&#10;绑定：block_id → dim0 行号&#10;与 W0 同批块，存不同层的行" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1.5;fontSize=11;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="866" y="912" width="350" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_card" value="&lt;b&gt;Worker 3 · PP1·TP1&lt;/b&gt;&#10;层 16–31 · KV 头 4–7&#10;16 张量，每个 (4096, 4, 16, 256)&#10;每张量 128 MiB · 全卡 2 GiB&#10;绑定：block_id → dim0 行号&#10;与 W0 同批块 + 不同头子集" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;strokeWidth=2;fontSize=11;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1249" y="912" width="350" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="min_note" value="min(num_blocks) 对齐（kv_cache_utils.py:2192）：各卡基于 projected group 独立算 num_blocks，取最小值并按比例 shrink 张量 —— 这是「局部账本结果上交全局视图」的唯一通道&#10;page_size_bytes = block_size × num_kv_heads × head_size × dtype_size × 2 = 16×4×128×2×2 = 32 KiB · 每卡总物理 = 16 层 × 32 KiB × 4096 = 2 GiB" style="text;html=1;fontSize=12;fontColor=#555555;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="1096" width="1500" height="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend" value="🟧 worker / 投影侧（算账）　🟦 调度器 / 全局侧（记账）　⬜ BlockPool 全局块表　|　projected group 只用于物理显存规划，运行期调度全程只用全局 group（group_id=0）" style="text;html=1;fontSize=12;fontColor=#555555;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="1156" width="1500" height="24" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

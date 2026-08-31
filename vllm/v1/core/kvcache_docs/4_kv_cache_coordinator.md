@@ -44,7 +44,7 @@ KVCacheManager.get_computed_blocks()
     ↓
 KVCacheCoordinator.find_longest_cache_hit()  ← 本层入口1
     ↓ （透传）
-FullAttentionManager.find_longest_cache_hit()  → 返回命中2个满块
+FullAttentionManager.find_longest_cache_hit()  → 返回命中2个满块（P 缓存的 SP 块 0/1）
     ↓
 Scheduler.allocate_slots()
     ↓
@@ -478,10 +478,10 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
         # hit_blocks格式: ([hit_block0, hit_block1],)  ← 外层tuple是组维度
 ```
 
-**端到端例子**：示例 R（prompt = 70 token，block_size=16）
+**端到端例子**：示例 R（prompt = 70 token，block_size=16，前 32 token 为共享前缀 SP，由前置请求 P 缓存为块 0/1）
 - `block_hashes = [hash(t0-15), hash(t16-31), hash(t32-47), hash(t48-63), hash(t64-69)]`（前4个是满块哈希，第5个是不完整块）
 - `max_cache_hit_length=69`（70 − 1）
-- 查找结果：命中前2个满块，`hit_blocks = ([cached_block_A, cached_block_B],), hit_length=32`
+- 查找结果：命中前2个满块（P 缓存的 SP 块 0/1），`hit_blocks = ([cached_block_A, cached_block_B],), hit_length=32`
 - 含义：命中了前2个满块，共32token，剩余38 token 需重新计算
 
 ---

@@ -7315,7 +7315,7 @@ class GPUModelRunner(
                 tensor = torch.zeros(
                     kv_cache_tensor.size, dtype=torch.int8, device=self.device
                 )
-            # shared_by 中的 layer_name 指向同一个 tensor 对象（packed 场景下共享显存）
+            # shared_by 中的 layer_name 指向同一个 tensor 对象
             for layer_name in kv_cache_tensor.shared_by:
                 kv_cache_raw_tensors[layer_name] = tensor
 
