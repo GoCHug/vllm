@@ -1,83 +1,56 @@
 <mxfile host="app.diagrams.net" agent="drawio">
   <diagram id="kvcache_types_v2" name="KVCache 类型整理 v2">
-    <mxGraphModel dx="729" dy="432" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="3200" math="0" shadow="0">
+    <mxGraphModel dx="2047" dy="1047" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="3200" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="A_title" parent="1" style="text;html=1;strokeColor=none;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=13;rounded=1;" value="A. 配置层 · kv_cache_interface.py （每个 worker 启动时生成一份 KVCacheConfig）" vertex="1">
+        <mxCell id="A_title" parent="1" style="text;html=1;strokeColor=none;fillColor=#DAE8FC;align=center;verticalAlign=middle;fontStyle=1;fontSize=13;rounded=1;" value="A. 配置层&amp;nbsp;" vertex="1">
           <mxGeometry height="30" width="2020" x="30" y="40" as="geometry" />
         </mxCell>
-        <mxCell id="leg_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBFBFD;strokeColor=#B0B0B0;fontSize=11;" vertex="1">
-          <mxGeometry height="200" width="520" x="1520" y="100" as="geometry" />
-        </mxCell>
-        <mxCell id="leg_title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontStyle=1;fontSize=12;" value="图例 · 配色逻辑（结构持有 vs 运行协作）" vertex="1">
-          <mxGeometry height="22" width="380" x="1540" y="108" as="geometry" />
-        </mxCell>
-        <mxCell id="leg1_b" parent="1" style="rounded=0;html=1;fillColor=#EAF1FB;strokeColor=#6C8EBF;" vertex="1">
-          <mxGeometry height="18" width="18" x="1540" y="142" as="geometry" />
-        </mxCell>
-        <mxCell id="leg1_t" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11;" value="蓝 = 结构持有" vertex="1">
-          <mxGeometry height="18" width="300" x="1566" y="142" as="geometry" />
-        </mxCell>
-        <mxCell id="leg2_b" parent="1" style="rounded=0;html=1;fillColor=#F2F6FB;strokeColor=#9AA7B8;" vertex="1">
-          <mxGeometry height="18" width="18" x="1540" y="170" as="geometry" />
-        </mxCell>
-        <mxCell id="leg2_t" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11;" value="浅蓝 = 类型与数据结构" vertex="1">
-          <mxGeometry height="18" width="300" x="1566" y="170" as="geometry" />
-        </mxCell>
-        <mxCell id="leg3_b" parent="1" style="rounded=0;html=1;fillColor=#D5E8D4;strokeColor=#82B366;" vertex="1">
-          <mxGeometry height="18" width="18" x="1540" y="198" as="geometry" />
-        </mxCell>
-        <mxCell id="leg3_t" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11;" value="绿 = 运行协作" vertex="1">
-          <mxGeometry height="18" width="300" x="1566" y="198" as="geometry" />
-        </mxCell>
-        <mxCell id="leg4_b" parent="1" style="rounded=0;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;" vertex="1">
-          <mxGeometry height="18" width="18" x="1540" y="226" as="geometry" />
-        </mxCell>
-        <mxCell id="leg4_t" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11;" value="黄 = 补充枚举" vertex="1">
-          <mxGeometry height="18" width="300" x="1566" y="226" as="geometry" />
-        </mxCell>
-        <mxCell id="leg_line1" parent="1" style="edgeStyle=orthogonalEdgeStyle;line;strokeColor=#B25D00;strokeWidth=2;html=1;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" vertex="1">
-          <mxGeometry height="1" width="90" x="1540" y="258" as="geometry" />
-        </mxCell>
-        <mxCell id="leg_line1t" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11;" value="橙虚线 = 运行协作调用" vertex="1">
-          <mxGeometry height="18" width="300" x="1638" y="249" as="geometry" />
-        </mxCell>
-        <mxCell id="leg_line2" parent="1" style="edgeStyle=orthogonalEdgeStyle;line;strokeColor=#6C8EBF;strokeWidth=2;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" vertex="1">
-          <mxGeometry height="1" width="90" x="1540" y="282" as="geometry" />
-        </mxCell>
-        <mxCell id="leg_line2t" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11;" value="蓝实线 = 结构持有关系" vertex="1">
-          <mxGeometry height="18" width="300" x="1638" y="273" as="geometry" />
-        </mxCell>
         <mxCell id="a_spec_base" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" value="&lt;b&gt;KVCacheSpec&lt;/b&gt;&lt;br&gt;（base：frozen dataclass）&lt;br&gt;&lt;br&gt;block_size: int&lt;br&gt;─── 方法 ───&lt;br&gt;page_size_bytes()&lt;br&gt;storage_block_size()&lt;div&gt;merge()&lt;br&gt;max_num_blocks_per_req()&lt;/div&gt;" vertex="1">
-          <mxGeometry height="150" width="250" x="1095" y="360" as="geometry" />
+          <mxGeometry height="140" width="175" x="612.5" y="480" as="geometry" />
         </mxCell>
-        <mxCell id="oHOARcMUBbqrEqlNCxMO-5" edge="1" parent="1" source="a_spec_attn" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="a_spec_base">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="oHOARcMUBbqrEqlNCxMO-5" edge="1" parent="1" source="a_spec_attn" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="a_spec_base">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1010" y="550" />
+            </Array>
+          </mxGeometry>
         </mxCell>
         <mxCell id="a_spec_attn" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" value="&lt;b&gt;AttentionSpec (AttentionSpec, kw_only)&lt;/b&gt;&lt;br&gt;&lt;br&gt;num_kv_heads: int&lt;br&gt;head_size: int&lt;br&gt;dtype: torch.dtype&lt;br&gt;kv_quant_mode: KVQuantMode = NONE&lt;br&gt;page_size_padded: int | None = None&lt;br&gt;indexes_kv_by_block_stride: bool = False&lt;br&gt;─── 方法 ───&amp;nbsp;&lt;div&gt;page_size_bytes() / real_page_size_bytes()&lt;/div&gt;" vertex="1">
-          <mxGeometry height="190" width="255" x="1092.5" y="570" as="geometry" />
+          <mxGeometry height="175" width="255" x="962.5" y="470" as="geometry" />
         </mxCell>
-        <mxCell id="oHOARcMUBbqrEqlNCxMO-6" edge="1" parent="1" source="a_spec_full" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="a_spec_attn">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="oHOARcMUBbqrEqlNCxMO-6" edge="1" parent="1" source="a_spec_full" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="a_spec_attn">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1290" y="510.04" />
+              <mxPoint x="1290" y="557.52" />
+            </Array>
+          </mxGeometry>
         </mxCell>
-        <mxCell id="a_spec_full" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" value="&lt;b&gt;FullAttentionSpec&lt;/b&gt;&lt;br&gt;&lt;br&gt;head_size_v: int&lt;br&gt;sliding_window: int | None = None&lt;br&gt;attention_chunk_size: int | None = None&lt;br&gt;non_causal: bool = False&lt;br&gt;─── 方法 ───&lt;div&gt;max_memory_usage_bytes() / merge()&lt;/div&gt;" vertex="1">
-          <mxGeometry height="140" width="255" x="930" y="820" as="geometry" />
+        <mxCell id="a_spec_full" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#FFCCCC;strokeColor=#9AA7B8;" value="&lt;b&gt;FullAttentionSpec&lt;/b&gt;&lt;br&gt;&lt;br&gt;head_size_v: int&lt;br&gt;sliding_window: int | None = None&lt;br&gt;attention_chunk_size: int | None = None&lt;br&gt;non_causal: bool = False&lt;br&gt;─── 方法 ───&lt;div&gt;max_memory_usage_bytes() / merge()&lt;/div&gt;" vertex="1">
+          <mxGeometry height="140" width="255" x="1340" y="440" as="geometry" />
         </mxCell>
-        <mxCell id="oHOARcMUBbqrEqlNCxMO-7" edge="1" parent="1" source="a_spec_sw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="a_spec_attn">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="oHOARcMUBbqrEqlNCxMO-7" edge="1" parent="1" source="a_spec_sw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="a_spec_attn">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1340" y="690.04" />
+              <mxPoint x="1290" y="690.04" />
+              <mxPoint x="1290" y="557.52" />
+            </Array>
+          </mxGeometry>
         </mxCell>
         <mxCell id="a_spec_sw" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" value="&lt;b&gt;SlidingWindowSpec&lt;/b&gt;&lt;br&gt;&lt;br&gt;sliding_window: int&lt;br&gt;head_size_v: int" vertex="1">
-          <mxGeometry height="90" width="175" x="1290" y="820" as="geometry" />
+          <mxGeometry height="80" width="135" x="1340" y="649" as="geometry" />
         </mxCell>
         <mxCell id="a_q1" edge="1" parent="1" source="a_group" style="edgeStyle=orthogonalEdgeStyle;html=1;startArrow=empty;startFill=0;strokeColor=#6C8EBF;" target="a_spec_base">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a_config" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" value="&lt;b&gt;KVCacheConfig&lt;/b&gt;&lt;br&gt;&lt;br&gt;num_blocks: int&amp;nbsp;&amp;nbsp;&amp;nbsp;（本 worker 上的 block 数）&lt;br&gt;kv_cache_tensors: list[KVCacheTensor]&amp;nbsp;&amp;nbsp;&amp;nbsp;（该woker上切分的model的 每层 tensor 初始化信息）&lt;br&gt;kv_cache_groups: list[KVCacheGroupSpec]&amp;nbsp;&amp;nbsp;&amp;nbsp;（该woker上切分的model的 每个 cache-group信息）&lt;br&gt;─── 特性 ───&lt;br&gt;needs_kv_cache_zeroing()：Mamba / 混合精度时要清零" vertex="1">
-          <mxGeometry height="170" width="560" x="280" y="110" as="geometry" />
+        <mxCell id="a_config" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" value="&lt;b&gt;KVCacheConfig&lt;/b&gt;&lt;span style=&quot;font-size: 13px; font-weight: 700; text-align: center; white-space: nowrap;&quot;&gt;（每个 worker 启动时生成一份 KVCacheConfig）&lt;/span&gt;&lt;br&gt;&lt;br&gt;num_blocks: int&amp;nbsp;&amp;nbsp;&amp;nbsp;（该 worker 上的 block 数）&lt;br&gt;kv_cache_tensors: list[KVCacheTensor]&amp;nbsp;&amp;nbsp;&amp;nbsp;（该woker上切分的model的 group_size个tensor信息）&lt;br&gt;kv_cache_groups: list[KVCacheGroupSpec]&amp;nbsp;&amp;nbsp;&amp;nbsp;（该woker上切分的model的 num_group个group信息）" vertex="1">
+          <mxGeometry height="120" width="540" x="250" y="91" as="geometry" />
         </mxCell>
-        <mxCell id="a_tensor" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" value="&lt;b&gt;KVCacheTensor&lt;/b&gt;&lt;br&gt;&lt;br&gt;size: int&amp;nbsp;&amp;nbsp;&amp;nbsp;（该 tensor 字节数）&lt;br&gt;shared_by: list[str]&amp;nbsp;&amp;nbsp;&amp;nbsp;（共享同一 tensor 的层）&lt;br&gt;offset: int = 0&amp;nbsp;&amp;nbsp;&amp;nbsp;（层在连续 block 内的字节偏移）&lt;br&gt;block_stride: int = 0&amp;nbsp;&amp;nbsp;&amp;nbsp;（打包布局每 block 字节数；0=未打包）" vertex="1">
-          <mxGeometry height="150" width="360" x="170" y="360" as="geometry" />
+        <mxCell id="a_tensor" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" value="&lt;b&gt;KVCacheTensor&lt;/b&gt;&lt;br&gt;&lt;br&gt;size: int&amp;nbsp;&amp;nbsp;&amp;nbsp;（该 tensor 字节数，page_size * num_blocks）&lt;br&gt;shared_by: list[str]&amp;nbsp;&amp;nbsp;&amp;nbsp;（共享该 tensor 的层，不同group的第 i 层）" vertex="1">
+          <mxGeometry height="90" width="350" x="150" y="310" as="geometry" />
         </mxCell>
         <mxCell id="a_c1" edge="1" parent="1" source="a_config" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;" target="a_group">
           <mxGeometry relative="1" as="geometry" />
@@ -87,11 +60,11 @@
             <mxPoint as="offset" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="a_c2" edge="1" parent="1" source="a_config" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;" target="a_tensor">
+        <mxCell id="a_c2" edge="1" parent="1" source="a_config" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="a_tensor">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="560" y="320" />
-              <mxPoint x="340" y="320" />
+              <mxPoint x="520" y="260" />
+              <mxPoint x="325" y="260" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -109,52 +82,30 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="a_config_quant" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#FFF2CC;strokeColor=#D6B656;" value="&lt;b&gt;KVQuantMode&lt;/b&gt;&lt;br&gt;KV cache 量化模式，后端据此分发量化逻辑&lt;br&gt;&lt;br&gt;NONE = 0&lt;br&gt;FP8_PER_TENSOR = 1&amp;nbsp;&amp;nbsp;&amp;nbsp;（当前 fp8 路径）&lt;br&gt;INT8_PER_TOKEN_HEAD = 2&lt;br&gt;FP8_PER_TOKEN_HEAD = 3&lt;br&gt;INT4_PER_TOKEN_HEAD = 4&amp;nbsp;&amp;nbsp;&amp;nbsp;（打包 2×int4/字节, RHT）&lt;br&gt;NVFP4 = 5&amp;nbsp;&amp;nbsp;&amp;nbsp;（打包 fp4 + fp8 block scale）&lt;br&gt;─── 属性 ─── is_per_token_head" vertex="1">
-          <mxGeometry height="190" width="330" x="590" y="570" as="geometry" />
-        </mxCell>
-        <mxCell id="a_config_kind" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#FFF2CC;strokeColor=#D6B656;" value="&lt;b&gt;KVCacheSpecKind&lt;/b&gt;&lt;br&gt;get_kv_cache_spec_kind(spec) → Kind 运行时判定类型&lt;br&gt;&lt;br&gt;FULL_ATTENTION&amp;nbsp;/ MLA_ATTENTION&lt;br&gt;SLIDING_WINDOW&amp;nbsp;/ SLIDING_WINDOW_MLA&lt;br&gt;MAMBA&amp;nbsp;/ CHUNKED_LOCAL_ATTENTION&lt;br&gt;SINK_FULL_ATTENTION&lt;br&gt;ENCODER_ONLY_ATTENTION&amp;nbsp;/ CROSS_ATTENTION&amp;nbsp;/ UNKNOWN" vertex="1">
-          <mxGeometry height="150" width="370" x="1465" y="352" as="geometry" />
+          <mxGeometry height="190" width="330" x="925" y="200" as="geometry" />
         </mxCell>
         <mxCell id="a_q2" edge="1" parent="1" source="a_config_quant" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;dashed=1;strokeColor=#D6B656;" target="a_spec_attn">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="a_q2l" connectable="0" parent="a_q2" style="edgeLabel;html=1;fontSize=10;fontColor=#B25D00;" value="kv_quant_mode 引用" vertex="1">
           <mxGeometry relative="1" x="-0.1" as="geometry">
-            <mxPoint x="-35" as="offset" />
+            <mxPoint y="-11" as="offset" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="a_q3" edge="1" parent="1" source="a_config_kind" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;dashed=1;strokeColor=#D6B656;" target="a_spec_base">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1430" y="435" />
-              <mxPoint x="1430" y="435" />
-            </Array>
-          </mxGeometry>
+        <mxCell id="a_mla" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#FFCCCC;strokeColor=#9AA7B8;" value="&lt;b&gt;MLAAttentionSpec&lt;/b&gt;&lt;br&gt;&lt;br&gt;cache_dtype_str: str | None&lt;br&gt;alignment: int | None = None&amp;nbsp;&amp;nbsp;（对齐填充）&lt;br&gt;compress_ratio: int = 1&lt;br&gt;model_version: str | None = None&lt;br&gt;─── 关键 ───&lt;br&gt;storage_block_size = block_size // compress_ratio&lt;br&gt;real_page_size_bytes():&lt;br&gt;&amp;nbsp;&amp;nbsp;DeepseekV4 → 584B/token&amp;nbsp;&amp;nbsp;（448B NoPE+128B RoPE+8B scale）&lt;br&gt;&amp;nbsp;&amp;nbsp;fp8_ds_mla(V3.2) → 656B/token" vertex="1">
+          <mxGeometry height="190" width="380" x="1680" y="415" as="geometry" />
         </mxCell>
-        <mxCell id="a_q3l" connectable="0" parent="a_q3" style="edgeLabel;html=1;fontSize=10;fontColor=#B25D00;" value="按类型判定返回" vertex="1">
-          <mxGeometry relative="1" x="-0.1" as="geometry">
-            <mxPoint x="-37" as="offset" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="a_mla" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" value="&lt;b&gt;MLAAttentionSpec&lt;/b&gt;&lt;br&gt;&lt;br&gt;cache_dtype_str: str | None&lt;br&gt;alignment: int | None = None&amp;nbsp;&amp;nbsp;（对齐填充）&lt;br&gt;compress_ratio: int = 1&lt;br&gt;model_version: str | None = None&lt;br&gt;─── 关键 ───&lt;br&gt;storage_block_size = block_size // compress_ratio&lt;br&gt;real_page_size_bytes():&lt;br&gt;&amp;nbsp;&amp;nbsp;DeepseekV4 → 584B/token&amp;nbsp;&amp;nbsp;（448B NoPE+128B RoPE+8B scale）&lt;br&gt;&amp;nbsp;&amp;nbsp;fp8_ds_mla(V3.2) → 656B/token" vertex="1">
-          <mxGeometry height="215" width="390" x="700" y="1000" as="geometry" />
-        </mxCell>
-        <mxCell id="a_mla1" edge="1" parent="1" source="a_mla" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="a_spec_full">
+        <mxCell id="a_mla1" edge="1" parent="1" source="a_mla" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="a_spec_full">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a_sink" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" value="&lt;b&gt;SinkFullAttentionSpec&lt;/b&gt;&amp;nbsp;&amp;nbsp;（:763）&lt;br&gt;&lt;br&gt;sink_len: int | None = None&lt;br&gt;─── 继承 FullAttentionSpec，附加 sink 缓存区长度 ───" vertex="1">
-          <mxGeometry height="120" width="330" x="1145" y="1000" as="geometry" />
+        <mxCell id="a_mamba" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#FFCCCC;strokeColor=#9AA7B8;" value="&lt;b&gt;MambaSpec&lt;/b&gt;&lt;br&gt;&lt;br&gt;shapes / dtypes&lt;br&gt;page_size_padded: int | None = None&lt;br&gt;mamba_type: MambaAttentionBackendEnum&lt;br&gt;mamba_cache_mode: str = &quot;none&quot;&lt;br&gt;num_speculative_blocks: int = 0&lt;br&gt;─── 关键 ───&lt;br&gt;cache_mode=&quot;align&quot;: max_num_blocks_per_req =&lt;br&gt;&amp;nbsp;&amp;nbsp;cdiv(max_len, block_size) + spec_blocks（暂存式）" vertex="1">
+          <mxGeometry height="175" width="300" x="962.5" y="780" as="geometry" />
         </mxCell>
-        <mxCell id="a_sink1" edge="1" parent="1" source="a_sink" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="a_spec_full">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="a_mamba" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" value="&lt;b&gt;MambaSpec&lt;/b&gt;&lt;br&gt;&lt;br&gt;shapes / dtypes&lt;br&gt;page_size_padded: int | None = None&lt;br&gt;mamba_type: MambaAttentionBackendEnum&lt;br&gt;mamba_cache_mode: str = &quot;none&quot;&lt;br&gt;num_speculative_blocks: int = 0&lt;br&gt;─── 关键 ───&lt;br&gt;cache_mode=&quot;align&quot;: max_num_blocks_per_req =&lt;br&gt;&amp;nbsp;&amp;nbsp;cdiv(max_len, block_size) + spec_blocks（暂存式）" vertex="1">
-          <mxGeometry height="190" width="300" x="1380" y="570" as="geometry" />
-        </mxCell>
-        <mxCell id="a_mamba1" edge="1" parent="1" source="a_mamba" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="a_spec_base">
+        <mxCell id="a_mamba1" edge="1" parent="1" source="a_mamba" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="a_spec_base">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1530.07" y="540.07" />
-              <mxPoint x="1220.07" y="540.07" />
+              <mxPoint x="850.07" y="867.53" />
+              <mxPoint x="850.07" y="550.07" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -403,21 +354,25 @@
         <mxCell id="c_pipe_v6" edge="1" parent="1" source="c_s3_pool" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="c_s4_pool">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a_group" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" value="&lt;b&gt;KVCacheGroupSpec&lt;/b&gt;&lt;br&gt;&lt;br&gt;layer_names: list[str]&amp;nbsp;&amp;nbsp;&amp;nbsp;（属于该 group 的模型层）&lt;br&gt;kv_cache_spec: KVCacheSpec&amp;nbsp;&amp;nbsp;&amp;nbsp;（该 group 的缓存规范）&lt;br&gt;is_eagle_group: bool = False" vertex="1">
-          <mxGeometry height="150" width="370" x="575" y="360" as="geometry" />
+        <mxCell id="a_group" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" value="&lt;b&gt;KVCacheGroupSpec&lt;/b&gt;&lt;br&gt;&lt;br&gt;layer_names: list[str]&amp;nbsp;&amp;nbsp;&amp;nbsp;（属于该 group 的 group_size 个层）&lt;br&gt;kv_cache_spec: KVCacheSpec&amp;nbsp;&amp;nbsp;&amp;nbsp;（该 group 的缓存规范）&lt;br&gt;is_eagle_group: bool = False" vertex="1">
+          <mxGeometry height="90" width="330" x="535" y="310" as="geometry" />
         </mxCell>
         <mxCell id="KzyqkdYo-WrA1XfW6R_j-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#FFF2CC;strokeColor=#D6B656;" value="&lt;b&gt;MambaAttentionBackendEnum&lt;/b&gt;&lt;br&gt;Mamba Attention支持类型&lt;br&gt;&lt;br&gt;&lt;div&gt;MAMBA1&lt;/div&gt;&lt;div&gt;MAMBA2&lt;/div&gt;&lt;div&gt;SHORT_CONV&amp;nbsp;&lt;/div&gt;&lt;div&gt;LINEAR&lt;/div&gt;&lt;div&gt;GDN_ATTN&lt;/div&gt;" vertex="1">
-          <mxGeometry height="140" width="200" x="1790" y="595" as="geometry" />
+          <mxGeometry height="140" width="200" x="1380" y="797.5" as="geometry" />
         </mxCell>
-        <mxCell id="KzyqkdYo-WrA1XfW6R_j-2" edge="1" parent="1" source="KzyqkdYo-WrA1XfW6R_j-1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;dashed=1;strokeColor=#D6B656;entryX=1;entryY=0.5;entryDx=0;entryDy=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="a_mamba">
+        <mxCell id="KzyqkdYo-WrA1XfW6R_j-2" edge="1" parent="1" source="KzyqkdYo-WrA1XfW6R_j-1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;dashed=1;strokeColor=#D6B656;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="a_mamba">
           <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1310" y="867.5" />
+              <mxPoint x="1310" y="867.5" />
+            </Array>
             <mxPoint x="1750" y="880" as="sourcePoint" />
-            <mxPoint x="1923" y="880" as="targetPoint" />
+            <mxPoint x="1290" y="830" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="KzyqkdYo-WrA1XfW6R_j-3" connectable="0" parent="KzyqkdYo-WrA1XfW6R_j-2" style="edgeLabel;html=1;fontSize=10;fontColor=#B25D00;" value="mamba_type 引用" vertex="1">
           <mxGeometry relative="1" x="-0.1" as="geometry">
-            <mxPoint x="-50" as="offset" />
+            <mxPoint x="-47" as="offset" />
           </mxGeometry>
         </mxCell>
       </root>
