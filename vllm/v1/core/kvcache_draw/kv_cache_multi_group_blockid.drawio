@@ -1,0 +1,302 @@
+<mxfile host="app.diagrams.net" agent="CodeFuse">
+  <diagram id="multi_group_blockid" name="多 Group block_id 分配与分发">
+    <mxGraphModel dx="1704" dy="1047" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ========== Title ========== -->
+        <mxCell id="title" parent="1" style="text;html=1;fontSize=20;fontStyle=1;align=center;" value="多 Group 场景：block_id 如何按 group 分配与分发到 Worker" vertex="1">
+          <mxGeometry height="36" width="1200" x="60" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;html=1;fontSize=13;align=center;fontColor=#555555;" value="假设场景：混合模型（层 0–15 Full Attention + 层 16–31 Sliding Window → 2 个 group）· 请求 R: 70 token prompt · block_size=16 · 每 group 需 5 个 block" vertex="1">
+          <mxGeometry height="24" width="1300" x="60" y="46" as="geometry" />
+        </mxCell>
+
+        <!-- ========== ① 调度维度：BlockPool 共享 + 各 group 独立取 ID ========== -->
+        <mxCell id="s1_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="① 调度维度：BlockPool 全局唯一，各 group manager 独立 pop（ID 自然不重叠）" vertex="1">
+          <mxGeometry height="28" width="1000" x="60" y="80" as="geometry" />
+        </mxCell>
+
+        <!-- BlockPool box (left) -->
+        <mxCell id="bp_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#999999;strokeWidth=2;verticalAlign=top;spacingTop=6;align=center;" value="" vertex="1">
+          <mxGeometry height="200" width="300" x="60" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="bp_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;" value="BlockPool (全局唯一 · singleton)" vertex="1">
+          <mxGeometry height="22" width="300" x="60" y="126" as="geometry" />
+        </mxCell>
+        <mxCell id="bp_desc" parent="1" style="text;html=1;fontSize=11;align=center;fontColor=#555555;" value="KVCacheCoordinator 基类 __init__ 创建&lt;br&gt;所有 group 共享同一个 free_block_queue&lt;br&gt;(kv_cache_coordinator.py:128)" vertex="1">
+          <mxGeometry height="40" width="280" x="70" y="148" as="geometry" />
+        </mxCell>
+        <!-- free_block_queue visual -->
+        <mxCell id="bp_queue" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;align=center;" value="free_block_queue&#xa;[0, 1, 2, 3, ... , 4095]&#xa;共 4096 个 ID" vertex="1">
+          <mxGeometry height="50" width="260" x="80" y="200" as="geometry" />
+        </mxCell>
+        <!-- ID boxes visual -->
+        <mxCell id="bp_ids" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbb;fontSize=9;align=center;" value="0" vertex="1">
+          <mxGeometry height="20" width="32" x="82" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="bp_ids2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbb;fontSize=9;align=center;" value="1" vertex="1">
+          <mxGeometry height="20" width="32" x="118" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="bp_ids3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbb;fontSize=9;align=center;" value="2" vertex="1">
+          <mxGeometry height="20" width="32" x="154" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="bp_ids4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbb;fontSize=9;align=center;" value="..." vertex="1">
+          <mxGeometry height="20" width="32" x="190" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="bp_ids5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbb;fontSize=9;align=center;" value="4095" vertex="1">
+          <mxGeometry height="20" width="40" x="226" y="260" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows from BlockPool to managers -->
+        <mxCell id="arrow_bp_m0" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.3;exitDx=0;exitDy=0;dashed=1;" source="bp_box">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="420" y="180" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow_bp_m0_lbl" parent="1" style="text;html=1;fontSize=10;fontColor=#666666;align=center;" value="get_new_blocks(5)&#xa;popleft_n(5)" vertex="1">
+          <mxGeometry height="28" width="100" x="358" y="155" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow_bp_m1" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.7;exitDx=0;exitDy=0;dashed=1;" source="bp_box">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="420" y="260" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow_bp_m1_lbl" parent="1" style="text;html=1;fontSize=10;fontColor=#666666;align=center;" value="get_new_blocks(5)&#xa;popleft_n(5)" vertex="1">
+          <mxGeometry height="28" width="100" x="358" y="240" as="geometry" />
+        </mxCell>
+
+        <!-- Group 0 manager -->
+        <mxCell id="mgr0_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;verticalAlign=top;spacingTop=5;align=left;spacingLeft=10;" value="" vertex="1">
+          <mxGeometry height="90" width="300" x="420" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="mgr0_title" parent="1" style="text;html=1;fontSize=12;fontStyle=1;align=left;" value="Group 0 · FullAttentionManager" vertex="1">
+          <mxGeometry height="20" width="280" x="430" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="mgr0_desc" parent="1" style="text;html=1;fontSize=11;align=left;spacingLeft=10;fontColor=#555555;" value="负责层: &lt;b&gt;0–15&lt;/b&gt; (Full Attention)&#xa;block_size = 16&#xa;&#xa;▶ get_new_blocks(5)&#xa;▶ 从 free_queue pop → &lt;b&gt;[0, 1, 2, 3, 4]&lt;/b&gt;&#xa;▶ 存入 req_to_blocks[R] (group 0)" vertex="1">
+          <mxGeometry height="75" width="280" x="430" y="160" as="geometry" />
+        </mxCell>
+
+        <!-- Group 1 manager -->
+        <mxCell id="mgr1_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;spacingTop=5;align=left;spacingLeft=10;" value="" vertex="1">
+          <mxGeometry height="90" width="300" x="420" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="mgr1_title" parent="1" style="text;html=1;fontSize=12;fontStyle=1;align=left;" value="Group 1 · SlidingWindowManager" vertex="1">
+          <mxGeometry height="20" width="280" x="430" y="245" as="geometry" />
+        </mxCell>
+        <mxCell id="mgr1_desc" parent="1" style="text;html=1;fontSize=11;align=left;spacingLeft=10;fontColor=#555555;" value="负责层: &lt;b&gt;16–31&lt;/b&gt; (Sliding Window)&#xa;block_size = 16&#xa;&#xa;▶ get_new_blocks(5)&#xa;▶ 从 free_queue pop → &lt;b&gt;[5, 6, 7, 8, 9]&lt;/b&gt;&#xa;▶ 存入 req_to_blocks[R] (group 1)" vertex="1">
+          <mxGeometry height="75" width="280" x="430" y="260" as="geometry" />
+        </mxCell>
+
+        <!-- Per-group block_table box (right) -->
+        <mxCell id="bt_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#999999;verticalAlign=top;spacingTop=5;align=center;" value="" vertex="1">
+          <mxGeometry height="200" width="300" x="780" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="bt_title" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=center;" value="req_R block_table (per group)" vertex="1">
+          <mxGeometry height="22" width="300" x="780" y="126" as="geometry" />
+        </mxCell>
+
+        <!-- Group 0 block_table -->
+        <mxCell id="bt0_box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=center;" value="&lt;b&gt;Group 0:&lt;/b&gt;&#xa;[0, 1, 2, 3, 4]" vertex="1">
+          <mxGeometry height="50" width="260" x="800" y="155" as="geometry" />
+        </mxCell>
+        <mxCell id="bt0_ids" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="0" vertex="1">
+          <mxGeometry height="22" width="36" x="808" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="bt0_ids1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="1" vertex="1">
+          <mxGeometry height="22" width="36" x="848" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="bt0_ids2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="2" vertex="1">
+          <mxGeometry height="22" width="36" x="888" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="bt0_ids3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="3" vertex="1">
+          <mxGeometry height="22" width="36" x="928" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="bt0_ids4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="4" vertex="1">
+          <mxGeometry height="22" width="36" x="968" y="210" as="geometry" />
+        </mxCell>
+
+        <!-- Group 1 block_table -->
+        <mxCell id="bt1_box" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=center;" value="&lt;b&gt;Group 1:&lt;/b&gt;&#xa;[5, 6, 7, 8, 9]" vertex="1">
+          <mxGeometry height="50" width="260" x="800" y="245" as="geometry" />
+        </mxCell>
+        <mxCell id="bt1_ids" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=center;" value="5" vertex="1">
+          <mxGeometry height="22" width="36" x="808" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="bt1_ids1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=center;" value="6" vertex="1">
+          <mxGeometry height="22" width="36" x="848" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="bt1_ids2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=center;" value="7" vertex="1">
+          <mxGeometry height="22" width="36" x="888" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="bt1_ids3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=center;" value="8" vertex="1">
+          <mxGeometry height="22" width="36" x="928" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="bt1_ids4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=center;" value="9" vertex="1">
+          <mxGeometry height="22" width="36" x="968" y="300" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: managers → block_table -->
+        <mxCell id="arrow_m0_bt" edge="1" parent="1" source="mgr0_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="bt0_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow_m1_bt" edge="1" parent="1" source="mgr1_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="bt1_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 纠正 callout -->
+        <mxCell id="correction" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ff9800;strokeWidth=2;align=left;spacingLeft=12;verticalAlign=middle;" value="&lt;b&gt;⚠ 纠正常见误解&lt;/b&gt;&lt;br&gt;不是&quot;调度器预先分好各 group 的 block id 再分发&quot; → 而是各 manager 独立从&lt;b&gt;共享&lt;/b&gt; BlockPool pop（free_block_queue.popleft_n），ID 自然不重叠&lt;br&gt;两阶段分配（kv_cache_coordinator.py:219）：先 touch 所有 group 命中块 → 再各 group 独立 allocate_new_blocks，避免跨组驱逐竞争" vertex="1">
+          <mxGeometry height="60" width="1020" x="60" y="335" as="geometry" />
+        </mxCell>
+
+        <!-- ========== ② block_ids 数据结构 ========== -->
+        <mxCell id="s2_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="② block_ids 数据结构：tuple[list[int], ...]（外层 = group 维度）" vertex="1">
+          <mxGeometry height="28" width="1000" x="60" y="410" as="geometry" />
+        </mxCell>
+
+        <mxCell id="code_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#dee2e6;verticalAlign=top;spacingTop=5;align=left;spacingLeft=12;" value="" vertex="1">
+          <mxGeometry height="120" width="1020" x="60" y="445" as="geometry" />
+        </mxCell>
+        <mxCell id="code_content" parent="1" style="text;html=1;fontSize=12;align=left;spacingLeft=12;fontFamily=Courier New;fontColor=#333333;" value="# NewRequestData.block_ids (sched/output.py:41)&lt;br&gt;block_ids: tuple[list[int], ...]   # 外层 tuple = group, 内层 list = 该 group 的 block_id&lt;br&gt;&lt;br&gt;block_ids = (&lt;br&gt;&amp;nbsp;&amp;nbsp;[0, 1, 2, 3, 4],   &amp;nbsp;# group 0 (Full Attention)  ← 该 group 的 16 个层张量共用这一套 ID&lt;br&gt;&amp;nbsp;&amp;nbsp;[5, 6, 7, 8, 9],   &amp;nbsp;# group 1 (Sliding Window) ← 该 group 的 16 个层张量共用另一套 ID&lt;br&gt;)&lt;br&gt;&lt;br&gt;# get_block_ids() 源码 (kv_cache_manager.py:91):  tuple([blk.block_id for blk in group] for group in self.blocks)" vertex="1">
+          <mxGeometry height="105" width="990" x="72" y="452" as="geometry" />
+        </mxCell>
+
+        <!-- ========== ③ 分发到 Worker ========== -->
+        <mxCell id="s3_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="③ SchedulerOutput 携带 block_ids 分发到 Worker（per-group block_ids 不混合）" vertex="1">
+          <mxGeometry height="28" width="1000" x="60" y="580" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sched_out_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1976d2;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;" value="&lt;b&gt;SchedulerOutput&lt;/b&gt;&lt;br&gt;NewRequestData(block_ids=([0,1,2,3,4], [5,6,7,8,9]))&lt;br&gt;↓ collective_rpc 发到各 Worker" vertex="1">
+          <mxGeometry height="60" width="700" x="200" y="615" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow down to worker -->
+        <mxCell id="arrow_down" edge="1" parent="1" source="sched_out_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#1976d2;strokeWidth=2;endArrow=block;" target="w_side_label">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== ④ Worker 侧：各 group 张量用各自的 block_ids ========== -->
+        <mxCell id="w_side_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="④ Worker 侧：各 group 的层张量 ONLY 用该 group 的 block_ids 索引" vertex="1">
+          <mxGeometry height="28" width="1000" x="60" y="695" as="geometry" />
+        </mxCell>
+        <mxCell id="w_side_desc" parent="1" style="text;html=1;fontSize=12;fontColor=#888888;" value="GPUModelRunner forward: kv_caches[layer][block_id] 第 0 维 fancy index · block_id 来自该 group 的 block_ids[group_id] · 不同 group 的张量物理独立（不同层集合）" vertex="1">
+          <mxGeometry height="20" width="1000" x="60" y="725" as="geometry" />
+        </mxCell>
+
+        <!-- Group 0 worker tensors -->
+        <mxCell id="wg0_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;verticalAlign=top;spacingTop=5;align=left;spacingLeft=10;" value="" vertex="1">
+          <mxGeometry height="200" width="500" x="60" y="755" as="geometry" />
+        </mxCell>
+        <mxCell id="wg0_title" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=left;" value="Group 0 张量（Full Attention, 层 0–15）" vertex="1">
+          <mxGeometry height="22" width="480" x="70" y="760" as="geometry" />
+        </mxCell>
+        <mxCell id="wg0_desc" parent="1" style="text;html=1;fontSize=11;align=left;spacingLeft=10;fontColor=#555555;" value="16 个张量, shape = (4096, 4, 16, 256)&#xa;各层张量用 &lt;b&gt;block_ids[0] = [0,1,2,3,4]&lt;/b&gt; 索引&#xa;&#xa;block_id=0 → layer 0~15 的 page 0 (t0~15)&#xa;block_id=1 → layer 0~15 的 page 1 (t16~31)&#xa;...&#xa;block_id=4 → layer 0~15 的 page 4 (t64~69, 未满)" vertex="1">
+          <mxGeometry height="100" width="470" x="70" y="785" as="geometry" />
+        </mxCell>
+        <!-- mini tensor boxes for group 0 -->
+        <mxCell id="wg0_t0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=center;" value="层0&#xa;id=0" vertex="1">
+          <mxGeometry height="35" width="40" x="70" y="895" as="geometry" />
+        </mxCell>
+        <mxCell id="wg0_t1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=center;" value="层1&#xa;id=0" vertex="1">
+          <mxGeometry height="35" width="40" x="114" y="895" as="geometry" />
+        </mxCell>
+        <mxCell id="wg0_dots" parent="1" style="text;html=1;fontSize=10;align=center;fontColor=#888;" value="..." vertex="1">
+          <mxGeometry height="35" width="30" x="158" y="895" as="geometry" />
+        </mxCell>
+        <mxCell id="wg0_t15" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=center;" value="层15&#xa;id=0" vertex="1">
+          <mxGeometry height="35" width="40" x="192" y="895" as="geometry" />
+        </mxCell>
+        <mxCell id="wg0_note" parent="1" style="text;html=1;fontSize=10;align=left;fontColor=#d79b00;" value="← 同 block_id=0&#xa;&lt;br&gt;跨 16 张量" vertex="1">
+          <mxGeometry height="35" width="120" x="240" y="895" as="geometry" />
+        </mxCell>
+
+        <!-- Group 1 worker tensors -->
+        <mxCell id="wg1_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;spacingTop=5;align=left;spacingLeft=10;" value="" vertex="1">
+          <mxGeometry height="200" width="500" x="600" y="755" as="geometry" />
+        </mxCell>
+        <mxCell id="wg1_title" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=left;" value="Group 1 张量（Sliding Window, 层 16–31）" vertex="1">
+          <mxGeometry height="22" width="480" x="610" y="760" as="geometry" />
+        </mxCell>
+        <mxCell id="wg1_desc" parent="1" style="text;html=1;fontSize=11;align=left;spacingLeft=10;fontColor=#555555;" value="16 个张量, shape = (4096, 4, 16, 256)&#xa;各层张量用 &lt;b&gt;block_ids[1] = [5,6,7,8,9]&lt;/b&gt; 索引&#xa;&#xa;block_id=5 → layer 16~31 的 page 5 (t0~15)&#xa;block_id=6 → layer 16~31 的 page 6 (t16~31)&#xa;...&#xa;block_id=9 → layer 16~31 的 page 9 (t64~69)" vertex="1">
+          <mxGeometry height="100" width="470" x="610" y="785" as="geometry" />
+        </mxCell>
+        <mxCell id="wg1_t0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=center;" value="层16&#xa;id=5" vertex="1">
+          <mxGeometry height="35" width="40" x="610" y="895" as="geometry" />
+        </mxCell>
+        <mxCell id="wg1_t1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=center;" value="层17&#xa;id=5" vertex="1">
+          <mxGeometry height="35" width="40" x="654" y="895" as="geometry" />
+        </mxCell>
+        <mxCell id="wg1_dots" parent="1" style="text;html=1;fontSize=10;align=center;fontColor=#888;" value="..." vertex="1">
+          <mxGeometry height="35" width="30" x="698" y="895" as="geometry" />
+        </mxCell>
+        <mxCell id="wg1_t15" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=center;" value="层31&#xa;id=5" vertex="1">
+          <mxGeometry height="35" width="40" x="732" y="895" as="geometry" />
+        </mxCell>
+        <mxCell id="wg1_note" parent="1" style="text;html=1;fontSize=10;align=left;fontColor=#82b366;" value="← 同 block_id=5&#xa;&lt;br&gt;跨 16 张量" vertex="1">
+          <mxGeometry height="35" width="120" x="780" y="895" as="geometry" />
+        </mxCell>
+
+        <!-- Comparison arrow between groups -->
+        <mxCell id="compare_arrow" edge="1" parent="1" source="wg0_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#cc0000;strokeWidth=2;dashed=1;endArrow=classic;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="wg1_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="compare_lbl" parent="1" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#cc0000;" value="block_ids 不同！&#xa;Group0 用 [0–4]&#xa;Group1 用 [5–9]" vertex="1">
+          <mxGeometry height="40" width="120" x="540" y="835" as="geometry" />
+        </mxCell>
+
+        <!-- ========== ⑤ 对比：单 group vs 多 group ========== -->
+        <mxCell id="s5_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="⑤ 对比：单 group（Llama-3-8B）vs 多 group（混合模型）" vertex="1">
+          <mxGeometry height="28" width="1000" x="60" y="980" as="geometry" />
+        </mxCell>
+
+        <mxCell id="compare_single" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;verticalAlign=top;spacingTop=5;align=left;spacingLeft=10;" value="" vertex="1">
+          <mxGeometry height="180" width="490" x="60" y="1015" as="geometry" />
+        </mxCell>
+        <mxCell id="cs_title" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=left;" value="单 group（Llama-3-8B 纯 Full Attention）" vertex="1">
+          <mxGeometry height="22" width="460" x="70" y="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="cs_content" parent="1" style="text;html=1;fontSize=11;align=left;spacingLeft=10;fontColor=#555555;" value="• 1 个 KVCacheGroupSpec → 1 个 manager&lt;br&gt;• UnitaryKVCacheCoordinator（透传层）&lt;br&gt;• block_ids = ([0,1,2,3,4],)  ← 外层 tuple 长度 1&lt;br&gt;• 所有 32 层共用同一套 block_id&lt;br&gt;• block_id=2 → layer 0–31 都用 page 2&lt;br&gt;&lt;br&gt;结论：1 个请求每步消耗 1 组 block ID&lt;br&gt;（全模型所有层共享）" vertex="1">
+          <mxGeometry height="150" width="460" x="70" y="1043" as="geometry" />
+        </mxCell>
+
+        <mxCell id="compare_multi" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;verticalAlign=top;spacingTop=5;align=left;spacingLeft=10;" value="" vertex="1">
+          <mxGeometry height="180" width="490" x="600" y="1015" as="geometry" />
+        </mxCell>
+        <mxCell id="cm_title" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=left;" value="多 group（混合 Full Attention + Sliding Window）" vertex="1">
+          <mxGeometry height="22" width="460" x="610" y="1020" as="geometry" />
+        </mxCell>
+        <mxCell id="cm_content" parent="1" style="text;html=1;fontSize=11;align=left;spacingLeft=10;fontColor=#555555;" value="• 2 个 KVCacheGroupSpec → 2 个 manager&lt;br&gt;• HybridKVCacheCoordinator（跨组协调）&lt;br&gt;• block_ids = ([0,1,2,3,4], [5,6,7,8,9])  ← 外层 tuple 长度 2&lt;br&gt;• Group 0 层(0–15) 用 [0,1,2,3,4]&lt;br&gt;• Group 1 层(16–31) 用 [5,6,7,8,9]&lt;br&gt;&lt;br&gt;结论：1 个请求每步消耗 N 组 block ID&lt;br&gt;（N = group 数，各 group 独立一套）" vertex="1">
+          <mxGeometry height="150" width="460" x="610" y="1043" as="geometry" />
+        </mxCell>
+
+        <!-- ========== Side Info Box ========== -->
+        <mxCell id="mech_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#0288d1;verticalAlign=top;spacingTop=5;align=left;spacingLeft=10;" value="" vertex="1">
+          <mxGeometry height="340" width="420" x="1130" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="mech_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#01579b;" value="多 group block_id 分配核心机制" vertex="1">
+          <mxGeometry height="24" width="420" x="1130" y="125" as="geometry" />
+        </mxCell>
+        <mxCell id="mech_content" parent="1" style="text;html=1;fontSize=11;align=left;spacingLeft=10;fontColor=#333333;" value="&lt;b&gt;1. BlockPool 全局唯一&lt;/b&gt;&lt;br&gt;KVCacheCoordinator.__init__ 创建唯一实例&lt;br&gt;所有 SingleTypeKVCacheManager 共享&lt;br&gt;→ block_id 全局唯一（非按 group 隔离）&lt;br&gt;源码: kv_cache_coordinator.py:128&lt;br&gt;&lt;br&gt;&lt;b&gt;2. 各 manager 独立 pop&lt;/b&gt;&lt;br&gt;allocate_new_blocks() 遍历每个 manager&lt;br&gt;每个 manager 调 block_pool.get_new_blocks()&lt;br&gt;→ 从同一 free_block_queue popleft_n&lt;br&gt;→ 先 pop 的 manager 拿走 ID, 后 pop 的自然不重叠&lt;br&gt;源码: block_pool.py:661&lt;br&gt;&lt;br&gt;&lt;b&gt;3. block_ids 按 group 组织&lt;/b&gt;&lt;br&gt;KVCacheBlocks.blocks = tuple[list, ...]&lt;br&gt;get_block_ids() → tuple[list[int], ...]&lt;br&gt;外层 tuple = group, 内层 list = 该 group 的 ID&lt;br&gt;源码: kv_cache_manager.py:84-91&lt;br&gt;&lt;br&gt;&lt;b&gt;4. Worker 按组索引&lt;/b&gt;&lt;br&gt;NewRequestData.block_ids: tuple[list[int],...]&lt;br&gt;forward 时 block_ids[group_id] 索引该 group 张量&lt;br&gt;不同 group 的张量物理独立（不同层集合）&lt;br&gt;源码: sched/output.py:41&lt;br&gt;&lt;br&gt;&lt;b&gt;5. 两阶段分配防竞态&lt;/b&gt;&lt;br&gt;先 touch 所有 group 命中块 (ref_cnt++)&lt;br&gt;再各 group 独立 allocate_new_blocks&lt;br&gt;避免跨组驱逐竞争 (issue #33775)&lt;br&gt;源码: kv_cache_coordinator.py:219" vertex="1">
+          <mxGeometry height="310" width="400" x="1140" y="150" as="geometry" />
+        </mxCell>
+
+        <!-- Dense allocation box (bottom right) -->
+        <mxCell id="dense_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4ec;strokeColor=#c2185b;verticalAlign=top;spacingTop=5;align=left;spacingLeft=10;" value="" vertex="1">
+          <mxGeometry height="180" width="420" x="1130" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="dense_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#880e4f;" value="block_id 空间消耗对比" vertex="1">
+          <mxGeometry height="24" width="420" x="1130" y="485" as="geometry" />
+        </mxCell>
+        <mxCell id="dense_content" parent="1" style="text;html=1;fontSize=11;align=left;spacingLeft=10;fontColor=#555555;fontFamily=Courier New;" value="单 group (Llama-3-8B):&lt;br&gt;  请求 R (70 token) → 5 个 block ID&lt;br&gt;  block_ids = ([0,1,2,3,4],)&lt;br&gt;&lt;br&gt;2 个 group (混合模型):&lt;br&gt;  请求 R (70 token) → 5 + 5 = 10 个 block ID&lt;br&gt;  block_ids = ([0,1,2,3,4], [5,6,7,8,9])&lt;br&gt;&lt;br&gt;N 个 group:&lt;br&gt;  请求 R → N × ceil(len/block_size) 个 block ID&lt;br&gt;  但 BlockPool 容量不变 → 多 group 更耗 ID 空间" vertex="1">
+          <mxGeometry height="150" width="400" x="1140" y="510" as="geometry" />
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend" parent="1" style="text;html=1;fontSize=12;fontColor=#555555;align=left;" value="🔶 Group 0 (Full Attention)　　🟩 Group 1 (Sliding Window)　　⬜ BlockPool(全局唯一)　　🔵 block_id / 张量　|　源码引用: kv_cache_coordinator.py / block_pool.py / kv_cache_manager.py / sched/output.py" vertex="1">
+          <mxGeometry height="25" width="1100" x="60" y="1220" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
