@@ -166,7 +166,7 @@ for kv_cache_spec_one_worker in kv_cache_specs:
         merged_kv_cache_specs[layer_name] = layer_spec  # 跨 worker 合并
 ```
 
-> 不同 PP stage 层名不同，合并天然不覆盖；同 PP stage 的不同 TP rank 提交同层 spec，断言检查必须等值（原因：TP 切分后 `num_kv_heads` 相同 → spec 字段全等，详见 §4）。
+> 不同 PP stage 层名不同，合并天然不覆盖；同 PP stage 的不同 TP rank 提交同层 spec，断言检查必须等值（原因：TP 切分后 `num_kv_heads` 相同 → spec 字段全等，详见 §3）。
 
 **② 分组 `get_kv_cache_groups()`**（kv_cache_utils.py:1760）—— 纯 FullAttention 走 `is_kv_cache_spec_uniform()` → `_get_kv_cache_groups_uniform_spec()` → 全模型**单 group**。
 
@@ -187,7 +187,7 @@ def is_kv_cache_spec_uniform(kv_cache_spec) -> bool:
 
 **③ 计算 num_blocks**
 
-`get_kv_cache_config_from_groups()`（kv_cache_utils.py:1340）里，单 group 的**普通 `AttentionSpec`（如 `FullAttentionSpec`）走通用（else）路径**——因为 §2.3② 分组时 `merge()` 把合并后 32 层归成一份普通 spec，而不是 `UniformTypeKVCacheSpecs`。**关键**：`get_kv_cache_configs()` 在调用本函数前，先执行 `_project_kv_cache_groups_to_worker()` 把 global groups（32 层）投影到每 worker 的实际层（16 层），传入的是 **projected groups**，因此：
+`get_kv_cache_config_from_groups()`（kv_cache_utils.py:1340）里，单组`FullAttentionSpec`走通用（else）路径。**关键**：`get_kv_cache_configs()` 在调用本函数前，先执行 `_project_kv_cache_groups_to_worker()` 把 global groups（32 层）投影到每 worker 的实际层（16 层），传入的是 **projected groups**，因此：
 
 ```python
 group_size = max(len(group.layer_names) for group in kv_cache_groups)  # = 16（projected 后每 worker 层数）
@@ -197,7 +197,6 @@ num_blocks = available_memory // page_size // group_size
 # 生成 group_size 个张量（每 worker 16 个），每个 size = page_size × num_blocks，shared_by 为单层
 ```
 
-> **唯一的单 group 快捷路径**（kv_cache_utils.py:1366）只在 `kv_cache_spec` 是 `UniformTypeKVCacheSpecs` 时触发——"同类型、每层 hidden size 不同"（如 MLA 逐层 spec）。此时它的 `page_size_bytes` 是**所有层页大小之和**（kv_cache_interface.py:829），已包含全部层，**不再除层数**：
 >
 > ```python
 > num_blocks = available_memory // kv_cache_groups[0].kv_cache_spec.page_size_bytes
@@ -212,8 +211,6 @@ if needed_memory > available_memory:
     estimated_max_len = estimate_max_model_len(available_memory)
     raise ValueError(...)  # 建议调大 util 或调小 max_model_len
 ```
-
-> 若用户未指定 `max_model_len`（`original_max_model_len == -1`），先走 `_auto_fit_max_model_len()`（kv_cache_utils.py:1967）二分搜索最大可容纳序列长度。
 
 **⑤ 多 worker 对齐**（kv_cache_utils.py:2191）——集中式调度要求全 worker 共享同一 `block_id` 空间，取最小值保证最"穷"的 worker 也能容纳：
 
@@ -263,13 +260,9 @@ class KVCacheGroupSpec:
 ```python
 for kv_cache_tensor in kv_cache_config.kv_cache_tensors:
     if kv_cache_tensor.block_stride > 0:
-        # packed layout：整个 group 共用一个 backing tensor
-        if packed_backing is None:
-            packed_backing = torch.zeros(kv_cache_tensor.size,
-                                         dtype=torch.int8, device=self.device)
-        tensor = packed_backing
+        ...
     else:
-        # 普通 layout：每层单独一个 int8 缓冲区
+        # 普通 layout：每层单独一个 int8 缓冲区，大小 page_size_bytes × num_blocks
         tensor = torch.zeros(kv_cache_tensor.size,
                              dtype=torch.int8, device=self.device)
     for layer_name in kv_cache_tensor.shared_by:
@@ -300,7 +293,7 @@ kv_caches[layer_name] = _reshape_attention_kv_cache(
 
 最终 `permute(*inv_order)` 把物理布局转成逻辑布局。
 
-> **两种 reshape 目标形状**（见 §六）：① K/V packed in content dim（FlashAttn/FlashInfer/CPU），逻辑 shape `(num_blocks, num_kv_heads, block_size, 2*head_size)`；② K/V as separate dim（ROCm），`(2, num_blocks, block_size, num_kv_heads, head_size)`。详见 §六 表格与 [`0_kvcache_of_attention.md`](./0_kvcache_of_attention.md)。
+> **两种 reshape 目标形状**（详见 §5 表格）：① K/V packed in content dim（FlashAttn/FlashInfer/CPU），`block_dim=0`；② K/V as separate dim（ROCm），`block_dim=1`。各后端逻辑 shape 与索引方式对比另见 [`0_kvcache_of_attention.md`](./0_kvcache_of_attention.md)。
 
 **block_dim 探测**（backend.py:100）——不同后端 `num_blocks` 所在轴不同（dim 0 或 dim 1），通过向 `get_kv_cache_shape` 传哨兵值 `_S=1234567` 再 `shape.index(_S)` 定位：
 
@@ -344,18 +337,7 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
 `_dummy_run()`（gpu_model_runner.py:5817）用 `num_tokens` 个 dummy token 跑一次真实前向，触发 torch.compile 编译与内核 warmup。至此物理层全部就绪，可进入第 2 层 `BlockPool` 建块。
 
 
-## 3. 关键公式汇总（速查）
-
-| 公式 | 含义 | 出处 |
-|------|------|------|
-| `page_size_bytes = block_size × num_kv_heads × head_size × dtype_size × 2` | 一层一块（一页）的字节数 | §2.1 |
-| `available = total × util − weights − activations − cudagraph` | 可用 KV 显存预算 | §2.2 |
-| `num_blocks = available // page_size // num_layers` | 总页数 / 组内层数 | §2.3③ |
-| `min(num_blocks)` + 按比例缩 `KVCacheTensor.size` | 多 worker 对齐，保证最穷 worker 可容纳 | §2.3⑤ |
-
----
-
-## 4. PP / TP 下 KV cache 的物理分布（pp2tp2 主线）
+## 3. Llama-3-8B PP / TP 下 KV cache 的物理分布
 
 - **PP 按层切分**：`model.py:1409-1420` `get_layers_start_end_indices()` 按 `pp_rank` 切层范围，`get_kv_cache_spec()` 只返回本 worker 负责的层。
 - **TP 按 KV 头切分**：`model.py:1386-1395` `get_num_kv_heads()` 除以 `tensor_parallel_size`，同一 PP stage 的不同 TP rank 存同层但不同头子集。
@@ -382,6 +364,17 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
 - **③ 做编排·num_blocks + 对齐**：每卡基于 projected group（16 层）独立算 `num_blocks = available // page_size // 16`（如各卡 8GB 可用 → 16384 块），再取 4 个 worker 的 `min_num_blocks` 统一（§2.3⑤）。
 
 **物理分布（关键）**：4 张卡各存 16 层 KV 物理张量；同一 PP stage 的两个 TP rank 存**同层、不同 KV 头子集**（各 4 头，占各自卡 `1/2` 头维）。同一请求的 KV 被切成多段：`block_table` 跨 PP 按阶段分段索引，跨 TP 各 rank 只读自己的头子集。调度器仍只认 `block_id`，对 PP/TP 布局完全透明。
+
+---
+
+## 4. 关键公式汇总（速查）
+
+| 公式 | 含义 | 出处 |
+|------|------|------|
+| `page_size_bytes = block_size × num_kv_heads × head_size × dtype_size × 2` | 一层一块（一页）的字节数 | §2.1 |
+| `available = total × util − weights − activations − cudagraph` | 可用 KV 显存预算 | §2.2 |
+| `num_blocks = available // page_size // num_layers` | 总页数 / 组内层数 | §2.3③ |
+| `min(num_blocks)` + 按比例缩 `KVCacheTensor.size` | 多 worker 对齐，保证最穷 worker 可容纳 | §2.3⑤ |
 
 ---
 
@@ -421,7 +414,7 @@ kv = kv_caches[layer][block_ids]                  # 形式A：dim0 fancy indexin
 
 ---
 
-## 扩展：其他注意力类型（极简）
+## 扩展：其他注意力类型
 
 - **KVCacheSpec 子类速查** 见 [`0_kvcache_of_attention.md`](./0_kvcache_of_attention.md) 第二部分 §2.4~§2.8。
 - **四种 group 划分**：uniform spec（主线，1 组）/ uniform type / DeepseekV4 packed / uniform page_size，核心区别在"除不除层数、如何除"。
