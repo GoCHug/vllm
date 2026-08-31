@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="drawio">
   <diagram id="kvcache_types_v2" name="KVCache 类型整理">
-    <mxGraphModel dx="2866" dy="1466" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="3200" math="0" shadow="0">
+    <mxGraphModel dx="2207" dy="1019" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="3200" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -46,7 +46,7 @@
         <mxCell id="a_q1" edge="1" parent="1" source="a_group" style="edgeStyle=orthogonalEdgeStyle;html=1;startArrow=empty;startFill=0;strokeColor=#6C8EBF;" target="a_spec_base">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="a_config" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" value="&lt;b&gt;KVCacheConfig&lt;/b&gt;&lt;span style=&quot;font-size: 13px; font-weight: 700; text-align: center; white-space: nowrap;&quot;&gt;（每个 worker 启动时生成一份 KVCacheConfig）&lt;/span&gt;&lt;br&gt;&lt;br&gt;num_blocks: int&amp;nbsp;&amp;nbsp;&amp;nbsp;（该 worker 上的 block 数）&lt;br&gt;kv_cache_tensors: list[KVCacheTensor]&amp;nbsp;&amp;nbsp;&amp;nbsp;（该woker上切分的model的 group_size个tensor信息）&lt;br&gt;kv_cache_groups: list[KVCacheGroupSpec]&amp;nbsp;&amp;nbsp;&amp;nbsp;（该woker上切分的model的 num_group个group信息）" vertex="1">
+        <mxCell id="a_config" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" value="&lt;b&gt;KVCacheConfig&lt;/b&gt;&lt;span style=&quot;font-size: 13px; font-weight: 700; text-align: center; white-space: nowrap;&quot;&gt;（ 启动时&lt;/span&gt;&lt;span style=&quot;font-size: 13px; font-weight: 700; text-align: center; white-space: nowrap;&quot;&gt;每个 worker&lt;/span&gt;&lt;span style=&quot;font-size: 13px; font-weight: 700; text-align: center; white-space: nowrap;&quot;&gt;生成一份 KVCacheConfig）&lt;/span&gt;&lt;br&gt;&lt;br&gt;num_blocks: int&amp;nbsp;&amp;nbsp;&amp;nbsp;（该 worker 上的 block 数）&lt;br&gt;kv_cache_tensors: list[KVCacheTensor]&amp;nbsp;&amp;nbsp;&amp;nbsp;（该woker上切分的model的 group_size个tensor信息）&lt;br&gt;kv_cache_groups: list[KVCacheGroupSpec]&amp;nbsp;&amp;nbsp;&amp;nbsp;（该woker上切分的model的 num_group个group信息）" vertex="1">
           <mxGeometry height="120" width="540" x="250" y="91" as="geometry" />
         </mxCell>
         <mxCell id="a_tensor" parent="1" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" value="&lt;b&gt;KVCacheTensor&lt;/b&gt;&lt;br&gt;&lt;br&gt;size: int&amp;nbsp;&amp;nbsp;&amp;nbsp;（该 tensor 字节数，page_size * num_blocks）&lt;br&gt;shared_by: list[str]&amp;nbsp;&amp;nbsp;&amp;nbsp;（共享该 tensor 的层，不同group的第 i 层）" vertex="1">
