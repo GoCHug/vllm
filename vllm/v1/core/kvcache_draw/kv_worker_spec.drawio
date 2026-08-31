@@ -4,10 +4,10 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="8P-3Xleb93J090cqpLFW-1" parent="1" style="text;html=1;fontSize=22;fontStyle=1;align=center;" value="Worker Spec 合并 ——&amp;gt; 分组 ——&amp;gt; 投影 ——&amp;gt; 全局统一 block 空间" vertex="1">
+        <mxCell id="8P-3Xleb93J090cqpLFW-1" parent="1" style="text;html=1;fontSize=22;fontStyle=1;align=center;" value="Worker Spec 合并 ——→ 分组 ——→ 投影 ——→ 全局统一 block 空间" vertex="1">
           <mxGeometry height="46" width="1500" x="390" y="280" as="geometry" />
         </mxCell>
-        <mxCell id="8P-3Xleb93J090cqpLFW-2" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#555555;" value="Llama-3-8B · 32 层 · Query头=32 · KV头(num_kv_heads)=8 · head_dim=128 · dtype=fp16(2B) · PP=2 · TP=2（共 4 卡）· TP 切 KV 头 → 每卡 4 头 · 每卡可用显存 1GiB（教学简化）" vertex="1">
+        <mxCell id="8P-3Xleb93J090cqpLFW-2" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#555555;" value="Llama-3-8B · 32 层 · Query头=32 · KV头(num_kv_heads)=8 · head_dim=128 · dtype=fp16(2B) · PP=2 · TP=2（共 4 卡）· TP 切 KV 头 → 每卡 4 头 · 每卡可用显存 2GiB（教学简化）" vertex="1">
           <mxGeometry height="26" width="1500" x="390" y="324" as="geometry" />
         </mxCell>
         <mxCell id="8P-3Xleb93J090cqpLFW-3" parent="1" style="text;html=1;fontSize=17;fontStyle=1;fontColor=#333333;" value="① 每张卡（worker）按「PP 层切段 × TP 头切子集」，各自产出自己的 Spec 字典" vertex="1">
@@ -91,8 +91,8 @@
         <mxCell id="8P-3Xleb93J090cqpLFW-29" parent="1" style="text;html=1;fontSize=17;fontStyle=1;fontColor=#333333;" value="③ 全局分组：纯 FullAttention → 全模型合并成单个 FullAttentionSpec" vertex="1">
           <mxGeometry height="30" width="900" x="390" y="1134" as="geometry" />
         </mxCell>
-        <mxCell id="8P-3Xleb93J090cqpLFW-30" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;spacingTop=8;fontSize=13;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;" value="KVCacheGroupSpec（×1，单 group）&#xa;kv_cache_spec = FullAttentionSpec（merge 后的全集，num_kv_heads=4）&#xa;group_size = 32 · page_size_bytes = 16×4×128×2×2 = 32 KiB" vertex="1">
-          <mxGeometry height="104" width="900" x="390" y="1166" as="geometry" />
+        <mxCell id="8P-3Xleb93J090cqpLFW-30" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;spacingTop=8;fontSize=13;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;" value="KVCacheGroupSpec（×1，单 group · 全局 32 层）&#xa;kv_cache_spec = FullAttentionSpec（merge 后的全集，num_kv_heads=4）&#xa;group_size = 32（投影前）· page_size_bytes = 16×4×128×2×2 = 32 KiB&#xa;→ ④ 投影后每 worker group_size = 16（见 ⑤ num_blocks 计算）" vertex="1">
+          <mxGeometry height="128" width="900" x="390" y="1166" as="geometry" />
         </mxCell>
         <mxCell id="8P-3Xleb93J090cqpLFW-31" parent="1" style="text;html=1;fontSize=17;fontStyle=1;fontColor=#333333;" value="④ 投影回每个 worker：把全局单 group 切回每张卡自己的子视图（每张卡仍待在同一格子）" vertex="1">
           <mxGeometry height="30" width="1500" x="390" y="1300" as="geometry" />
@@ -127,7 +127,7 @@
         <mxCell id="8P-3Xleb93J090cqpLFW-41" parent="1" style="text;html=1;fontSize=17;fontStyle=1;fontColor=#333333;" value="⑤ 各 worker 按可用显存÷page_size_bytes÷group_size 算 num_blocks，并汇总进控制器侧全局唯一的 BlockPool" vertex="1">
           <mxGeometry height="30" width="1480" x="390" y="1652" as="geometry" />
         </mxCell>
-        <mxCell id="8P-3Xleb93J090cqpLFW-42" parent="1" style="text;html=1;fontSize=12;fontColor=#888888;align=left;" value="单 FullAttentionSpec → 走通用分支（kv_cache_utils.py:1390）&lt;br&gt;num_blocks = available ÷ page_size ÷ group_size；每层生成一个大小 = page_size × num_blocks 的张量" vertex="1">
+        <mxCell id="8P-3Xleb93J090cqpLFW-42" parent="1" style="text;html=1;fontSize=12;fontColor=#888888;align=left;" value="单 FullAttentionSpec → 走通用分支（kv_cache_utils.py:1340）&lt;br&gt;num_blocks = available ÷ page_size ÷ group_size（projected 后 =16）；每层生成一个大小 = page_size × num_blocks 的张量" vertex="1">
           <mxGeometry height="24" width="1480" x="390" y="1680" as="geometry" />
         </mxCell>
         <mxCell id="8P-3Xleb93J090cqpLFW-43" parent="1" style="text;html=1;fontSize=11;fontColor=#6c8ebf;align=center;fontStyle=1;" value="TP0" vertex="1">
@@ -142,16 +142,16 @@
         <mxCell id="8P-3Xleb93J090cqpLFW-46" parent="1" style="text;html=1;fontSize=11;fontColor=#82b366;align=center;fontStyle=1;" value="PP1" vertex="1">
           <mxGeometry height="18" width="70" x="460" y="1878" as="geometry" />
         </mxCell>
-        <mxCell id="8P-3Xleb93J090cqpLFW-47" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=11.5;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1.5;" value="Worker 0 · PP0·TP0&#xa;可用显存 1GiB · 层0–15 · 头0~3&#xa;num_blocks = 1GiB÷32KiB÷32 = 1024" vertex="1">
+        <mxCell id="8P-3Xleb93J090cqpLFW-47" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=11.5;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1.5;" value="Worker 0 · PP0·TP0&#xa;可用显存 2GiB · 层0–15 · 头0~3&#xa;num_blocks = 2GiB÷32KiB÷16 = 4096" vertex="1">
           <mxGeometry height="110" width="520" x="600" y="1748" as="geometry" />
         </mxCell>
-        <mxCell id="8P-3Xleb93J090cqpLFW-48" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=11.5;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1.5;" value="Worker 1 · PP0·TP1&#xa;可用显存 1GiB · 层0–15 · 头4~7&#xa;num_blocks = 1GiB÷32KiB÷32 = 1024" vertex="1">
+        <mxCell id="8P-3Xleb93J090cqpLFW-48" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=11.5;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1.5;" value="Worker 1 · PP0·TP1&#xa;可用显存 2GiB · 层0–15 · 头4~7&#xa;num_blocks = 2GiB÷32KiB÷16 = 4096" vertex="1">
           <mxGeometry height="110" width="520" x="1120" y="1748" as="geometry" />
         </mxCell>
-        <mxCell id="8P-3Xleb93J090cqpLFW-49" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=11.5;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1.5;" value="Worker 2 · PP1·TP0&#xa;可用显存 1GiB · 层16–31 · 头0~3&#xa;num_blocks = 1GiB÷32KiB÷32 = 1024" vertex="1">
+        <mxCell id="8P-3Xleb93J090cqpLFW-49" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=11.5;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1.5;" value="Worker 2 · PP1·TP0&#xa;可用显存 2GiB · 层16–31 · 头0~3&#xa;num_blocks = 2GiB÷32KiB÷16 = 4096" vertex="1">
           <mxGeometry height="110" width="520" x="600" y="1864" as="geometry" />
         </mxCell>
-        <mxCell id="8P-3Xleb93J090cqpLFW-50" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=11.5;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1.5;" value="Worker 3 · PP1·TP1&#xa;可用显存 1GiB · 层16–31 · 头4~7&#xa;num_blocks = 1GiB÷32KiB÷32 = 1024" vertex="1">
+        <mxCell id="8P-3Xleb93J090cqpLFW-50" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=11.5;fontStyle=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1.5;" value="Worker 3 · PP1·TP1&#xa;可用显存 2GiB · 层16–31 · 头4~7&#xa;num_blocks = 2GiB÷32KiB÷16 = 4096" vertex="1">
           <mxGeometry height="110" width="520" x="1120" y="1864" as="geometry" />
         </mxCell>
         <mxCell id="8P-3Xleb93J090cqpLFW-51" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=12;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;strokeDasharray=6 3;" value="全局唯一 BlockPool（由控制器侧 Scheduler 统一维护 · 全集群只有一份）&#xa;存放 空闲(free) / 已分配(allocated) 的 block_id 表 —— 4 个 worker 的物理 KV 张量都按这同一张表绑定对号入座" vertex="1">
@@ -160,7 +160,7 @@
         <mxCell id="8P-3Xleb93J090cqpLFW-52" parent="1" style="text;html=1;fontSize=17;fontStyle=1;fontColor=#333333;" value="⑥ min 对齐 → 全局统一 block 空间（集中式调度成立）" vertex="1">
           <mxGeometry height="30" width="1200" x="390" y="2070" as="geometry" />
         </mxCell>
-        <mxCell id="8P-3Xleb93J090cqpLFW-53" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=13;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;" value="全 worker 统一  num_blocks = min(1024, 1024, 1024, 1024) = 1024&#xa;（通用分支：建 32 个 per-layer 张量，各 32KiB×1024 = 32MiB，合计恰好 1GiB）&#xa;所有 worker 共享「同一个 block_id 空间」= 共享这唯一一张 BlockPool 表的编号命名&#xa;（共享的是查表/编号命名 → 逻辑；各卡自己的物理 KV 张量仍各按此表单独绑定 → 字节不共享）&#xa;（若某卡显存更小，如 0.5GiB → 512，则整体对齐到 512，保证最弱卡也能分配）" vertex="1">
+        <mxCell id="8P-3Xleb93J090cqpLFW-53" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;fontSize=13;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;" value="全 worker 统一  num_blocks = min(4096, 4096, 4096, 4096) = 4096&#xa;（通用分支：建 16 个 per-layer 张量，各 32KiB×4096 = 128MiB，合计恰好 2GiB）&#xa;所有 worker 共享「同一个 block_id 空间」= 共享这唯一一张 BlockPool 表的编号命名&#xa;（共享的是查表/编号命名 → 逻辑；各卡自己的物理 KV 张量仍各按此表单独绑定 → 字节不共享）&#xa;（若某卡显存更小，如 0.5GiB → 1024，则整体对齐到 1024，保证最弱卡也能分配）" vertex="1">
           <mxGeometry height="170" width="1500" x="390" y="2104" as="geometry" />
         </mxCell>
         <mxCell id="8P-3Xleb93J090cqpLFW-54" parent="1" style="text;html=1;fontSize=12;fontColor=#555555;align=left;" value="🔶 PP0（层0–15）　　　🟩 PP1（层16–31）　　　🟣 合并 / 分组 / 统一(全局)　　　🔷 BlockPool(控制器侧唯一)　　　☐➡ 逐卡子视图 / 计算" vertex="1">
