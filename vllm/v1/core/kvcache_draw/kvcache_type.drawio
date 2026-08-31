@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="drawio">
-  <diagram id="kvcache_types_v2" name="KVCache 类型整理 v2">
-    <mxGraphModel dx="2047" dy="1047" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="3200" math="0" shadow="0">
+  <diagram id="kvcache_types_v2" name="KVCache 类型整理">
+    <mxGraphModel dx="2866" dy="1466" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="3200" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
