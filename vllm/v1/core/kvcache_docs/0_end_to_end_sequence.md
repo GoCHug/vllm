@@ -387,7 +387,8 @@ sequenceDiagram
     participant UnitaryKVCacheCoordinator
     participant FullAttentionManager
     participant BlockPool
-    loop 调度 RUNNING（:473）：while req_index &lt; len(running) and budget &gt; 0
+    participant GPUModelRunner
+    loop 遍历所有 RUNNING 请求（每请求 append 1 token）
         EngineCore->>Scheduler: schedule()（调度 RUNNING 请求）
         Scheduler->>KVCacheManager: ④ allocate_slots(request, num_new_tokens=1)
         Note over KVCacheManager: 与 prefill 同一套内部 5 步；续写无前缀命中<br/>① 不弹块、③ 跳过，②④⑤ 照走
