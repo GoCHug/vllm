@@ -335,11 +335,11 @@ class KVCacheManager:
         return blocks, num_new_computed_tokens, shared_prefix_boundary
 ```
 
-**端到端例子**：示例 R（prompt = 70 token）
+**端到端例子**：示例 R（prompt = 70 token，前 32 token 为共享前缀 SP，由前置请求 P 缓存为块 0/1）
 - `request.num_tokens = 70`
 - `max_cache_hit_length = 69`（减1）
 - `request.block_hashes = [hash(t0-15), hash(t16-31), hash(t32-47), hash(t48-63), hash(t64-69)]`
-- 查找返回：命中前2个满块，共32token
+- 查找返回：命中前2个满块（P 缓存的 SP 块 0/1），共32token
 - 返回：`(KVCacheBlocks([blockA, blockB]), 32, 0)`
 
 ### 5.3 核心方法：槽位分配 `allocate_slots`（最复杂，约130行）
@@ -582,7 +582,7 @@ return self.create_kv_cache_blocks(new_blocks)
 
 #### 端到端例子
 
-示例 R（prompt = 70 token），命中32token（2块），num_new_tokens=38：
+示例 R（prompt = 70 token，前 32 token 为共享前缀 SP、已由前置请求 P 缓存为块 0/1），命中32token（2块），num_new_tokens=38：
 
 - **前置准备**：`num_local_computed_tokens = 0 + 32 = 32`，`total_computed_tokens = 32`
 - **子阶段①**：

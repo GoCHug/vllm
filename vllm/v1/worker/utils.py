@@ -844,9 +844,10 @@ def bind_kv_cache(
     # Convert kv_caches dict to a list of tensors in the order of layer_index.
     index2name = defaultdict(list)
     for layer_name in kv_caches:
+        # 5 → "model.layers.5.self_attn.attn"
         index2name[extract_layer_index(layer_name, num_attn_module)].append(layer_name)
-
-    for layer_index in sorted(index2name.keys()):
+        
+    for layer_index in sorted(index2name.keys()): # 按层号升序：0,1,…,15
         layer_names = index2name[layer_index]
         if len(layer_names) > 1:
             # One typical case is encoder-decoder model, e.g., bart.
@@ -858,7 +859,7 @@ def bind_kv_cache(
             # in the same decoder block.
             current_platform.check_runner_kv_caches_multi_layer()
         for layer_name in layer_names:
-            runner_kv_caches.append(kv_caches[layer_name])
+            runner_kv_caches.append(kv_caches[layer_name]) # 按层号顺序把 16 个张量塞进列表
 
     bind_kv_cache_to_layers(
         layer_kv_caches or kv_caches, forward_context, num_attn_module, kv_cache_groups
