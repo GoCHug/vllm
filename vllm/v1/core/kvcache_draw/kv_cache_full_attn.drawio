@@ -1,175 +1,258 @@
 <mxfile host="app.diagrams.net" agent="CodeFuse">
-  <diagram id="kv_cache_full_attn" name="Llama-7B Full Attention 单 Group">
-    <mxGraphModel dx="1704" dy="1047" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1100" math="0" shadow="0">
+  <diagram id="kv_cache_full_attn" name="Llama-3-8B Full Attention 单 Worker 详解 (pp2tp2)">
+    <mxGraphModel dx="1704" dy="1047" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1300" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="title" parent="1" style="text;html=1;fontSize=20;fontStyle=1;align=center;" value="Llama-7B Full Attention 单 Group 布局" vertex="1">
-          <mxGeometry height="40" width="600" x="300" y="10" as="geometry" />
+
+        <!-- ========== Title ========== -->
+        <mxCell id="title" parent="1" style="text;html=1;fontSize=20;fontStyle=1;align=center;" value="Llama-3-8B Full Attention 单 Group 布局 — pp2tp2 单 Worker 详解" vertex="1">
+          <mxGeometry height="40" width="1300" x="60" y="10" as="geometry" />
         </mxCell>
-        <mxCell id="params" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=center;fontColor=#555555;" value="num_kv_heads=32  head_size=128  block_size=16  dtype=bf16  num_layers=32  available=8GB" vertex="1">
-          <mxGeometry height="25" width="800" x="200" y="50" as="geometry" />
+
+        <!-- ========== Params ========== -->
+        <mxCell id="params" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=center;fontColor=#555555;" value="全模型: 32层 · 32 Q头 · 8 KV头 · head_dim=128 · fp16(2B) · block_size=16　|　PP=2 · TP=2 · 共 4 卡　|　每 worker: 16层 · 4 KV头 · 可用显存 2GiB" vertex="1">
+          <mxGeometry height="25" width="1400" x="60" y="52" as="geometry" />
         </mxCell>
-        <mxCell id="step1_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="① 模型的 32 个层（全是 FullAttentionSpec，参数完全相同）" vertex="1">
-          <mxGeometry height="30" width="900" x="60" y="90" as="geometry" />
+
+        <!-- ========== ① 四 Worker 布局总览 ========== -->
+        <mxCell id="s1_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="① 四 Worker 布局总览（PP 切层 × TP 切 KV 头 → 4 张卡各持 16 层 / 4 头）" vertex="1">
+          <mxGeometry height="28" width="900" x="60" y="92" as="geometry" />
         </mxCell>
-        <mxCell id="layers_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=30;" value="" vertex="1">
-          <mxGeometry height="100" width="600" x="80" y="125" as="geometry" />
+        <mxCell id="s1_desc" parent="1" style="text;html=1;fontSize=12;fontColor=#888888;" value="PP=2 按层切 2 段；TP=2 段内按 KV 头切 2 份 → 每卡 FullAttentionSpec(block_size=16, num_kv_heads=4, head_size=128, fp16) · 全模型 merge 后 32 层 1 个 group → 投影后每 worker 16 层" vertex="1">
+          <mxGeometry height="20" width="1100" x="60" y="122" as="geometry" />
         </mxCell>
-        <mxCell id="L0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" value="layer 0" vertex="1">
-          <mxGeometry height="35" width="55" x="90" y="135" as="geometry" />
+
+        <!-- Grid container -->
+        <mxCell id="grid_outer" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;strokeWidth=1;opacity=50;" value="" vertex="1">
+          <mxGeometry height="340" width="860" x="70" y="150" as="geometry" />
         </mxCell>
-        <mxCell id="L1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" value="layer 1" vertex="1">
-          <mxGeometry height="35" width="55" x="155" y="135" as="geometry" />
+
+        <!-- PP0 label -->
+        <mxCell id="pp0_lbl" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=center;fontColor=#d79b00;" value="PP0 (层 0–15)" vertex="1">
+          <mxGeometry height="18" width="780" x="80" y="156" as="geometry" />
         </mxCell>
-        <mxCell id="L2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" value="layer 2" vertex="1">
-          <mxGeometry height="35" width="55" x="220" y="135" as="geometry" />
+        <!-- TP0 / TP1 labels for PP0 row -->
+        <mxCell id="tp0_lbl_a" parent="1" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#6c8ebf;" value="TP0 (KV头 0–3)" vertex="1">
+          <mxGeometry height="16" width="200" x="85" y="178" as="geometry" />
         </mxCell>
-        <mxCell id="Ldots" parent="1" style="text;html=1;fontSize=16;align=center;" value="..." vertex="1">
-          <mxGeometry height="35" width="55" x="335" y="135" as="geometry" />
+        <mxCell id="tp1_lbl_a" parent="1" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#6c8ebf;" value="TP1 (KV头 4–7)" vertex="1">
+          <mxGeometry height="16" width="200" x="640" y="178" as="geometry" />
         </mxCell>
-        <mxCell id="L31" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" value="layer 31" vertex="1">
-          <mxGeometry height="35" width="60" x="390" y="135" as="geometry" />
+
+        <!-- W0 detailed box (PP0·TP0) -->
+        <mxCell id="w0_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;verticalAlign=top;spacingTop=8;align=left;spacingLeft=12;" value="" vertex="1">
+          <mxGeometry height="150" width="530" x="80" y="200" as="geometry" />
         </mxCell>
-        <mxCell id="step1_desc" parent="1" style="text;html=1;fontSize=11;fontColor=#666666;align=center;" value="is_kv_cache_spec_uniform = True (所有 spec 完全相等)&#xa;merge() 直接深拷贝 → 全模型只有一个 group" vertex="1">
-          <mxGeometry height="35" width="580" x="90" y="180" as="geometry" />
+        <mxCell id="w0_title" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=left;fontColor=#333333;" value="Worker 0 · PP0·TP0 (rank 0)  ← 本图详解" vertex="1">
+          <mxGeometry height="22" width="400" x="92" y="206" as="geometry" />
         </mxCell>
-        <mxCell id="step2_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="② 分组结果 → 1 个 group + 1 个 manager" vertex="1">
-          <mxGeometry height="30" width="900" x="60" y="245" as="geometry" />
+        <mxCell id="w0_info" parent="1" style="text;html=1;fontSize=11;align=left;spacingLeft=12;fontColor=#555555;" value="负责层: &lt;b&gt;0–15&lt;/b&gt; (16 层)&#xa;KV 头: &lt;b&gt;0–3&lt;/b&gt; (4 头, TP2 切分后)&#xa;&#xa;▶ 16 个张量, 每个 shape = (4096, 4, 16, 256)&#xa;▶ page_size = 2×16×4×128×2 = &lt;b&gt;32 KB&lt;/b&gt;&#xa;▶ num_blocks = 2GiB ÷ 32KB ÷ 16 = &lt;b&gt;4096&lt;/b&gt;&#xa;▶ 总物理 = 16 × 32KB × 4096 = &lt;b&gt;2 GiB&lt;/b&gt; ✓" vertex="1">
+          <mxGeometry height="115" width="500" x="92" y="230" as="geometry" />
         </mxCell>
-        <mxCell id="G_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=0;verticalAlign=top;spacingTop=8;align=center;" value="Group 0  (layer 0 ... layer 31)   group_size = 32" vertex="1">
-          <mxGeometry height="100" width="600" x="80" y="285" as="geometry" />
+
+        <!-- W1 simple (PP0·TP1) -->
+        <mxCell id="w1_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=1.5;verticalAlign=top;spacingTop=6;align=center;" value="&lt;b&gt;Worker 1 · PP0·TP1 (rank 1)&lt;/b&gt;&#xa;层 0–15 · KV头 4–7&#xa;结构同 W0（16 张量, 4 头）" vertex="1">
+          <mxGeometry height="80" width="290" x="620" y="200" as="geometry" />
         </mxCell>
-        <mxCell id="G_mng" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;fontStyle=1;" value="Manager 0  (唯一的 SingleTypeKVCacheManager)" vertex="1">
-          <mxGeometry height="45" width="560" x="100" y="325" as="geometry" />
+
+        <!-- PP1 label -->
+        <mxCell id="pp1_lbl" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=center;fontColor=#82b366;" value="PP1 (层 16–31)" vertex="1">
+          <mxGeometry height="18" width="500" x="80" y="356" as="geometry" />
         </mxCell>
-        <mxCell id="step2_desc" parent="1" style="text;html=1;fontSize=11;fontColor=#888888;align=center;" value="group_size = max(32) = 32  →  建 32 个张量（每层独享一个）&#xa;只有 1 个 manager → 每个请求的 1 个 block 位置只消耗 1 个 block ID" vertex="1">
-          <mxGeometry height="35" width="600" x="80" y="395" as="geometry" />
+        <!-- TP0 / TP1 labels for PP1 row -->
+        <mxCell id="tp0_lbl_b" parent="1" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#6c8ebf;" value="TP0 (KV头 0–3)" vertex="1">
+          <mxGeometry height="16" width="200" x="85" y="378" as="geometry" />
         </mxCell>
-        <mxCell id="step3_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="③ 物理层建张量 → 32 个张量 = group_size 个" vertex="1">
-          <mxGeometry height="30" width="620" x="60" y="445" as="geometry" />
+        <mxCell id="tp1_lbl_b" parent="1" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#6c8ebf;" value="TP1 (KV头 4–7)" vertex="1">
+          <mxGeometry height="16" width="200" x="340" y="378" as="geometry" />
         </mxCell>
-        <mxCell id="step3_desc" parent="1" style="text;html=1;fontSize=12;fontColor=#888888;" value="每个张量分到 available / group_size = 8GB / 32 = 256MB → 每张量 256MB / page_size(256KB) = 1024 页" vertex="1">
-          <mxGeometry height="20" width="700" x="60" y="470" as="geometry" />
+
+        <!-- W2 simple (PP1·TP0) -->
+        <mxCell id="w2_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;strokeWidth=1.5;verticalAlign=top;spacingTop=6;align=center;" value="&lt;b&gt;Worker 2 · PP1·TP0 (rank 2)&lt;/b&gt;&#xa;层 16–31 · KV头 0–3&#xa;结构同 W0（16 张量, 4 头）" vertex="1">
+          <mxGeometry height="80" width="290" x="80" y="400" as="geometry" />
         </mxCell>
-        <mxCell id="T_layer0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=top;spacingTop=5;align=center;" value="张量 0 (layer 0)&#xa;shape: (num_blocks, 32, 16, 256)&#xa;page_size = 256KB&#xa;shared_by = [layer 0]" vertex="1">
-          <mxGeometry height="100" width="130" x="80" y="500" as="geometry" />
+
+        <!-- W3 simple (PP1·TP1) -->
+        <mxCell id="w3_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;strokeWidth=1.5;verticalAlign=top;spacingTop=6;align=center;" value="&lt;b&gt;Worker 3 · PP1·TP1 (rank 3)&lt;/b&gt;&#xa;层 16–31 · KV头 4–7&#xa;结构同 W0（16 张量, 4 头）" vertex="1">
+          <mxGeometry height="80" width="290" x="380" y="400" as="geometry" />
         </mxCell>
-        <mxCell id="T_layer1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=top;spacingTop=5;align=center;" value="张量 1 (layer 1)&#xa;shape: (num_blocks, 32, 16, 256)&#xa;page_size = 256KB&#xa;shared_by = [layer 1]" vertex="1">
-          <mxGeometry height="100" width="130" x="225" y="500" as="geometry" />
-        </mxCell>
-        <mxCell id="T_dots" parent="1" style="text;html=1;fontSize=14;align=center;fontColor=#888888;" value="...  ...  ...&#xa;...  ...  ...&#xa;...  ...  ...&#xa;...  ...  ..." vertex="1">
-          <mxGeometry height="100" width="110" x="370" y="500" as="geometry" />
-        </mxCell>
-        <mxCell id="T_layer31" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=top;spacingTop=5;align=center;" value="张量 31 (layer 31)&#xa;shape: (num_blocks, 32, 16, 256)&#xa;page_size = 256KB&#xa;shared_by = [layer 31]" vertex="1">
-          <mxGeometry height="100" width="130" x="495" y="500" as="geometry" />
-        </mxCell>
-        <mxCell id="T_note" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=center;" value="32 个张量，每层独立一个&lt;br&gt;每个张量 1024页，对应block id 0 - 1023&lt;br&gt;每页 = 16 tokens x 32 heads x 256 (K+V) x 2B = 256KB" vertex="1">
-          <mxGeometry height="50" width="600" x="80" y="601" as="geometry" />
-        </mxCell>
-        <mxCell id="page5_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#999999;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=5;align=center;" value="block_id = 5 的放大图（存17~32号token）" vertex="1">
-          <mxGeometry height="171" width="600" x="80" y="659" as="geometry" />
-        </mxCell>
-        <mxCell id="page5_l0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="张量0 page5&#xa;= layer 0 的&#xa;17~32 号 token&#xa;的 K/V (256KB)" vertex="1">
-          <mxGeometry height="70" width="100" x="95" y="689" as="geometry" />
-        </mxCell>
-        <mxCell id="page5_l1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="张量1 page5&#xa;= layer 1 的&#xa;17~32 号 token&#xa;的 K/V (256KB)" vertex="1">
-          <mxGeometry height="70" width="100" x="210" y="689" as="geometry" />
-        </mxCell>
-        <mxCell id="page5_dots" parent="1" style="text;html=1;fontSize=11;align=center;fontColor=#888888;" value="...&#xa;同一请求的&#xa;同一段 token&#xa;跨层各存一份" vertex="1">
-          <mxGeometry height="70" width="100" x="330" y="689" as="geometry" />
-        </mxCell>
-        <mxCell id="page5_l31" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="张量31 page5&#xa;= layer 31 的&#xa;17~32 号 token&#xa;的 K/V (256KB)" vertex="1">
-          <mxGeometry height="70" width="100" x="445" y="689" as="geometry" />
-        </mxCell>
-        <mxCell id="page5_link1" edge="1" parent="1" source="page5_l0" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=1;dashed=1;endArrow=none;" target="page5_l1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="page5_link2" edge="1" parent="1" source="page5_l1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=1;dashed=1;endArrow=none;" target="page5_dots">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="page5_link3" edge="1" parent="1" source="page5_dots" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=1;dashed=1;endArrow=none;" target="page5_l31">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="page5_desc" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=center;" value="1 个 block_id = 32 页（每张量各一页）= 32 x 256KB = 8MB&#xa;同一 block_id 跨所有 32 个张量，每层存自己那份 K/V" vertex="1">
-          <mxGeometry height="40" width="600" x="80" y="769" as="geometry" />
-        </mxCell>
-        <mxCell id="step4_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="④ 逻辑层BlockPool通过block id管理（全局唯一，num_blocks = 1024）" vertex="1">
-          <mxGeometry height="30" width="900" x="60" y="850" as="geometry" />
-        </mxCell>
-        <mxCell id="step4_desc" parent="1" style="text;html=1;fontSize=12;fontColor=#888888;" value="num_blocks = 8GB / 256KB / 32 = 1024  →  BlockPool 里 1024 个 ID（0~1023）" vertex="1">
-          <mxGeometry height="20" width="700" x="60" y="875" as="geometry" />
-        </mxCell>
-        <mxCell id="BP" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#999999;" value="" vertex="1">
-          <mxGeometry height="50" width="580" x="80" y="900" as="geometry" />
-        </mxCell>
-        <mxCell id="BP_label" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=center;" value="BlockPool (1 个)  —  Manager 0 是唯一的取 ID 者" vertex="1">
-          <mxGeometry height="20" width="580" x="80" y="902" as="geometry" />
-        </mxCell>
-        <mxCell id="BP5_full" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;" value="ID: 5" vertex="1">
-          <mxGeometry height="20" width="50" x="121" y="925" as="geometry" />
-        </mxCell>
-        <mxCell id="BP6_full" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" value="ID: 6" vertex="1">
-          <mxGeometry height="20" width="50" x="181" y="925" as="geometry" />
-        </mxCell>
-        <mxCell id="BP_other" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;" value="ID: ... 1023" vertex="1">
-          <mxGeometry height="20" width="80" x="246" y="925" as="geometry" />
-        </mxCell>
-        <mxCell id="step5_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="⑤ 请求来了 → Manager 0 从 BlockPool 取 block ID" vertex="1">
-          <mxGeometry height="30" width="720" x="60" y="970" as="geometry" />
-        </mxCell>
-        <mxCell id="req_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=5;align=center;" value="请求 (max_model_len=4096 tokens)" vertex="1">
-          <mxGeometry height="70" width="260" x="80" y="1010" as="geometry" />
-        </mxCell>
-        <mxCell id="req_detail" parent="1" style="text;html=1;fontSize=11;fontColor=#333333;align=center;" value="需要 4096/16 = 256 个 block&#xa;Manager 0 pop 256 个 ID&#xa;= [0,1,2,...255]" vertex="1">
-          <mxGeometry height="35" width="250" x="85" y="1035" as="geometry" />
-        </mxCell>
-        <mxCell id="alloc_arrow" edge="1" parent="1" source="req_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;" target="BP5_full">
+
+        <!-- Arrow from W0 to step ② -->
+        <mxCell id="arrow_w0_detail" parent="1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=2;dashed=1;endArrow=block;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" source="w0_box">
           <mxGeometry relative="1" as="geometry">
+            <mxPoint x="345" y="510" as="targetPoint" />
             <Array as="points">
-              <mxPoint x="210.03" y="970" />
-              <mxPoint x="146.03" y="970" />
+              <mxPoint x="345" y="360" />
+              <mxPoint x="345" y="500" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="alloc_detail" parent="1" style="text;html=1;fontSize=12;fontColor=#333333;align=left;spacingLeft=10;verticalAlign=top;" value="block_id=5 被请求占用&#xa;→ 32 个张量的 page 5 同时被写入&#xa;  (layer 0~31 各存自己那份 K/V)&#xa;&#xa;block_id=6~255 同理&#xa;→ 256 个 block ID 被消耗" vertex="1">
-          <mxGeometry height="100" width="250" x="470" y="980" as="geometry" />
+
+        <!-- ========== ② W0 内部：16 个层张量 ========== -->
+        <mxCell id="s2_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="② W0 内部详解：16 个层张量（每层独享一个）" vertex="1">
+          <mxGeometry height="28" width="900" x="60" y="510" as="geometry" />
         </mxCell>
-        <mxCell id="summary_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;" value="" vertex="1">
-          <mxGeometry height="325" width="360" x="740" y="745" as="geometry" />
+        <mxCell id="s2_desc" parent="1" style="text;html=1;fontSize=12;fontColor=#888888;" value="每张量 shape = (num_blocks, num_kv_heads, block_size, 2×head_dim) = (4096, 4, 16, 256) · page_size = 16×4×256×2B = 32 KB · 每张量 32KB×4096 = 128 MiB" vertex="1">
+          <mxGeometry height="20" width="1000" x="60" y="540" as="geometry" />
         </mxCell>
-        <mxCell id="sum_title" parent="1" style="text;html=1;fontSize=15;fontStyle=1;align=center;" value="单 Group vs 多 Group 对比" vertex="1">
-          <mxGeometry height="25" width="360" x="740" y="755" as="geometry" />
+
+        <!-- Tensor boxes -->
+        <mxCell id="T0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=top;spacingTop=5;align=center;" value="张量 0 (layer 0)&#xa;shape: (4096, 4, 16, 256)&#xa;page_size = 32 KB&#xa;shared_by = [layer 0]&#xa;128 MiB" vertex="1">
+          <mxGeometry height="100" width="140" x="80" y="570" as="geometry" />
         </mxCell>
-        <mxCell id="sum_content" parent="1" style="text;html=1;fontSize=12;fontColor=#555555;align=left;spacingLeft=10;" value="Llama-7B 单 Group:&lt;br&gt;  num_groups = 1  (1 个 manager)&lt;br&gt;  group_size = 32 (32 层/32 张量)&lt;br&gt;  page_size = 256KB&lt;br&gt;&lt;br&gt;混合模型 多 Group:&lt;br&gt;  num_groups = 3 (3 个 manager)&lt;br&gt;  group_size = 2  (2 张量)&lt;br&gt;  page_size = 256B (统一后)&lt;br&gt;&lt;br&gt;相同点：&lt;br&gt;  BlockPool 全局唯一&lt;br&gt;  group_size = 张量数&amp;nbsp; = 每个block_id消耗的page数&lt;br&gt;  num_blocks = available / (group_size x page_size)&lt;br&gt;&lt;br&gt;不同点：&lt;div&gt;num_groups = manager 数&amp;nbsp;&lt;br&gt;  单Group: 每block_size个token消耗 1 个 block id&lt;br&gt;  多Group:&amp;nbsp;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(85, 85, 85), rgb(164, 164, 164));&quot;&gt;每block_size个token消耗&amp;nbsp;&lt;/span&gt;num_groups&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(85, 85, 85), rgb(164, 164, 164));&quot;&gt;&amp;nbsp;个 block id&lt;/span&gt;&lt;/div&gt;" vertex="1">
-          <mxGeometry height="290" width="340" x="750" y="780" as="geometry" />
+        <mxCell id="T1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=top;spacingTop=5;align=center;" value="张量 1 (layer 1)&#xa;shape: (同左)&#xa;page_size = 32 KB&#xa;shared_by = [layer 1]&#xa;128 MiB" vertex="1">
+          <mxGeometry height="100" width="140" x="230" y="570" as="geometry" />
         </mxCell>
+        <mxCell id="T_dots" parent="1" style="text;html=1;fontSize=14;align=center;fontColor=#888888;" value="...  ...  ...&#xa;...  ...  ...&#xa;...  ...  ...&#xa;共 16 个张量" vertex="1">
+          <mxGeometry height="100" width="80" x="380" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="T15" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=top;spacingTop=5;align=center;" value="张量 15 (layer 15)&#xa;shape: (同左)&#xa;page_size = 32 KB&#xa;shared_by = [layer 15]&#xa;128 MiB" vertex="1">
+          <mxGeometry height="100" width="140" x="470" y="570" as="geometry" />
+        </mxCell>
+
+        <mxCell id="T_note" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=center;" value="16 个张量（每层独立一个）· 每张量 4096 页 = block id 0–4095 · 每页 = 16 tokens × 4 heads × 256(K+V packed) × 2B = 32 KB" vertex="1">
+          <mxGeometry height="35" width="700" x="80" y="675" as="geometry" />
+        </mxCell>
+
+        <!-- ========== ③ block_id = 2 放大图 ========== -->
+        <mxCell id="s3_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="③ block_id = 2 放大图：同一 block_id 跨 16 张量，各存同一段 token 的 K/V" vertex="1">
+          <mxGeometry height="28" width="900" x="60" y="725" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_desc" parent="1" style="text;html=1;fontSize=12;fontColor=#888888;" value="block_id = 2 → token 32–47（block_size=16）· 同一 block_id 在全 16 个张量中各占一页，每层存自己那份 K/V" vertex="1">
+          <mxGeometry height="20" width="1000" x="60" y="755" as="geometry" />
+        </mxCell>
+
+        <!-- page2 boxes -->
+        <mxCell id="page2_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#999999;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=5;align=center;" value="block_id = 2 的放大图（存 token 32–47）" vertex="1">
+          <mxGeometry height="130" width="640" x="80" y="785" as="geometry" />
+        </mxCell>
+        <mxCell id="page2_t0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="张量0 page2&#xa;= layer 0 的&#xa;token 32–47&#xa;的 K/V (32KB)" vertex="1">
+          <mxGeometry height="70" width="110" x="95" y="815" as="geometry" />
+        </mxCell>
+        <mxCell id="page2_t1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="张量1 page2&#xa;= layer 1 的&#xa;token 32–47&#xa;的 K/V (32KB)" vertex="1">
+          <mxGeometry height="70" width="110" x="215" y="815" as="geometry" />
+        </mxCell>
+        <mxCell id="page2_dots" parent="1" style="text;html=1;fontSize=11;align=center;fontColor=#888888;" value="...&#xa;同一请求的&#xa;同一段 token&#xa;跨层各存一份" vertex="1">
+          <mxGeometry height="70" width="100" x="335" y="815" as="geometry" />
+        </mxCell>
+        <mxCell id="page2_t15" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" value="张量15 page2&#xa;= layer 15 的&#xa;token 32–47&#xa;的 K/V (32KB)" vertex="1">
+          <mxGeometry height="70" width="110" x="445" y="815" as="geometry" />
+        </mxCell>
+
+        <!-- dashed links between page2 boxes -->
+        <mxCell id="pl1" edge="1" parent="1" source="page2_t0" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=1;dashed=1;endArrow=none;" target="page2_t1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pl2" edge="1" parent="1" source="page2_t1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=1;dashed=1;endArrow=none;" target="page2_dots">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pl3" edge="1" parent="1" source="page2_dots" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=1;dashed=1;endArrow=none;" target="page2_t15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="page2_note" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=center;" value="1 个 block_id = 16 页（每张量各一页）= 16 × 32 KB = &lt;b&gt;512 KB&lt;/b&gt;（跨全部 16 张量）&#xa;同一 block_id 跨全部 16 张量，每层存自己那份 K/V" vertex="1">
+          <mxGeometry height="40" width="700" x="80" y="880" as="geometry" />
+        </mxCell>
+
+        <!-- ========== ④ BlockPool ========== -->
+        <mxCell id="s4_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="④ BlockPool 全局唯一（4 worker 共享同一 block_id 空间, num_blocks = 4096）" vertex="1">
+          <mxGeometry height="28" width="1000" x="60" y="930" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_desc" parent="1" style="text;html=1;fontSize=12;fontColor=#888888;" value="num_blocks = 2GiB ÷ 32KB ÷ 16 = 4096 → BlockPool 建 KVCacheBlock(0..4095) · min(4 worker) 对齐后 4 卡共享同一 block_id 命名空间" vertex="1">
+          <mxGeometry height="20" width="1000" x="60" y="960" as="geometry" />
+        </mxCell>
+
+        <mxCell id="BP" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#999999;" value="" vertex="1">
+          <mxGeometry height="50" width="1020" x="80" y="985" as="geometry" />
+        </mxCell>
+        <mxCell id="BP_label" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=center;" value="BlockPool (全局唯一 · 4 worker 共享) — FullAttentionManager 是唯一取 ID 者" vertex="1">
+          <mxGeometry height="20" width="1020" x="80" y="987" as="geometry" />
+        </mxCell>
+        <mxCell id="BP_0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;" value="ID: 0" vertex="1">
+          <mxGeometry height="20" width="50" x="120" y="1010" as="geometry" />
+        </mxCell>
+        <mxCell id="BP_1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;" value="ID: 1" vertex="1">
+          <mxGeometry height="20" width="50" x="180" y="1010" as="geometry" />
+        </mxCell>
+        <mxCell id="BP_2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;" value="ID: 2" vertex="1">
+          <mxGeometry height="20" width="50" x="240" y="1010" as="geometry" />
+        </mxCell>
+        <mxCell id="BP_3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;" value="ID: 3" vertex="1">
+          <mxGeometry height="20" width="50" x="310" y="1010" as="geometry" />
+        </mxCell>
+        <mxCell id="BP_other" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;" value="ID: ... 4095" vertex="1">
+          <mxGeometry height="20" width="90" x="375" y="1010" as="geometry" />
+        </mxCell>
+
+        <!-- ========== ⑤ 请求分配 ========== -->
+        <mxCell id="s5_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="⑤ 请求来了 → FullAttentionManager 从 BlockPool 取 block ID" vertex="1">
+          <mxGeometry height="28" width="900" x="60" y="1055" as="geometry" />
+        </mxCell>
+        <mxCell id="req_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=5;align=center;" value="请求 (示例: 70 token prompt)&#xa;需要 ⌈70/16⌉ = 5 个 block&#xa;Manager pop 5 个 ID = [0,1,2,3,4]" vertex="1">
+          <mxGeometry height="65" width="310" x="80" y="1090" as="geometry" />
+        </mxCell>
+        <mxCell id="alloc_arrow" edge="1" parent="1" source="req_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;" target="BP_2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="235" y="1048" />
+              <mxPoint x="265" y="1048" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="alloc_detail" parent="1" style="text;html=1;fontSize=12;fontColor=#333333;align=left;spacingLeft=10;verticalAlign=top;" value="block_id=2 被请求占用:&#xa;→ 16 个张量的 page 2 同时被写入 (layer 0–15 各存自己那份 K/V)&#xa;block_id=0/1/3/4 同理 → 5 个 block ID 被消耗&#xa;注: 4 worker 各自独立持有物理张量，但共享此 BlockPool 的 block_id 命名" vertex="1">
+          <mxGeometry height="65" width="420" x="430" y="1092" as="geometry" />
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend" parent="1" style="text;html=1;fontSize=12;fontColor=#555555;align=left;" value="🔶 PP0 (层0–15)　　🟩 PP1 (层16–31)　　🔵 张量 / 物理层　　⬜ BlockPool(全局唯一)　　📄 信息框　|　4 worker 各自独立物理显存, 共享同一 block_id 空间 (min 对齐)" vertex="1">
+          <mxGeometry height="25" width="1100" x="60" y="1170" as="geometry" />
+        </mxCell>
+
+        <!-- ========== Side Info Boxes ========== -->
+
+        <!-- Formula box -->
         <mxCell id="formula_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#0288d1;" value="" vertex="1">
-          <mxGeometry height="195" width="360" x="740" y="285" as="geometry" />
+          <mxGeometry height="220" width="400" x="1170" y="170" as="geometry" />
         </mxCell>
-        <mxCell id="f_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#01579b;" value="核心数值" vertex="1">
-          <mxGeometry height="25" width="360" x="740" y="290" as="geometry" />
+        <mxCell id="f_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#01579b;" value="核心数值（每 worker · TP2 切分后）" vertex="1">
+          <mxGeometry height="25" width="400" x="1170" y="175" as="geometry" />
         </mxCell>
-        <mxCell id="f_content" parent="1" style="text;html=1;fontSize=11;fontColor=#333333;align=left;spacingLeft=10;fontFamily=Courier New;" value="page_size = 16 x 32 x 256 x 2 = 262,144 B = 256 KB&lt;br&gt;(block_size x kv_heads x 2xhead_size x dtype_size)&lt;br&gt;&lt;br&gt;num_blocks = 8GB / 256KB / 32 = 1,024&lt;br&gt;(available / page_size / group_size)&lt;br&gt;&lt;br&gt;每个 block_id = 32 x 256KB = 8 MB&lt;div&gt;跨所有张量（即group size）各一页&lt;br&gt;(每个逻辑block_id对应物理显存group_size x page_size)&lt;br&gt;&lt;br&gt;总物理 = 32 x 256KB x 1024 = 8 GB&lt;/div&gt;" vertex="1">
-          <mxGeometry height="165" width="340" x="750" y="315" as="geometry" />
+        <mxCell id="f_content" parent="1" style="text;html=1;fontSize=11;fontColor=#333333;align=left;spacingLeft=12;fontFamily=Courier New;" value="page_size = 2×16×4×128×2 = 32,768 B = 32 KB&lt;br&gt;(K+V × block × kv_heads × head_dim × dtype)&lt;br&gt;&lt;br&gt;num_blocks = 2GiB ÷ 32KB ÷ 16 = 4,096&lt;br&gt;(available ÷ page_size ÷ group_size)&lt;br&gt;&lt;br&gt;每 block_id = 16 × 32KB = 512 KB&lt;br&gt;(跨 16 张量 = group_size × page_size)&lt;br&gt;&lt;br&gt;每张量 = 32KB × 4096 = 128 MiB&lt;br&gt;&lt;br&gt;总物理(每worker) = 16 × 128 MiB = 2 GiB&lt;br&gt;(= group_size × page_size × num_blocks)" vertex="1">
+          <mxGeometry height="190" width="380" x="1180" y="200" as="geometry" />
         </mxCell>
+
+        <!-- Feature box -->
         <mxCell id="key_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="" vertex="1">
-          <mxGeometry height="195" width="360" x="740" y="520" as="geometry" />
+          <mxGeometry height="185" width="400" x="1170" y="410" as="geometry" />
         </mxCell>
-        <mxCell id="key_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#1b5e20;" value="单 Group 的核心特征" vertex="1">
-          <mxGeometry height="25" width="360" x="740" y="525" as="geometry" />
+        <mxCell id="key_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#1b5e20;" value="单 Group 核心特征（pp2tp2 每 worker）" vertex="1">
+          <mxGeometry height="25" width="400" x="1170" y="415" as="geometry" />
         </mxCell>
-        <mxCell id="key_content" parent="1" style="text;html=1;fontSize=12;fontColor=#333333;align=left;spacingLeft=10;" value="1. 只 1 个 manager &lt;br&gt;   → 1 个请求每步只消耗 1 个 block ID&lt;br&gt;   (多 group 是每个 manager 各消耗 1 个)&lt;br&gt;&lt;br&gt;2. 32 个张量每层独享一个&lt;br&gt;   → block_id 跨 32 张量同页&lt;br&gt;&lt;br&gt;3. 所有层共享同一个 block_table&lt;br&gt;   → block_id=5 意味着 layer 0~31都用 page 5, 各存自己的 K/V" vertex="1">
-          <mxGeometry height="165" width="340" x="750" y="550" as="geometry" />
+        <mxCell id="key_content" parent="1" style="text;html=1;fontSize=12;fontColor=#333333;align=left;spacingLeft=12;" value="1. 全模型 1 个 FullAttentionManager&lt;br&gt;   → 1 个请求每步只消耗 1 个 block ID&lt;br&gt;&lt;br&gt;2. 张量 shape = (4096, 4, 16, 256)&lt;br&gt;   → TP2 切分后 4 KV头&lt;br&gt;   → block_id 跨 16 张量同页&lt;br&gt;&lt;br&gt;3. 所有层共享同一 block_table&lt;br&gt;   → block_id=2 → layer 0–15 都用 page 2&lt;br&gt;   → 各存自己那份 K/V&lt;br&gt;&lt;br&gt;4. 全局 BlockPool 共享&lt;br&gt;   → 4 worker 共用同一 block_id 空间" vertex="1">
+          <mxGeometry height="155" width="380" x="1180" y="440" as="geometry" />
         </mxCell>
+
+        <!-- Capacity box -->
         <mxCell id="cap_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#7b1fa2;" value="" vertex="1">
-          <mxGeometry height="130" width="360" x="740" y="115" as="geometry" />
+          <mxGeometry height="140" width="400" x="1170" y="610" as="geometry" />
         </mxCell>
-        <mxCell id="cap_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#4a148c;" value="容量计算" vertex="1">
-          <mxGeometry height="25" width="360" x="740" y="120" as="geometry" />
+        <mxCell id="cap_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#4a148c;" value="容量计算（每 worker）" vertex="1">
+          <mxGeometry height="25" width="400" x="1170" y="615" as="geometry" />
         </mxCell>
-        <mxCell id="cap_content" parent="1" style="text;html=1;fontSize=12;fontColor=#555555;align=left;spacingLeft=10;fontFamily=Courier New;" value="1 个请求 (4096 tokens):&lt;br&gt;  需要 4096/16 = 256 个 block ID&lt;br&gt;&lt;br&gt;池子容量 = 1024 个 block ID&lt;br&gt;满载 = 1024 / 256 = 4 个并发请求&lt;br&gt;  (4 x 2GB = 8GB = 全部显存)" vertex="1">
-          <mxGeometry height="95" width="340" x="750" y="145" as="geometry" />
+        <mxCell id="cap_content" parent="1" style="text;html=1;fontSize=12;fontColor=#555555;align=left;spacingLeft=12;fontFamily=Courier New;" value="1 个请求 (max_model_len=4096):&lt;br&gt;  需要 4096/16 = 256 个 block ID&lt;br&gt;&lt;br&gt;池子容量 = 4096 个 block ID&lt;br&gt;满载 = 4096 / 256 = 16 个并发请求&lt;br&gt;  (16 × 2GiB = 32GiB = 4 worker 总显存)&lt;br&gt;&lt;br&gt;注: 各 worker 物理独立, 逻辑共享" vertex="1">
+          <mxGeometry height="105" width="380" x="1180" y="640" as="geometry" />
+        </mxCell>
+
+        <!-- Deploy summary box -->
+        <mxCell id="deploy_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;" value="" vertex="1">
+          <mxGeometry height="240" width="400" x="1170" y="770" as="geometry" />
+        </mxCell>
+        <mxCell id="deploy_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#795548;" value="pp2tp2 部署要点" vertex="1">
+          <mxGeometry height="25" width="400" x="1170" y="775" as="geometry" />
+        </mxCell>
+        <mxCell id="deploy_content" parent="1" style="text;html=1;fontSize=12;fontColor=#555555;align=left;spacingLeft=12;" value="&lt;b&gt;切分方式：&lt;/b&gt;&lt;br&gt;PP2 线性切层: 32层 → 每 worker 16 层&lt;br&gt;TP2 线性切头: 8 KV头 → 每 worker 4 头&lt;br&gt;&lt;br&gt;&lt;b&gt;分组 → 投影：&lt;/b&gt;&lt;br&gt;① 每卡产出 spec (16 层, 4 头)&lt;br&gt;② merge → 全模型 32 层 1 个 group&lt;br&gt;③ project → 每 worker 16 层&lt;br&gt;④ num_blocks = 2GiB÷32KB÷16 = 4096&lt;br&gt;&lt;br&gt;&lt;b&gt;四卡职责：&lt;/b&gt;&lt;br&gt;W0: 层0-15 × 头0-3&lt;br&gt;W1: 层0-15 × 头4-7&lt;br&gt;W2: 层16-31 × 头0-3&lt;br&gt;W3: 层16-31 × 头4-7&lt;br&gt;&lt;br&gt;&lt;b&gt;BlockPool 对齐：&lt;/b&gt;&lt;br&gt;min(4096,4096,4096,4096) = 4096&lt;br&gt;4 worker 共享 block_id 命名, 字节独立" vertex="1">
+          <mxGeometry height="210" width="380" x="1180" y="800" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
