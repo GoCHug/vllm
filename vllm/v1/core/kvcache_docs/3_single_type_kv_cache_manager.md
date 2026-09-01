@@ -1,11 +1,11 @@
 # SingleTypeKVCacheManager 详解
 
 > 五层架构第 3 层｜[总览](./0_kv_cache_management_arch.md) ｜下层 ➔ [`2_block_pool.md`](./2_block_pool.md) ｜上层 ➔ [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md)
-> 时序位置：[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) B1～E 阶段
+> 时序位置：[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) ③ 前缀查找 → ④ 分配与缓存 → ⑧ 释放
 >
 > 源文件：`vllm/vllm/v1/core/single_type_kv_cache_manager.py`
 >
-> 主线：纯 Full Attention 单 group，核心是子类 `FullAttentionManager`。**本文重点：时序路径上被 Coordinator 直接下放的方法逐行看源码（短注释）；其余辅助方法一张表带过。**
+> 主线：纯 Full Attention 单 group，核心是子类 `FullAttentionManager`。**统一锚点：模型 Llama-3-8B（pp2tp2，4 卡，`block_size=16`）上的示例请求 R（prompt=70 token，前 32 token 为共享前缀 SP，由前置请求 P 缓存为块 0/1），详见时序文档 §2。本文重点：端到端时序路径上被 Coordinator 直接下放的 7 个方法，按请求经过顺序逐行看源码（短注释），且每个方法都带"示例 R 中发生了什么"参考块；其余辅助方法一张表带过。**
 
 ## 1. 概览
 
@@ -36,15 +36,15 @@ SingleTypeKVCacheManager（ABC 抽象基类）—— 统一接口，子类实现
 
 对应 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) 的端到端流程，`FullAttentionManager` 承担：
 
-| 时序阶段 | 职责 | 对应方法 |
-|---|---|---|
-| **B1 前缀查找** | 在 `cached_block_hash_to_block` 查最长已计算前缀 | `find_longest_cache_hit`（classmethod） |
-| **B2 touch命中块** | 命中块 `ref_cnt+=1`、移出 free 队列，防驱逐 | `add_local_computed_blocks` |
-| **B2 算新块数** | 总 token 数 − 已命中块数 → 需新分配块数 | `get_num_blocks_to_allocate` |
-| **B2 外部命中** | 为远端/CPU 命中的 token 分配新物理块 | `allocate_external_computed_blocks` |
-| **B2 分配新块** | 从 free 队列取块 | `allocate_new_blocks` |
-| **B2 写缓存** | 满块哈希写入前缀表 | `cache_blocks` → `block_pool.cache_full_blocks` |
-| **E 释放** | 逆序遍历块 `ref_cnt-=1`，0 则回收 | `free` / `pop_blocks_for_free` |
+| 端到端阶段 | 职责 | 对应方法 | 示例 R 中发生了什么 |
+|---|---|---|---|
+| **③ 前缀查找** | 在 `cached_block_hash_to_block` 查最长已计算前缀 | `find_longest_cache_hit`（classmethod） | 查到 P 缓存的 SP 块 0/1，hit_length=32 |
+| **④ 分配与缓存 · 算新块数** | 总 token 数 − 已命中块数 → 需新分配块数 | `get_num_blocks_to_allocate` | 70 token → 共 5 块 − 已命中 2 → 申请 3 块 |
+| **④ 分配与缓存 · touch 命中块** | 命中块 `ref_cnt+=1`、移出 free 队列，防驱逐 | `add_local_computed_blocks` | touch 块 0/1，ref_cnt 0→1 |
+| **④ 分配与缓存 · 外部命中** | 为远端/CPU 命中的 token 分配新物理块 | `allocate_external_computed_blocks` | 无 connector，恒不触发 |
+| **④ 分配与缓存 · 分配新块** | 从 free 队列取块 | `allocate_new_blocks` | 弹出块 2/3/4 |
+| **④ 分配与缓存 · 写缓存** | 满块哈希写入前缀表 | `cache_blocks` → `block_pool.cache_full_blocks` | 满块 2/3 入哈希表；尾块 4 未满不入 |
+| **⑧ 释放** | 逆序遍历块 `ref_cnt-=1`，0 则回收 | `free` / `pop_blocks_for_free` | 逆序归还块 6…2；命中块 0/1 仅减计数 |
 
 ---
 
@@ -88,6 +88,8 @@ def get_num_blocks_to_allocate(self, request_id, num_tokens, new_computed_blocks
 
 **辅助函数**：`_get_num_evictable_blocks`（`:128`）= 统计 `ref_cnt==0 且非 null` 的块数；`get_num_skipped_tokens`（`:661`）= 基类恒 0，SWA 子类覆写。
 
+**示例 R**：容量预估环节——`cdiv(70, 16) = 5` 块 − 已命中 2 块 → 本轮应申请 `5 − 2 = 3` 块。
+
 ### 4.2 `add_local_computed_blocks`：touch 命中块（`base`）
 
 > 源码 `:232-289`。Coordinator 两阶段协议**第一阶段**，处理**本地前缀命中**的块。
@@ -118,6 +120,8 @@ def add_local_computed_blocks(self, request_id, new_computed_blocks,
 
 **要点**：引用计数共享（非复制）是前缀缓存省显存核心；必须所有组都完成本方法后 Coordinator 才逐组调 `allocate_external_computed_blocks`（issue #33775，避免 `get_new_blocks` 驱逐未 touch 的命中块）。
 
+**示例 R**：首次 prefill 调本方法，`new_computed_blocks` = ③ 查到的命中块 0/1 → touch 后两块 `ref_cnt` 0→1，`req_to_blocks[R] = [block0, block1]`，`num_cached_block[R] = 2`。
+
 ### 4.3 `allocate_external_computed_blocks`：外部命中分配（`base`）
 
 > 源码 `:291-328`。两阶段协议**第二阶段**：外部 connector（CPU offload / remote）KV 在 GPU 无现成物理块，须 `get_new_blocks` 现编新块，后续由 Worker 加载填充。
@@ -147,6 +151,8 @@ def allocate_external_computed_blocks(self, request_id,
 
 **区别**：本地命中只 `touch` 增引用（GPU 已存在）；外部命中必须 `get_new_blocks` 分配新块并记 ID 清零。
 
+**示例 R**：本机无外部 connector（非 P/D、非 KV Connector）→ **恒不触发**，对应 §3 表格"外部命中"行。
+
 ### 4.4 `allocate_new_blocks`：分配新块（`base`）
 
 > 源码 `:329-368`。`allocate_slots` 第三阶段，为未命中 token 补足块。
@@ -167,6 +173,8 @@ def allocate_new_blocks(self, request_id, num_tokens, num_tokens_main_model) -> 
     return new_blocks
 ```
 
+**示例 R**：为 prefill 后 38 token 补块——`cdiv(70, 16) − len(req_blocks) = 5 − 2 = 3` → 调 `get_new_blocks(3)` 弹块 2/3/4，并记入 `new_block_ids` 供 Worker 清零。
+
 ### 4.5 `cache_blocks`：缓存写入
 
 基类 `:427-477`；`FullAttentionManager` 覆写 `:779-789`。
@@ -186,6 +194,8 @@ self.num_cached_block[request.request_id] = num_full_blocks
 
 **FullAttention 覆写**：先走基类，再当 `hash_block_size != block_size`（混合模型多粒度）时额外调 `_cache_partial_tail_block` 缓存 prompt 尾块最后一个 hash 边界。**注意**：本文早期草稿的 `maybe_save_new_kv_blocks_to_cache` **该版本源码不存在**，统一由 `cache_blocks` 承担。
 
+**示例 R**：`num_tokens = 70` → `num_full_blocks = 4`，而 `num_cached_block[R] = 2`（两块为命中）→ 只缓存切片 `[2:4]` = 满块 2/3 入哈希表；尾块 4 未满不入。
+
 ### 4.6 `pop_blocks_for_free` / `free`：释放
 
 > 源码 `:500-527`，对应时序 **E** 阶段。
@@ -201,6 +211,8 @@ def free(self, request_id) -> None:                  # 完整释放：弹出 →
 ```
 
 **逆序释放**：尾块（多是不完整块）先回 free 队列，下次分配时优先被复用，提高续生成命中率。`free_blocks`（`block_pool.py:719-742`）逻辑见 [`2_block_pool.md`](./2_block_pool.md)：无哈希块放队首（优先复用）、有哈希块放队尾（LRU 保护）。
+
+**示例 R**：请求结束先 `pop_blocks_for_free` 弹出 `req_blocks = [0,1,2,3,4,5,6]` 并清 `num_cached_block[R]`；再 `free` 逆序归还 6→5→4→3→2；命中块 0/1 由 `free_blocks` 仅对 R 的引用 `ref_cnt--`（P 的缓存 SP 保留，供后续请求复用）。
 
 ### 4.7 `find_longest_cache_hit`：最长前缀查找（`FullAttentionManager` classmethod）
 
@@ -245,6 +257,8 @@ def find_longest_cache_hit(cls, block_hashes, max_length, kv_cache_group_ids,
 ```
 
 **链式哈希特性**：每个块哈希依赖前一块哈希 → 保证前缀连续性、避免"内容同但前缀不同"的错误命中。细粒度模式下块内每个 hash 边界有独立映射，支持块内部分命中。
+
+**示例 R**：`block_hashes = [h(t0-15), h(t16-31), h(t32-47), h(t48-63)]`，`max_length = 69`。Phase 1 从头连续命中前 2 个满块（P 缓存的 SP）→ `computed_blocks = ([block0, block1],)`、`hit_length = 32`；第 3 个 hash（追加问题首块）miss → 链式即 break，后续无需再查。
 
 ---
 

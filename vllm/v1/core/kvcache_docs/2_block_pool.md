@@ -1,7 +1,7 @@
 # vLLM V1 BlockPool 逻辑块池层（Full Attention 主线）
 
 > 五层架构第 2 层｜[总览](./0_kv_cache_management_arch.md) ｜下层 ➔ [`1_physical_memory.md`](./1_physical_memory.md) ｜上层 ➔ [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md)
-> 时序位置：[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) B1～E 阶段
+> 时序位置：[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) ③ 前缀查找 → ④ 分配与缓存 → ⑧ 释放（正文以 B1/B2/E 指代：B1=③前缀查找，B2=④分配与缓存，E=⑧释放）
 >
 > 源文件：`vllm/vllm/v1/core/block_pool.py`、`vllm/vllm/v1/core/kv_cache_utils.py`
 >
@@ -78,9 +78,9 @@ class KVCacheBlock:
 
 > 以下方法按**时序文档**的调用点组织（括号内为阶段/来源行号），每条给真实源码（2026 库 `block_pool.py`）与逐行注释。**R 是贯穿全篇的示例请求**（见时序文档 §2：纯 Full Attention 模型 Llama-3-8B（pp2tp2，4卡环境），prompt = 70 token / max_tokens = 32 token，`block_size=16`）。其 prompt 前 32 token 是**共享前缀 SP**，由**前置请求 P** 先算好并缓存为块 0/1；R 的 prefill 命中的正是这 2 块。
 
-### 3.1 `get_cached_block` —— B1 前缀命中查找（`block_pool.py:198-223`）
+### 3.1 `get_cached_block` —— ③ 前缀命中查找（`block_pool.py:198-223`）
 
-时序文档 B1 里，BlockPool 被 `FullAttnManager.find_longest_cache_hit` 逐块调用，回答"这个 hash 能命中哪个物理块"。
+时序文档 ③ 前缀查找里，BlockPool 被 `FullAttnManager.find_longest_cache_hit` 逐块调用，回答"这个 hash 能命中哪个物理块"。
 
 ```python
 def get_cached_block(
@@ -98,13 +98,13 @@ def get_cached_block(
     return cached_blocks           # 单 group 下列表长度恒为 1
 ```
 
-- **只读不写**：不改 `ref_cnt`、不回写 `request.block_hashes`。真正的共享要等 B2 的 `touch`。
+- **只读不写**：不改 `ref_cnt`、不回写 `request.block_hashes`。真正的共享要等 ④ 的 `touch`。
 - 单 group 下发 `[0]`，即查 `cached_block_hash_to_block[(hash, 0)]`。
-- R：B1 查前 2 个满块命中（即 P 缓存的 SP 块 0/1）→ 各返回 `[block]`。
+- R：③ 前缀查找命中前 2 个满块（即 P 缓存的 SP 块 0/1）→ 各返回 `[block]`。
 
-### 3.2 `get_num_free_blocks` —— B2 容量检查（`block_pool.py:799-805`）
+### 3.2 `get_num_free_blocks` —— ④ 容量检查（`block_pool.py:799-805`）
 
-时序文档 B2② 的容量比较用。一行：
+时序文档 ④ 的容量比较用。一行：
 
 ```python
 def get_num_free_blocks(self) -> int:
@@ -114,9 +114,9 @@ def get_num_free_blocks(self) -> int:
 
 KM 侧用它算 `available = free - reserved`，不足则 `allocate_slots` 返回 None（等待下轮调度）。
 
-### 3.3 `get_new_blocks` —— B2 分配新块（`block_pool.py:647-677`）
+### 3.3 `get_new_blocks` —— ④ 分配新块（`block_pool.py:647-677`）
 
-时序文档 B2④ 为待计算 token 分新块。r 在 prefill 里一次要 3 块。
+时序文档 ④ 为待计算 token 分新块。R 在 prefill 里一次要 3 块。
 
 ```python
 def get_new_blocks(self, num_blocks: int) -> list[KVCacheBlock]:
@@ -141,9 +141,9 @@ def get_new_blocks(self, num_blocks: int) -> list[KVCacheBlock]:
 - **为什么分配前要清缓存**：空闲队列里的块可能 `ref_cnt=0` 但仍挂在哈希表（队尾待命中）。被弹出来分配新内容时，必须先删旧哈希，否则新内容会被旧 hash 错误命中。
 - R：prefill 拿 3 块（后 38 token 切成 16+16+6）。
 
-### 3.4 `touch` —— B2 命中复用（`block_pool.py:702-717`）
+### 3.4 `touch` —— ④ 命中复用（`block_pool.py:702-717`）
 
-时序文档 B2③，把 B1 命中的块标记为"正在被 r 共享"。零拷贝共享的核心——**命中不复制数据，只 `ref_cnt++`**。
+时序文档 ④，把 ③ 命中的块标记为"正在被 R 共享"。零拷贝共享的核心——**命中不复制数据，只 `ref_cnt++`**。
 
 ```python
 def touch(self, blocks: Sequence[KVCacheBlock]) -> None:
@@ -154,11 +154,11 @@ def touch(self, blocks: Sequence[KVCacheBlock]) -> None:
         block.ref_cnt += 1
 ```
 
-R：B1 命中的前 2 块（P 缓存的 SP 块 0/1）`ref_cnt` 1→2（若彼时在空闲队列则先 `remove`），与其缓存条目共享物理块。
+R：③ 命中的前 2 块（P 缓存的 SP 块 0/1，P 结束后 ref_cnt=0、位于空闲队列队尾）`ref_cnt` **0→1**（先执行 `remove(block)` 摘出空闲队列防驱逐），与其缓存条目共享物理块。
 
-### 3.5 `cache_full_blocks` —— B2 缓存满块（`block_pool.py:225-342`）
+### 3.5 `cache_full_blocks` —— ④ 写缓存（`block_pool.py:225-342`）
 
-时序文档 B2⑤，把 r 本轮**新填满的块**写入哈希映射表，使其成为后续请求可命中的条目。**哈希本身不算**——`request.block_hashes` 在入队/追加 token 时就预计算好了。
+时序文档 ④ 写缓存，把 R 本轮**新填满的块**写入哈希映射表，使其成为后续请求可命中的条目。**哈希本身不算**——`request.block_hashes` 在入队/追加 token 时就预计算好了。
 
 ```python
 def cache_full_blocks(
@@ -223,9 +223,9 @@ def _insert_block_hash(self, block_hash_with_group_id, block, num_tokens=None) -
 
 主哈希与别名在正向表地位相同（都能被查到）；区别只在"块身上"——主哈希存 `_block_hash`（随块、带 num_tokens），别名只存反向表。
 
-### 3.6 `free_blocks` —— E 释放（`block_pool.py:719-742`）
+### 3.6 `free_blocks` —— ⑧ 释放（`block_pool.py:719-742`）
 
-时序文档 E 阶段，请求结束逆序归还块。**双队列分流**是按"是否还能被前缀命中"决定优先级。
+时序文档 ⑧ 释放阶段，请求结束逆序归还块。**双队列分流**是按"是否还能被前缀命中"决定优先级。
 
 ```python
 def free_blocks(self, ordered_blocks: Iterable[KVCacheBlock]) -> None:
