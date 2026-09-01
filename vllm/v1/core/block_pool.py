@@ -217,7 +217,7 @@ class BlockPool:
             block = self.cached_block_hash_to_block.get_one_block(
                 block_hash_with_group_id
             )
-            if not block:
+            if not block: # 每个group都命中才行
                 return None
             cached_blocks.append(block)
         return cached_blocks

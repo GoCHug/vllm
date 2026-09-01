@@ -142,9 +142,12 @@ R 的 prompt 前 32 token 恰与 SP 相同 → prefill 时 `get_computed_blocks`
 ```text
 入队 → WAITING（①）
   ├─ 首次调度 prefill（②）
-  │    ├─ KVCacheManager.get_computed_blocks（③）: 70//16=4 hash 查表，命中前 2 块（P 缓存的 SP）→ hit_length=32
-  │    │    └─ BlockPool.get_cached_block → 命中块 0/1（P 缓存的 SP）
+  │    ├─ KVCacheManager.get_computed_blocks（③）: 遍历70//16=4个hash 查表 → hit_length=32
+  │    │    ├─ UnitaryKVCacheCoordinator.find_longest_cache_hit
+  │    │    │    └─ FullAttentionManager.find_longest_cache_hit 
+  │    │    │         └─ BlockPool.get_cached_block → 命中块 0/1（P 缓存的 SP）
   │    ├─ KVCacheManager.allocate_slots（④）
+  │    │    ├─ UnitaryKVCacheCoordinator.get_num_blocks_to_allocate # 计算本轮实际需要分配多少新块
   │    │    ├─ touch 命中块：KVCacheManager.allocate_new_computed_blocks → BlockPool.touch（2 命中）
   │    │    ├─ 分新块：KVCacheManager.allocate_new_blocks → BlockPool.get_new_blocks(3) → block_table=[命中0, 命中1, 新2, 新3, 新4]
   │    │    └─ 入表缓存：KVCacheManager.cache_blocks → BlockPool.cache_full_blocks（新满块 2, 3 入哈希表；未满块 4 不入）
