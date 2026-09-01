@@ -1,11 +1,11 @@
 # KVCacheManager 详解
 
 > 五层架构第 5 层（最顶门面，Scheduler 唯一交互入口）｜[总览](./0_kv_cache_management_arch.md) ｜下层 ➔ [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md)
-> 时序位置：[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) **B1～E 每一步都从它入口**
+> 时序位置：[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) **③ 前缀查找 → ④ 分配与缓存 → ⑤ 组装 SchedulerOutput → ⑧ 释放，每一步都从它入口**
 >
 > 源文件：`vllm/vllm/v1/core/kv_cache_manager.py`
 >
-> 主线：纯 Full Attention 单 group（内部持 `UnitaryKVCacheCoordinator`）。**本文重点：Scheduler 在时序 B1~E 阶段真正调用的方法（`get_computed_blocks` / `allocate_slots` / `take_new_block_ids` / `free` / `pop_blocks_for_free`）逐行看源码；其余查询/统计/事件方法一张表带过。**
+> 主线：纯 Full Attention 单 group（内部持 `UnitaryKVCacheCoordinator`）。**本文重点：Scheduler 在时序 ③/④/⑤/⑧ 阶段真正调用的方法（`get_computed_blocks` / `allocate_slots` / `take_new_block_ids` / `free` / `pop_blocks_for_free`）逐行看源码；其余查询/统计/事件方法一张表带过。**
 
 ## 1. 概览
 
@@ -384,7 +384,7 @@ class KVCacheManager:
 **端到端例子**：示例 R（prompt = 70 token，前 32 token 为共享前缀 SP，由前置请求 P 缓存为块 0/1）
 - `request.num_tokens = 70`
 - `max_cache_hit_length = 69`（减1）
-- `request.block_hashes = [hash(t0-15), hash(t16-31), hash(t32-47), hash(t48-63), hash(t64-69)]`
+- `request.block_hashes = [hash(t0-15), hash(t16-31), hash(t32-47), hash(t48-63)]`——只有 4 个**满块**哈希（70 // 16 = 4）；尾块 t64-69 未满**没有哈希**，需等生成填满后由 `update_block_hashes()` 补上（`request.py:257`）
 - 查找返回：命中前2个满块（P 缓存的 SP 块 0/1），共32token
 - 返回：`(KVCacheBlocks([blockA, blockB]), 32, 0)`
 
@@ -771,17 +771,17 @@ return self.create_kv_cache_blocks(new_blocks)
 
 ## 6. 方法调用总览（对照时序阶段）
 
-一个请求从分配到释放，Scheduler 在时序 B1~E 阶段逐一调用 KVCacheManager 的方法：
+一个请求从分配到释放，Scheduler 按端到端阶段逐一调用 KVCacheManager 的方法：
 
-| 时序阶段 | 方法 | 说明 |
+| 端到端阶段 | 方法 | 说明 |
 |---------|------|------|
 | 步开始 | `new_step_starts()` | 重置内部状态（清空 `new_block_ids` 等） |
-| **B1 前缀查找** | `get_computed_blocks(req)` | 返回命中块和命中 token 数 → 下放 `coordinator.find_longest_cache_hit` |
-| **B2 分配** | `allocate_slots(req, ...)` | 内部含准入检查、两阶段分配、`cache_blocks`（见 §5.3） |
-| **B3 组装** | `take_new_block_ids()` | 给 Worker 准备清零清单 |
+| **③ 前缀查找** | `get_computed_blocks(req)` | 返回命中块和命中 token 数 → 下放 `coordinator.find_longest_cache_hit` |
+| **④ 分配与缓存** | `allocate_slots(req, ...)` | 内部含准入检查、两阶段分配、`cache_blocks`（见 §5.3） |
+| **⑤ 组装 SchedulerOutput** | `take_new_block_ids()` | 给 Worker 准备清零清单 |
 | （GPU forward） | — | KVCacheManager 不参与 |
 | 补缓存（可选） | `cache_blocks(req, ...)` | async PP / KV Connector 场景 forward 后外部追加 |
-| **E 释放** | `free(req)` / `pop_blocks_for_free(req)` | 正常结束直接释放；延迟释放先弹出再逆序释放 |
+| **⑧ 释放** | `free(req)` / `pop_blocks_for_free(req)` | 正常结束直接释放；延迟释放先弹出再逆序释放 |
 
 时序图可见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) §3.2-§3.5。
 
