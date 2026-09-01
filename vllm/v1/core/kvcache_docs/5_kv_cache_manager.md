@@ -392,6 +392,8 @@ class KVCacheManager:
 
 源码位置：`kv_cache_manager.py:344-565`
 
+### 5.3.1 块布局图
+
 这是整个KV Cache管理**最核心的方法**，Scheduler拿到前缀命中结果后调用它来分配需要的新块。源码注释里有详细的块布局图：
 
     Blocks layout:
@@ -420,8 +422,51 @@ class KVCacheManager:
     ext_comp  = num_external_computed_tokens, cached by the connector
     new       = num_new_tokens, including unverified draft tokens
     lookahead = num_lookahead_tokens
-    
-源码docstring明确声明**分配分为三个阶段**：
+
+**逐层解读**
+
+布局图从上到下分 6 层，每层用不同维度框选同一条 token 序列的子集。以请求 R（Llama-3-8B 纯 FullAttention，无 connector、无 EAGLE）为主线。
+
+**① 5 段切分（第 1 层）** — token 序列沿时间轴的 5 段：
+
+| | **comp** | **new_comp** | **ext_comp** | **new** | **lookahead** |
+|---|---|---|---|---|---|
+| **变量** | `request.num_computed_tokens` | `num_new_computed_tokens` = `len(new_computed_blocks) × block_size` | `num_external_computed_tokens` | `num_new_tokens` | `num_lookahead_tokens` |
+| **含义** | 之前步已算完的 token（decode 中持续增长） | 本步前缀查找新命中的 token（③的产出） | 外部 Connector 缓存的 token，vLLM 本地无物理块 | 本步要 GPU forward 计算的 token（含 draft） | EAGLE 投机解码的 lookahead token |
+| **KV 状态** | 已在 block_table 中，ref_cnt 已加 | 命中缓存块，ref_cnt **尚未**加（等 ④ touch） | 有 KV 但在 connector 侧，vLLM 需分配空块再加载 | 无 KV，需 forward 写入 | 无 KV，需 forward 写入 |
+| **R prefill** | **0**（首次 prefill，无历史） | **32**（命中 P 缓存的块 0/1，2×16） | **0**（无 connector） | **38**（70 − 32 = 38） | **0**（无投机解码） |
+| **R decode 步 N** | **70+N−1**（逐步增长） | **0**（RUNNING 不再查前缀） | **0**（RUNNING 不再查前缀） | **1**（每步 1 token） | **0**（无投机解码） |
+
+> R prefill 有效组合：`new_comp(32) + new(38)` = 70 token（comp=0, ext_comp=0, lookahead=0）
+>
+> R decode 有效组合：`comp(70+N−1) + new(1)`（new_comp=0, ext_comp=0, lookahead=0）
+
+**② 互斥规则** — `comp` 与 `new_comp/ext_comp` 不共存：
+
+| 条件 | 原因 | 推论 |
+|------|------|------|
+| `comp > 0`（RUNNING） | 调度器不再查前缀 → `new_comp = 0`、`ext_comp = 0` | decode 只有 `comp + new + lookahead` |
+| `comp = 0`（首次 prefill） | 无历史但可查前缀 → `new_comp/ext_comp` 可有值 | prefill 最多 `new_comp + ext_comp + new + lookahead` |
+
+> **5 段永远不可能同时非零**，最多 4 段（connector + EAGLE 的首次 prefill）。
+
+**③ 各配置下的组合方式** — 以 R（prompt=70, 命中本地前缀 32 token）为例。假设 connector 缓存了 t0-63（64 token），其中 t0-31 与本地命中重叠，只多出 t32-63（32 token）算入 `ext_comp`。EAGLE lookahead=3：
+
+| 配置 | 阶段 | comp | new_comp | ext_comp | new | lookahead | 有效组合 | 非零段 |
+|------|------|------|----------|----------|-----|-----------|---------|--------|
+| **纯 FullAttention** | prefill | 0 | 32 | 0 | 38 | 0 | `new_comp + new` | 2 |
+| | decode 步 N | 70+N−1 | 0 | 0 | 1 | 0 | `comp + new` | 2 |
+| **+ connector** | prefill | 0 | 32 | 32 | 6 | 0 | `new_comp + ext_comp + new` | 3 |
+| | decode 步 N | 70+N−1 | 0 | 0 | 1 | 0 | `comp + new` | 2 |
+| **+ EAGLE** | prefill | 0 | 32 | 0 | 38 | 3 | `new_comp + new + lookahead` | 3 |
+| | decode 步 N | 70+N−1 | 0 | 0 | 1 | 3 | `comp + new + lookahead` | 3 |
+| **+ connector + EAGLE** | prefill | 0 | 32 | 32 | 6 | 3 | `new_comp + ext_comp + new + lookahead` | **4（最大）** |
+| | decode 步 N | 70+N−1 | 0 | 0 | 1 | 3 | `comp + new + lookahead` | 3 |
+
+> - decode 阶段 `new_comp` 和 `ext_comp` 恒为 0（RUNNING 不再查前缀），所以 connector 只影响首次 prefill，decode 无差异。
+> - EAGLE 的 `lookahead` 在 prefill 和 decode 都有值，所以它比 connector 多影响 decode。
+
+### 5.3.2 分配三阶段：
 
 ```
 阶段1: 释放 comp 中不需要的块，检查空闲块是否足够（不足则返回 None）
@@ -431,9 +476,7 @@ class KVCacheManager:
 阶段3: 为待计算的 token（new + lookahead）分配新块
 ```
 
-> 注意：这里的 `阶段1/2/3` 是 `allocate_slots` **方法内部**的三个子阶段，与时序文档 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) 的应用级阶段 **A~E**（A入队/B调度/C forward/D decode/E释放）不是同一层级，勿混用。下文以"子阶段①/②/③"指代之。
-
-下面按"前置准备 → 子阶段① → 子阶段② → 子阶段③"的顺序逐行注释源码。
+下面按"前置准备 → 子阶段① → 子阶段② → 子阶段③"的顺序讲解。
 
 #### 函数签名与参数
 
@@ -471,11 +514,13 @@ if new_computed_blocks is not None:
 else:
     new_computed_block_list = self.empty_kv_cache_blocks.blocks  # 无命中：用空列表占位
 
-# 本地已计算token = 之前已计算的 + 刚命中前缀的
+# 本地已缓存token = comp(之前步已算) + new_comp(本步命中)
+# 两者运行时互斥（comp>0 则 new_comp=0），加法无需前提
 num_local_computed_tokens = (
     request.num_computed_tokens + num_new_computed_tokens
 )
-# 总已计算token = 本地 + 外部Connector，不能超过max_model_len
+# 全部已缓存token = 本地 + ext_comp(Connector差集，已减去本地重叠部分)
+# 三段不重叠（comp / new_comp / ext_comp），直接相加即为全部已缓存
 total_computed_tokens = min(
     num_local_computed_tokens + num_external_computed_tokens,
     self.max_model_len,
@@ -486,6 +531,7 @@ total_computed_tokens = min(
 watermark_blocks = 0
 if has_scheduled_reqs and request.status in (
     RequestStatus.WAITING,
+    RequestStatus.PREEMPTED,
 ):
     watermark_blocks = self.watermark_blocks
 ```

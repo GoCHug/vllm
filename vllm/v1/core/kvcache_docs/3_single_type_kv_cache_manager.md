@@ -227,32 +227,19 @@ def find_longest_cache_hit(cls, block_hashes, max_length, kv_cache_group_ids,
     # ① 把 Request 哈希从 hash_block_size 粒度对齐到本组 block_size 粒度
     block_hashes = resolve_block_hashes(block_hashes, block_pool.hash_block_size,
                                         block_size, alignment_tokens=alignment_tokens, ...)
-    fine_grained = (alignment_tokens < block_size and block_size % alignment_tokens == 0)
 
     computed_blocks = tuple([] for _ in range(len(kv_cache_group_ids)))
     # ② Phase 1：从开头找最长"满块"连续命中 run
     for block_hash in itertools.islice(full_block_hashes, max_length // block_size):
         cached_block = block_pool.get_cached_block(block_hash, kv_cache_group_ids)
-        if not cached_block:
-            break                      # 链式哈希：miss 之后必然全 miss
-        [c.append(cb) for c, cb in zip(computed_blocks, cached_block)]
+        if not cached_block:    # miss就break
+            break
+        for computed, cached in zip(computed_blocks, cached_block):
+            computed.append(cached)
     hit_length = len(computed_blocks[0]) * block_size
 
-    # ③ 细粒度：从高到低探测第一块内部 hash 边界（续写场景命中落在块内）
-    if fine_grained:
-        for fine_idx in range(max_partial_idx - 1, first_partial_idx - 1, -1):
-            cached_tail = block_pool.get_cached_block(block_hashes[fine_idx], kv_cache_group_ids)
-            if not cached_tail:
-                continue
-            [c.append(cb) for c, cb in zip(computed_blocks, cached_tail)]
-            hit_length = (fine_idx + 1) * alignment_tokens
-            break
-    # ④ EAGLE 丢最后一块 + 对齐收尾
-    if drop_eagle_block and hit_length > 0:
-        hit_length -= min(alignment_tokens, block_size)
-    hit_length -= hit_length % alignment_tokens
-    for computed in computed_blocks:
-        del computed[cdiv(hit_length, block_size):]   # 裁剪超长块
+    ...
+
     return computed_blocks, hit_length
 ```
 
