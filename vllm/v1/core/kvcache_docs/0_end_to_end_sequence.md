@@ -141,33 +141,38 @@ R 的 prompt 前 32 token 恰与 SP 相同 → prefill 时 `get_computed_blocks`
 
 ```text
 入队 → WAITING（①）
-  ├─ 首次调度 prefill（②）
-  │    ├─ KVCacheManager.get_computed_blocks（③）: 遍历70//16=4个hash 查表 → hit_length=32
-  │    │    ├─ UnitaryKVCacheCoordinator.find_longest_cache_hit
-  │    │    │    └─ FullAttentionManager.find_longest_cache_hit 
-  │    │    │         └─ BlockPool.get_cached_block → 命中块 0/1（P 缓存的 SP）
-  │    ├─ KVCacheManager.allocate_slots（④）
-  │    │    ├─ UnitaryKVCacheCoordinator.get_num_blocks_to_allocate # 计算本轮实际需要分配多少新块，检查空闲块是否足够
-  │    │    ├─ UnitaryKVCacheCoordinator.allocate_new_computed_blocks # 处理前缀 token（comp + new_comp + ext_comp）
-  │    │    ├─ UnitaryKVCacheCoordinator.allocate_new_blocks # 为待计算的 token（new + lookahead）分配新块
-    │    │    ├─ touch 命中块：KVCacheManager.allocate_new_computed_blocks → BlockPool.touch（2 命中）
-    │    │    ├─ 分新块：KVCacheManager.allocate_new_blocks → BlockPool.get_new_blocks(3) → block_table=[命中0, 命中1, 新2, 新3, 新4]
-    │    │    └─ 入表缓存：KVCacheManager.cache_blocks → BlockPool.cache_full_blocks（新满块 2, 3 入哈希表；未满块 4 不入）
-  │    ├─ SchedulerOutput（⑤·Scheduler 组装）: 附清零块 id 2/3/4
-  │    └─ GPUModelRunner.execute_model（⑥）: forward 写 70 token KV → sample → 第 1 token → RUNNING
-  ├─ decode 续写 31 步（⑦，每步 1 token，不查前缀）── 只有两种动作交替
-  │    ├─ 情况A · 0 分配（当前块未满，直接续写）
-  │    │    └─ KVCacheManager.allocate_slots（需 0 块）
-  │    │         ├─ 分新块：KVCacheManager.allocate_new_blocks → BlockPool.get_new_blocks(0) → block_table 无新增
-  │    │         └─ 入表缓存：KVCacheManager.cache_blocks → BlockPool.cache_full_blocks（无满块不入表）
-  │    └─ 情况B · 填满分配 1 块（当前块写满才申请下一块）
-  │         └─ KVCacheManager.allocate_slots（需 1 块）
-  │              ├─ 分新块：KVCacheManager.allocate_new_blocks → BlockPool.get_new_blocks(1) → block_table 尾部 +1
-  │              └─ 入表缓存：KVCacheManager.cache_blocks → BlockPool.cache_full_blocks（写满的旧块入哈希表；新块未满不入）
-  │    （R 32 步分布：步1~9 0分配、步10 满分配1块；步11~25 0分配、步26 满分配；步27~32 填末块 6 slot 未满）
-  └─ 释放 KVCacheManager.free（⑧）: 逆序 7→6→5→4→3
-       ├─ 命中块 0/1 仅减计数
-       └─ 有哈希→append 队尾 · 无哈希→prepend 队首
+├─ 首次调度 prefill（②）
+│  ├─ KVCacheManager.get_computed_blocks（③）: 遍历70//16=4个hash 查表 → hit_length=32
+│  │  └─ UnitaryKVCacheCoordinator.find_longest_cache_hit
+│  │     └─ FullAttentionManager.find_longest_cache_hit
+│  │        └─ BlockPool.get_cached_block → 命中块 0/1（P 缓存的 SP）
+│  ├─ KVCacheManager.allocate_slots（④）
+│  │  ├─ UnitaryKVCacheCoordinator.get_num_blocks_to_allocate # 计算本轮实际需要分配多少新块，检查空闲块是否足够
+│  │  │  └─ FullAttentionManager.get_num_blocks_to_allocate # 需要 3 块新块
+│  │  ├─ UnitaryKVCacheCoordinator.allocate_new_computed_blocks # 处理前缀 token（comp + new_comp + ext_comp），touch命中块 + 给ext_comp分配新块
+│  │  │  └─ FullAttentionManager.add_local_computed_blocks
+│  │  │     └─ BlockPool.touch # touch 命中块（2 命中）
+│  │  ├─ UnitaryKVCacheCoordinator.allocate_new_blocks # 为待计算的 token（new + lookahead）分配新块
+│  │  │  └─ FullAttentionManager.allocate_new_blocks
+│  │  │     └─ BlockPool.get_new_blocks # 从空闲队列弹出块 2/3/4，block_table=[命中0, 命中1, 新2, 新3, 新4]
+│  │  └─ UnitaryKVCacheCoordinator.cache_blocks # 缓存新块 2, 3 入哈希表，未满块 4 不入，hash基于token ID
+│  │     └─ FullAttentionManager.cache_blocks
+│  │        └─ BlockPool.cache_full_blocks（新满块 2, 3 入哈希表；未满块 4 不入）
+│  ├─ SchedulerOutput（⑤·Scheduler 组装）: 附清零块 id 2/3/4
+│  └─ GPUModelRunner.execute_model（⑥）: forward 写 70 token KV → sample → 第 1 token → RUNNING
+├─ decode 续写 31 步（⑦，每步 1 token，不查前缀）── 只有两种动作交替
+│  ├─ 情况A · 0 分配（当前块未满，直接续写）
+│  │  └─ KVCacheManager.allocate_slots（需 0 块）
+│  │     ├─ 分新块：KVCacheManager.allocate_new_blocks → BlockPool.get_new_blocks(0) → block_table 无新增
+│  │     └─ 入表缓存：KVCacheManager.cache_blocks → BlockPool.cache_full_blocks（无满块不入表）
+│  └─ 情况B · 填满分配 1 块（当前块写满才申请下一块）
+│     └─ KVCacheManager.allocate_slots（需 1 块）
+│        ├─ 分新块：KVCacheManager.allocate_new_blocks → BlockPool.get_new_blocks(1) → block_table 尾部 +1
+│        └─ 入表缓存：KVCacheManager.cache_blocks → BlockPool.cache_full_blocks（写满的旧块入哈希表；新块未满不入）
+│  （R 32 步分布：步1~9 0分配、步10 满分配1块；步11~25 0分配、步26 满分配；步27~32 填末块 6 slot 未满）
+└─ 释放 KVCacheManager.free（⑧）: 逆序 7→6→5→4→3
+   ├─ 命中块 0/1 仅减计数
+   └─ 有哈希→append 队尾 · 无哈希→prepend 队首
 ```
 
 **总览时序图**：

@@ -636,35 +636,27 @@ if (
 
 ```python
 # ---- 3a. 真正分配新块 ----
-# 从 free_block_queue 取出空闲块，加入 manager 的 req_to_blocks 映射
-# 新分配的块ID会被追加到 manager.new_block_ids 列表，
-# 后续 Worker 调用 take_new_block_ids() 取走这些ID，在forward前把对应块清零
+# 把"为待计算token找块"整个委托给 Coordinator，manager 不感知块来源
 new_blocks = self.coordinator.allocate_new_blocks(
     request.request_id,
-    num_tokens_need_slot,      # 需要slot的总token数（含lookahead）
-    num_tokens_main_model,     # 主模型token数（不含lookahead，决定主模型block边界）
+    num_tokens_need_slot,      # 需要slot的总token数（含lookahead）→ 决定块数
+    num_tokens_main_model,     # 主模型token数（不含lookahead，定主模型块边界）
     num_encoder_tokens,        # encoder token数（cross-attn用，decoder-only为0）
 )
 
 # ---- 3b. P/D 延迟缓存：远程传输未完成时先不缓存 ----
-# P/D场景下，KV数据要从remote接收，本step还没收完，cache了会写入不完整数据
+# 命中则直接返回、跳过 3c
 if not self.enable_caching or delay_cache_blocks:
     return self.create_kv_cache_blocks(new_blocks)   # 直接返回，跳过cache
 
 # ---- 3c. 缓存写入（调度阶段，forward之前）----
-# 想缓存到 total_computed + num_new_tokens，但必须排除"不可提交"的token
-# （如可能被拒绝的draft token），所以用 request.num_tokens 来cap，
-# 确保只缓存"已finalized"的token
+# manager 只算缓存截止点，真正的哈希/入表委托 Coordinator
+# 用 request.num_tokens cap，排除可能被拒绝的draft token，只缓存finalized token
 num_tokens_to_cache = min(
     total_computed_tokens + num_new_tokens,
     request.num_tokens,
 )
-# cache_blocks 只缓存"满块"（num_tokens // block_size），尾块不缓存
-# hash 基于 token ID（不依赖KV数据），所以 forward 之前就能算 hash 并写入
-# cache_blocks 是幂等的：已缓存的块（num_cached_block >= num_full_blocks）直接跳过
-#   - prompt阶段：前2块已在prefix cache中，num_cached_block=2 < num_full_blocks=4 → 缓存新满块2、3
-#   - decode阶段：每满一个block_size的块，这里就会把它写入哈希表
-# 外部调用方（async PP / KV Connector）也会在forward之后追加调用 cache_blocks
+# 只缓存满块、hash基于token ID
 self.coordinator.cache_blocks(request, num_tokens_to_cache)
 
 # ---- 3d. 返回新分配的块 ----
@@ -678,15 +670,12 @@ return self.create_kv_cache_blocks(new_blocks)
 - **前置准备**：`num_local_computed_tokens = 0 + 32 = 32`，`total_computed_tokens = 32`
 - **子阶段①**：
   - `num_tokens_need_slot = min(32 + 38, max_model_len) = 70`
-  - `remove_skipped_blocks`：FullAttention下no-op
   - `num_blocks_to_allocate = ceil(70/16) - 2 = 5 - 2 = 3`块
   - 空间检查：假设空闲块足够，通过
 - **子阶段②**：`allocate_new_computed_blocks` → touch命中blockA、blockB，ref_cnt都+1
 - **子阶段③**：
-  - `allocate_new_blocks` → 从free_block_queue分配blockC、blockD、blockE，`new_block_ids=[blockC_id, blockD_id, blockE_id]`
-  - `num_tokens_to_cache = min(32+38, 70) = 70`
-    - `num_full_blocks = 70 // 16 = 4`，`num_cached_block = 2`（prefix hit已缓存前2块）
-    - `num_cached_block(2) < num_full_blocks(4)` → 缓存新满块2、3（blockC、blockD），未满块4不入
+  - `allocate_new_blocks(request, num_tokens_need_slot=70, num_tokens_main_model=70, num_encoder_tokens=0)` → 委托 Coordinator 为新 token 提供 3 个新块（blockC、blockD、blockE)，manager 拿回这段结果
+  - `num_tokens_to_cache = min(32+38, 70) = 70` → 委托 `cache_blocks(request, 70)`（满块 4 个中，前 2 块已是前缀命中，第 3/4 块写入哈希表；未满尾块不入——这些提交细节在 Coordinator 内部完成）
   - 返回：`KVCacheBlocks(([blockC, blockD, blockE],))`
 
 ### 5.4 块释放方法

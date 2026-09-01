@@ -21,7 +21,7 @@
 |---------|------|---------|----------------|
 | **初始化** | 创建全局唯一 `BlockPool`，创建各组的 `SingleTypeKVCacheManager` | `__init__` | BlockPool 容量 4096；1 个 FullAttentionManager（group_id=0） |
 | **前缀查找③** | 透传 `FullAttentionManager.find_longest_cache_hit` | `find_longest_cache_hit` | 命中块 0/1，hit_length=32 |
-| **命中块处理④-1** | 两阶段分配阶段①：touch 命中块（`ref_cnt`+1 防驱逐） | `allocate_new_computed_blocks` | 块 0/1 的 ref_cnt 0→1 |
+| **命中块处理④-1** | touch 命中块（`ref_cnt`+1 防驱逐） | `allocate_new_computed_blocks` | 块 0/1 的 ref_cnt 0→1 |
 | **新块分配④-2** | 透传 `FullAttentionManager.allocate_new_blocks` | `allocate_new_blocks` | 从空闲队列弹出块 2/3/4 |
 | **缓存写入④-3** | 透传 `FullAttentionManager.cache_blocks`，满块写入哈希缓存 | `cache_blocks` | 满块 2/3 入哈希表；残块 4 不入 |
 | **块释放⑧** | 透传 `FullAttentionManager.free` | `free` / `pop_blocks_for_free` | 逆序释放块 6→5→4→3→2；命中块 0/1 仅减计数 |
@@ -79,13 +79,11 @@
 │  ② coord.allocate_new_computed_blocks(R, ([块0,块1],), 32, 0)        │
 │     透传→ FM[0]                                                      │
 │     → touch 块 0/1: ref_cnt 0→1 (移出 free 队列, 防驱逐)              │
-│     ※ 两阶段协议阶段①: 单组无跨组竞争, 但流程统一                    │
 │                                                                      │
 │  ③ coord.allocate_new_blocks(R, 70, 70)         透传→ FM[0]         │
 │     → pop [2, 3, 4] from BlockPool.free_block_queue                  │
 │     → block_table = [0, 1, 2, 3, 4]                                 │
 │     → new_block_ids = [2, 3, 4] (供 Worker 清零)                     │
-│     ※ 两阶段协议阶段②: touch 完成后才分配, 不会驱逐刚 touch 的块      │
 │                                                                      │
 │  ④ coord.cache_blocks(R, 70)                    透传→ FM[0]         │
 │     → 满块 2(t32-47)/3(t48-63) 入 cached_block_hash_to_block         │
@@ -276,11 +274,11 @@ class KVCacheCoordinator(ABC):
 
 > **示例 R 中发生了什么**：prefill 时 `num_tokens=70`、`new_computed_blocks=([块0, 块1],)`、`num_local_computed_tokens=32`。组 0 的 manager 算出：70 token 需 5 块槽位，已有 2 块 → **返回 3**。Scheduler 拿这个数做调度准入判断（显存够不够），真正分配在 §5.4。
 
-### 5.3 两阶段分配之阶段①——touch 命中块 `allocate_new_computed_blocks`
+### 5.3 touch 命中块 `allocate_new_computed_blocks`
 
 源码位置：`kv_cache_coordinator.py:192-236`
 
-修复 issue #33775 的关键——**两阶段分配**：先 touch 所有组的命中块（增加 ref_cnt），再分配新块，防止跨组驱逐竞争。
+修复 issue #33775 的关键——**两阶段分配**：先 touch 所有组的命中块（增加 ref_cnt），再分配num_external_computed_tokens需要的新块，防止跨组驱逐竞争。
 
 ```python
     def allocate_new_computed_blocks(
@@ -318,10 +316,8 @@ class KVCacheCoordinator(ABC):
 ```
 
 > **示例 R 中发生了什么**：单组，循环只跑 i=0 一次 → `FullAttentionManager.add_local_computed_blocks(R, [块0, 块1], 32, 0)` → `block_pool.touch()` 把块 0/1 的 `ref_cnt` 从 0 加到 1。touch 后块 0/1 脱离"可驱逐"状态，接下来分配块 2/3/4 时**绝不会**把刚命中的前缀块挤出去。
->
-> 单组场景不存在跨组竞争，但仍然遵循相同的两阶段流程，保证接口统一。两阶段协议的"真正用武之地"在 Hybrid 多组场景（§7.2）。
 
-### 5.4 两阶段分配之阶段②——分配新块 `allocate_new_blocks`
+### 5.4 分配新块 `allocate_new_blocks`
 
 源码位置：`kv_cache_coordinator.py:238-271`
 
