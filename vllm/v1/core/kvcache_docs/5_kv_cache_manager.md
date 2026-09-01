@@ -612,22 +612,27 @@ if required_blocks > available_blocks:
 源码docstring：*"Handle prefix tokens (comp + new_comp + ext_comp): Free unnecessary blocks / Allocate new blocks for ext_comp tokens inside sliding window"*
 
 ```python
-# 关键：必须先 touch 所有命中块（ref_cnt++），再分配新块！
-# 否则分配新块时可能触发驱逐，把还没touch的命中块给驱逐掉（issue #33775）
-# 触发条件：有本地命中块，或 有外部Connector token（ext_comp也需要分配slot）
+# 把"已算好、本步不重算"的 token 接入请求的块表（本层只做委托，细节在 Coordinator）
+# 进入条件（满足其一）：
+#   1) 有本地前缀命中块（get_computed_blocks 的结果）
+#   2) num_external_computed_tokens > 0：KV Connector 报告远端已算好 token
+#      —— 典型是 P/D 分离：D 侧首次调度时本地 num_computed_tokens==0，
+#      远端命中的整个 prompt 都计入 ext_comp，分好本地块接收 P 传来的 KV
+# 仅首次调度可能进入（此时才查前缀/问 connector）；decode 步两条件均不满足
 if (
     new_computed_block_list is not self.empty_kv_cache_blocks.blocks
     or num_external_computed_tokens > 0
 ):
-    # touch命中块：把命中块追加到请求的block列表中，ref_cnt++，标记为"正在使用"
-    # 对于ext_comp的token：connector缓存了KV但vLLM没有，这里会为它们分配本地slot
-    # （在滑动窗口范围内的ext_comp token需要本地块来接收传输的KV数据）
     self.coordinator.allocate_new_computed_blocks(
         request_id=request.request_id,
         new_computed_blocks=new_computed_block_list,
         num_local_computed_tokens=num_local_computed_tokens,
         num_external_computed_tokens=num_external_computed_tokens,
     )
+    # Coordinator 内部两阶段：
+    # ① add_local_computed_blocks：命中块入块表 + touch（ref_cnt++）——
+    #    先 touch 再分新块，否则可能被驱逐（issue #33775）
+    # ② allocate_external_computed_blocks：为 ext_comp token 分配新块接收远端 KV
 ```
 
 #### 子阶段③：为待计算的 token（new + lookahead）分配新块
