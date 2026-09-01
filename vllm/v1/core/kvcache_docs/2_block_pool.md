@@ -112,7 +112,7 @@ def get_num_free_blocks(self) -> int:
     return len(self.free_block_queue)
 ```
 
-KM 侧用它算 `available = free - reserved`，不足则触发抢占（时序 §3.6）。
+KM 侧用它算 `available = free - reserved`，不足则 `allocate_slots` 返回 None（等待下轮调度）。
 
 ### 3.3 `get_new_blocks` —— B2 分配新块（`block_pool.py:647-677`）
 
@@ -256,7 +256,6 @@ R：逆序归还第 7→6→5→4→3 块；命中块 0/1（P 缓存的 SP）仅
 |---|---|---|---|
 | `_maybe_evict_cached_block` | `:679` | 从哈希表移除某块的缓存条目 | `get_new_blocks` 内部，防旧 hash 错配 |
 | `_remove_cached_block_hashes` | `:571` | 一次性删除块的主哈希+所有别名 | `cache_full_blocks` 晋升时 |
-| `move_block_hashes` | `:629` | CoW 时把 src 的哈希条目移给 dst | CoW/partial-hit 场景（B3 旁支） |
 | `evict_blocks` | `:744` | 按 block_id 从哈希表删缓存条目，**不改占用状态** | 显式缓存失效（如 RLHF 权重更新） |
 | `get_usage` | `:807` | 使用率（`num_used / (num_blocks-1)`） | 监控 |
 | 事件方法 | — | 广播 `BlockStored/BlockRemoved` | 仅 `enable_kv_cache_events` 时 |
@@ -269,7 +268,7 @@ R：逆序归还第 7→6→5→4→3 块；命中块 0/1（P 缓存的 SP）仅
 2. **正反表对齐**：别名键都在反向表有记录；清理时主哈希+别名一并删。
 3. **`ref_cnt==0` ⇔ 在空闲链表**（非 null 块）：归零进队列可驱逐；`>0` 被运行中请求持有。
 4. **`null_block`（block_id=0）不参与计数/释放**，`get_usage`/`get_num_free_blocks` 都特判跳过（实际可分配数 = `num_blocks-1`）。
-5. **同 hash 可挂多物理块**（CoW 后新旧内容相同），`BlockHashToBlockMap` 不去重。
+5. **同 hash 可挂多物理块**（新旧内容相同时），`BlockHashToBlockMap` 不去重。
 
 ---
 

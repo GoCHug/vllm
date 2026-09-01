@@ -42,7 +42,7 @@ SingleTypeKVCacheManager（ABC 抽象基类）—— 统一接口，子类实现
 | **B2 touch命中块** | 命中块 `ref_cnt+=1`、移出 free 队列，防驱逐 | `add_local_computed_blocks` |
 | **B2 算新块数** | 总 token 数 − 已命中块数 → 需新分配块数 | `get_num_blocks_to_allocate` |
 | **B2 外部命中** | 为远端/CPU 命中的 token 分配新物理块 | `allocate_external_computed_blocks` |
-| **B2 分配新块** | 从 free 队列取块；处理部分命中 CoW | `allocate_new_blocks` |
+| **B2 分配新块** | 从 free 队列取块 | `allocate_new_blocks` |
 | **B2 写缓存** | 满块哈希写入前缀表 | `cache_blocks` → `block_pool.cache_full_blocks` |
 | **E 释放** | 逆序遍历块 `ref_cnt-=1`，0 则回收 | `free` / `pop_blocks_for_free` |
 
@@ -52,7 +52,7 @@ SingleTypeKVCacheManager（ABC 抽象基类）—— 统一接口，子类实现
 
 ### 4.1 `get_num_blocks_to_allocate`：算新块数（`base` 基类）
 
-> 源码 `:144-230`。容量预估，返回值经上层 `kv_cache_manager.py:521` `required>available` 比较决定是否抢占。
+> 源码 `:144-230`。容量预估，返回值经上层 `kv_cache_manager.py:521` `required>available` 比较决定是否准入。
 
 ```python
 def get_num_blocks_to_allocate(self, request_id, num_tokens, new_computed_blocks,
@@ -83,13 +83,10 @@ def get_num_blocks_to_allocate(self, request_id, num_tokens, new_computed_blocks
     num_evictable_blocks = self._get_num_evictable_blocks(
         new_computed_blocks[num_skipped_new_computed_blocks:])
 
-    # ⑥ 部分命中（尾块是半块）→ 为 CoW 重定向预留 +1 块
-    if self._has_partial_local_hit(new_computed_blocks, num_local_computed_tokens):
-        num_new_blocks += 1
     return num_new_blocks + num_evictable_blocks
 ```
 
-**辅助函数**：`_get_num_evictable_blocks`（`:128`）= 统计 `ref_cnt==0 且非 null` 的块数；`_has_partial_local_hit`（`:132`）= `len>0 且 num_local_computed_tokens % block_size != 0`（半块需 CoW）；`get_num_skipped_tokens`（`:661`）= 基类恒 0，SWA 子类覆写。
+**辅助函数**：`_get_num_evictable_blocks`（`:128`）= 统计 `ref_cnt==0 且非 null` 的块数；`get_num_skipped_tokens`（`:661`）= 基类恒 0，SWA 子类覆写。
 
 ### 4.2 `add_local_computed_blocks`：touch 命中块（`base`）
 
@@ -117,12 +114,6 @@ def add_local_computed_blocks(self, request_id, new_computed_blocks,
     req_blocks.extend([self._null_block] * num_skipped_blocks)
     req_blocks.extend(new_computed_blocks)
     self.num_cached_block[request_id] = len(req_blocks)
-
-    # ④ 部分命中 → 预约 CoW：(块下标, 被共享的源块)；回退 num_cached_block 到"满块数"
-    if self._has_partial_local_hit(new_computed_blocks, num_local_computed_tokens):
-        block_idx = num_local_computed_tokens // self.block_size
-        self._partial_hit_reqs[request_id] = (block_idx, new_computed_blocks[-1])
-        self.num_cached_block[request_id] = block_idx
 ```
 
 **要点**：引用计数共享（非复制）是前缀缓存省显存核心；必须所有组都完成本方法后 Coordinator 才逐组调 `allocate_external_computed_blocks`（issue #33775，避免 `get_new_blocks` 驱逐未 touch 的命中块）。
@@ -158,31 +149,22 @@ def allocate_external_computed_blocks(self, request_id,
 
 ### 4.4 `allocate_new_blocks`：分配新块（`base`）
 
-> 源码 `:329-368`。`allocate_slots` 第三阶段，为未命中 token 补足块，并做 CoW 替换。
+> 源码 `:329-368`。`allocate_slots` 第三阶段，为未命中 token 补足块。
 
 ```python
 def allocate_new_blocks(self, request_id, num_tokens, num_tokens_main_model) -> list:
-    cow_blocks = []
-    if request_id in self._partial_hit_reqs:
-        # ① 部分命中：取 1 新块做 CoW 副本，替换被共享的尾块，避免写穿
-        block_idx, source_block = self._partial_hit_reqs.pop(request_id)
-        cow_block = self.block_pool.get_new_blocks(1)[0]
-        self._apply_cow(request_id, block_idx, source_block, cow_block)
-        self.new_block_ids.append(cow_block.block_id)   # CoW 块拷贝前必须清零
-        cow_blocks.append(cow_block)
-
-    # ② 需补块数 = 总块数 − 已有；draft 被拒时可能 ≤0
+    # ① 需补块数 = 总块数 − 已有；draft 被拒时可能 ≤0
     req_blocks = self.req_to_blocks[request_id]
     num_new_blocks = cdiv(num_tokens, self.block_size) - len(req_blocks)
     if num_new_blocks <= 0:
-        return cow_blocks
+        return []
 
-    # ③ 取新块、追加、条件记录 ID（不需要清零的 backend 可省 kernel）
+    # ② 取新块、追加、条件记录 ID（不需要清零的 backend 可省 kernel）
     new_blocks = self.block_pool.get_new_blocks(num_new_blocks)
     req_blocks.extend(new_blocks)
     if self._record_new_block_ids:
         self.new_block_ids.extend(b.block_id for b in new_blocks)
-    return cow_blocks + new_blocks
+    return new_blocks
 ```
 
 ### 4.5 `cache_blocks`：缓存写入
@@ -212,14 +194,13 @@ self.num_cached_block[request.request_id] = num_full_blocks
 def pop_blocks_for_free(self, request_id) -> list:   # 弹出块列表，不真正归还
     req_blocks = self.req_to_blocks.pop(request_id, [])
     self.num_cached_block.pop(request_id, None)
-    self._partial_hit_reqs.pop(request_id, None)
     return req_blocks
 
 def free(self, request_id) -> None:                  # 完整释放：弹出 → 逆序归还
     self.block_pool.free_blocks(reversed(self.pop_blocks_for_free(request_id)))
 ```
 
-**逆序释放**：尾块（多是不完整块）先回 free 队列，抢占重调度时优先被分配回来，提高续生成命中率。`free_blocks`（`block_pool.py:719-742`）逻辑见 [`2_block_pool.md`](./2_block_pool.md)：无哈希块放队首（优先复用）、有哈希块放队尾（LRU 保护）。
+**逆序释放**：尾块（多是不完整块）先回 free 队列，下次分配时优先被复用，提高续生成命中率。`free_blocks`（`block_pool.py:719-742`）逻辑见 [`2_block_pool.md`](./2_block_pool.md)：无哈希块放队首（优先复用）、有哈希块放队尾（LRU 保护）。
 
 ### 4.7 `find_longest_cache_hit`：最长前缀查找（`FullAttentionManager` classmethod）
 
@@ -276,7 +257,6 @@ def find_longest_cache_hit(cls, block_hashes, max_length, kv_cache_group_ids,
 | `get_num_common_prefix_blocks` | `:821` | 公共前缀块数（`ref_cnt==len(req_to_blocks)`），调度优先级 | Coordinator → Scheduler |
 | `reachable_block_mask` | — | 可命中块掩码（SWA/Mamba 意义） | `cache_blocks` 内部 |
 | `take_new_block_ids` | `:376` | drain 需清零的新块 id | KM `take_new_block_ids` |
-| `take_pending_cow_copies` | — | drain CoW 拷贝对 | KM `take_kv_cache_block_copies` |
 | `new_step_starts` | — | 新调度步开始，重置状态 | Scheduler 步开始 |
 | `supports_fine_grained_hash_lookup` | 类属性 | 是否支持块内细粒度命中 | `find_longest_cache_hit` |
 
@@ -299,7 +279,6 @@ def find_longest_cache_hit(cls, block_hashes, max_length, kv_cache_group_ids,
 
 1. `req_to_blocks` 是请求 block_table 的真正存储位置（非 `Request` 字段）。
 2. **链式哈希** + **引用计数共享**：命中块只 `touch` 不复制，最后释放才回收。
-3. **细粒度部分命中** + **部分命中 CoW**：尾半块命中先预约，`allocate_new_blocks` 再 CoW 替换，不污染共享缓存。
-4. **LIFO 逆序释放**：尾块先回自由队列，提高续生成命中率。
-5. 抽象基类统一接口 → 上层 Coordinator 可一致管理 FullAttention/SWA/Mamba。
-6. `find_longest_cache_hit` 是 classmethod，便于 fine-grained / 多 group 复用。
+3. **LIFO 逆序释放**：尾块先回自由队列，提高续生成命中率。
+4. 抽象基类统一接口 → 上层 Coordinator 可一致管理 FullAttention/SWA/Mamba。
+5. `find_longest_cache_hit` 是 classmethod，便于 fine-grained / 多 group 复用。
