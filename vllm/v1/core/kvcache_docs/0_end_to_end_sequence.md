@@ -148,7 +148,7 @@ R 的 prompt 前 32 token 恰与 SP 相同 → prefill 时 `get_computed_blocks`
   │    │    ├─ touch 命中块：KVCacheManager.allocate_new_computed_blocks → BlockPool.touch（2 命中）
   │    │    ├─ 分新块：KVCacheManager.allocate_new_blocks → BlockPool.get_new_blocks(3) → block_table=[命中0, 命中1, 新2, 新3, 新4]
   │    │    └─ 入表缓存：KVCacheManager.cache_blocks → BlockPool.cache_full_blocks（新满块 2, 3 入哈希表；未满块 4 不入）
-  │    ├─ SchedulerOutput（⑤·Scheduler 组装）: 附清零块 id 2/3/4 + CoW 清单
+  │    ├─ SchedulerOutput（⑤·Scheduler 组装）: 附清零块 id 2/3/4
   │    └─ GPUModelRunner.execute_model（⑥）: forward 写 70 token KV → sample → 第 1 token → RUNNING
   ├─ decode 续写 31 步（⑦，每步 1 token，不查前缀）── 只有两种动作交替
   │    ├─ 情况A · 0 分配（当前块未满，直接续写）
@@ -186,7 +186,7 @@ sequenceDiagram
     Scheduler->>KVCacheManager: ④ allocate_slots（分配块）
     Note over KVCacheManager: 下钻链 KVCacheManager→UnitaryKVCacheCoordinator→<br/>FullAttentionManager→BlockPool；touch 命中块+申请新块 → block_table
     KVCacheManager->>Scheduler: KVCacheBlocks（新块 id、block_table、命中信息）
-    Note over Scheduler: ⑤ 组装 SchedulerOutput（清零块 id + CoW 清单）
+    Note over Scheduler: ⑤ 组装 SchedulerOutput（清零块 id）
     Scheduler->>EngineCore: SchedulerOutput
 
     Note over EngineCore,GPUModelRunner: ⑥ GPU 写 KV
@@ -301,13 +301,12 @@ sequenceDiagram
     KVCacheManager->>UnitaryKVCacheCoordinator: ② get_num_blocks_to_allocate（容量检查）
     Note over FullAttentionManager: num_new = max(cdiv(num_tokens, block_size)<br/>　− num_local_computed, 0) 纯计算<br/>num_local_computed = 已算块数 + 已持块数
     KVCacheManager->>BlockPool: get_num_free_blocks()
-    Note over KVCacheManager: available = free − reserved，required = num_blocks + watermark<br/>required &gt; available → return None → 抢占
+    Note over KVCacheManager: available = free − reserved，required = num_blocks<br/>required &gt; available → return None → 等待下轮调度
     KVCacheManager->>UnitaryKVCacheCoordinator: ③ allocate_new_computed_blocks（touch 命中块）
     Note over UnitaryKVCacheCoordinator: 两阶段先 add_local 逐组 touch（ref_cnt++）<br/>再 allocate_external（主线无 ext_comp，跳过）
     KVCacheManager->>UnitaryKVCacheCoordinator: ④ allocate_new_blocks（待计算新块）
     UnitaryKVCacheCoordinator->>FullAttentionManager: allocate_new_blocks()
     FullAttentionManager->>BlockPool: get_new_blocks(num_new)
-    Note over FullAttentionManager: partial-hit 先 get_new_blocks(1) 做 CoW 替换共享尾块
     KVCacheManager->>UnitaryKVCacheCoordinator: ⑤ cache_blocks（缓存满块）
     FullAttentionManager->>BlockPool: cache_full_blocks
     Note over BlockPool: 新满块 block_hash=None → 写库入哈希映射表<br/>命中块哈希已存在 → 幂等早退
@@ -320,21 +319,18 @@ sequenceDiagram
 - **① 释放滑窗外块** `remove_skipped_blocks`（km:504）：在容量检查**之前**先释放滑窗跳过的块，减少驱逐；full attention 下 `get_num_skipped_tokens` 恒 0，实际不弹块，仅 SWA / R-SWA 子类生效
 - **② 容量检查** `get_num_blocks_to_allocate`（km:510，下钻 coordinator 基类 → single_type:144）：
   - FM 侧纯计算：`num_new = max(cdiv(num_tokens, block_size) − num_local_computed, 0)`，其中 `num_local_computed = 已算块数 + 已持块数`
-  - KM 侧比较：`available = get_num_free_blocks() − reserved`（block_pool:799）vs `required = num_blocks + watermark`；`required > available` → `return None` → 抢占
+  - KM 侧比较：`available = get_num_free_blocks() − reserved`（block_pool:799）vs `required = num_blocks`；`required > available` → `return None` → 等待下轮调度
 - **③ 处理命中块** `allocate_new_computed_blocks`（km:535，coordinator 两阶段，issue #33775）：**先**逐组 `add_local_computed_blocks`（touch 命中块 `ref_cnt` 1→2，摘出 free 队列），**再**逐组 `allocate_external_computed_blocks`（主线 `num_external_computed_tokens=0`，跳过）；放在容量检查**之后**，避免 touch 后回滚
-- **④ 分配待计算块** `allocate_new_blocks`（km:542 → single_type:330）：`num_new = cdiv(num_tokens, block_size) − len(req_to_blocks[req_id])`；partial-hit 先 `get_new_blocks(1)` 做 CoW 替换共享尾块
+- **④ 分配待计算块** `allocate_new_blocks`（km:542 → single_type:330）：`num_new = cdiv(num_tokens, block_size) − len(req_to_blocks[req_id])`
 - **⑤ 缓存满块** `cache_blocks`（km:563 → single_type:427 → cache_full_blocks）：`num_tokens_to_cache = min(total_computed + num_new, request.num_tokens)`，只缓存**已定稿** token（排除可能被拒的 draft）；新块记入 `new_block_ids` 待 drain 清零
 
 **结合请求 R**：容量检查通过后，③ touch 前缀查找命中的前 2 块（即 P 缓存的 SP 块 0/1，ref_cnt 1→2）；④ 剩余 38 token 按 16 切块需 3 块（16+16+6），`get_new_blocks(3)` → block_table 变 `[命中0, 命中1, 新2, 新3, 新4]`；⑤ 命中块 0/1 幂等早退，真正入表的是新满块 2、3，未满块 4 不入表。
 
 #### 4.2.3 ⑤ 组装 SchedulerOutput
 
-④ 分配完物理块后，Scheduler 还需把两件"后处理指令"打包进 `SchedulerOutput`，交给 Worker 在 GPU forward 之前执行：
+④ 分配完物理块后，Scheduler 还需把"后处理指令"打包进 `SchedulerOutput`，交给 Worker 在 GPU forward 之前执行：
 
 1. **清零新块** `new_block_ids_to_zero`：新分配的物理块在 GPU 内存里可能残留上一请求的旧数据，必须先清零再写入
-2. **CoW 拷贝** `kv_cache_block_copies`：部分命中前缀的请求，需把共享块的 KV 数据拷到私有块，避免写覆盖
-
-> **为什么需要 CoW 拷贝？** 当请求命中缓存块 0/1 但尾巴被截断（partial hit），④ 的分配块会额外分配一个"CoW 块"替掉原共享块位置。请求的 block_table 已指向新块，但新块 GPU 上是空的——必须把共享块里的 KV 拷贝过来，它才能在块上继续写自己的 token。Worker 侧在 forward 前执行 `copy_kv_cache_blocks_inplace` 完成拷贝。
 
 **SchedulerOutput 中与 KV Cache 直接相关的字段**（output.py:193）：
 
@@ -343,13 +339,11 @@ sequenceDiagram
 | `scheduled_new_reqs` | `list[NewRequestData]` | 首次调度请求 | 含 `block_ids`（block_table） |
 | `scheduled_cached_reqs` | `list[CachedRequestData]` | 续跑请求增量 | 含 `new_block_ids` |
 | `new_block_ids_to_zero` | `list[int] \| None` | `take_new_block_ids()` | 本步新分配块 id，Worker 需清零 |
-| `kv_cache_block_copies` | `list[KVCacheBlockCopy] \| None` | `take_kv_cache_block_copies()` | 本步待执行的 CoW 拷贝对 `src→dst` |
 
-**清零过滤与延迟释放（Scheduler 侧）**：
+**清零过滤（Scheduler 侧）**：
 - `_get_new_block_ids_to_zero` 过滤（scheduler.py:1233）：`needs_kv_cache_zeroing` 为 False → 直接 None；或有 `_skip_zero_block_ids`（异步 KV 加载的块，清零会竞争写入）→ 排除；列表为空 → None
-- CoW 源块与目的块拷贝期间都要保留 ref（源块有 hit-ref、目的块额外 `ref_cnt`）；启用 `defer_block_free` 时释放推迟到 `processed_step_seq >= fence_seq`（GPU 拷贝确认完成），否则立即释放；延迟释放的块逆序归还（`_drain_deferred_frees`, scheduler.py:2311）
 
-**结合请求 R**：R 是首次 prefill（无 partial hit），`kv_cache_block_copies` 为空；3 个新块 id（2/3/4）进 `new_block_ids_to_zero`。Worker 收到后先清零这 3 个块，再执行 forward 写入 KV。
+**结合请求 R**：R 是首次 prefill，3 个新块 id（2/3/4）进 `new_block_ids_to_zero`。Worker 收到后先清零这 3 个块，再执行 forward 写入 KV。
 
 #### 4.2.4 附：BlockHash 的三级演变
 
@@ -452,7 +446,7 @@ sequenceDiagram
 ```
 
 **要点**：
-- `free`（km:567）内部顺序：**先**释放 `_partial_tail_pins`（km:575，部分尾块 pin），**再** `coordinator.free`（km:578）逐组下放
+- `free`（km:567）内部顺序：`coordinator.free`（km:578）逐组下放
 - FullAttentionManager 侧先 `pop_blocks_for_free(req_id)` 取出按分配顺序的块列表（single_type:500），再 `free_blocks(reversed(blocks))`
 - **逆序释放**（`reversed`）：尾块先归还，利用 free 队列特性让最近用的块最先被重新分配
 - `ref_cnt > 0` 的共享块仅减计数不回收；归 0 才进 free 队列
@@ -460,37 +454,6 @@ sequenceDiagram
 - 另有一条 **defer 分支**：异步调度等在途场景下，Scheduler 改调 `pop_blocks_for_free`（scheduler.py:2296）只取记账不归还，等在途步完成后延迟 `free_blocks`
 
 **结合请求 R**：R 生成满 32 个输出（或命中 EOS）后结束。逆序释放：第 7 块先归还；命中块 0/1 是 P 缓存的共享前缀，R 结束仅对其 `ref_cnt--`——归零后仍作为**带哈希的缓存块**进 free 队尾（哈希表条目保留），后续复用同一前缀的请求仍可命中；其余新块按哈希情况进队尾/队首，方便后续请求前缀复用。
-
-### 4.6 扩展：抢占（容量不足时）
-
-`allocate_slots` 返回 `None` 时反复抢占直到成功或无可抢占（scheduler.py:565 的 `while True`）：
-
-```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
-sequenceDiagram
-    autonumber
-    participant Scheduler
-    participant KVCacheManager
-    loop while True   (反复抢占直至成功或无对象)
-        Scheduler->>KVCacheManager: allocate_slots(request, ...)
-        alt 返回 None（② 容量检查失败）
-            KVCacheManager-->>Scheduler: None
-            Note over Scheduler: 抢占 running 中最低优先级请求<br/>PRIORITY → priority+arrival_time 最小；<br/>默认策略 pop running 尾部
-            Scheduler->>KVCacheManager: free(preempted_req)（内部下钻见释放流程）
-            Note over Scheduler: 被抢占者回到 waiting，num_computed_tokens=0
-            Note over Scheduler: 若被抢占者就是当前请求或 running 已空<br/>→ 无法调度，break 出循环
-        else 成功
-            KVCacheManager-->>Scheduler: KVCacheBlocks
-        end
-    end
-```
-
-**要点**：
-- 抢占者被放回 waiting 且 `num_computed_tokens=0`（:1260），块已释放，重调度需重新 prefill
-- 优先级策略：`SchedulingPolicy.PRIORITY` 时取 `priority + arrival_time` 最小的牺牲者（:578）；否则默认 pop running 尾部（:603）
-- 若被抢占者恰是当前请求、或 running 已空，则无法调度，直接 `break`（:607-609）
-
-**结合请求 R**：设 R 首次调度时空闲块不足以容纳其 3 个新块 → Scheduler 抢占 running 中优先级最低的 X 并释放其块 → 腾出空间后重试成功，R 进入 RUNNING，X 暂停待重调度。
 
 ---
 

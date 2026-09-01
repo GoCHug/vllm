@@ -10,7 +10,7 @@
 |---|---|---|
 | [`1_physical_memory.md`](./1_physical_memory.md) | 第1层 · 物理显存层（最底） | KV 物理张量的申请、reshape，`block_id == 张量行号`的桥接关系 |
 | [`2_block_pool.md`](./2_block_pool.md) | 第2层 · 逻辑块池层 | `KVCacheBlock`、空闲队列、链式哈希表、`BlockPool` 分配/释放/缓存/驱逐 |
-| [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md) | 第3层 · 单类型管理层 | `SingleTypeKVCacheManager` 基类 + `FullAttentionManager` 核心逻辑（前缀查找/分配/释放/CoW） |
+| [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md) | 第3层 · 单类型管理层 | `SingleTypeKVCacheManager` 基类 + `FullAttentionManager` 核心逻辑（前缀查找/分配/释放） |
 | [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md) | 第4层 · 协调器层 | `UnitaryKVCacheCoordinator`（单 Full Attention 组直通），混合模型协调器作为扩展 |
 | [`5_kv_cache_manager.md`](./5_kv_cache_manager.md) | 第5层 · 顶层接口层（最顶） | `KVCacheManager` + `KVCacheBlocks`，Scheduler 唯一入口，完整请求生命周期 |
 
@@ -20,14 +20,12 @@
 
 大型语言模型自回归推理时，每个 token 的生成依赖之前所有 token 的 Key/Value 张量。如果每次生成都重新计算前面所有 token 的 K/V，复杂度是 O(n²)。KV Cache 把之前算好的 K/V 缓存起来，每次只算新 token，复杂度降为 O(n)，但代价是需要占用大量 GPU 显存。
 
-vLLM V1 的 KV Cache 管理围绕六条核心设计（①②③ 是三个支柱，④⑤⑥ 是其派生保障）：
+vLLM V1 的 KV Cache 管理围绕四条核心设计（①②③ 是三个支柱，④ 是其派生保障）：
 
 1. **PagedAttention 分页管理**：把连续的 KV 序列切分成固定大小的 **block**（如每个 block 存 16 个 token），按块分配、回收和共享，彻底解决内存碎片问题。
 2. **逻辑管理与物理存储分离**：`BlockPool` 只管逻辑块（`KVCacheBlock`，只含 `block_id` 和元数据）；物理显存（`torch.Tensor`）由 `GPUModelRunner` 一次性申请并 reshape。两者通过 `block_id` 关联，调度决策全程零显存拷贝。
 3. **前缀缓存 + 引用计数共享**：相同前缀的 block 通过链式哈希定位，多个请求共享同一块物理空间，用 `ref_cnt` 跟踪生命周期；LRU 空闲队列决定驱逐顺序，有哈希的缓存块尽量保留。
-4. **Copy-on-Write**：部分命中（命中前缀的结尾落在 block 中间）时，为请求复制旧块内容再续写，避免覆盖其它请求仍共享的旧数据。
-5. **两阶段 touch + allocate**：先对所有命中块 `ref_cnt++`（touch，防驱逐），再分配新块，避免分配过程中命中块被驱逐。
-6. **Watermark 准入控制**：调度时预留一定数量的空闲块（`watermark_blocks`），防止出现频繁抢占。
+4. **两阶段 touch + allocate**：先对所有命中块 `ref_cnt++`（touch，防驱逐），再分配新块，避免分配过程中命中块被驱逐。
 
 > 上面 ②③ 的更多设计细节（链式哈希前缀、LRU append/prepend、逆序释放）见 [`2_block_pool.md`](./2_block_pool.md) 与 [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md)。
 
@@ -46,13 +44,13 @@ vLLM V1 的 KV Cache 管理围绕六条核心设计（①②③ 是三个支柱�
 前缀缓存查找  ── 沿 KV 链问 BlockPool：这段前缀有没有缓存块？命中即复用
    │
    ▼
-分配 slot  ── touch 命中块(ref_cnt++) + 申请新 block + 部分命中做 CoW，拼出 block_table
+分配 slot  ── touch 命中块(ref_cnt++) + 申请新 block，拼出 block_table
    │
    ▼
 GPU forward  ── 注意力算子用 block_table 索引物理张量，写入本步新 token 的 K/V
    │
    ▼
-缓存 / 释放 / 抢占  ── 写满的块入哈希缓存；释放 ref_cnt-- 归零块入空闲队列
+缓存 / 释放  ── 写满的块入哈希缓存；释放 ref_cnt-- 归零块入空闲队列
 ```
 
 ### 2.2 数据流：从 token 到物理显存
@@ -89,7 +87,7 @@ GPU forward  ── 注意力算子用 block_table 索引物理张量，写入�
 ├───────────────────────────────────────────────────────────────┤
 │  第3层 ×N · 单类型管理  SingleTypeKVCacheManager               │
 │             本文 N=1 FullAttentionManager                     │
-│     前缀查找(链式哈希)/分配释放/CoW/block_table 维护              │
+│     前缀查找(链式哈希)/分配释放/block_table 维护                  │
 ├───────────────────────────────────────────────────────────────┤
 │  第2层 ×1 · 逻辑块池  BlockPool（唯一，所有第3层共享）             │
 │     逻辑块分配/释放/缓存哈希/LRU驱逐（仅 block_id，无显存）        │
@@ -109,7 +107,7 @@ GPU forward  ── 注意力算子用 block_table 索引物理张量，写入�
 Scheduler（调度器 · 调用者）
 └─1→ KVCacheManager（第5层 · 顶层门面）── 对 Scheduler 暴露统一 API
     └─1→ UnitaryKVCacheCoordinator（第4层 · 协调器）
-        ├─1→ 第3层 FullAttentionManager （前缀查找/分配释放/CoW/block_table 维护）
+        ├─1→ 第3层 FullAttentionManager （前缀查找/分配释放/block_table 维护）
         └─1→ 第2层 BlockPool（唯一，所有第3层共享）── 仅索引 block_id
              │    FreeKVCacheBlockQueue(LRU) + BlockHashToBlockMap(链式哈希)
              └─1→ 第1层 物理显存 GPUModelRunner.kv_caches[layer]
@@ -122,7 +120,7 @@ Scheduler（调度器 · 调用者）
 |------|------|------|
 | `kv_cache_manager.py` | 顶层门面，对 Scheduler 暴露统一接口（`get_computed_blocks`/`allocate_slots`/`free` 等） | 第5层 · 顶层门面 · `5_kv_cache_manager.md` |
 | `kv_cache_coordinator.py` | 协调器：单组直通（Full Attention）或多组对齐（混合模型） | 第4层 · 协调器 · `4_kv_cache_coordinator.md` |
-| `single_type_kv_cache_manager.py` | `FullAttentionManager`：前缀查找、block分配/释放、CoW | 第3层 · 单类型管理 · `3_single_type_kv_cache_manager.md` |
+| `single_type_kv_cache_manager.py` | `FullAttentionManager`：前缀查找、block分配/释放 | 第3层 · 单类型管理 · `3_single_type_kv_cache_manager.md` |
 | `block_pool.py` | 逻辑 block 池：分配/释放/缓存哈希/LRU驱逐 | 第2层 · 逻辑块池 · `2_block_pool.md` |
 | `kv_cache_utils.py` | `KVCacheBlock`、`BlockHash`、空闲队列、block hash计算工具 | 块池+物理层（第2/1层） |
 | `gpu_model_runner.py` | 物理显存申请（`torch.zeros` → reshape）并绑定到 attention 层 | 第1层 · 物理层 · `1_physical_memory.md` |

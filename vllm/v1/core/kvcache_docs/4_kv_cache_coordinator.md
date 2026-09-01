@@ -319,7 +319,7 @@ class KVCacheCoordinator(ABC):
 
 源码位置：`kv_cache_coordinator.py:300-317`
 
-这个方法用于preempt（抢占）场景：需要先把块从manager的记录中弹出，**但不立即归还到free_block_queue**，等上层做一些处理后再逆序释放。
+这个方法用于延迟释放场景：需要先把块从manager的记录中弹出，**但不立即归还到free_block_queue**，等 GPU in-flight 操作确认后再逆序释放。
 
 ```python
     def pop_blocks_for_free(self, request_id: str) -> list[KVCacheBlock]:

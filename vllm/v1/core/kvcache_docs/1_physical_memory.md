@@ -318,7 +318,7 @@ def bind_kv_cache(kv_caches, forward_context, runner_kv_caches, num_attn_module=
         forward_context[layer_name].bind_kv_cache(kv_cache)
 ```
 
-绑定后，forward 时 attention layer 从 `forward_context` 取自己的 KV cache；ModelRunner 侧 `self.kv_caches` 用于清零、CoW 拷贝等调度操作。
+绑定后，forward 时 attention layer 从 `forward_context` 取自己的 KV cache；ModelRunner 侧 `self.kv_caches` 用于清零等调度操作。
 
 **3d. 编译与预热 `compile_or_warm_up_model()`**（gpu_worker.py:678）
 
