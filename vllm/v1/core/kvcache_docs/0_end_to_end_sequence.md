@@ -56,7 +56,7 @@ vLLM侧 KV cache 配套参数：
 |---|---|---|---|
 | `page_size_bytes` | `2 × block_size × num_kv_heads × head_dim × 2B`<br>= `2 × 16 × 4 × 128 × 2` | 32,768 B<br>（32 KB） | 单层单块字节数（TP2 后 4 头），因子 2 为 K、V 各一份 |
 | `num_blocks`（示例每卡可用显存 2GB） | `2 GB ÷ page_size_bytes ÷ num_layers`<br>= `2,147,483,648 ÷ 32,768 ÷ 16` | 4096 | 跨 worker `min` 对齐后的逻辑块总数，`BlockPool` 建立 `KVCacheBlock(0..4095)` |
-| `kv_caches[layer]` | `(num_blocks, num_kv_heads, block_size, 2×head_dim)` | `(4096, 4, 16, 256)` | 每层 KV 张量形状（TP2 后 4 头），每 worker 16 个层张量 |
+| `kv_caches[layer]` | `(num_blocks, num_kv_heads, block_size, 2×head_dim)` | `(4096, 4, 16, 256)` | 每层 KV 张量形状（TP2 后 4 头），每 worker 16 个层张量；**形状由 `attn_backend.get_kv_cache_shape()` 决定，此处以 FlashAttention 后端（K/V 打包进最后一维）为例，换后端/布局会不同** |
 
 物理显存初始化启动期**一次性**执行 `EngineCore._initialize_kv_caches`（core.py:248），通过 profile_run 实测可用显存后算出 `num_blocks`，然后每 worker 一次性申请 16 个张量（大小 num_blocks × page_size_bytes）。产出两样供运行时消费：
 1. `num_blocks`（4096，跨 worker 对齐）→ `BlockPool.__init__` 建 `KVCacheBlock(0..4095)`，`block_id` 为 0-4095，运行时 `KVCacheManager` 的分配/释放只操作 `block_id` 和 `ref_cnt`
@@ -91,7 +91,7 @@ sequenceDiagram
     EngineCore->>ModelExecutor: initialize_from_config(kv_cache_configs)
     ModelExecutor->>GPUWorker: collective_rpc("initialize_from_config")
     GPUWorker->>GPUModelRunner: initialize_kv_cache(config)
-    Note over GPUModelRunner: 3a 以 int8 申请字节池（按字节申请）<br/>3b reshape: (4096, 4, 16, 256) 每层（每 worker 16 层）<br/>3c 绑定 kv_caches[layer]（block_id == 张量第 0 维行号）
+    Note over GPUModelRunner: 3a 以 int8 申请字节池（按字节申请）<br/>3b reshape: (4096, 4, 16, 256) 每层（每 worker 16 层，<br/>形状以 FlashAttention 后端为例）<br/>3c 绑定 kv_caches[layer]（block_id == 张量第 0 维行号）
 
     GPUModelRunner-->>GPUWorker: 完成
     GPUWorker-->>ModelExecutor: 完成
@@ -106,13 +106,15 @@ sequenceDiagram
 
 示例以 **Llama-3-8B（pp2tp2）** 为主线。
 
-**共享前缀 SP（32 token = 2 个满块）**：P 与 R 共同复用的开头（如同一段 system prompt 或公共开场白），前 32 token 恰好装满 2 块。
+**共享前缀（32 token = 2 个满块）**：P 与 R 共同复用的开头（如同一段 system prompt 或公共开场白），前 32 token 恰好装满 2 块。
 
 **前置请求 P（先于 R 服务、已结束）**：
 
+> 注：下文块号（0/1/2…）仅为便于叙述的示意编号。实际中 block 0 被 `BlockPool` 保留为 `null_block`，真实分配从块 1 起，不影响流程描述。
+
 ```
-prompt     = 共享前缀 SP（32 token） + P 自己的追问（若干 token，与 R 不同）
-            → P 服务时把 SP 写成满块 0/1，写满即哈希入前缀缓存表
+prompt     = 共享前缀（32 token） + P 自己的追问（若干 token，与 R 不同）
+            → P 服务时把共享前缀写成满块 0/1，写满即哈希入前缀缓存表
 block_size = 16
 ```
 
@@ -121,12 +123,12 @@ P 结束后，块 0/1 作为**带哈希的缓存块**被保留：进 free 队列
 **示例请求 R**：
 
 ```
-prompt     = 共享前缀 SP（32 token） + 追加问题（38 token） = 70 token
+prompt     = 共享前缀（32 token） + 追加问题（38 token） = 70 token
 max_tokens = 32
 block_size = 16
 ```
 
-R 的 prompt 前 32 token 恰与 SP 相同 → prefill 时 `get_computed_blocks` 命中 P 缓存的块 0/1（`hit_length=32`）；后 38 token 为新内容，需新分配块 2/3/4（16+16+6）。
+R 的 prompt 前 32 token 恰与共享前缀相同 → prefill 时 `get_computed_blocks` 命中 P 缓存的块 0/1（`hit_length=32`）；后 38 token 为新内容，需新分配块 2/3/4（16+16+6）。
 
 宏观路径：**入队（WAITING）→ 首次调度 prefill（前 32 token 复用 P 缓存的块 0/1，只算剩余 38 token，→ RUNNING）→ 每步 decode 续写 1 token（至 32 个输出）→ 结束释放**。
 
@@ -134,7 +136,7 @@ R 的 prompt 前 32 token 恰与 SP 相同 → prefill 时 `get_computed_blocks`
 
 ## 3. 端到端过程速览与总览时序图
 
-`EngineCore.step()`（core.py:580）每步驱动 `schedule → execute_model → sample_tokens`。
+`EngineCore.step()`（core.py:581）每步驱动 `schedule → execute_model → sample_tokens`。
 
 **一条请求的端到端过程（编号速览）**（示例 R：prompt = 70 token / max_tokens = 32 token）：
 
@@ -144,11 +146,11 @@ R 的 prompt 前 32 token 恰与 SP 相同 → prefill 时 `get_computed_blocks`
 <div style="white-space:pre;background-color:#e8f5e9">│  ├─ <span style="color:#1565c0">KVCacheManager.get_computed_blocks</span>（①）# 前缀缓存查找，遍历70//16=4个hash 查表 → hit_length=32
 │  │  └─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.find_longest_cache_hit</span>
 │  │     └─ <span style="color:#e65100">FullAttentionManager.find_longest_cache_hit</span>
-│  │        └─ <span style="color:#6a1b9a">BlockPool.get_cached_block</span> → 命中块 0/1（P 缓存的 SP）</div>
+│  │        └─ <span style="color:#6a1b9a">BlockPool.get_cached_block</span> → 命中块 0/1（P 缓存的共享前缀块）</div>
 <div style="white-space:pre;background-color:#e3f2fd">│  ├─ <span style="color:#1565c0">KVCacheManager.allocate_slots</span>（②）
 │  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.get_num_blocks_to_allocate</span> # 计算本轮实际需要分配多少新块，检查空闲块是否足够
 │  │  │  └─ <span style="color:#e65100">FullAttentionManager.get_num_blocks_to_allocate</span> # 需要 3 块新块
-│  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.allocate_new_computed_blocks</span> # 处理前缀 token（comp + new_comp + ext_comp）
+│  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.allocate_new_computed_blocks</span> # 处理已算 token（本地命中块 + 本轮新命中块 + 外部 connector 已算 token）
 │  │  │  └─ <span style="color:#e65100">FullAttentionManager.add_local_computed_blocks</span>
 │  │  │     └─ <span style="color:#6a1b9a">BlockPool.touch</span> # touch 命中块（2 命中）
 │  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.allocate_new_blocks</span> # 为待计算的 token（new + lookahead）分配新块
@@ -260,7 +262,7 @@ sequenceDiagram
 
 ### 4.2 首次调度（WAITING → prefill）
 
-`schedule()`（scheduler.py:427）每步**先遍历 RUNNING（:473）再遍历 WAITING（:671）**。
+`schedule()`（scheduler.py:427）每步**先遍历 RUNNING（scheduler.py:473）再遍历 WAITING（scheduler.py:671）**。
 
 > **调度顺序要点**：没有独立的 prefill / decode 全局阶段，只有一个共享 `token_budget`，按"**先 running、后 waiting**"填充：
 > - RUNNING 里也可能有 chunked prefill 的中间片（`is_prefill_chunk`），同样优先于新的 waiting 请求
@@ -309,56 +311,40 @@ sequenceDiagram
     participant UnitaryKVCacheCoordinator
     participant FullAttentionManager
     participant BlockPool
-    Note over Scheduler,BlockPool: allocate_slots 内部 4 步（S1~S4），顺序与源码一致；<br/>入口另有 remove_skipped_blocks（km:504）释放滑窗外块，<br/>full attention 下恒为空操作（仅 SWA / R-SWA 生效），图中省略
     Scheduler->>KVCacheManager: allocate_slots(request)
-    KVCacheManager->>UnitaryKVCacheCoordinator: S1 get_num_blocks_to_allocate（容量检查，km:510）
+    KVCacheManager->>UnitaryKVCacheCoordinator: S1 get_num_blocks_to_allocate（容量检查，kv_cache_manager.py:510）
     UnitaryKVCacheCoordinator->>FullAttentionManager: get_num_blocks_to_allocate()
     Note over FullAttentionManager: 纯计算：num_new = max(cdiv(需槽位数, block_size) − 已有块数, 0)<br/>num_local_computed = 已算块数 + 已持块数
-    KVCacheManager->>BlockPool: get_num_free_blocks()（跨层直达，km:523）
-    Note over KVCacheManager: available = free − reserved，required = num_new + watermark<br/>required ＞ available → return None → 等待下轮调度
-    KVCacheManager->>UnitaryKVCacheCoordinator: S2 allocate_new_computed_blocks（touch 命中块，km:535）
-    Note over UnitaryKVCacheCoordinator: 仅存在 computed blocks / ext_comp 时调用；两阶段：<br/>先 add_local 逐组 touch，再 allocate_external（主线无 ext_comp，跳过）
+    KVCacheManager->>UnitaryKVCacheCoordinator: S2 allocate_new_computed_blocks（touch 命中块，kv_cache_manager.py:535）
+    Note over UnitaryKVCacheCoordinator: 仅存在已命中块 / 外部已算 token 时调用；两阶段：<br/>先 add_local_computed_blocks 逐组 touch，再 allocate_external_computed_blocks（主线无外部已算 token，跳过）
     UnitaryKVCacheCoordinator->>FullAttentionManager: add_local_computed_blocks()
     FullAttentionManager->>BlockPool: touch()
-    Note over BlockPool: 命中块从 free 队列摘出、ref_cnt 0→1<br/>（仅多个在跑请求共享同一块时见 1→2）
-    KVCacheManager->>UnitaryKVCacheCoordinator: S3 allocate_new_blocks（待计算新块，km:542）
+    KVCacheManager->>UnitaryKVCacheCoordinator: S3 allocate_new_blocks（待计算新块，kv_cache_manager.py:542）
     UnitaryKVCacheCoordinator->>FullAttentionManager: allocate_new_blocks()
     FullAttentionManager->>BlockPool: get_new_blocks(num_new)
-    KVCacheManager->>UnitaryKVCacheCoordinator: S4 cache_blocks（缓存满块，km:563）
+    KVCacheManager->>UnitaryKVCacheCoordinator: S4 cache_blocks（缓存满块，kv_cache_manager.py:563）
     UnitaryKVCacheCoordinator->>FullAttentionManager: cache_blocks()
     FullAttentionManager->>BlockPool: cache_full_blocks
-    Note over BlockPool: 新满块 block_hash=None → 写库入哈希映射表<br/>命中块哈希已存在 → 幂等早退
     UnitaryKVCacheCoordinator-->>KVCacheManager: 完成
     KVCacheManager-->>Scheduler: KVCacheBlocks
 ```
 
-**要点（S1~S4 为 `allocate_slots` 内部编号，区别于主流程的 ①~④）**：入口另有 `remove_skipped_blocks`（km:504）释放滑窗外块，full attention 下 `get_num_skipped_tokens` 恒 0、实际不弹块（仅 SWA / R-SWA 生效），不计入 4 步。
+**要点（S1~S4 为 `allocate_slots` 内部编号，区别于主流程的 ①~④）**：
 
-- **S1 容量检查** `get_num_blocks_to_allocate`（km:510，下钻 coordinator 基类 → single_type:144）：
-  - FM 侧纯计算：`num_new = max(cdiv(num_tokens, block_size) − num_local_computed, 0)`，其中 `num_local_computed = 已算块数 + 已持块数`
-  - KM 侧比较：`available = get_num_free_blocks() − reserved`（block_pool:799）vs `required = num_new + watermark`（km:524）；`required > available` → `return None` → 等待下轮调度
-- **S2 处理命中块** `allocate_new_computed_blocks`（km:535，coordinator 两阶段，issue #33775）：仅当存在 computed blocks / ext_comp 时调用；**先**逐组 `add_local_computed_blocks`（touch 命中块：从 free 队列摘出、`ref_cnt` 0→1；只有多个在跑请求共享同一缓存块时才见 1→2），**再**逐组 `allocate_external_computed_blocks`（主线 `num_external_computed_tokens=0`，跳过）；放在容量检查**之后**，避免 touch 后回滚
-- **S3 分配待计算块** `allocate_new_blocks`（km:542 → single_type:330）：`num_new = cdiv(num_tokens, block_size) − len(req_to_blocks[req_id])`
-- **S4 缓存满块** `cache_blocks`（km:563 → single_type:427 → cache_full_blocks）：`num_tokens_to_cache = min(total_computed + num_new, request.num_tokens)`，只缓存**已定稿** token（排除可能被拒的 draft）；新块记入 `new_block_ids` 待 drain 清零
+- **S1 容量检查** `get_num_blocks_to_allocate`（kv_cache_manager.py:510，下钻 KVCacheCoordinator 基类 → single_type_kv_cache_manager.py:144）：
+  - FullAttentionManager 侧纯计算：`num_new = max(cdiv(num_tokens, block_size) − num_local_computed, 0)`，其中 `num_local_computed = 已算块数 + 已持块数`
+  - KVCacheManager 侧比较：`available = get_num_free_blocks() − reserved`（block_pool.py:799）vs `required = num_new + watermark`（kv_cache_manager.py:524）；`required > available` → `return None` → 等待下轮调度
+- **S2 处理命中块** `allocate_new_computed_blocks`（kv_cache_manager.py:535，KVCacheCoordinator 两阶段）：仅当存在已命中块或 `num_external_computed_tokens > 0` 时调用；**先**逐组 `add_local_computed_blocks`（touch 命中块：从 free 队列摘出、`ref_cnt++`），**再**逐组 `allocate_external_computed_blocks`（主线 `num_external_computed_tokens=0`，跳过）
+- **S3 分配待计算块** `allocate_new_blocks`（kv_cache_manager.py:542 → single_type_kv_cache_manager.py:330）：`num_new = cdiv(num_tokens, block_size) − len(req_to_blocks[req_id])`
+- **S4 缓存满块** `cache_blocks`（kv_cache_manager.py:563 → single_type_kv_cache_manager.py:427 → `BlockPool.cache_full_blocks`）：`num_tokens_to_cache = min(total_computed + num_new, request.num_tokens)`，新块记入 `new_block_ids`，由 `take_new_block_ids` 取走清零
 
-**结合请求 R**：容量检查通过后，S2 touch 前缀查找命中的前 2 块（即 P 缓存的 SP 块 0/1，ref_cnt 0→1）；S3 剩余 38 token 按 16 切块需 3 块（16+16+6），`get_new_blocks(3)` → block_table 变 `[命中0, 命中1, 新2, 新3, 新4]`；S4 命中块 0/1 幂等早退，真正入表的是新满块 2、3，未满块 4 不入表。
+**结合请求 R**：S1 容量检查通过后，S2 touch 前缀查找命中的前 2 块（即 P 缓存的共享前缀块 0/1，ref_cnt 0→1）；S3 剩余 38 token 按 16 切块需 3 块（16+16+6），`get_new_blocks(3)` → block_table 变 `[命中0, 命中1, 新2, 新3, 新4]`；S4 命中块 0/1 幂等早退，真正入表的是新满块 2、3，未满块 4 不入表。
 
 #### 4.2.3 组装 SchedulerOutput
 
 ② 分配完物理块后，Scheduler 还需把"后处理指令"打包进 `SchedulerOutput`，交给 Worker 在 GPU forward 之前执行：
 
-1. **清零新块** `new_block_ids_to_zero`：新分配的物理块在 GPU 内存里可能残留上一请求的旧数据，必须先清零再写入
-
-**SchedulerOutput 中与 KV Cache 直接相关的字段**（output.py:193）：
-
-| 字段 | 类型 | 来源 | 含义 |
-|---|---|---|---|
-| `scheduled_new_reqs` | `list[NewRequestData]` | 首次调度请求 | 含 `block_ids`（block_table） |
-| `scheduled_cached_reqs` | `list[CachedRequestData]` | 续跑请求增量 | 含 `new_block_ids` |
-| `new_block_ids_to_zero` | `list[int] \| None` | `take_new_block_ids()` | 本步新分配块 id，Worker 需清零 |
-
-**清零过滤（Scheduler 侧）**：
-- `_get_new_block_ids_to_zero` 过滤（scheduler.py:1233）：`needs_kv_cache_zeroing` 为 False → 直接 None；或有 `_skip_zero_block_ids`（异步 KV 加载的块，清零会竞争写入）→ 排除；列表为空 → None
+ **清零新块** `new_block_ids_to_zero`：新分配的物理块在 GPU 内存里可能残留上一请求的旧数据，必须先清零再写入
 
 **结合请求 R**：R 是首次 prefill，3 个新块 id（2/3/4）进 `new_block_ids_to_zero`。Worker 收到后先清零这 3 个块，再执行 forward 写入 KV。
 
@@ -396,13 +382,13 @@ sequenceDiagram
 **要点**：
 - `_zero_block_ids` 只清零**本轮新分配**的块，避免读到上一请求残留的旧 KV
 - `block_table`（`req_to_blocks` 的 block_id 列表）作 fancy index，kernel 从 `kv_caches[layer][block_id]` 第 0 维 gather 对应行；同一 `block_id` 在全模型 32 层（每 worker 16 层）对应同一逻辑块，全套层共用一份 block_table
-- `sample_tokens` 由 **EngineCore** 调用（core.py:600），仅在 `execute_model` 未产出采样时补跑
+- `sample_tokens` 由 **EngineCore** 调用（core.py:601），仅在 `execute_model` 未产出采样时补跑
 
 **结合请求 R**：3 个新块先清零；一次 forward 写 70 token 的 K/V 到 5 块（命中块 0/1 复用 P 的缓存、不重算）；`slot_mapping` 记录每个 token 落到哪个块的哪个 slot。
 
 ### 4.4 ③ decode 续写（RUNNING）
 
-`schedule()` 每步**先遍历所有 RUNNING 请求**（:473，外层是 `while req_index < len(running) and budget > 0` 的请求遍历，而非单请求），每请求 append 1 token，全部处理完后**一次性** `execute_model + sample_tokens`（多请求共享同一 batch）。与 prefill 走**同一套** `allocate_slots`（内部 4 步 S1~S4），差异仅在量级：通常无前缀命中（S2 跳过），当前块未满则 0 块、写满则 1 块。
+`schedule()` 每步**先遍历所有 RUNNING 请求**（scheduler.py:473，外层是 `while req_index < len(running) and budget > 0` 的请求遍历，而非单请求），每请求 append 1 token，全部处理完后**一次性** `execute_model + sample_tokens`（多请求共享同一 batch）。与 prefill 走**同一套** `allocate_slots`（内部 4 步 S1~S4），差异仅在量级：无前缀命中（S2 跳过），当前块未满则 0 块、写满则 1 块。
 
 ```mermaid
 %%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
@@ -460,8 +446,8 @@ sequenceDiagram
 ```
 
 **要点**：
-- `free`（km:567）内部顺序：`coordinator.free`（km:578）逐组下放
-- FullAttentionManager 侧先 `pop_blocks_for_free(req_id)` 取出按分配顺序的块列表（single_type:500），再 `free_blocks(reversed(blocks))`
+- `free`（kv_cache_manager.py:567）内部顺序：`KVCacheCoordinator.free`（kv_cache_manager.py:578）逐组下放
+- FullAttentionManager 侧先 `pop_blocks_for_free(req_id)` 取出按分配顺序的块列表（single_type_kv_cache_manager.py:500），再 `free_blocks(reversed(blocks))`
 - **逆序释放**（`reversed`）：尾块先归还，利用 free 队列特性让最近用的块最先被重新分配
 - `ref_cnt > 0` 的共享块仅减计数不回收；归 0 才进 free 队列
 - 有哈希块 append 队尾（保护前缀缓存），无哈希块 prepend 队首（优先复用）
