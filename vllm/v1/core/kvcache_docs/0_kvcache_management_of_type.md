@@ -1,8 +1,8 @@
 # vLLM V1 基础概念：KV Cache 的类型与数据结构
 
-> 这份文档回答一个问题：**vLLM 用什么结构来组织 KV Cache？** 它不是一条请求的流转过程，而是九个固定存在的**数据类型/结构**的速查与详解。
+> 这份文档回答一个问题：**vLLM 用什么结构来组织 KV Cache？** 它不是一条请求的流转过程，而是十个固定存在的**数据类型/结构**的速查与详解。
 >
-> 九个类型天然分成两组：**配置层四件套**（启动期描述"KV cache 应该长什么样"）与**逻辑层五件套**（运行期实际管理每个块）。推荐阅读顺序：先看 §1 的**关系总览**，再按依赖顺序**逐一详解**——§2 `KVCacheSpec`（每层格式说明书）→ §3 `KVCacheGroupSpec`（层分组）→ §4 `KVCacheTensor`（显存订货单）→ §5 `KVCacheConfig`（编排总结果）→ §6 `BlockHash`（块指纹）→ §7 `KVCacheBlock`（逻辑块）→ §8 空闲队列、§9 哈希登记簿（BlockPool 的两大内件）→ §10 `BlockPool`（总管理处）。
+> 十个类型天然分成两组：**配置层四件套**（启动期描述"KV cache 应该长什么样"）与**逻辑层六件套**（运行期实际管理每个块，并把结果交接出去）。推荐阅读顺序：先看 §1 的**关系总览**，再按依赖顺序**逐一详解**——§2 `KVCacheSpec`（每层格式说明书）→ §3 `KVCacheGroupSpec`（层分组）→ §4 `KVCacheTensor`（显存订货单）→ §5 `KVCacheConfig`（编排总结果）→ §6 `BlockHash`（块指纹）→ §7 `KVCacheBlock`（逻辑块）→ §8 `KVCacheBlocks`（结果交接单）→ §9 空闲队列、§10 哈希登记簿（BlockPool 的两大内件）→ §11 `BlockPool`（总管理处）。
 
 ---
 
@@ -16,9 +16,10 @@
 | 4 | 配置层 | `KVCacheConfig` | 一次 KV cache 初始化编排的最终产物：`num_blocks` + 订货单 + 分组 | 配置层出口：`num_blocks` 流入 BlockPool，tensors 流入 worker，groups 流入 manager |
 | 5 | 逻辑层 | `BlockHash` 哈希体系 | 一块内容的指纹（哈希），用于前缀缓存比对 | 提供"相同前缀 → 相同指纹"的缓存 key |
 | 6 | 逻辑层 | `KVCacheBlock` 逻辑块 | 一个块的 `block_id` + `ref_cnt` + 哈希等元数据，不含显存 | 最小调度单位，`block_id` = 物理张量行号 |
-| 7 | 逻辑层 | `FreeKVCacheBlockQueue` 空闲队列 | 空闲块组成的双向链表，按 LRU 顺序取/还 | 分配、释放的排队结构 |
-| 8 | 逻辑层 | `BlockHashToBlockMap` 哈希→块映射表 | 块指纹 → 已缓存块的登记簿 | 前缀缓存命中查找 |
-| 9 | 逻辑层 | `BlockPool` 块池 | 持有全部块 + 队列 + 登记簿，对外做分配/释放/缓存/驱逐 | 逻辑块池管理 |
+| 7 | 逻辑层 | `KVCacheBlocks` 块交接单 | 一次分配/命中结果的打包：`blocks[组下标][块序号]`，只装块引用不含显存 | Scheduler ↔ KVCacheManager 的接口，抽出 block_id 落成 Worker 的 block_table |
+| 8 | 逻辑层 | `FreeKVCacheBlockQueue` 空闲队列 | 空闲块组成的双向链表，按 LRU 顺序取/还 | 分配、释放的排队结构 |
+| 9 | 逻辑层 | `BlockHashToBlockMap` 哈希→块映射表 | 块指纹 → 已缓存块的登记簿 | 前缀缓存命中查找 |
+| 10 | 逻辑层 | `BlockPool` 块池 | 持有全部块 + 队列 + 登记簿，对外做分配/释放/缓存/驱逐 | 逻辑块池管理 |
 
 ---
 
@@ -46,11 +47,13 @@
 ── 逻辑层（运行期，每步调度都在动，只碰元数据不碰显存）──────────────
 
   KVCacheBlock（门牌号 + 元数据，§7）
-     ├─ 空闲时排队 → FreeKVCacheBlockQueue（双向链表，分配摘头、释放回队，§8）
+     ├─ 一批块按 group_id 打包 ──▶ KVCacheBlocks（交接单：blocks[组下标][块序号]，§8）
+     │        └─▶ Scheduler 持有 ── get_block_ids() ──▶ Worker 的 block_table
+     ├─ 空闲时排队 → FreeKVCacheBlockQueue（双向链表，分配摘头、释放回队，§9）
      ├─ 满块缓存 → 算 BlockHash 挂到 _block_hash；
-     │             连同 group_id 打包登记进 BlockHashToBlockMap（指纹→块 登记簿，§9）
+     │             连同 group_id 打包登记进 BlockHashToBlockMap（指纹→块 登记簿，§10）
      └─ 全体块 / 队列 / 登记簿由 BlockPool 统一持有：
-         分配/释放/缓存/驱逐的唯一门面（§10）
+         分配/释放/缓存/驱逐的唯一门面（§11）
 ```
 
 ### 1.2 关系边明细（谁连着谁）
@@ -65,14 +68,16 @@
 | `KVCacheTensor` | `KVCacheConfig.kv_cache_tensors` | 订货单的列表成员；layout 决定一张单管一层（通用）还是多层拼一张单（packed） |
 | `KVCacheConfig.num_blocks` | `BlockPool` | 池里恰好建 `num_blocks` 个 `KVCacheBlock(block_id=0..n-1)`；`watermark_blocks = watermark × num_blocks`（`kv_cache_manager.py:171`）也按它算 |
 | `KVCacheGroupSpec`（下标） | `BlockHashWithGroupId` | group_id 打包进哈希 key（§6.4）：同一内容指纹在不同组里各占一格，互不串门 |
+| `KVCacheBlock` | `KVCacheBlocks.blocks` | 一批块按组嵌套打包：外层下标 = group_id（§3.4），内层是块引用（§8） |
+| `KVCacheBlocks` | Worker 的 block_table | Scheduler 调 `get_block_ids()` 抽出每组 block_id 列表（`scheduler.py:1111`）；`get_unhashed_block_ids*` 供 offload/connector 挑未缓存块 |
 | `KVCacheBlock` | `FreeKVCacheBlockQueue` | 空闲时排队；分配时从队列摘出；`ref_cnt` 归零释放时回队 |
 | `BlockHash` | `KVCacheBlock._block_hash` | 满块缓存时挂载指纹；块被复用/驱逐时 `reset_hash()` 清掉 |
-| `BlockHashWithGroupId` | `BlockHashToBlockMap` | 作为登记簿 key，值是块或块字典（§9） |
+| `BlockHashWithGroupId` | `BlockHashToBlockMap` | 作为登记簿 key，值是块或块字典（§10） |
 | 块 / 队列 / 登记簿 | `BlockPool` | 池的三大内件：全部块数组 + 空闲队列 + 哈希登记簿 |
 
 ### 1.3 为什么按这个顺序讲
 
-依赖链是单向的：**没有 §2 就算不出 `page_size_bytes`，也算不出 `num_blocks`；没有 §2 的字段全等就定不下分组 §3；订货单 §4 与分组列表（§3 定稿）形影不离；没有 §5 的 `num_blocks` 就不知道建多少个块（§10）；没有 §3 的组下标就配不出哈希 key（§6）**。所以详解顺序 = 配置层从"最细"到"最总"（§2 → §5），逻辑层从"key"到"容器"（§6 → §10）。
+依赖链是单向的：**没有 §2 就算不出 `page_size_bytes`，也算不出 `num_blocks`；没有 §2 的字段全等就定不下分组 §3；订货单 §4 与分组列表（§3 定稿）形影不离；没有 §5 的 `num_blocks` 就不知道建多少个块（§11）；没有 §3 的组下标就配不出哈希 key（§6）**。所以详解顺序 = 配置层从"最细"到"最总"（§2 → §5），逻辑层从"key"到"容器"（§6 → §11）；§8 交接单紧跟 §7 讲：它只需两种原料——§7 的块引用、§3 的组序——就打包成对 Scheduler 可见的出口。
 
 ---
 
@@ -321,7 +326,7 @@ def get_block_hash(key): return BlockHash(key[:-4])       # 取回纯哈希
 def get_group_id(key):    return int.from_bytes(key[-4:], "big")  # 取回 group_id
 ```
 
-> 这是配置层流向逻辑层的第二条数据边：`KVCacheConfig.kv_cache_groups` 的**列表顺序**决定了每个缓存指纹落在登记簿的哪一"格"（§9）。
+> 这是配置层流向逻辑层的第二条数据边：`KVCacheConfig.kv_cache_groups` 的**列表顺序**决定了每个缓存指纹落在登记簿的哪一"格"（§10）。
 
 ### 6.5 种子 `NONE_HASH` 与 `init_none_hash`
 
@@ -374,19 +379,70 @@ def reset_hash(self):               # 块被驱逐/重用时清空哈希
 
 ---
 
-## 8. FreeKVCacheBlockQueue 空闲队列
+## 8. KVCacheBlocks 结果交接单
 
 ### 8.1 是什么
+
+`KVCacheBlocks`（`kv_cache_manager.py:33`）是 **KVCacheManager 分配/查询结果的载体**：一轮前缀命中（`get_computed_blocks`）或新块分配（`allocate_slots`）之后，"这个请求在第 i 组拿到了哪些块"被打包进它的 `blocks`。它是 **Scheduler ↔ KVCacheManager 之间的接口**——Scheduler 只认这张交接单，接触不到 `BlockPool`/single-type manager 的内部结构。
+
+类比：停车场管理处的"进场交接单"——管理处（§11 BlockPool）给这位司机安排了哪几张车位，按分区（组）分栏写在这张单子上。司机凭单找车位，不需要看管理处的账本。
+
+### 8.2 定义与方法
+
+```python
+@dataclass
+class KVCacheBlocks:
+    blocks: tuple[Sequence[KVCacheBlock], ...]
+    # blocks[i][j] = 第 i 个 kv_cache_group 的第 j 个块。
+    # 外层按"组"做维度（而不是按块）：块维度假设每组块数一致，
+    # 将来若允许不同组不同 block_size 就会被打破，故组在外。
+
+    def __add__(self, other) -> "KVCacheBlocks"
+        # 旧块 + 新块，按组逐组拼接，生成新对象（如 append 分配的新块）
+
+    def get_block_ids(allow_none=False) -> tuple[list[int], ...] | None
+        # 抽出纯 block_id：外层组、内层列表；全空且 allow_none=True 返回 None
+        # Scheduler 的下一步就是把它落成发给 Worker 的 block_table
+
+    def get_unhashed_block_ids() -> list[int]
+        # 单组版：所有尚无哈希（未登记进缓存）的块 id
+
+    def get_unhashed_block_ids_all_groups() -> list[list[int]]
+        # 多组版，跳过 null 块；供 offload / KV connector 挑"还没进缓存"的块
+
+    def new_empty() -> "KVCacheBlocks"
+        # 建一张组数相同的空单
+```
+
+### 8.3 怎么来、到哪里去
+
+- **工厂 + 单例复用**：`KVCacheManager.create_kv_cache_blocks()`（kv_cache_manager.py:771）只在非空时新建对象，全空则复用启动时预建的 `empty_kv_cache_blocks`（kv_cache_manager.py:185，内层是空 `tuple`，天然不可变）——避免调度每步制造海量短命空对象的 GC 开销。
+- **三个生产者**（都在 `KVCacheManager`）：
+  - `get_computed_blocks(request)`：前缀缓存命中的块（来源是 §10 的登记簿查询）；
+  - `allocate_slots(...)`：本次步新分配的块（底层是 §11 `get_new_blocks`/`touch`），内存不足返回 `None`；
+  - `get_blocks(request_id)`：某请求当前持有的全部块。
+- **去向**：Scheduler 把它暂存进 `req_to_new_blocks`，随后 `get_block_ids()` 抽出各组 block_id 列表交给 Worker 组装 `block_table`（`scheduler.py:1111`/`scheduler.py:1406`）。
+
+### 8.4 两个要点
+
+- **零显存、零拷贝**：`blocks` 里装的是 `KVCacheBlock`（§7）引用，块的生命周期仍归 `BlockPool`（§11）管（`ref_cnt`、驱逐照旧不变）；交接单只"指出"块，不转移所有权。
+- **只读倾向**：`blocks` 外层是 `tuple`，拼接（`__add__`）与截断（`truncate_computed_blocks`，纯切片不动 `ref_cnt`）都生成新对象、不原地改，防止调度器误改块池状态。
+
+---
+
+## 9. FreeKVCacheBlockQueue 空闲队列
+
+### 9.1 是什么
 
 `FreeKVCacheBlockQueue`（`kv_cache_utils.py`）把**空闲 `KVCacheBlock`** 组织成一个**双向链表队列**，提供取块（分配）、还块（释放）、O(1) 中间删除（命中前缀时从队中拽出）等操作。
 
 类比：餐厅"有空位"的叫号表，每张桌子上写着"上一桌/下一桌是谁"（双向链表），客满就能快速把中间某桌摘掉。
 
-### 8.2 为什么不用 Python 内置 `deque`
+### 9.2 为什么不用 Python 内置 `deque`
 
 内置 `deque` 是 C++ 实现但**不能 O(1) 删除中间元素**。前缀缓存命中时，某个空闲块可能要从队列中间被直接拿走（ref_cnt=0 → touch）。本类直接改 `KVCacheBlock.prev_free_block / next_free_block` 指针，**不分配新 Python 对象**，故删除中间节点也是 O(1)。
 
-### 8.3 伪造头尾，减少分支
+### 9.3 伪造头尾，减少分支
 
 ```python
 def __init__(self, blocks: list[KVCacheBlock]):
@@ -399,7 +455,7 @@ def __init__(self, blocks: list[KVCacheBlock]):
 
 伪头尾让"队列空/非空"的边界代码统一，避免到处判空。
 
-### 8.4 公开方法一览
+### 9.4 公开方法一览
 
 | 方法 | 作用 | 复杂度 |
 |------|------|--------|
@@ -411,7 +467,7 @@ def __init__(self, blocks: list[KVCacheBlock]):
 | `remove(block)` | 从中间 O(1) 摘出（命中前缀时 touch 用） | O(1) |
 | `get_all_free_blocks()` / `iter_blocks_after(cursor)` | 遍历/测试 | O(n) |
 
-### 8.5 排队顺序（驱逐优先级）
+### 9.5 排队顺序（驱逐优先级）
 
 队列前端 = **更该被驱逐/优先复用的块**：
 
@@ -421,15 +477,15 @@ def __init__(self, blocks: list[KVCacheBlock]):
 
 ---
 
-## 9. BlockHashToBlockMap 哈希 → 块映射表
+## 10. BlockHashToBlockMap 哈希 → 块映射表
 
-### 9.1 是什么
+### 10.1 是什么
 
 `BlockHashToBlockMap`（`block_pool.py`）是**块指纹 → 已缓存块**的登记簿，用于前缀缓存查找：**相同指纹直接命中**，无需比对 token 内容。
 
 类比：内容指纹 → 门牌号的登记簿。前台看到指纹，一翻本子就知道对应的柜子（门牌）在不在。
 
-### 9.2 结构：值是"1 个块 或 一组块"
+### 10.2 结构：值是"1 个块 或 一组块"
 
 ```python
 class BlockHashToBlockMap:
@@ -442,7 +498,7 @@ class BlockHashToBlockMap:
 
 > 引入 `dict` 联合类型是为了**削减内层 dict 造成的 GC 开销**——绝大多数 key 只指向单个块，就用单个 `KVCacheBlock`；只有同指纹有多个块时才退化为 dict。
 
-### 9.3 方法
+### 10.3 方法
 
 | 方法 | 作用 |
 |------|------|
@@ -451,7 +507,7 @@ class BlockHashToBlockMap:
 | `insert(key, block)` | 插入；若该 key 已有一个块，自动把两个块合并进一个 dict |
 | `pop(key, block_id)` | 取出该指纹下 block_id 对应的块，若 dict 空了则整 key 移除 |
 
-### 9.4 为什么不做去重（重要设计）
+### 10.4 为什么不做去重（重要设计）
 
 ```python
 # 注释：当前不去重 —— 若一个块写满并被缓存，我们不重新检查缓存里是否已有完全相同内容的块。
@@ -462,15 +518,15 @@ class BlockHashToBlockMap:
 
 ---
 
-## 10. BlockPool 块池
+## 11. BlockPool 块池
 
-### 10.1 是什么
+### 11.1 是什么
 
 `BlockPool`（`block_pool.py`）是**逻辑块的总管理处**，持有逻辑层的全部家当：所有 `KVCacheBlock`、一个 `FreeKVCacheBlockQueue`、一个 `BlockHashToBlockMap`，并对外暴露分配/释放/缓存/驱逐的统一接口。
 
 类比：停车总管理处。手里有全部车位卡（`blocks`）、有空位叫号队列（`free_block_queue`）、有"车牌指纹→车位"登记簿（`cached_block_hash_to_block`），司机办进/退场都找它。
 
-### 10.2 构造与核心字段
+### 11.2 构造与核心字段
 
 ```python
 class BlockPool:
@@ -487,7 +543,7 @@ class BlockPool:
 
 > `num_gpu_blocks` 即配置层送来的 `KVCacheConfig.num_blocks`——**配置层的"图纸"在这里一次性物化为固定数量的逻辑块，此后块集合大小不再变化。**
 
-### 10.3 块生命周期（最核心）
+### 11.3 块生命周期（最核心）
 
 ```text
                 ┌──────────────────────────────────────────────────────────┐
@@ -506,7 +562,7 @@ class BlockPool:
                 └──────────────────────────────────────────────────────────┘
 ```
 
-### 10.4 关键方法速查
+### 11.4 关键方法速查
 
 | 方法 | 作用 | ref_cnt 影响 |
 |------|------|-------------|
@@ -522,7 +578,7 @@ class BlockPool:
 | `get_num_free_blocks()` / `get_usage()` | 空闲块计数 / 显存占用率 | — |
 | `take_events()` | 取出并清空 KV 缓存事件队列 | — |
 
-### 10.5 要点
+### 11.5 要点
 
 - **逻辑层绝不搬显存**：`BlockPool` 全程只操作 `block_id`、`ref_cnt`、哈希登记，**从不读写 `kv_caches[layer]` 数据**。真正 read/write K/V 的是 GPU forward 的注意力算子。
 - **`ref_cnt` 是唯一仲裁**：`>0` 不可碰，`==0` 才进空闲队列。
@@ -530,7 +586,7 @@ class BlockPool:
 
 ---
 
-## 11. 九个类型如何协作（封盘小结）
+## 12. 十个类型如何协作（封盘小结）
 
 ```text
               EngineCore._initialize_kv_caches（四步：spec → profile → 编排 → 落张量）
@@ -546,18 +602,20 @@ class BlockPool:
     └────────────────────────────────┬─────────────────────────────┘
          block_id = 张量行号（物理侧）│ num_blocks、group_id（逻辑侧）
     ┌──────────── 逻辑层 ────────────▼──────────────────────────────┐
-    │                    BlockPool（§10）                            │
+    │                    BlockPool（§11）                            │
     │   KVCacheBlock（§7）× num_blocks（block_id = 0..n-1）          │
-    │   ├─ FreeKVCacheBlockQueue（§8 空闲队列：取块/还块/驱逐顺序）    │
-    │   └─ BlockHashToBlockMap（§9 登记簿：前缀命中查询）             │
-    │        key = BlockHash（§6 指纹）+ group_id（= groups 下标）    │
+    │   ├─ KVCacheBlocks（§8 交接单：分配/命中结果按组打包）          │
+    │   ├─ FreeKVCacheBlockQueue（§9 空闲队列：取块/还块/驱逐顺序）   │
+    │   ├─ BlockHashToBlockMap（§10 登记簿：前缀命中查询）            │
+    │   │     key = BlockHash（§6 指纹）+ group_id（= groups 下标）   │
+    │   └─ 交接单 ─▶ Scheduler ── get_block_ids() ──▶ Worker 块表    │
     └──────────────────────────────────────────────────────────────┘
 ```
 
 - **配置层从细到总**：§2 每层格式 → §3 同规格归组 → §4 每层显存订货单 → §5 打包成图纸。图纸生成后只读。
 - **三条单向注入边**：`page_size_bytes（§2）→ num_blocks`（算出多少块）；`num_blocks（§5）→ BlockPool`（建成多少块）；`groups 下标（§3）→ group_id → 哈希 key（§6）`（指纹落哪一格）。
-- **逻辑层从 key 到容器**：§6 指纹 → §7 块（挂着指纹）→ §8/§9 块的两个去处（排队/登记）→ §10 块池统一管理。
-- **§7 全体块 + §8 空闲队列 + §9 登记簿 = §10 的三大内件**；§10 是逻辑层对外唯一门面。
+- **逻辑层从 key 到容器**：§6 指纹 → §7 块（挂着指纹）→ §8 交接单把一批块打包交出去 → §9/§10 块的两个去处（排队/登记）→ §11 块池统一管理。
+- **§7 全体块 + §9 空闲队列 + §10 登记簿 = §11 的三大内件**；§11 是块生命周期的唯一门面，§8 `KVCacheBlocks` 是它递给 Scheduler 的对外交接单（只装块引用，不搬显存）。
 - 数据真正被读写，由 **attention 算子**拿着 `block_table`（一串 `block_id`）在 §4 订出来的物理张量上索引完成——全程逻辑层零显存拷贝。
 
-> 与本套文档的关系：配置层四件套的生成过程，详见 [`1_physical_memory.md`](./1_physical_memory.md)；逻辑层五件套在五层架构中的位置见 [`0_kv_cache_management_arch.md`](./0_kv_cache_management_arch.md)；一次请求怎么一步步用它们，见时序文档 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md)。
+> 与本套文档的关系：配置层四件套的生成过程，详见 [`1_physical_memory.md`](./1_physical_memory.md)；逻辑层六件套在五层架构中的位置见 [`0_kv_cache_management_arch.md`](./0_kv_cache_management_arch.md)；一次请求怎么一步步用它们，见时序文档 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md)。
