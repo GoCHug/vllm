@@ -279,7 +279,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="hash_system" name="BlockHash 与链式哈希">
-        <mxGraphModel dx="532" dy="531" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="430" math="0" shadow="0">
+        <mxGraphModel dx="1196" dy="809" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="430" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -374,7 +374,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="free_queue_pr" name="FreeKVCacheBlockQueue 空闲队列（P/R 示例）">
-        <mxGraphModel dx="532" dy="531" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="590" math="0" shadow="0">
+        <mxGraphModel grid="1" page="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="1400" pageHeight="590" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -565,6 +565,98 @@
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="q2_c3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;startArrow=block;startFill=1;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="q2_b7" target="q2_tail">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="block_hash_to_block_map" name="BlockHashToBlockMap 登记簿">
+        <mxGraphModel dx="930" dy="629" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="600" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="bm_title" value="BlockHashToBlockMap 登记簿：BlockHashWithGroupId（指纹 ‖ 组号）→ KVCacheBlock" style="text;html=1;fontSize=18;fontStyle=1;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="12" width="1280" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_subtitle" value="block_pool.py:33 · 续接 P/R 示例：P 缓存 SP（块 0/1，H₀/H₁）· R prefill 写满块 2/3（H₂/H₃）并登记 · 块 4 未满无 hash · 静态成员只是元数据，零显存操作" style="text;html=1;fontSize=11;align=center;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="46" width="1280" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_s1" value="① 登记簿在 R prefill 完成后的样子（key = make_block_hash_with_group_id() 的输出）" style="text;html=1;fontSize=12;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="80" width="1280" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_k0" value="…H₀ ‖ group 0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="110" width="340" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_v0" value="block #0（P 的 SP 前半 · R 复用命中）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b3b3b3;fontSize=10;align=left;spacingLeft=10;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="110" width="380" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_k1" value="…H₁ ‖ group 0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="154" width="340" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_v1" value="block #1（P 的 SP 后半 · R 复用命中）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b3b3b3;fontSize=10;align=left;spacingLeft=10;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="154" width="380" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_k2" value="…H₂ ‖ group 0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="198" width="340" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_v2" value="block #2（R prefill 新写满，cache_full_blocks 登记）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b3b3b3;fontSize=10;align=left;spacingLeft=10;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="198" width="380" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_k3" value="…H₃ ‖ group 0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="242" width="340" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_v3" value="block #3（R prefill 新写满）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b3b3b3;fontSize=10;align=left;spacingLeft=10;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="242" width="380" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_k4" value="块 4 · 未满 6 token · 暂无 hash" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b3b3b3;dashed=1;fontSize=10;fontColor=#999999;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="286" width="340" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_v4" value="不进登记簿（写满补算 hash 后才 insert）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;dashed=1;fontSize=10;fontColor=#999999;align=left;spacingLeft=10;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="286" width="380" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_n1" value="value 是 KVCacheBlock 引用（不是 id 复制）——&#xa;登记簿只动元数据，不碰显存" style="text;html=1;fontSize=10;align=left;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="920" y="110" width="420" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_n2" value="R 的命中查询：request.block_hashes 逐 key 到这里查&#xa;get_one_block(key) —— 命中返回任一块即可&#xa;（前缀缓存不在乎是哪一块，见第 3 页 ②）" style="text;html=1;fontSize=10;align=left;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="920" y="198" width="420" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_n3" value="同指纹会覆盖吗？不会 —— 不去重，&#xa;两块并存，见下方 ②" style="text;html=1;fontSize=10;align=left;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="920" y="286" width="420" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_s2" value="② 同 key 的值会进化：常态 1 key → 1 块；同 key 再来块才退化为 {block_id: block}" style="text;html=1;fontSize=12;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="350" width="1280" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_ph1" value="&lt;b&gt;insert(…H₂‖g0, block #2)　(block_pool.py:88)&lt;/b&gt;&#xa;首次登记该 key&#xa;值 = block #2&#xa;· 常态 1 key → 1 块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="380" width="360" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_ph2" value="&lt;b&gt;另一请求写出同内容块 #5 → insert(同 key, block #5)&lt;/b&gt;&#xa;值 = {0: block #2, 5: block #5}&#xa;同指纹两块合并进内层 dict&#xa;· 只有冲突才建 dict（省 GC）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="520" y="380" width="420" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_ph3" value="&lt;b&gt;块 #5 重分配 → pop(key, block_id=5)　(block_pool.py:106)&lt;/b&gt;&#xa;值 = block #2（回到单块形态）&#xa;若值空了 → 整个 key 移除" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="1040" y="380" width="300" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_foot" value="要点：不去重 —— 内容相同的两块各自登记为两个 block_id（block_table 永远 append-only，代价是少量重复存储） · get_one_block() 只求「有一个就行」 · contain(key, block_id) 精确匹配指定块 · R 结束释放时块 0..4 会 link 回第 3 页的空闲队列" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="520" width="1280" height="34" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_a0" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="bm_k0" target="bm_v0" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_a1" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="bm_k1" target="bm_v1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_a2" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="bm_k2" target="bm_v2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_a3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="bm_k3" target="bm_v3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_a4" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="bm_k4" target="bm_v4" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_pa0" value="同 key 再 insert" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="1" source="bm_ph1" target="bm_ph2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="bm_pa1" value="pop(key, 5)" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="1" source="bm_ph2" target="bm_ph3" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
             </root>
