@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="kvcache_types_v2" name="KVCache 类型整理">
-        <mxGraphModel dx="3645" dy="3180" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="3200" math="0" shadow="0">
+        <mxGraphModel dx="591" dy="590" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="3200" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -115,17 +115,17 @@
                 <mxCell id="B_box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;dashed=1;verticalAlign=top;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="20" y="1270" width="2020" height="1040" as="geometry"/>
                 </mxCell>
-                <mxCell id="b_manager" value="&lt;b&gt;KVCacheManager&lt;/b&gt;&amp;nbsp;&amp;nbsp;（kv_cache_manager.py）&lt;br&gt;持有 BlockPool，对 Scheduler 露出 4 个接口：&lt;br&gt;allocate_slots / get_computed_blocks&lt;br&gt;cache_blocks / free" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#D5E8D4;strokeColor=#82B366;" parent="1" vertex="1">
+                <mxCell id="b_manager" value="&lt;b&gt;KVCacheManager&lt;/b&gt;&amp;nbsp;&amp;nbsp;（kv_cache_manager.py）&lt;br&gt;持有 BlockPool，对 Scheduler 露出接口：&lt;br&gt;allocate_slots / get_computed_blocks&lt;br&gt;cache_blocks / free" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#D5E8D4;strokeColor=#82B366;" parent="1" vertex="1">
                     <mxGeometry x="880" y="1290" width="420" height="120" as="geometry"/>
                 </mxCell>
-                <mxCell id="b_blockpool" value="&lt;b&gt;BlockPool&lt;/b&gt;&amp;nbsp;&amp;nbsp;（block_pool.py:143）· 分配 / 释放 / 前缀缓存 总控门面&lt;br&gt;持有 两大组件，统一对接 KVCacheManager，决定「空闲块给谁 / 缓存块谁可复用 / 何时回收」&lt;br&gt;&lt;br&gt;├─ blocks: list[KVCacheBlock]&amp;nbsp;&amp;nbsp;&amp;nbsp;（全部物理块）&lt;br&gt;├─ free_block_queue ══&amp;gt; FreeKVCacheBlockQueue&amp;nbsp;&amp;nbsp;&amp;nbsp;（写：分配 &amp;amp; 回收）&lt;br&gt;├─ cached_block_hash_to_block ══&amp;gt; BlockHashToBlockMap&amp;nbsp;&amp;nbsp;&amp;nbsp;（读：前缀命中）&lt;br&gt;├─ cached_block_hashes_by_block: dict[int, set]&amp;nbsp;&amp;nbsp;&amp;nbsp;（块→哈希反查，用于 evict）&lt;br&gt;└─ null_block&amp;nbsp;&amp;nbsp;&amp;nbsp;（占位块 block_id=0，不参与引用计数）&lt;br&gt;&lt;br&gt;方法: get_cached_block / get_new_blocks / cache_full_blocks / cache_partial_block / free_blocks / touch / evict_blocks&lt;br&gt;&lt;br&gt;关键协作 get_new_blocks() :647 → free_block_queue 出队分配；若该空闲块仍被 BlockHashToBlockMap 缓存，则 _maybe_evict_cached_block() :679 从缓存摘除（双链表中的空闲缓存块是淘汰候选）" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#D5E8D4;strokeColor=#82B366;" parent="1" vertex="1">
-                    <mxGeometry x="770" y="1450" width="640" height="285" as="geometry"/>
+                <mxCell id="b_blockpool" value="&lt;b&gt;BlockPool&lt;/b&gt;&amp;nbsp;&amp;nbsp;（block_pool.py:143）· 分配 / 释放 / 前缀缓存 总控门面&lt;br&gt;持有 两大组件，统一对接 KVCacheManager，决定「空闲块给谁 / 缓存块谁可复用 / 何时回收」&lt;br&gt;&lt;br&gt;├─ blocks: list[KVCacheBlock]&amp;nbsp;&amp;nbsp;&amp;nbsp;（全部物理块）&lt;br&gt;├─ free_block_queue ══&amp;gt; FreeKVCacheBlockQueue&amp;nbsp;&amp;nbsp;&amp;nbsp;（写：分配 &amp;amp; 回收）&lt;br&gt;├─ cached_block_hash_to_block ══&amp;gt; BlockHashToBlockMap&amp;nbsp;&amp;nbsp;&amp;nbsp;（读：前缀命中）&lt;br&gt;├─ cached_block_hashes_by_block: dict[int, set]&amp;nbsp;&amp;nbsp;&amp;nbsp;（块→哈希反查，用于 evict）&lt;br&gt;└─ null_block&amp;nbsp;&amp;nbsp;&amp;nbsp;（占位块 block_id=0，不参与引用计数）&lt;br&gt;&lt;br&gt;方法: get_cached_block / get_new_blocks / cache_full_blocks / cache_partial_block / free_blocks / touch / evict_blocks" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#D5E8D4;strokeColor=#82B366;" parent="1" vertex="1">
+                    <mxGeometry x="770" y="1450" width="640" height="240" as="geometry"/>
                 </mxCell>
                 <mxCell id="b_map" value="&lt;b&gt;BlockHashToBlockMap&lt;/b&gt;&amp;nbsp;&amp;nbsp;（block_pool.py:33）· 前缀缓存【读】= 命中复用&lt;br&gt;作用：按 哈希→块 找到已满缓存块，支撑 get_cached_block 命中复用&lt;br&gt;&lt;br&gt;├─ key: BlockHashWithGroupId = BlockHash(32B)+group_id(4B)&lt;br&gt;├─ value: KVCacheBlock | dict{block_id: KVCacheBlock}&lt;br&gt;├─ 不去重（block table append-only）、满块才 insert&lt;br&gt;└─ 被 BlockPool.cached_block_hash_to_block 持有（1:1）&lt;br&gt;&lt;br&gt;操作: get_one_block / insert / pop / contain&lt;br&gt;入口: get_cached_block() / cache_full_blocks()" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" parent="1" vertex="1">
-                    <mxGeometry x="70" y="1400" width="460" height="240" as="geometry"/>
+                    <mxGeometry x="70" y="1400" width="460" height="200" as="geometry"/>
                 </mxCell>
-                <mxCell id="b_fq" value="&lt;b&gt;FreeKVCacheBlockQueue&lt;/b&gt;（空闲块双链表）· 前缀缓存【写】= 分配 &amp;amp; 回收&lt;br&gt;作用：管理当前「空闲」的块，支持新块分配、块回收、eviction 候选&lt;br&gt;&lt;br&gt;├─ 复用 KVCacheBlock.prev_free_block / next_free_block 串双链表&lt;br&gt;├─ 队尾 append / 队首 prepend / popleft 混用（LRU 较友好）&lt;br&gt;├─ get_new_blocks 从这里出队；free 时回到队尾&lt;br&gt;└─ 被 BlockPool.free_block_queue 持有（1:1）&lt;br&gt;&lt;br&gt;操作: append / prepend / popleft / popleft_n / remove" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" parent="1" vertex="1">
-                    <mxGeometry x="70" y="1680" width="460" height="240" as="geometry"/>
+                <mxCell id="b_fq" value="&lt;b&gt;FreeKVCacheBlockQueue&lt;/b&gt;（空闲块双链表）&lt;br&gt;&lt;br&gt;├─ 复用 KVCacheBlock.prev_free_block / next_free_block 串双链表&lt;br&gt;├─ 队尾 append / 队首 prepend / popleft 混用（LRU 较友好）&lt;br&gt;├─ get_new_blocks 从这里出队；free 时回到队尾&lt;br&gt;└─ 被 BlockPool.free_block_queue 持有（1:1）&lt;br&gt;&lt;br&gt;操作: append / prepend / popleft / popleft_n / remove" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" parent="1" vertex="1">
+                    <mxGeometry x="70" y="1680" width="460" height="160" as="geometry"/>
                 </mxCell>
                 <mxCell id="b_bp_map" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;strokeColor=#6C8EBF;" parent="1" source="b_blockpool" target="b_map" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
@@ -148,11 +148,11 @@
                 </mxCell>
                 <mxCell id="b_manager_pool_l" value="委托 分配 / 缓存 / 释放" style="edgeLabel;html=1;fontSize=10;fontColor=#666;" parent="b_manager_pool" connectable="0" vertex="1">
                     <mxGeometry x="-0.1" relative="1" as="geometry">
-                        <mxPoint as="offset"/>
+                        <mxPoint x="10" y="-8" as="offset"/>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="b_block" value="&lt;b&gt;KVCacheBlock&lt;/b&gt;&amp;nbsp;&amp;nbsp;（kv_cache_utils.py:118）&lt;br&gt;&lt;br&gt;block_id: int&amp;nbsp;&amp;nbsp;（0 ~ num_gpu_blocks-1）&lt;br&gt;ref_cnt: int = 0&lt;br&gt;_block_hash: BlockHashWithGroupId | None&amp;nbsp;&amp;nbsp;（满块才缓存）&lt;br&gt;_block_hash_num_tokens: int | None&lt;br&gt;is_null: bool = False&lt;br&gt;prev_free_block / next_free_block&amp;nbsp;&amp;nbsp;（空闲双链表结点）&lt;br&gt;─── 方法 ─── set_block_hash() / reset_hash()" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" parent="1" vertex="1">
-                    <mxGeometry x="700" y="1902.5" width="420" height="200" as="geometry"/>
+                    <mxGeometry x="820" y="1800" width="420" height="200" as="geometry"/>
                 </mxCell>
                 <mxCell id="b_hashgi" value="&lt;b&gt;BlockHashWithGroupId&lt;/b&gt;（NewType: bytes）&lt;br&gt;= BlockHash(32B) + 4B 大端 group id&lt;br&gt;make_block_hash_with_group_id(hash, group_id) 包装&amp;nbsp;&amp;nbsp;（kv_cache_utils:57）&lt;br&gt;KVCacheBlock._block_hash 与 BlockCache map 的 key 存的都是它" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" parent="1" vertex="1">
                     <mxGeometry x="60" y="1940" width="460" height="125" as="geometry"/>
@@ -160,70 +160,62 @@
                 <mxCell id="b_hash" value="&lt;b&gt;BlockHash&lt;/b&gt;（NewType: bytes, 32B）&lt;br&gt;&lt;br&gt;前缀链式 token 哈希&amp;nbsp;&amp;nbsp;（不含 group id）&lt;br&gt;request.block_hashes 保存的就是它" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" parent="1" vertex="1">
                     <mxGeometry x="60" y="2140" width="460" height="130" as="geometry"/>
                 </mxCell>
-                <mxCell id="b_blocks" value="&lt;b&gt;KVCacheBlocks&lt;/b&gt;&amp;nbsp;&amp;nbsp;（kv_cache_manager.py:33）&lt;br&gt;Scheduler ↔ KVCacheManager 的分配结果接口&lt;br&gt;&lt;br&gt;blocks: tuple[ Sequence[KVCacheBlock], ... ]&lt;br&gt;（blocks[i][j] = 第 i 个 group 的第 j 块；空 tuple = 该组无块）&lt;br&gt;─── 方法 ─── get_block_ids() / get_unhashed_block_ids()" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" parent="1" vertex="1">
-                    <mxGeometry x="1490" y="1560" width="430" height="175" as="geometry"/>
+                <mxCell id="b_blocks" value="&lt;b&gt;KVCacheBlocks&lt;/b&gt;&amp;nbsp;&amp;nbsp;（kv_cache_manager.py:33）&lt;br&gt;blocks: tuple[ Sequence[KVCacheBlock], ... ]&lt;br&gt;（blocks[i][j] = 第 i 个 group 的第 j 块；空 tuple = 该组无块）&lt;div&gt;&lt;font color=&quot;#000000&quot;&gt;&lt;br&gt;&lt;/font&gt;─── 方法 ───&amp;nbsp;&lt;div&gt;get_block_ids() / get_unhashed_block_ids()&lt;/div&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;fontSize=12;fillColor=#EAF1FB;strokeColor=#6C8EBF;" parent="1" vertex="1">
+                    <mxGeometry x="1470" y="1540" width="360" height="150" as="geometry"/>
                 </mxCell>
-                <mxCell id="b_egblock" value="&lt;b&gt;KVCacheBlocks 结构示意&lt;/b&gt;&lt;br&gt;第 i 个 group（行）× 第 j 个块（列）" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" parent="1" vertex="1">
-                    <mxGeometry x="1510" y="2000" width="520" height="290" as="geometry"/>
-                </mxCell>
-                <mxCell id="b_ax_g" value="第 i 个 group" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=11;" parent="1" vertex="1">
-                    <mxGeometry x="1400" y="2020" width="110" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="b_ax_b" value="第 j 个块" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=11;" parent="1" vertex="1">
-                    <mxGeometry x="1530" y="1960" width="110" height="26" as="geometry"/>
+                <mxCell id="b_egblock" value="" style="rounded=0;whiteSpace=wrap;html=1;align=center;fontSize=12;fillColor=#F2F6FB;strokeColor=#9AA7B8;" parent="1" vertex="1">
+                    <mxGeometry x="1520" y="1940" width="450" height="260" as="geometry"/>
                 </mxCell>
                 <mxCell id="b_cell00" value="&lt;b&gt;KVCacheBlock&lt;/b&gt;&lt;br&gt;block_id&lt;br&gt;ref_cnt&lt;br&gt;hash" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#FFF2CC;strokeColor=#D6B656;" parent="1" vertex="1">
-                    <mxGeometry x="1570" y="2050" width="120" height="72" as="geometry"/>
+                    <mxGeometry x="1540" y="2010" width="120" height="72" as="geometry"/>
                 </mxCell>
                 <mxCell id="b_cell01" value="KVCacheBlock" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#F2F6FB;strokeColor=#9AA7B8;" parent="1" vertex="1">
-                    <mxGeometry x="1715" y="2050" width="120" height="72" as="geometry"/>
+                    <mxGeometry x="1685" y="2010" width="120" height="72" as="geometry"/>
                 </mxCell>
                 <mxCell id="b_cell02" value="KVCacheBlock" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#F2F6FB;strokeColor=#9AA7B8;" parent="1" vertex="1">
-                    <mxGeometry x="1855" y="2050" width="120" height="72" as="geometry"/>
-                </mxCell>
-                <mxCell id="b_g1" value="group 1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;" parent="1" vertex="1">
-                    <mxGeometry x="1420" y="2076" width="120" height="26" as="geometry"/>
+                    <mxGeometry x="1825" y="2010" width="120" height="72" as="geometry"/>
                 </mxCell>
                 <mxCell id="b_cell10" value="KVCacheBlock" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#F2F6FB;strokeColor=#9AA7B8;" parent="1" vertex="1">
-                    <mxGeometry x="1570" y="2145" width="120" height="72" as="geometry"/>
+                    <mxGeometry x="1540" y="2105" width="120" height="72" as="geometry"/>
                 </mxCell>
                 <mxCell id="b_cell11" value="KVCacheBlock" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#F2F6FB;strokeColor=#9AA7B8;" parent="1" vertex="1">
-                    <mxGeometry x="1715" y="2145" width="120" height="72" as="geometry"/>
+                    <mxGeometry x="1685" y="2105" width="120" height="72" as="geometry"/>
                 </mxCell>
                 <mxCell id="b_cell12" value="KVCacheBlock" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#F2F6FB;strokeColor=#9AA7B8;" parent="1" vertex="1">
-                    <mxGeometry x="1855" y="2145" width="120" height="72" as="geometry"/>
+                    <mxGeometry x="1825" y="2105" width="120" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="b_g2" value="group 2" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;" parent="1" vertex="1">
-                    <mxGeometry x="1420" y="2171" width="120" height="26" as="geometry"/>
-                </mxCell>
-                <mxCell id="b_l1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;" parent="1" source="b_blocks" target="b_block" edge="1">
+                <mxCell id="b_l1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="b_blocks" target="b_block" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="1705.06" y="1800"/>
-                            <mxPoint x="910" y="1800"/>
+                            <mxPoint x="1650" y="1900"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="b_l1l" value="元素" style="edgeLabel;html=1;fontSize=10;fontColor=#666;" parent="b_l1" connectable="0" vertex="1">
                     <mxGeometry x="-0.1" relative="1" as="geometry">
-                        <mxPoint as="offset"/>
+                        <mxPoint x="-151" as="offset"/>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="b_l2" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="b_blocks" target="b_egblock" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="1705.06" y="1800"/>
-                            <mxPoint x="1770" y="1800"/>
+                            <mxPoint x="1650" y="1900"/>
+                            <mxPoint x="1745" y="1900"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="b_l2l" value="示意" style="edgeLabel;html=1;fontSize=10;fontColor=#666;" parent="b_l2" connectable="0" vertex="1">
+                <mxCell id="b_l2l" value="示意图" style="edgeLabel;html=1;fontSize=10;fontColor=#666;" parent="b_l2" connectable="0" vertex="1">
                     <mxGeometry x="-0.1" relative="1" as="geometry">
-                        <mxPoint as="offset"/>
+                        <mxPoint x="50" y="27" as="offset"/>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="b_l3" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;" parent="1" source="b_block" target="b_hashgi" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="740" y="1900"/>
+                            <mxPoint x="740" y="2003"/>
+                        </Array>
+                    </mxGeometry>
                 </mxCell>
                 <mxCell id="b_l3l" value="_block_hash 引用" style="edgeLabel;html=1;fontSize=10;fontColor=#666;" parent="b_l3" connectable="0" vertex="1">
                     <mxGeometry x="0.1" relative="1" as="geometry">
@@ -238,16 +230,17 @@
                         <mxPoint as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="b_l6" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;dashed=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="b_block" target="b_fq" edge="1">
+                <mxCell id="b_l6" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;dashed=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="b_block" target="b_fq" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="910" y="1800"/>
+                            <mxPoint x="300" y="1900"/>
                         </Array>
+                        <mxPoint x="700" y="2003" as="sourcePoint"/>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="b_l6l" value="ref_cnt 归0 编入双链表 / touch 摘出" style="edgeLabel;html=1;fontSize=10;fontColor=#666;" parent="b_l6" connectable="0" vertex="1">
                     <mxGeometry x="0.1" relative="1" as="geometry">
-                        <mxPoint x="-114" as="offset"/>
+                        <mxPoint x="27" y="-30" as="offset"/>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="b_l7" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=classic;endFill=1;" parent="1" source="b_manager" target="b_blocks" edge="1">
@@ -278,6 +271,9 @@
                     <mxGeometry x="-0.1" relative="1" as="geometry">
                         <mxPoint x="-47" as="offset"/>
                     </mxGeometry>
+                </mxCell>
+                <mxCell id="2" value="&lt;b style=&quot;forced-color-adjust: none; color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; letter-spacing: normal; orphans: 2; text-align: center; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(251, 251, 251); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial;&quot;&gt;KVCacheBlocks 结构示意&lt;/b&gt;&lt;br style=&quot;forced-color-adjust: none; color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: center; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(251, 251, 251); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial;&quot;&gt;&lt;span style=&quot;color: rgb(0, 0, 0); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: center; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(251, 251, 251); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;第 i 个 group（行）× 第 j 个块（列）&lt;/span&gt;" style="text;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="1640" y="1950" width="230" height="50" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>
