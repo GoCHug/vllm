@@ -31,29 +31,29 @@
 ── 配置层（启动期生成一次，此后只读）────────────────────────────────
 
   KVCacheSpec ── 同规格层 merge() ──▶ KVCacheGroupSpec ── 逐组收集成列表 ──▶ 列表下标 = group_id
-   （每层格式说明书，§2）          （一组共享 block_table 的层，§3）
+   （每层格式说明书）              （一组共享 block_table 的层）
 
-  KVCacheConfig（编排总结果，§5）= 三个字段：
-      ├─ num_blocks       ← available_memory // page_size_bytes(§2) // group_size(§3)
-      ├─ kv_cache_tensors ← N 张 KVCacheTensor 显存订货单（§4）
+  KVCacheConfig（每 Worker 一份编排总结果）= 三个字段：
+      ├─ num_blocks       ← available_memory // page_size_bytes // group_size
+      ├─ kv_cache_tensors ← group_size 张 KVCacheTensor 显存订货单
       └─ kv_cache_groups  ← 上面积好的 KVCacheGroupSpec 列表
 
 ── 桥接（配置层产物单向流入物理层 / 逻辑层）─────────────────────────
 
   num_blocks    ──▶ BlockPool 建块：KVCacheBlock × num_blocks（block_id = 0..n-1）
-  group_id      ──▶ 打包进 BlockHashWithGroupId，成为哈希 key 的一半（§6.4）
+  group_id      ──▶ 打包进 BlockHashWithGroupId，成为哈希 key 的一半
   KVCacheTensor ──▶ worker 按单申请字节池 → 物理张量（block_id = 张量行号）
 
 ── 逻辑层（运行期，每步调度都在动，只碰元数据不碰显存）──────────────
 
-  KVCacheBlock（门牌号 + 元数据，§7）
-     ├─ 一批块按 group_id 打包 ──▶ KVCacheBlocks（交接单：blocks[组下标][块序号]，§8）
+  KVCacheBlock（门牌号 + 元数据）
+     ├─ 一批块按 group_id 打包 ──▶ KVCacheBlocks（交接单：blocks[组下标][块序号]）
      │        └─▶ Scheduler 持有 ── get_block_ids() ──▶ Worker 的 block_table
-     ├─ 空闲时排队 → FreeKVCacheBlockQueue（双向链表，分配摘头、释放回队，§9）
+     ├─ 空闲时排队 → FreeKVCacheBlockQueue（双向链表，分配摘头、释放回队）
      ├─ 满块缓存 → 算 BlockHash 挂到 _block_hash；
-     │             连同 group_id 打包登记进 BlockHashToBlockMap（指纹→块 登记簿，§10）
+     │             连同 group_id 打包登记进 BlockHashToBlockMap（指纹→块 登记簿）
      └─ 全体块 / 队列 / 登记簿由 BlockPool 统一持有：
-         分配/释放/缓存/驱逐的唯一门面（§11）
+         分配/释放/缓存/驱逐的唯一门面
 ```
 
 ### 1.2 关系边明细（谁连着谁）
