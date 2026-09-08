@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="e2e_p1_overview" name="总览 · 一条请求的一生">
-        <mxGraphModel grid="1" page="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="1700" pageHeight="1070" math="0" shadow="0">
+        <mxGraphModel dx="490" dy="531" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1070" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -10,76 +10,76 @@
                 <mxCell id="o_sub" value="路线：入队 → 命中复用 → 分配写块 → 31 步续写 → 归还回池　|　调度器全程只动 block_id / ref_cnt，GPU 只认 block_id 读写张量（块号 0/1/2… 为示意编号，实际块 0 是 null_block）" style="text;html=1;fontSize=13;align=center;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="100" y="68" width="1500" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_hero_label" value="▍R 的 102 个 token 最终落在 7 个块里 —— 一眼看清谁复用、谁新算、谁续写" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" vertex="1" parent="1">
+                <mxCell id="o_hero_label" value="▍R 的 102 个 token 最终落在 7 个块里 —— 一眼看清谁复用、谁新算、谁续写" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
                     <mxGeometry x="150" y="100" width="1400" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_sp_tag" value="SP 共享前缀 32 token · P 算过，免费复用" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#1a4a7a;" vertex="1" parent="1">
+                <mxCell id="o_sp_tag" value="SP 共享前缀 32 token · P 算过，免费复用" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#1a4a7a;" parent="1" vertex="1">
                     <mxGeometry x="150" y="130" width="416" height="22" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_new_tag" value="R 追加 38 token · 本次要算" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#8a4b00;" vertex="1" parent="1">
+                <mxCell id="o_new_tag" value="R 追加 38 token · 本次要算" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#8a4b00;" parent="1" vertex="1">
                     <mxGeometry x="566" y="130" width="494" height="22" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_out_tag" value="32 个输出 · 31 个落 KV 槽（第 32 个只采样不落块）" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#4a7a38;" vertex="1" parent="1">
+                <mxCell id="o_out_tag" value="32 个输出 · 31 个落 KV 槽（第 32 个只采样不落块）" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#4a7a38;" parent="1" vertex="1">
                     <mxGeometry x="1060" y="130" width="546" height="22" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_b0" value="16t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=bottom;spacingBottom=3;" vertex="1" parent="1">
+                <mxCell id="o_b0" value="16t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=bottom;spacingBottom=3;" parent="1" vertex="1">
                     <mxGeometry x="150" y="156" width="208" height="48" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_b1" value="16t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=bottom;spacingBottom=3;" vertex="1" parent="1">
+                <mxCell id="o_b1" value="16t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=bottom;spacingBottom=3;" parent="1" vertex="1">
                     <mxGeometry x="358" y="156" width="208" height="48" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_b2" value="16t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=bottom;spacingBottom=3;" vertex="1" parent="1">
+                <mxCell id="o_b2" value="16t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=bottom;spacingBottom=3;" parent="1" vertex="1">
                     <mxGeometry x="566" y="156" width="208" height="48" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_b3" value="16t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=bottom;spacingBottom=3;" vertex="1" parent="1">
+                <mxCell id="o_b3" value="16t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=bottom;spacingBottom=3;" parent="1" vertex="1">
                     <mxGeometry x="774" y="156" width="208" height="48" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_b4a" value="6t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=bottom;spacingBottom=3;" vertex="1" parent="1">
+                <mxCell id="o_b4a" value="6t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=bottom;spacingBottom=3;" parent="1" vertex="1">
                     <mxGeometry x="982" y="156" width="78" height="48" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_b4b" value="10t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=bottom;spacingBottom=3;" vertex="1" parent="1">
+                <mxCell id="o_b4b" value="10t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=bottom;spacingBottom=3;" parent="1" vertex="1">
                     <mxGeometry x="1060" y="156" width="130" height="48" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_b5" value="16t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=bottom;spacingBottom=3;" vertex="1" parent="1">
+                <mxCell id="o_b5" value="16t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=bottom;spacingBottom=3;" parent="1" vertex="1">
                     <mxGeometry x="1190" y="156" width="208" height="48" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_b6" value="5t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=bottom;spacingBottom=3;" vertex="1" parent="1">
+                <mxCell id="o_b6" value="5t" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=bottom;spacingBottom=3;" parent="1" vertex="1">
                     <mxGeometry x="1398" y="156" width="65" height="48" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_b6r" value="空 11 槽" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#bbbbbb;fontSize=10;dashed=1;fontColor=#999999;" vertex="1" parent="1">
+                <mxCell id="o_b6r" value="空 11 槽" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#bbbbbb;fontSize=10;dashed=1;fontColor=#999999;" parent="1" vertex="1">
                     <mxGeometry x="1463" y="156" width="143" height="48" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_bn0" value="块0" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="o_bn0" value="块0" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="150" y="206" width="208" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_bn1" value="块1" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="o_bn1" value="块1" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="358" y="206" width="208" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_bn2" value="块2" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="o_bn2" value="块2" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="566" y="206" width="208" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_bn3" value="块3" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="o_bn3" value="块3" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="774" y="206" width="208" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_bn4" value="块4" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="o_bn4" value="块4" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="982" y="206" width="208" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_bn5" value="块5" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="o_bn5" value="块5" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="1190" y="206" width="208" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_bn6" value="块6" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="o_bn6" value="块6" style="text;html=1;fontSize=11;fontStyle=1;align=center;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="1398" y="206" width="208" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_chip_a" value="块0/1 · P 的遗产 → 命中白拿（touch 摘出）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=10;fontColor=#1a4a7a;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_chip_a" value="块0/1 · P 的遗产 → 命中白拿（touch 摘出）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=10;fontColor=#1a4a7a;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="150" y="232" width="416" height="28" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_chip_b" value="块2/3 · 写满 → 当步入哈希表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbe8;strokeColor=#d6b656;fontSize=10;fontColor=#7a5c00;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_chip_b" value="块2/3 · 写满 → 当步入哈希表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbe8;strokeColor=#d6b656;fontSize=10;fontColor=#7a5c00;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="566" y="232" width="416" height="28" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_chip_c" value="块4/5 · decode 写满 → 也入哈希表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbe8;strokeColor=#d6b656;fontSize=10;fontColor=#7a5c00;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_chip_c" value="块4/5 · decode 写满 → 也入哈希表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbe8;strokeColor=#d6b656;fontSize=10;fontColor=#7a5c00;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="982" y="232" width="416" height="28" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_chip_d" value="块6 · 未满 → 不入表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f7f7;strokeColor=#bbbbbb;fontSize=10;dashed=1;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_chip_d" value="块6 · 未满 → 不入表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f7f7;strokeColor=#bbbbbb;fontSize=10;dashed=1;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1398" y="232" width="208" height="28" as="geometry"/>
                 </mxCell>
                 <mxCell id="o_s1_label" value="▍每步的主循环：调度半步 ↔ 执行半步" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
@@ -94,22 +94,22 @@
                 <mxCell id="o_exec" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=2;verticalAlign=top;spacingTop=2;fontSize=13;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="960" y="316" width="640" height="116" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_exec_lab" value="GPUModelRunner · execute_model → sample_tokens（4 卡各持 16 层）" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#8a4b00;" vertex="1" parent="1">
+                <mxCell id="o_exec_lab" value="GPUModelRunner · execute_model → sample_tokens（4 卡各持 16 层）" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#8a4b00;" parent="1" vertex="1">
                     <mxGeometry x="960" y="318" width="640" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_z1" value="清零新块&#xa;_zero_block_ids" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_z1" value="清零新块&#xa;_zero_block_ids" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="984" y="344" width="184" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_z2" value="forward：按 block_table&#xa;读写 kv_caches[layer]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_z2" value="forward：按 block_table&#xa;读写 kv_caches[layer]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1192" y="344" width="184" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_z3" value="sample_tokens&#xa;输出 token 回灌" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_z3" value="sample_tokens&#xa;输出 token 回灌" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1400" y="344" width="184" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_za1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="o_z1" target="o_z2">
+                <mxCell id="o_za1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="o_z1" target="o_z2" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_za2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="o_z2" target="o_z3">
+                <mxCell id="o_za2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="o_z2" target="o_z3" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="o_out" value="SchedulerOutput：block_table 增量 + 清零块 id" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="o_sched" target="o_exec" edge="1">
@@ -150,16 +150,16 @@
                 <mxCell id="o_st0_hn" value="尾块无" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;fontColor=#999999;" parent="1" vertex="1">
                     <mxGeometry x="356" y="566" width="72" height="34" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st0_wait" value="WAITING 队列" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;fontStyle=1;dashed=1;fontColor=#666666;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st0_wait" value="WAITING 队列" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;fontStyle=1;dashed=1;fontColor=#666666;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="116" y="648" width="96" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st0_r" value="R (70/32)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st0_r" value="R (70/32)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="240" y="648" width="110" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st0_dots" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;verticalAlign=middle;fontColor=#999999;" vertex="1" parent="1">
+                <mxCell id="o_st0_dots" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;verticalAlign=middle;fontColor=#999999;" parent="1" vertex="1">
                     <mxGeometry x="366" y="648" width="62" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st0_n2" value="哈希是纯 BlockHash —— 查表 / 落库那一刻才临时拼 group id" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" vertex="1" parent="1">
+                <mxCell id="o_st0_n2" value="哈希是纯 BlockHash —— 查表 / 落库那一刻才临时拼 group id" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="116" y="700" width="328" height="50" as="geometry"/>
                 </mxCell>
                 <mxCell id="o_st1" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1.5;verticalAlign=top;" parent="1" vertex="1">
@@ -183,25 +183,25 @@
                 <mxCell id="o_st1_b4" value="4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="768" y="566" width="56" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st1_br1" value="⌞ 32 命中 ⌟" style="text;html=1;fontSize=10;fontStyle=1;align=center;fontColor=#1a4a7a;" vertex="1" parent="1">
+                <mxCell id="o_st1_br1" value="⌞ 32 命中 ⌟" style="text;html=1;fontSize=10;fontStyle=1;align=center;fontColor=#1a4a7a;" parent="1" vertex="1">
                     <mxGeometry x="496" y="620" width="124" height="16" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st1_br2" value="⌞ 38 待算 · 先清零 ⌟" style="text;html=1;fontSize=10;fontStyle=1;align=center;fontColor=#b85450;" vertex="1" parent="1">
+                <mxCell id="o_st1_br2" value="⌞ 38 待算 · 先清零 ⌟" style="text;html=1;fontSize=10;fontStyle=1;align=center;fontColor=#b85450;" parent="1" vertex="1">
                     <mxGeometry x="632" y="620" width="192" height="16" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st1_s2" value="S2 touch 命中块 0/1（ref_cnt 0→1）" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#1a4a7a;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st1_s2" value="S2 touch 命中块 0/1（ref_cnt 0→1）" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#1a4a7a;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="496" y="644" width="328" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st1_s3" value="S3 get_new_blocks(3) → 弹新块 2/3/4" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#8a4b00;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st1_s3" value="S3 get_new_blocks(3) → 弹新块 2/3/4" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#8a4b00;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="496" y="666" width="328" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st1_s4" value="S4 满块 2/3 领哈希 · 块4 未满不入" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#7a5c00;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st1_s4" value="S4 满块 2/3 领哈希 · 块4 未满不入" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#7a5c00;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="496" y="688" width="328" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="o_st1_cap" value="GPU 写 70 token KV → 第 1 个输出 → RUNNING" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="496" y="716" width="328" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st1_n2" value="block_table = [0,1,2,3,4] · 全部 32 层共用这一份" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st1_n2" value="block_table = [0,1,2,3,4] · 全部 32 层共用这一份" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="496" y="740" width="328" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="o_st2" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1.5;verticalAlign=top;" parent="1" vertex="1">
@@ -210,43 +210,43 @@
                 <mxCell id="o_st2_head" value="② decode × 31 步" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f9f0;strokeColor=#82b366;fontSize=12;fontStyle=1;align=left;spacingLeft=12;fontColor=#4a7a38;" parent="1" vertex="1">
                     <mxGeometry x="876" y="530" width="328" height="26" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_l4" value="块4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#bbbbbb;fontSize=10;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st2_l4" value="块4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#bbbbbb;fontSize=10;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="876" y="566" width="40" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_l4a" value="P×6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#bbbbbb;fontSize=9;verticalAlign=middle;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="o_st2_l4a" value="P×6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#bbbbbb;fontSize=9;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="924" y="566" width="96" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_l4b" value="▪ 10（步1-10）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=9;verticalAlign=middle;fontColor=#4a7a38;fontStyle=1;" vertex="1" parent="1">
+                <mxCell id="o_st2_l4b" value="▪ 10（步1-10）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=9;verticalAlign=middle;fontColor=#4a7a38;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="1024" y="566" width="180" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_l5" value="块5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#bbbbbb;fontSize=10;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st2_l5" value="块5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#bbbbbb;fontSize=10;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="876" y="604" width="40" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_l5b" value="▪ 16（步11-26 · 步11 弹块+清零）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=9;verticalAlign=middle;fontColor=#4a7a38;fontStyle=1;" vertex="1" parent="1">
+                <mxCell id="o_st2_l5b" value="▪ 16（步11-26 · 步11 弹块+清零）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=9;verticalAlign=middle;fontColor=#4a7a38;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="924" y="604" width="280" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_l6" value="块6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#bbbbbb;fontSize=10;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st2_l6" value="块6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#bbbbbb;fontSize=10;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="876" y="642" width="40" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_l6b" value="▪ 5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;verticalAlign=middle;fontColor=#4a7a38;" vertex="1" parent="1">
+                <mxCell id="o_st2_l6b" value="▪ 5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;verticalAlign=middle;fontColor=#4a7a38;" parent="1" vertex="1">
                     <mxGeometry x="924" y="642" width="88" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_l6r" value="空 11 槽（步27 弹块+清零）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#bbbbbb;fontSize=9;dashed=1;verticalAlign=middle;fontColor=#999999;" vertex="1" parent="1">
+                <mxCell id="o_st2_l6r" value="空 11 槽（步27 弹块+清零）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#bbbbbb;fontSize=9;dashed=1;verticalAlign=middle;fontColor=#999999;" parent="1" vertex="1">
                     <mxGeometry x="1016" y="642" width="188" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_m1" value="步10 满→入哈希" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;verticalAlign=middle;fontColor=#4a7a38;" vertex="1" parent="1">
+                <mxCell id="o_st2_m1" value="步10 满→入哈希" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;verticalAlign=middle;fontColor=#4a7a38;" parent="1" vertex="1">
                     <mxGeometry x="876" y="684" width="108" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_m2" value="步26 满→入哈希" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;verticalAlign=middle;fontColor=#4a7a38;" vertex="1" parent="1">
+                <mxCell id="o_st2_m2" value="步26 满→入哈希" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;verticalAlign=middle;fontColor=#4a7a38;" parent="1" vertex="1">
                     <mxGeometry x="992" y="684" width="108" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_m3" value="步11/27 弹新块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;verticalAlign=middle;fontColor=#8a2a20;" vertex="1" parent="1">
+                <mxCell id="o_st2_m3" value="步11/27 弹新块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;verticalAlign=middle;fontColor=#8a2a20;" parent="1" vertex="1">
                     <mxGeometry x="1108" y="684" width="96" height="24" as="geometry"/>
                 </mxCell>
                 <mxCell id="o_st2_cap" value="31 槽 KV = 10 + 16 + 5；第 32 个输出达到 max_tokens 仅采样、不落 KV" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="876" y="716" width="328" height="32" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st2_n2" value="每步同一套 allocate_slots：S2 跳过，S1/S3/S4 照走" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st2_n2" value="每步同一套 allocate_slots：S2 跳过，S1/S3/S4 照走" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="876" y="746" width="328" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="o_st3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1.5;verticalAlign=top;" parent="1" vertex="1">
@@ -255,7 +255,7 @@
                 <mxCell id="o_st3_head" value="③ 结束释放 · 逆序 6→0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f9f0;strokeColor=#82b366;fontSize=12;fontStyle=1;align=left;spacingLeft=12;fontColor=#4a7a38;" parent="1" vertex="1">
                     <mxGeometry x="1256" y="530" width="328" height="26" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_rl" value="reversed(): 先还尾块 —— 最近用的最先再上岗" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st3_rl" value="reversed(): 先还尾块 —— 最近用的最先再上岗" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1256" y="562" width="328" height="18" as="geometry"/>
                 </mxCell>
                 <mxCell id="o_st3_c6" value="6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=13;fontStyle=1;" parent="1" vertex="1">
@@ -273,46 +273,46 @@
                 <mxCell id="o_st3_c2" value="2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="1436" y="586" width="40" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_c1" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+                <mxCell id="o_st3_c1" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="1481" y="586" width="40" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_c0" value="0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+                <mxCell id="o_st3_c0" value="0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="1526" y="586" width="40" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_qf" value="队首" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=9;verticalAlign=middle;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="o_st3_qf" value="队首" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=9;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="1256" y="648" width="40" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_q6" value="6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st3_q6" value="6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1300" y="648" width="32" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_qd" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#999999;" vertex="1" parent="1">
+                <mxCell id="o_st3_qd" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#999999;" parent="1" vertex="1">
                     <mxGeometry x="1336" y="648" width="22" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_q5" value="5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st3_q5" value="5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1362" y="648" width="26" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_q4" value="4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st3_q4" value="4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1392" y="648" width="26" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_q3" value="3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st3_q3" value="3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1422" y="648" width="26" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_q2" value="2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st3_q2" value="2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1452" y="648" width="26" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_q1" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st3_q1" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1482" y="648" width="26" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_q0" value="0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st3_q0" value="0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1512" y="648" width="26" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_qt" value="队尾" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=9;verticalAlign=middle;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="o_st3_qt" value="队尾" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=9;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="1542" y="648" width="36" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_cap1" value="无哈希(6)→头插队首 · 有哈希(5..2)→尾插队尾" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="o_st3_cap1" value="无哈希(6)→头插队首 · 有哈希(5..2)→尾插队尾" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1256" y="692" width="328" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_st3_cap2" value="命中块(1/0) 归 0 后仍带哈希回队尾 · 条目保留，同前缀请求照样命中&#xa;ref_cnt &gt; 0 只减计数不回收；归 0 才回队并计数返还" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" vertex="1" parent="1">
+                <mxCell id="o_st3_cap2" value="命中块(1/0) 归 0 后仍带哈希回队尾 · 条目保留，同前缀请求照样命中&#xa;ref_cnt &gt; 0 只减计数不回收；归 0 才回队并计数返还" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="1256" y="714" width="328" height="46" as="geometry"/>
                 </mxCell>
                 <mxCell id="o_sa1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#888888;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="o_st0" target="o_st1" edge="1">
@@ -342,19 +342,19 @@
                 <mxCell id="o_u_cache" value="块池 + 前缀缓存" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1310" y="846" width="240" height="54" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_uc1" value="预计算 4 个链式哈希" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="o_uc1" value="预计算 4 个链式哈希" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="150" y="906" width="240" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_uc2" value="批内请求共享一次 forward" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="o_uc2" value="批内请求共享一次 forward" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="440" y="906" width="240" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_uc3" value="stop / EOS / max_tokens 满" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="o_uc3" value="stop / EOS / max_tokens 满" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="730" y="906" width="240" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_uc4" value="逆序归还 · ref_cnt--" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="o_uc4" value="逆序归还 · ref_cnt--" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="1020" y="906" width="240" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="o_uc5" value="带哈希块躺队尾随时待命" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="o_uc5" value="带哈希块躺队尾随时待命" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="1310" y="906" width="240" height="18" as="geometry"/>
                 </mxCell>
                 <mxCell id="o_ue1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="o_u_wait" target="o_u_run" edge="1">
@@ -387,7 +387,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="e2e_p2_components" name="组件分工 · 调用链与 S1-S4">
-        <mxGraphModel dx="1400" dy="666" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+        <mxGraphModel dx="837" dy="566" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -418,16 +418,16 @@
                 <mxCell id="c_a3" value="操作块" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="c_fm" target="c_bp" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_chip1" value="调用链：find_longest_cache_hit / allocate_slots / free 同名方法逐层下放" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f7f7;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#666666;" vertex="1" parent="1">
+                <mxCell id="c_chip1" value="调用链：find_longest_cache_hit / allocate_slots / free 同名方法逐层下放" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f7f7;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#666666;" parent="1" vertex="1">
                     <mxGeometry x="100" y="283" width="380" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_chip2" value="主线单 group（32 层）· 单组 = 直通，无跨组逻辑" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f7f7;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#666666;" vertex="1" parent="1">
+                <mxCell id="c_chip2" value="主线单 group（32 层）· 单组 = 直通，无跨组逻辑" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f7f7;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#666666;" parent="1" vertex="1">
                     <mxGeometry x="510" y="283" width="380" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_chip3" value="记账零拷贝：逻辑层从不搬运 KV 数据" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f7f7;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#666666;" vertex="1" parent="1">
+                <mxCell id="c_chip3" value="记账零拷贝：逻辑层从不搬运 KV 数据" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f7f7;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#666666;" parent="1" vertex="1">
                     <mxGeometry x="920" y="283" width="380" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_gp" value="GP&#xa;GPUModelRunner（每 worker）&#xa;物理 K/V 张量 ×16 层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontSize=11;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                <mxCell id="c_gp" value="GP&#xa;GPUModelRunner（每 worker）&#xa;物理 K/V 张量 ×16 层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontSize=11;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="1060" y="357" width="280" height="96" as="geometry"/>
                 </mxCell>
                 <mxCell id="c_bridge" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=2.5;endArrow=block;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="c_bp" target="c_gp" edge="1">
@@ -438,13 +438,13 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="c_bridge_lbl" value="block_id ⇋ 张量第 0 维行号" style="text;html=1;fontSize=10;fontStyle=1;align=left;fontColor=#b85450;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_bridge_lbl" value="block_id ⇋ 张量第 0 维行号" style="text;html=1;fontSize=10;fontStyle=1;align=left;fontColor=#b85450;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1382" y="291" width="218" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_in_label" value="▍另一入口：① get_computed_blocks（仅 prefill 查表 · 只读不写）" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" vertex="1" parent="1">
+                <mxCell id="c_in_label" value="▍另一入口：① get_computed_blocks（仅 prefill 查表 · 只读不写）" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
                     <mxGeometry x="100" y="500" width="1450" height="26" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_in_chip" value="链式哈希逐块比对、遇 miss 即 break　|　命中「已满块」（未满尾块无 hash 不参与）　|　max_cache_hit_length = num_tokens − 1（最后 1 个 token 必须重算）　|　临时 key（BlockHashWithGroupId）用完即弃" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1.5;dashed=1;fontSize=11;verticalAlign=middle;align=left;spacingLeft=14;" vertex="1" parent="1">
+                <mxCell id="c_in_chip" value="链式哈希逐块比对、遇 miss 即 break　|　命中「已满块」（未满尾块无 hash 不参与）　|　max_cache_hit_length = num_tokens − 1（最后 1 个 token 必须重算）　|　临时 key（BlockHashWithGroupId）用完即弃" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1.5;dashed=1;fontSize=11;verticalAlign=middle;align=left;spacingLeft=14;" parent="1" vertex="1">
                     <mxGeometry x="100" y="530" width="1500" height="42" as="geometry"/>
                 </mxCell>
                 <mxCell id="c_s2_label" value="▍分配器 allocate_slots 的固定四步 S1→S4（prefill 与 decode 同一套）" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
@@ -453,112 +453,112 @@
                 <mxCell id="c_st1" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1.5;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="100" y="622" width="360" height="260" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st1h" value="S1 · 容量检查　get_num_blocks_to_allocate（km:510）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;spacingLeft=10;fontColor=#1a4a7a;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st1h" value="S1 · 容量检查　get_num_blocks_to_allocate（km:510）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;spacingLeft=10;fontColor=#1a4a7a;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="116" y="632" width="328" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st1a" value="池子剩 4093 － 保底水位（block_pool:799）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=11;verticalAlign=middle;align=left;spacingLeft=10;" vertex="1" parent="1">
+                <mxCell id="c_st1a" value="池子剩 4093 － 保底水位（block_pool:799）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=11;verticalAlign=middle;align=left;spacingLeft=10;" parent="1" vertex="1">
                     <mxGeometry x="116" y="664" width="328" height="34" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st1b" value="要 3 块" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=middle;align=left;spacingLeft=10;" vertex="1" parent="1">
+                <mxCell id="c_st1b" value="要 3 块" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;verticalAlign=middle;align=left;spacingLeft=10;" parent="1" vertex="1">
                     <mxGeometry x="116" y="706" width="150" height="34" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st1ok" value="够 ✓ 继续" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st1ok" value="够 ✓ 继续" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="294" y="706" width="150" height="34" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st1c" value="不够 → return None，本轮不调度、留下轮" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st1c" value="不够 → return None，本轮不调度、留下轮" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="116" y="748" width="328" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st1f" value="num_new = max( cdiv(需槽位,16) − 已持块, 0 )（single_type:144）" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st1f" value="num_new = max( cdiv(需槽位,16) − 已持块, 0 )（single_type:144）" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="116" y="774" width="328" height="32" as="geometry"/>
                 </mxCell>
                 <mxCell id="c_st2" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1.5;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="480" y="622" width="360" height="260" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st2h" value="S2 · touch 命中块　allocate_new_computed_blocks（km:535）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;spacingLeft=10;fontColor=#1a4a7a;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st2h" value="S2 · touch 命中块　allocate_new_computed_blocks（km:535）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;spacingLeft=10;fontColor=#1a4a7a;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="496" y="632" width="328" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st2q0" value="队首 ⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="c_st2q0" value="队首 ⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="496" y="664" width="90" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st2q1" value="0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st2q1" value="0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="594" y="664" width="52" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st2q2" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st2q2" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="654" y="664" width="52" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st2q3" value="原队列残部" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#dddddd;fontSize=9;verticalAlign=middle;fontColor=#bbbbbb;" vertex="1" parent="1">
+                <mxCell id="c_st2q3" value="原队列残部" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#dddddd;fontSize=9;verticalAlign=middle;fontColor=#bbbbbb;" parent="1" vertex="1">
                     <mxGeometry x="714" y="664" width="110" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st2up" value="↑ 摘出队列 · ref_cnt 0→1 → 归 R 使用 ✓" style="text;html=1;fontSize=10;fontStyle=1;align=left;spacingLeft=2;fontColor=#1a4a7a;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st2up" value="↑ 摘出队列 · ref_cnt 0→1 → 归 R 使用 ✓" style="text;html=1;fontSize=10;fontStyle=1;align=left;spacingLeft=2;fontColor=#1a4a7a;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="496" y="712" width="328" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st2n1" value="两阶段：先 add_local_computed_blocks 逐组 touch（st:290），" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st2n1" value="两阶段：先 add_local_computed_blocks 逐组 touch（st:290），" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="496" y="738" width="328" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st2n2" value="再 allocate_external_computed_blocks（主线外部已算 token=0，跳过）" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st2n2" value="再 allocate_external_computed_blocks（主线外部已算 token=0，跳过）" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="496" y="758" width="328" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="c_st3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1.5;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="860" y="622" width="360" height="260" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st3h" value="S3 · 弹新块　allocate_new_blocks（km:542）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;spacingLeft=10;fontColor=#1a4a7a;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st3h" value="S3 · 弹新块　allocate_new_blocks（km:542）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;spacingLeft=10;fontColor=#1a4a7a;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="876" y="632" width="328" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st3q0" value="队首" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="c_st3q0" value="队首" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="876" y="664" width="52" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st3q1" value="2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st3q1" value="2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="936" y="664" width="52" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st3q2" value="3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st3q2" value="3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="996" y="664" width="52" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st3q3" value="4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st3q3" value="4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1056" y="664" width="52" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st3qd" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;verticalAlign=middle;fontColor=#999999;" vertex="1" parent="1">
+                <mxCell id="c_st3qd" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;verticalAlign=middle;fontColor=#999999;" parent="1" vertex="1">
                     <mxGeometry x="1116" y="664" width="88" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st3pop" value="get_new_blocks(3)：从队首连弹 3 格（st:330）" style="text;html=1;fontSize=10;fontStyle=1;align=left;spacingLeft=2;fontColor=#b85450;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st3pop" value="get_new_blocks(3)：从队首连弹 3 格（st:330）" style="text;html=1;fontSize=10;fontStyle=1;align=left;spacingLeft=2;fontColor=#b85450;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="876" y="712" width="328" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st3bt" value="block_table = [ 0✓　1✓　2　3　4 ]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st3bt" value="block_table = [ 0✓　1✓　2　3　4 ]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="876" y="738" width="328" height="34" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st3n" value="新块顺手记入待清零名单 new_block_ids，由 take_new_block_ids 交 GPU（decode 每步：0 或 1 块）" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" vertex="1" parent="1">
+                <mxCell id="c_st3n" value="新块顺手记入待清零名单 new_block_ids，由 take_new_block_ids 交 GPU（decode 每步：0 或 1 块）" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="876" y="780" width="328" height="40" as="geometry"/>
                 </mxCell>
                 <mxCell id="c_st4" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1.5;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="1240" y="622" width="360" height="260" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st4h" value="S4 · 满块入表　cache_blocks（km:563）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;spacingLeft=10;fontColor=#1a4a7a;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st4h" value="S4 · 满块入表　cache_blocks（km:563）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;spacingLeft=10;fontColor=#1a4a7a;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1256" y="632" width="328" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st4b2" value="块2 ✎16t 满" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st4b2" value="块2 ✎16t 满" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1256" y="664" width="156" height="34" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st4b3" value="块3 ✎16t 满" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="c_st4b3" value="块3 ✎16t 满" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1424" y="664" width="156" height="34" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st4r1" value="↳ hash(t0-15) → 块2　封存" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;verticalAlign=middle;align=left;spacingLeft=10;" vertex="1" parent="1">
+                <mxCell id="c_st4r1" value="↳ hash(t0-15) → 块2　封存" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;verticalAlign=middle;align=left;spacingLeft=10;" parent="1" vertex="1">
                     <mxGeometry x="1256" y="706" width="160" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st4r2" value="↳ hash(t16-31) → 块3　封存" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;verticalAlign=middle;align=left;spacingLeft=10;" vertex="1" parent="1">
+                <mxCell id="c_st4r2" value="↳ hash(t16-31) → 块3　封存" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;verticalAlign=middle;align=left;spacingLeft=10;" parent="1" vertex="1">
                     <mxGeometry x="1424" y="706" width="156" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st4b4" value="块4 ✎6/16 → 未满不入表（token 未定稿不可复用）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;dashed=1;verticalAlign=middle;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="c_st4b4" value="块4 ✎6/16 → 未满不入表（token 未定稿不可复用）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;dashed=1;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="1256" y="738" width="324" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st4n" value="只缓存已定稿 token；命中块已有哈希 → 幂等早退&#xa;（st:427 cache_full_blocks）" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" vertex="1" parent="1">
+                <mxCell id="c_st4n" value="只缓存已定稿 token；命中块已有哈希 → 幂等早退&#xa;（st:427 cache_full_blocks）" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="1256" y="776" width="328" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_s12" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#999999;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c_st1" target="c_st2">
+                <mxCell id="c_s12" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#999999;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="c_st1" target="c_st2" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_s23" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#999999;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c_st2" target="c_st3">
+                <mxCell id="c_s23" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#999999;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="c_st2" target="c_st3" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_s34" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#999999;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c_st3" target="c_st4">
+                <mxCell id="c_s34" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#999999;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="c_st3" target="c_st4" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="c_uni" value="prefill：S1~S4 全走（S2 touch 命中的 2 块）　|　decode：S2 跳过，S1/S3/S4 照走　|　唯一真正的阶段差异 = prefill 开头的 ① 前缀查找" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#d6b656;strokeWidth=1.5;fontSize=12;verticalAlign=middle;align=center;" parent="1" vertex="1">
@@ -567,14 +567,14 @@
                 <mxCell id="c_footer" value="🟦 KM 入口　　🟪 UC 直通　　🟧 FM 单型实现　　🟩 BP 逻辑池　　🟥 GP 物理层" style="text;html=1;fontSize=12;align=center;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="100" y="958" width="1500" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="c_st2n3" value="decode 续写没有前缀命中 → 整步跳过" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" vertex="1" parent="1">
+                <mxCell id="c_st2n3" value="decode 续写没有前缀命中 → 整步跳过" style="text;html=1;fontSize=10;align=left;spacingLeft=2;fontColor=#888888;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="496" y="784" width="328" height="40" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>
     </diagram>
     <diagram id="e2e_p3_init" name="启动期 · 物理家底的购置">
-        <mxGraphModel dx="1587" dy="755" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="980" math="0" shadow="0">
+        <mxGraphModel dx="837" dy="566" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="980" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -599,13 +599,13 @@
                 <mxCell id="i_a2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="i_s2" target="i_s3" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_d1" value="模型参数：32 层 · 32 Q头 / 8 KV头 · head_dim=128 · fp16&#xa;PP2 切层（每 worker 16）· TP2 切 KV 头（8→4）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#dddddd;fontSize=11;verticalAlign=middle;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="i_d1" value="模型参数：32 层 · 32 Q头 / 8 KV头 · head_dim=128 · fp16&#xa;PP2 切层（每 worker 16）· TP2 切 KV 头（8→4）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#dddddd;fontSize=11;verticalAlign=middle;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="100" y="248" width="440" height="56" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_d2" value="available = 总显存×util − 权重 − 激活 − CUDAGraph&#xa;profile_run 实测（示例每卡可用 2 GiB）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#dddddd;fontSize=11;verticalAlign=middle;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="i_d2" value="available = 总显存×util − 权重 − 激活 − CUDAGraph&#xa;profile_run 实测（示例每卡可用 2 GiB）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#dddddd;fontSize=11;verticalAlign=middle;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="580" y="248" width="440" height="56" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_d3" value="页 = 2(K/V)×16tok×4头×128×2B = 32 KiB&#xa;num_blocks = 2GiB ÷ 32KiB ÷ 16层 = 4096 · 跨 4 卡 min 对齐" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#dddddd;fontSize=11;verticalAlign=middle;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="i_d3" value="页 = 2(K/V)×16tok×4头×128×2B = 32 KiB&#xa;num_blocks = 2GiB ÷ 32KiB ÷ 16层 = 4096 · 跨 4 卡 min 对齐" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#dddddd;fontSize=11;verticalAlign=middle;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="1060" y="248" width="440" height="56" as="geometry"/>
                 </mxCell>
                 <mxCell id="i_wk_label" value="▍四张卡怎么分（PP 切层 × TP 切头）—— 调度器视角仍是单 group · 32 层，对布局完全透明" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
@@ -638,34 +638,34 @@
                 <mxCell id="i_bp_c2" value="2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="266" y="562" width="66" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_bp_cd" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;verticalAlign=middle;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="i_bp_cd" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="340" y="562" width="66" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_bp_c4" value="4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="i_bp_c4" value="4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="414" y="562" width="90" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_bp_tag" value="此刻全部空闲 · 挂在 free_block_queue" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="i_bp_tag" value="此刻全部空闲 · 挂在 free_block_queue" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="514" y="562" width="210" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_bp_null" value="块 0 ＝ null_block（BlockPool 保留）· 真实分配从块 1 起 —— 示例里「块 0/1」仅为示意编号" style="text;html=1;fontSize=11;align=left;spacingLeft=8;fontColor=#b85450;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="i_bp_null" value="块 0 ＝ null_block（BlockPool 保留）· 真实分配从块 1 起 —— 示例里「块 0/1」仅为示意编号" style="text;html=1;fontSize=11;align=left;spacingLeft=8;fontColor=#b85450;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="118" y="606" width="606" height="22" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_bp_r1" value="▸ 队首弹出 —— 分配新块（get_new_blocks）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;verticalAlign=middle;align=left;spacingLeft=12;" vertex="1" parent="1">
+                <mxCell id="i_bp_r1" value="▸ 队首弹出 —— 分配新块（get_new_blocks）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;verticalAlign=middle;align=left;spacingLeft=12;" parent="1" vertex="1">
                     <mxGeometry x="118" y="638" width="296" height="42" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_bp_r2" value="▸ 摘出 —— touch 命中块（ref_cnt++）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;verticalAlign=middle;align=left;spacingLeft=12;" vertex="1" parent="1">
+                <mxCell id="i_bp_r2" value="▸ 摘出 —— touch 命中块（ref_cnt++）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;verticalAlign=middle;align=left;spacingLeft=12;" parent="1" vertex="1">
                     <mxGeometry x="422" y="638" width="296" height="42" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_bp_r3" value="▸ 尾插 —— 还回带哈希块（LRU 保护）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;verticalAlign=middle;align=left;spacingLeft=12;" vertex="1" parent="1">
+                <mxCell id="i_bp_r3" value="▸ 尾插 —— 还回带哈希块（LRU 保护）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;verticalAlign=middle;align=left;spacingLeft=12;" parent="1" vertex="1">
                     <mxGeometry x="118" y="688" width="296" height="42" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_bp_r4" value="▸ 头插 —— 还回无哈希块（优先复用）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;verticalAlign=middle;align=left;spacingLeft=12;" vertex="1" parent="1">
+                <mxCell id="i_bp_r4" value="▸ 头插 —— 还回无哈希块（优先复用）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;verticalAlign=middle;align=left;spacingLeft=12;" parent="1" vertex="1">
                     <mxGeometry x="422" y="688" width="296" height="42" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_bp_n1" value="运行期 KVCacheManager 只操作 block_id 与 ref_cnt，从不触碰张量本体" style="text;html=1;fontSize=11;fontStyle=1;align=left;spacingLeft=8;fontColor=#555555;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="i_bp_n1" value="运行期 KVCacheManager 只操作 block_id 与 ref_cnt，从不触碰张量本体" style="text;html=1;fontSize=11;fontStyle=1;align=left;spacingLeft=8;fontColor=#555555;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="118" y="740" width="606" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_bp_n2" value="num_blocks 跨 4 卡取 min —— 保证任何一个 block_id 在每张卡上都有物理行" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="i_bp_n2" value="num_blocks 跨 4 卡取 min —— 保证任何一个 block_id 在每张卡上都有物理行" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="118" y="762" width="606" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="i_kv" value="家底 2 · kv_caches[layer] 物理张量（每 worker）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce8e6;strokeColor=#b85450;strokeWidth=2;verticalAlign=top;spacingTop=6;fontSize=14;fontStyle=1;align=center;fontColor=#8a2a20;" parent="1" vertex="1">
@@ -683,22 +683,22 @@
                 <mxCell id="i_kv_l3" value="layer_15" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=10;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="978" y="694" width="300" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_kv_n1" value="共 16 份 · 每 128 MiB" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="i_kv_n1" value="共 16 份 · 每 128 MiB" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1288" y="562" width="296" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_kv_n2" value="全卡合计 2 GiB" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="i_kv_n2" value="全卡合计 2 GiB" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1288" y="606" width="296" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_kv_n3" value="同一 block_id 在 16 份里同指一行" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="i_kv_n3" value="同一 block_id 在 16 份里同指一行" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1288" y="650" width="296" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_kv_n4" value="32 层共享同一份 block_table" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="i_kv_n4" value="32 层共享同一份 block_table" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1288" y="694" width="296" height="36" as="geometry"/>
                 </mxCell>
                 <mxCell id="i_kv_bind" value="int8 字节池 → 零拷贝 view+permute 成逻辑 shape；形状由 attn_backend.get_kv_cache_shape() 决定（换后端 / 布局会不同）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=10;align=left;spacingLeft=10;verticalAlign=middle;dashed=1;" parent="1" vertex="1">
                     <mxGeometry x="978" y="740" width="596" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="i_kv_cap" value="forward 写入 = 按行号直接读写（fancy index 第 0 维）" style="text;html=1;fontSize=11;fontStyle=1;align=left;spacingLeft=8;fontColor=#555555;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="i_kv_cap" value="forward 写入 = 按行号直接读写（fancy index 第 0 维）" style="text;html=1;fontSize=11;fontStyle=1;align=left;spacingLeft=8;fontColor=#555555;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="978" y="794" width="596" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="i_bridge" value="block_id 间接寻址（零拷贝映射）" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=2.5;endArrow=block;dashed=1;fontSize=10;fontStyle=1;exitX=1;exitY=0.76;exitDx=0;exitDy=0;entryX=0;entryY=0.76;entryDx=0;entryDy=0;" parent="1" source="i_bp" target="i_kv" edge="1">
@@ -714,7 +714,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="e2e_p4_prefill" name="Prefill · 命中白拿 + 新占三块">
-        <mxGraphModel dx="1462" dy="871" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1110" math="0" shadow="0">
+        <mxGraphModel dx="837" dy="566" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1110" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -730,7 +730,7 @@
                 <mxCell id="p_a1_f" value="队首" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="130" y="150" width="56" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_a1_d" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=12;verticalAlign=middle;fontColor=#999999;" vertex="1" parent="1">
+                <mxCell id="p_a1_d" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=12;verticalAlign=middle;fontColor=#999999;" parent="1" vertex="1">
                     <mxGeometry x="194" y="150" width="140" height="44" as="geometry"/>
                 </mxCell>
                 <mxCell id="p_a1_0" value="0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
@@ -742,19 +742,19 @@
                 <mxCell id="p_a1_t" value="队尾" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="558" y="150" width="56" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_a1_chip" value="「带哈希缓存块」：ref 归 0 后仍驻留池尾" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=10;verticalAlign=middle;fontColor=#1a4a7a;" vertex="1" parent="1">
+                <mxCell id="p_a1_chip" value="「带哈希缓存块」：ref 归 0 后仍驻留池尾" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5fd;strokeColor=#6c8ebf;fontSize=10;verticalAlign=middle;fontColor=#1a4a7a;" parent="1" vertex="1">
                     <mxGeometry x="130" y="206" width="256" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_a1_note" value="块 0/1 同时携带 block_hash 字段" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_a1_note" value="块 0/1 同时携带 block_hash 字段" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="402" y="206" width="322" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_a2_r0" value="hash(t0–15)　→　块 0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=12;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_a2_r0" value="hash(t0–15)　→　块 0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=12;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="130" y="246" width="300" height="32" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_a2_r1" value="hash(t16–31)　→　块 1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=12;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_a2_r1" value="hash(t16–31)　→　块 1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=12;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="130" y="286" width="300" height="32" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_a2_note" value="&lt;span style=&quot;background-color: light-dark(#ffffff, var(--ge-dark-color, #121212));&quot;&gt;P 服务时把共享前缀写满即哈希入表&lt;/span&gt;&lt;div&gt;&lt;span style=&quot;background-color: light-dark(#ffffff, var(--ge-dark-color, #121212));&quot;&gt;这两条黄条就是 R ① 查表的对象&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: light-dark(#ffffff, var(--ge-dark-color, #121212));&quot;&gt;（cached_block_hash_to_block 映射表）&lt;/span&gt;&lt;/div&gt;" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;fontFamily=Helvetica;" vertex="1" parent="1">
+                <mxCell id="p_a2_note" value="&lt;span style=&quot;background-color: light-dark(#ffffff, var(--ge-dark-color, #121212));&quot;&gt;P 服务时把共享前缀写满即哈希入表&lt;/span&gt;&lt;div&gt;&lt;span style=&quot;background-color: light-dark(#ffffff, var(--ge-dark-color, #121212));&quot;&gt;这两条黄条就是 R ① 查表的对象&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: light-dark(#ffffff, var(--ge-dark-color, #121212));&quot;&gt;（cached_block_hash_to_block 映射表）&lt;/span&gt;&lt;/div&gt;" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;fontFamily=Helvetica;" parent="1" vertex="1">
                     <mxGeometry x="446" y="246" width="274" height="76" as="geometry"/>
                 </mxCell>
                 <mxCell id="p_b1" value="R 入队时：prompt 拆块 ＋ 预算哈希（只算这一遍，后面全程白用）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;strokeWidth=1.5;verticalAlign=top;spacingTop=2;fontSize=13;fontStyle=1;align=left;spacingLeft=12;fontColor=#333333;" parent="1" vertex="1">
@@ -781,13 +781,13 @@
                 <mxCell id="p_b1_c4" value="尾块 t64-69（6 token）· 不满 = 无 hash" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;verticalAlign=middle;fontColor=#999999;" parent="1" vertex="1">
                     <mxGeometry x="1300" y="166" width="112" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_b1_n1" value="哈希只在此生成：update_block_hashes()（request.py:257）· 存 request.block_hashes" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_b1_n1" value="哈希只在此生成：update_block_hashes()（request.py:257）· 存 request.block_hashes" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="798" y="250" width="680" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_b1_n2" value="链式哈希逐块累进（基于 token ID）：前一块的 hash 是后一块的输入" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_b1_n2" value="链式哈希逐块累进（基于 token ID）：前一块的 hash 是后一块的输入" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="798" y="274" width="680" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_b1_n3" value="prefix caching 关闭 / 跳过 KV 读 → ① 直接空返回，不进查找" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_b1_n3" value="prefix caching 关闭 / 跳过 KV 读 → ① 直接空返回，不进查找" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="798" y="298" width="680" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="p_c_label" value="▍① 只读查找（find_longest_cache_hit：遇 miss 立刻 break）→ 前两块白拿" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
@@ -808,28 +808,28 @@
                 <mxCell id="p_b2_r3" value="h3 不再查 ✗" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=12;align=left;spacingLeft=14;verticalAlign=middle;color=#999999;" parent="1" vertex="1">
                     <mxGeometry x="130" y="574" width="270" height="38" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_b2_hit" value="hit_blocks = {块0, 块1}&#xa;hit_length = 2 × 16 = 32&#xa;剩 70 − 32 = 38 token 待算&#xa;命中上限 69 = num_tokens − 1&#xa;（最后 1 个 token 必须重算）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1.5;fontSize=12;fontStyle=1;verticalAlign=middle;align=left;spacingLeft=16;fontColor=#1a4a7a;" vertex="1" parent="1">
+                <mxCell id="p_b2_hit" value="hit_blocks = {块0, 块1}&#xa;hit_length = 2 × 16 = 32&#xa;剩 70 − 32 = 38 token 待算&#xa;命中上限 69 = num_tokens − 1&#xa;（最后 1 个 token 必须重算）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1.5;fontSize=12;fontStyle=1;verticalAlign=middle;align=left;spacingLeft=16;fontColor=#1a4a7a;" parent="1" vertex="1">
                     <mxGeometry x="430" y="436" width="290" height="176" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_b2_note" value="只读不写：不动 ref_cnt、不回写 request.block_hashes —— 固化靠 ② 里的 S2 touch" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_b2_note" value="只读不写：不动 ref_cnt、不回写 request.block_hashes —— 固化靠 ② 里的 S2 touch" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="130" y="622" width="594" height="28" as="geometry"/>
                 </mxCell>
                 <mxCell id="p_c2" value="▍② 分配后的三个变化（S1 容量检查通过后）" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
                     <mxGeometry x="780" y="366" width="820" height="26" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_c2_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1.5;verticalAlign=top;" vertex="1" parent="1">
+                <mxCell id="p_c2_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1.5;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="780" y="400" width="720" height="260" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_c2_f" value="队首" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="p_c2_f" value="队首" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="798" y="436" width="50" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_c2_5" value="5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=12;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_c2_5" value="5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=12;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="856" y="436" width="70" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_c2_d" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=12;verticalAlign=middle;fontColor=#999999;" vertex="1" parent="1">
+                <mxCell id="p_c2_d" value="⋯" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=12;verticalAlign=middle;fontColor=#999999;" parent="1" vertex="1">
                     <mxGeometry x="934" y="436" width="90" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_c2_pop" value="↖ 弹走 2/3/4 · 摘走 0/1 —— 0/1 从此归 R 与 P 的缓存共用" style="text;html=1;fontSize=11;fontStyle=1;align=left;spacingLeft=10;fontColor=#b85450;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_c2_pop" value="↖ 弹走 2/3/4 · 摘走 0/1 —— 0/1 从此归 R 与 P 的缓存共用" style="text;html=1;fontSize=11;fontStyle=1;align=left;spacingLeft=10;fontColor=#b85450;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1040" y="436" width="440" height="44" as="geometry"/>
                 </mxCell>
                 <mxCell id="p_c2_b0" value="0&#xa;✓ 命中白拿" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
@@ -847,37 +847,37 @@
                 <mxCell id="p_c2_b4" value="4 新&#xa;6/16 未满" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#b85450;fontSize=12;fontStyle=1;dashed=1;strokeWidth=2;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1322" y="500" width="124" height="64" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_c2_z" value="🧹 清零名单 [2,3,4]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                <mxCell id="p_c2_z" value="🧹 清零名单 [2,3,4]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="798" y="572" width="310" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_c2_i" value="🏷 满块 2/3 入哈希表（0/1 幂等跳过）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;verticalAlign=middle;align=left;spacingLeft=12;" vertex="1" parent="1">
+                <mxCell id="p_c2_i" value="🏷 满块 2/3 入哈希表（0/1 幂等跳过）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;verticalAlign=middle;align=left;spacingLeft=12;" parent="1" vertex="1">
                     <mxGeometry x="1116" y="572" width="366" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_c2_lg" value="蓝 = 命中复用 · 橙 = 新分配 · 红虚框 = 待清零再写 KV" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_c2_lg" value="蓝 = 命中复用 · 橙 = 新分配 · 红虚框 = 待清零再写 KV" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="798" y="608" width="680" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_c2_n" value="清零原因：物理块可能残留上一请求的旧 KV；清零名单走 SchedulerOutput（new_block_ids_to_zero）" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_c2_n" value="清零原因：物理块可能残留上一请求的旧 KV；清零名单走 SchedulerOutput（new_block_ids_to_zero）" style="text;html=1;fontSize=10;align=left;spacingLeft=8;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="798" y="630" width="680" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_gpu_label" value="▍交给 GPU：擦干净 → 写 → 采样（EngineCore.step 的执行半步）" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" vertex="1" parent="1">
+                <mxCell id="p_gpu_label" value="▍交给 GPU：擦干净 → 写 → 采样（EngineCore.step 的执行半步）" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
                     <mxGeometry x="100" y="692" width="1400" height="26" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_g1" value="🧹 清零块 2/3/4&#xa;_zero_block_ids" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_g1" value="🧹 清零块 2/3/4&#xa;_zero_block_ids" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="100" y="726" width="448" height="96" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_g2" value="✍ 写 38 个新 token 的 KV（0/1 复用不重算）&#xa;kv_caches[layer][block_id] fancy index 第 0 维" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_g2" value="✍ 写 38 个新 token 的 KV（0/1 复用不重算）&#xa;kv_caches[layer][block_id] fancy index 第 0 维" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="572" y="726" width="448" height="96" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_g3" value="◎ sample → 第 1 个输出 token&#xa;（EngineCore 补采样 core.py:601）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="p_g3" value="◎ sample → 第 1 个输出 token&#xa;（EngineCore 补采样 core.py:601）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1044" y="726" width="448" height="96" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_g12" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="p_g1" target="p_g2">
+                <mxCell id="p_g12" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="p_g1" target="p_g2" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_g23" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="p_g2" target="p_g3">
+                <mxCell id="p_g23" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="p_g2" target="p_g3" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_gn1" value="同一 block_id 跨 32 层（每 worker 16）同指一个逻辑块；slot_mapping 记录每 token 落位（块, 槽）" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="p_gn1" value="同一 block_id 跨 32 层（每 worker 16）同指一个逻辑块；slot_mapping 记录每 token 落位（块, 槽）" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="100" y="830" width="1400" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="p_d_label" value="▍哈希的三级跳（request.block_hashes 始终只存纯 BlockHash）" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
@@ -898,7 +898,7 @@
                 <mxCell id="p_da2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#999999;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="p_d2" target="p_d3" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="p_km" value="记忆口诀：入队造纯哈希 → ① 拼临时 key 查 → ② 落库才带 group id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#dddddd;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="p_km" value="记忆口诀：入队造纯哈希 → ① 拼临时 key 查 → ② 落库才带 group id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#dddddd;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="100" y="976" width="1400" height="36" as="geometry"/>
                 </mxCell>
                 <mxCell id="p_footer" value="🟦 命中复用　　🟧 新分配　　🟨 哈希 / 缓存　　🟥 清零　　|　decode 见第 5 页" style="text;html=1;fontSize=12;align=center;fontColor=#555555;" parent="1" vertex="1">
@@ -908,7 +908,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="e2e_p5_decode" name="Decode · 31 步的走位">
-        <mxGraphModel dx="1900" dy="1132" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1010" math="0" shadow="0">
+        <mxGraphModel dx="837" dy="566" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1010" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -924,55 +924,55 @@
                 <mxCell id="d_a" value="局面 A · 行没满 → 原地续写（需 0 块，绝大多数步）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f9f0;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;spacingTop=2;fontSize=13;fontStyle=1;align=left;spacingLeft=12;fontColor=#4a7a38;" parent="1" vertex="1">
                     <mxGeometry x="100" y="134" width="730" height="240" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_a1" value="6/16" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="d_a1" value="6/16" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="140" y="186" width="176" height="56" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_a2" value="7/16" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="d_a2" value="7/16" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="430" y="186" width="176" height="56" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_aarr" value="+1 token" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2.5;endArrow=block;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="d_a1" target="d_a2">
+                <mxCell id="d_aarr" value="+1 token" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2.5;endArrow=block;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="d_a1" target="d_a2" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_ac1" value="需 0 块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=middle;fontColor=#4a7a38;" vertex="1" parent="1">
+                <mxCell id="d_ac1" value="需 0 块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=middle;fontColor=#4a7a38;" parent="1" vertex="1">
                     <mxGeometry x="150" y="262" width="150" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_ac2" value="无清零块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=middle;fontColor=#4a7a38;" vertex="1" parent="1">
+                <mxCell id="d_ac2" value="无清零块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=middle;fontColor=#4a7a38;" parent="1" vertex="1">
                     <mxGeometry x="318" y="262" width="150" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_ac3" value="S4 照调 · 恰满才发哈希" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=middle;fontColor=#4a7a38;" vertex="1" parent="1">
+                <mxCell id="d_ac3" value="S4 照调 · 恰满才发哈希" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=middle;fontColor=#4a7a38;" parent="1" vertex="1">
                     <mxGeometry x="486" y="262" width="220" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_anote" value="场景：步 1–10（块4 补 10 槽到满）—— 以及一切未跨块的步" style="text;html=1;fontSize=10;align=left;spacingLeft=10;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="d_anote" value="场景：步 1–10（块4 补 10 槽到满）—— 以及一切未跨块的步" style="text;html=1;fontSize=10;align=left;spacingLeft=10;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="150" y="304" width="650" height="24" as="geometry"/>
                 </mxCell>
                 <mxCell id="d_b" value="局面 B · 行写满 → 跨到下一行（需 1 块，步 11 / 步 27）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=2;verticalAlign=top;spacingTop=2;fontSize=13;fontStyle=1;align=left;spacingLeft=12;fontColor=#8a4b00;" parent="1" vertex="1">
                     <mxGeometry x="870" y="134" width="730" height="240" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_b1" value="16/16 满" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="d_b1" value="16/16 满" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="900" y="186" width="160" height="56" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_b2" value="1/16 新块" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#b85450;fontSize=14;fontStyle=1;dashed=1;strokeWidth=2;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="d_b2" value="1/16 新块" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#b85450;fontSize=14;fontStyle=1;dashed=1;strokeWidth=2;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1220" y="186" width="170" height="56" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_b3" value="队首弹 1 格" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="d_b3" value="队首弹 1 格" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=11;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1450" y="186" width="130" height="56" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_barr" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=2.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="d_b1" target="d_b2">
+                <mxCell id="d_barr" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=2.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="d_b1" target="d_b2" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_barr2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=1.5;endArrow=block;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="d_b3" target="d_b2">
+                <mxCell id="d_barr2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=1.5;endArrow=block;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="d_b3" target="d_b2" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_bc1" value="block_table 追加" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=middle;fontColor=#8a4b00;" vertex="1" parent="1">
+                <mxCell id="d_bc1" value="block_table 追加" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;verticalAlign=middle;fontColor=#8a4b00;" parent="1" vertex="1">
                     <mxGeometry x="900" y="262" width="180" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_bc2" value="进清零名单" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;verticalAlign=middle;fontColor=#8a2a20;" vertex="1" parent="1">
+                <mxCell id="d_bc2" value="进清零名单" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;verticalAlign=middle;fontColor=#8a2a20;" parent="1" vertex="1">
                     <mxGeometry x="1096" y="262" width="150" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_bc3" value="GPU 擦净再写" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;verticalAlign=middle;fontColor=#8a2a20;" vertex="1" parent="1">
+                <mxCell id="d_bc3" value="GPU 擦净再写" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;verticalAlign=middle;fontColor=#8a2a20;" parent="1" vertex="1">
                     <mxGeometry x="1262" y="262" width="170" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_bnote" value="场景：步 11（弹块 5）· 步 27（弹块 6）—— 0 分配步无清零，弹块步才进 new_block_ids_to_zero" style="text;html=1;fontSize=10;align=left;spacingLeft=10;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="d_bnote" value="场景：步 11（弹块 5）· 步 27（弹块 6）—— 0 分配步无清零，弹块步才进 new_block_ids_to_zero" style="text;html=1;fontSize=10;align=left;spacingLeft=10;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="900" y="304" width="700" height="24" as="geometry"/>
                 </mxCell>
                 <mxCell id="d_s2_label" value="▍31 步全记录（P = prefill 已占 · 数字 = 第几步写入 · 绿框 = 写满领哈希 · 红框 = 当步弹块）" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
@@ -1110,13 +1110,13 @@
                 <mxCell id="d_l6_note" value="步 27 弹块 6 ＋ 清零 → 5/16 未满 · 不入哈希表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;fontSize=11;fontStyle=1;verticalAlign=middle;fontColor=#8a4b00;align=left;spacingLeft=12;" parent="1" vertex="1">
                     <mxGeometry x="1130" y="560" width="470" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_t1" value="共落 31 槽 KV：块4 ＋10 · 块5 ＋16 · 块6 ＋5" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#d6b656;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                <mxCell id="d_t1" value="共落 31 槽 KV：块4 ＋10 · 块5 ＋16 · 块6 ＋5" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#d6b656;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="100" y="624" width="420" height="46" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_t2" value="哈希表新增块 4、5（decode 写满的也领身份证）→ 前缀缓存白赚两行" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#d6b656;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                <mxCell id="d_t2" value="哈希表新增块 4、5（decode 写满的也领身份证）→ 前缀缓存白赚两行" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#d6b656;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="540" y="624" width="560" height="46" as="geometry"/>
                 </mxCell>
-                <mxCell id="d_t3" value="第 32 个输出达到 max_tokens：仅采样，KV 留待下一步" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#d6b656;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                <mxCell id="d_t3" value="第 32 个输出达到 max_tokens：仅采样，KV 留待下一步" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#d6b656;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="1120" y="624" width="480" height="46" as="geometry"/>
                 </mxCell>
                 <mxCell id="d_s3_label" value="▍prefill 与 decode 的合流（同一骨架，只有规模差异）" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
@@ -1164,7 +1164,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="e2e_p6_release" name="释放 · 逆序归位与白拿闭环">
-        <mxGraphModel dx="1900" dy="1132" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1060" math="0" shadow="0">
+        <mxGraphModel dx="490" dy="566" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1060" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1177,34 +1177,34 @@
                 <mxCell id="r_s1_label" value="▍R 手里的 7 块各奔去处" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
                     <mxGeometry x="150" y="100" width="800" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_b0" value="0&#xa;命中复用" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=14;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_b0" value="0&#xa;命中复用" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=14;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="150" y="132" width="110" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_b1" value="1&#xa;命中复用" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=14;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_b1" value="1&#xa;命中复用" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=14;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="272" y="132" width="110" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_b2" value="2&#xa;满块·有哈希" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_b2" value="2&#xa;满块·有哈希" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="394" y="132" width="110" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_b3" value="3&#xa;满块·有哈希" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_b3" value="3&#xa;满块·有哈希" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="516" y="132" width="110" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_b4" value="4&#xa;满块·有哈希" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_b4" value="4&#xa;满块·有哈希" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="638" y="132" width="110" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_b5" value="5&#xa;满块·有哈希" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_b5" value="5&#xa;满块·有哈希" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="760" y="132" width="110" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_b6" value="6&#xa;未满 5/16" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_b6" value="6&#xa;未满 5/16" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;strokeWidth=2;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="882" y="132" width="110" height="72" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_order" value="reversed()：释放次序 6 → 5 → 4 → 3 → 2 → 1 → 0&#xa;（尾块先归还，最近用的最先再上岗）" style="text;html=1;fontSize=11;fontStyle=1;align=left;spacingLeft=4;fontColor=#8a4b00;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_order" value="reversed()：释放次序 6 → 5 → 4 → 3 → 2 → 1 → 0&#xa;（尾块先归还，最近用的最先再上岗）" style="text;html=1;fontSize=11;fontStyle=1;align=left;spacingLeft=4;fontColor=#8a4b00;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1020" y="132" width="580" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_chain" value="free 链：km.free(:567) → coordinator.free(:578) → FullAttentionManager.free → pop_blocks_for_free(st:500) → free_blocks(reversed)　＋　先 free_blocks(pins) 释放尾块 pin" style="text;html=1;fontSize=10;align=left;spacingLeft=4;fontColor=#888888;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_chain" value="free 链：km.free(:567) → coordinator.free(:578) → FullAttentionManager.free → pop_blocks_for_free(st:500) → free_blocks(reversed)　＋　先 free_blocks(pins) 释放尾块 pin" style="text;html=1;fontSize=10;align=left;spacingLeft=4;fontColor=#888888;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1020" y="176" width="580" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_queue" value="释放后的 free_block_queue（一条队列，两种插入方向）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;strokeWidth=1.5;verticalAlign=top;spacingTop=2;fontSize=13;fontStyle=1;align=left;spacingLeft=12;fontColor=#333333;" vertex="1" parent="1">
+                <mxCell id="r_queue" value="释放后的 free_block_queue（一条队列，两种插入方向）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;strokeWidth=1.5;verticalAlign=top;spacingTop=2;fontSize=13;fontStyle=1;align=left;spacingLeft=12;fontColor=#333333;" parent="1" vertex="1">
                     <mxGeometry x="100" y="272" width="1500" height="150" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_af_f" value="队首" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
@@ -1228,19 +1228,19 @@
                 <mxCell id="r_af_2" value="2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=15;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1096" y="316" width="64" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_af_1" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=15;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_af_1" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=15;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1168" y="316" width="64" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_af_0" value="0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=15;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_af_0" value="0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=15;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="1240" y="316" width="64" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_af_t" value="队尾" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="r_af_t" value="队尾" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbbbbb;fontSize=10;verticalAlign=middle;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="1312" y="316" width="52" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_af_cap" value="无哈希 → 头插队首（最先被再度弹出）　　　有哈希 → 尾插队尾（LRU 躺平，条目保留随时被 touch 出）；蓝格 = 归 0 后仍带哈希的命中块" style="text;html=1;fontSize=11;fontStyle=1;align=left;spacingLeft=8;fontColor=#555555;verticalAlign=middle;" vertex="1" parent="1">
+                <mxCell id="r_af_cap" value="无哈希 → 头插队首（最先被再度弹出）　　　有哈希 → 尾插队尾（LRU 躺平，条目保留随时被 touch 出）；蓝格 = 归 0 后仍带哈希的命中块" style="text;html=1;fontSize=11;fontStyle=1;align=left;spacingLeft=8;fontColor=#555555;verticalAlign=middle;" parent="1" vertex="1">
                     <mxGeometry x="130" y="382" width="1454" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_e6" value="头插" style="edgeStyle=none;curved=1;strokeColor=#888888;strokeWidth=2;endArrow=block;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="r_b6" target="r_af_6">
+                <mxCell id="r_e6" value="头插" style="edgeStyle=none;curved=1;strokeColor=#888888;strokeWidth=2;endArrow=block;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="r_b6" target="r_af_6" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
                             <mxPoint x="937" y="246"/>
@@ -1248,7 +1248,7 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="r_e54" value="5/4/3/2 尾插 ×4" style="edgeStyle=none;curved=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;fontSize=10;fontStyle=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="r_b5" target="r_af_4">
+                <mxCell id="r_e54" value="5/4/3/2 尾插 ×4" style="edgeStyle=none;curved=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;fontSize=10;fontStyle=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="r_b5" target="r_af_4" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
                             <mxPoint x="815" y="264"/>
@@ -1256,7 +1256,7 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="r_e01" value="归 0 后带哈希 → 留缓存（条目保留）" style="edgeStyle=none;curved=1;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;dashed=1;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="r_b0" target="r_af_0">
+                <mxCell id="r_e01" value="归 0 后带哈希 → 留缓存（条目保留）" style="edgeStyle=none;curved=1;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;dashed=1;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="r_b0" target="r_af_0" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
                             <mxPoint x="205" y="228"/>
@@ -1264,13 +1264,13 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="r_rule1" value="无哈希 → 头插队首 · 最先再上岗" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f7f7;strokeColor=#999999;fontSize=12;verticalAlign=middle;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="r_rule1" value="无哈希 → 头插队首 · 最先再上岗" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f7f7;strokeColor=#999999;fontSize=12;verticalAlign=middle;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="100" y="448" width="460" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_rule2" value="有哈希 → 尾插队尾 · LRU 保护 · 表条目不删" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbe8;strokeColor=#d6b656;fontSize=12;verticalAlign=middle;fontColor=#7a5c00;" vertex="1" parent="1">
+                <mxCell id="r_rule2" value="有哈希 → 尾插队尾 · LRU 保护 · 表条目不删" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbe8;strokeColor=#d6b656;fontSize=12;verticalAlign=middle;fontColor=#7a5c00;" parent="1" vertex="1">
                     <mxGeometry x="580" y="448" width="460" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_rule3" value="ref_cnt &gt; 0 仅减计数 · 归 0 才回收并归还计数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#dddddd;fontSize=12;verticalAlign=middle;fontColor=#555555;" vertex="1" parent="1">
+                <mxCell id="r_rule3" value="ref_cnt &gt; 0 仅减计数 · 归 0 才回收并归还计数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbfbfb;strokeColor=#dddddd;fontSize=12;verticalAlign=middle;fontColor=#555555;" parent="1" vertex="1">
                     <mxGeometry x="1060" y="448" width="440" height="36" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_s2_label" value="▍白拿闭环（R 的块 0/1，就是这样从 P 那里白拿来的）" style="text;html=1;fontSize=16;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
@@ -1279,7 +1279,7 @@
                 <mxCell id="r_n1" value="请求结束 · free&#xa;逆序归还 · ref_cnt--" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="150" y="548" width="300" height="84" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_n2" value="带哈希块躺进队尾&#xa;（哈希表条目保留）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                <mxCell id="r_n2" value="带哈希块躺进队尾&#xa;（哈希表条目保留）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="510" y="548" width="300" height="84" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_n3" value="下一条同前缀请求&#xa;① get_computed_blocks 命中" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
@@ -1288,25 +1288,25 @@
                 <mxCell id="r_n4" value="② S2 touch：ref_cnt++&#xa;摘出队列 → block_table 开写" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="1230" y="548" width="300" height="84" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_n1c" value="归 0 块 ＋ 计数返还" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="r_n1c" value="归 0 块 ＋ 计数返还" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="150" y="636" width="300" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_n2c" value="LRU：最近用的在队尾最安全" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="r_n2c" value="LRU：最近用的在队尾最安全" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="510" y="636" width="300" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_n3c" value="拼写相同 = hash 相同" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="r_n3c" value="拼写相同 = hash 相同" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="870" y="636" width="300" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_n4c" value="这是前缀缓存「软持有」的兑现" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" vertex="1" parent="1">
+                <mxCell id="r_n4c" value="这是前缀缓存「软持有」的兑现" style="text;html=1;fontSize=10;align=center;fontColor=#888888;" parent="1" vertex="1">
                     <mxGeometry x="1230" y="636" width="300" height="18" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_l1" value="带哈希，躺队尾" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="r_n1" target="r_n2">
+                <mxCell id="r_l1" value="带哈希，躺队尾" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="r_n1" target="r_n2" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_l2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="r_n2" target="r_n3">
+                <mxCell id="r_l2" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="r_n2" target="r_n3" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_l3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="r_n3" target="r_n4">
+                <mxCell id="r_l3" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="r_n3" target="r_n4" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_loopback" value="已算 KV 零成本复用，缓存越滚越厚 —— R 的 0/1 正是这么从 P 白拿来的" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=2;endArrow=block;dashed=1;fontSize=11;fontStyle=1;fontColor=#b85450;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" source="r_n4" target="r_n1" edge="1">
