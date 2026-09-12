@@ -10,7 +10,8 @@
 
 ## 1. 物理显存申请流程总览
 
-物理显存层的核心职责是：将每层 KV cache 的抽象规格说明书（`KVCacheSpec`）物化为一块**真正驻留在 NPU/GPU 设备上的 `torch.Tensor`**，并在其上建立 `block_id` 与物理行号的一一映射，从而为上层零拷贝调度提供物理基座。
+物理显存层的核心职责是：将每层 KV cache 的抽象规格说明书（`KVCacheSpec`）物化为**真正驻留在 NPU/GPU 设备上的 `torch.Tensor`**——先经容量规划算出块总数 `num_blocks`，再按其申请 int8 字节池、零拷贝 reshape 为后端逻辑 shape。
+此后物理层与逻辑层（`BlockPool`）之间没有任何对象引用：同一份 `KVCacheConfig` 保证两侧 `num_blocks` 容量对齐，靠"`block_id` 即物理行号"的编号约定，逻辑链凭整数 `block_id` 直接索引物理行——这正是上层零拷贝调度的物理基座。
 
 ### 1.1 初始化流水线
 
@@ -36,9 +37,9 @@
 
 | 交付物 | 消费方 | 用途 |
 |--------|--------|------|
-| `num_blocks` | `BlockPool` | 决定逻辑块总数，创建 `KVCacheBlock(0 .. num_blocks-1)` |
-| `kv_caches[layer_name]` | Attention 算子 | forward 时按 `block_table` 索引 `block_id` 读写 K/V |
-| `KVCacheConfig` | Scheduler / Worker | 同步 group 划分、`block_size` 等元数据 |
+| `num_blocks` | `BlockPool` | 即逻辑层初始化创建的 `KVCacheBlock` 数：`BlockPool` 据此建出 `KVCacheBlock(0 .. num_blocks-1)`（块 0 开池即留作 `null_block` 占位，实际可分配 `num_blocks-1`） |
+| `kv_caches[layer_name]` | Attention 算子 + ModelRunner | Llama-3-8B 每层一张`(num_blocks, num_kv_heads, block_size, 2*head_size)`的物理张量：forward 时算子以 `block_table` 为 fancy index 沿 `block_dim` 轴 gather 物理行，读旧 K/V、写本步新 K/V；ModelRunner 侧引用用于清零本轮新块 |
+| `KVCacheConfig` | Worker（物理侧）+ BlockPool（逻辑侧） | 引擎下发两侧的衔接配置：Worker 遍历 `kv_cache_tensors`，按 `size` 申请字节池、按 `shared_by` 绑定到层；BlockPool 凭 `num_blocks` 建 `KVCacheBlock`|
 
 ---
 
@@ -185,9 +186,9 @@ def is_kv_cache_spec_uniform(kv_cache_spec) -> bool:
 
 > `merge()` 检查所有层 spec 字段（block_size / num_kv_heads / head_size / dtype 等）是否一致；**FullAttentionSpec 带不带 sliding window 视为同一类型**。
 
-**③ 计算 num_blocks**
+**③ 投影到各 worker：按 projected groups 计算 num_blocks**
 
-`get_kv_cache_config_from_groups()`（kv_cache_utils.py:1340）里，单组`FullAttentionSpec`走通用（else）路径。**关键**：`get_kv_cache_configs()` 在调用本函数前，先执行 `_project_kv_cache_groups_to_worker()` 把 global groups（32 层）投影到每 worker 的实际层（16 层），传入的是 **projected groups**，因此：
+`num_blocks` 是 **per-worker 容量**——每个 worker 只物化本 rank 负责的层（PP 切层；TP 切头已折进各 worker spec 的 `page_size_bytes`），可用显存必须按 worker 实际承载的层数折算，不能以全局合并层数为除数。`get_kv_cache_configs()` 先执行 `_project_kv_cache_groups_to_worker()`，把 global groups（32 层）投影为各 worker 的 **projected groups**（16 层），再传入 `get_kv_cache_config_from_groups()`（kv_cache_utils.py:1340，单组 `FullAttentionSpec` 走通用 else 路径）：
 
 ```python
 group_size = max(len(group.layer_names) for group in kv_cache_groups)  # = 16（projected 后每 worker 层数）
@@ -212,7 +213,7 @@ if needed_memory > available_memory:
     raise ValueError(...)  # 建议调大 util 或调小 max_model_len
 ```
 
-**⑤ 多 worker 对齐**（kv_cache_utils.py:2191）——集中式调度要求全 worker 共享同一 `block_id` 空间，取最小值保证最"穷"的 worker 也能容纳：
+**⑤ 多 worker 对齐**（kv_cache_utils.py:2191）——集中式调度下，同一请求的 `block_table` 由所有 worker 共用：PP 各 stage 按段索引本 rank 的层，TP 各 rank 只读写本 rank 的 KV 头子集，因此 `block_id` 必须在任意 rank 上都对应有效物理行。对齐策略：取各 worker `num_blocks` 的最小值作为全局统一值（以 KV 预算最小的 worker 为基准），确保任一 `block_id` 在所有 worker 上均有效：
 
 ```python
 min_num_blocks = min(cfg.num_blocks for cfg in kv_cache_configs)
@@ -253,7 +254,7 @@ class KVCacheGroupSpec:
 1. `collective_rpc("initialize_from_config")` → `GPUWorker.initialize_from_config()`（gpu_worker.py:649）→ `GPUModelRunner.initialize_kv_cache()`（gpu_model_runner.py:7606），完成 3a/3b/3c 落张量；
 2. `collective_rpc("compile_or_warm_up_model")` → `GPUWorker.compile_or_warm_up_model()`（gpu_worker.py:678），完成 3d 编译预热。
 
-`initialize_from_config()` 先把 `num_blocks` 写回本地 config，再委托 `model_runner.initialize_kv_cache()` 完成三件事：
+这一步**每卡并行各自执行**：`collective_rpc` 广播 `list[KVCacheConfig]`，各卡按 `global_rank` 取本 rank 的配置（worker_base.py:321-325）；`GPUWorker.initialize_from_config()`（gpu_worker.py:649）先把对齐后的 `num_blocks` 写回本卡 `cache_config.num_gpu_blocks`（供 warmup RPC 读取），再委托本卡 `model_runner.initialize_kv_cache()`（gpu_model_runner.py:7606）完成三件事：
 
 **3a. 分配 int8 字节池 `_allocate_kv_cache_tensors()`**（gpu_model_runner.py:7286）
 
