@@ -1,10 +1,10 @@
 # vLLM V1 物理显存层（Full Attention 主线）
 
-> 五层架构第 1 层（最底）｜[总览](./0_kv_cache_management_arch.md) ｜上层 ➔ [`2_block_pool.md`](./2_block_pool.md)
->
-> 源文件：`vllm/vllm/v1/kv_cache_interface.py`、`vllm/vllm/v1/core/kv_cache_utils.py`、`vllm/vllm/v1/engine/core.py`、`vllm/vllm/v1/worker/gpu_worker.py`、`vllm/vllm/v1/worker/gpu_model_runner.py`、、`vllm/vllm/v1/worker/utils.py`
+> 源文件：`vllm/vllm/v1/kv_cache_interface.py`、`vllm/vllm/v1/core/kv_cache_utils.py`、`vllm/vllm/v1/engine/core.py`、`vllm/vllm/v1/worker/gpu_worker.py`、`vllm/vllm/v1/worker/gpu_model_runner.py`、`vllm/vllm/v1/worker/utils.py`
 >
 > 主线：纯 Full Attention 模型 Llama-3-8B（pp2tp2，4卡环境），每 worker 16 层 / 4 KV 头。
+
+**章节顺序**：§1 物理显存申请流程总览 → §2 初始化流程详解（算规格 → 测预算 → 做编排 → 落张量）→ §3 PP/TP 物理分布 → §4 关键公式速查 → §5 物理-逻辑桥接（`block_id == 张量行号`）→ §6 设计要点小结。
 
 ---
 
