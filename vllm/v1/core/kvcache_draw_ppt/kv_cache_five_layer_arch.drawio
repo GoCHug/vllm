@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="p1_why" name="1-系统示意图-为什么需要">
-        <mxGraphModel dx="762" dy="511" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
+        <mxGraphModel dx="1505" dy="1278" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
             <root>
                 <mxCell id="g1_0"/>
                 <mxCell id="g1_1" parent="g1_0"/>
@@ -128,7 +128,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="p2_arch" name="2-分层架构图-五层总览">
-        <mxGraphModel dx="762" dy="511" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
+        <mxGraphModel dx="602" dy="511" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
             <root>
                 <mxCell id="g2_0"/>
                 <mxCell id="g2_1" parent="g2_0"/>
