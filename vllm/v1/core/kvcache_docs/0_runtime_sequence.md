@@ -6,23 +6,7 @@
 
 ---
 
-## 0. KV Cache 管理的核心组件
-
-Llama-3-8B 为纯 Full Attention 模型，仅维护单个 KV cache group。其 KV Cache 管理体系由五个核心类构成，自上而下分为逻辑编排层与物理执行层：
-
-| 层级 | 类（源文件） | 职责 |
-|---|---|---|
-| 编排入口 | `KVCacheManager`（`kv_cache_manager.py`） | Scheduler 的唯一对接方，对外暴露 `get_computed_blocks` / `allocate_slots` / `take_*` / `free`，协调多组 KV cache 的统一管理 |
-| 组级协调 | `UnitaryKVCacheCoordinator`（`kv_cache_coordinator.py`） | 单组协调器，将 KVCacheManager 的调用原样透传至下层管理器（单组场景下为直通层） |
-| 单组管理 | `FullAttentionManager`（`single_type_kv_cache_manager.py`） | 单个 attention 类型的 KV cache 管理实现：最长前缀查找、块数计算、touch、分配、缓存、释放 |
-| 逻辑块池 | `BlockPool`（`block_pool.py`） | 逻辑块池（KV 数据持有方）：哈希表查/写、`get_new_blocks`、`touch`、`free_blocks` |
-| 物理张量 | `GPUModelRunner`（`gpu_model_runner.py`） | 物理层，持有真实 K/V 张量：申请 `kv_caches[layer]`、`_zero_block_ids`、`forward`、`sample_tokens` |
-
-> **调用链路**：`KVCacheManager → UnitaryKVCacheCoordinator → FullAttentionManager → BlockPool` 构成逻辑编排链，负责 `block_id` 的分配与回收；`GPUModelRunner` 独立持有物理张量，通过 `block_id` 与逻辑块建立映射——逻辑管理零拷贝、物理读写经 block_id 间接寻址。
-
----
-
-## 1. Llama-3-8B（pp2tp2）的 KV Cache 配置与物理初始化
+## 1. 模型配置与框架配置
 
 下文所有阶段共用同一个请求示例，模型参数固定为 Llama-3-8B，部署于 pp2tp2（4卡）环境。
 
@@ -55,50 +39,8 @@ vLLM侧 KV cache 配套参数：
 | 派生量 | 计算式 | 值 | 说明 |
 |---|---|---|---|
 | `page_size_bytes` | `2 × block_size × num_kv_heads × head_dim × 2B`<br>= `2 × 16 × 4 × 128 × 2` | 32,768 B<br>（32 KB） | 单层单块字节数（TP2 后 4 头），因子 2 为 K、V 各一份 |
-| `num_blocks`（示例每卡可用显存 2GB） | `2 GB ÷ page_size_bytes ÷ num_layers`<br>= `2,147,483,648 ÷ 32,768 ÷ 16` | 4096 | 跨 worker `min` 对齐后的逻辑块总数，`BlockPool` 建立 `KVCacheBlock(0..4095)` |
+| `num_blocks`（示例每卡可用显存 2GB） | `2 GB ÷ page_size_bytes ÷ num_layers`<br>= `2,147,483,648 ÷ 32,768 ÷ 16` | 4096 | 跨 worker `min` 对齐后的逻辑块总数，`BlockPool` 建立 `KVCacheBlock(0..4095)`（块 0 开池即摘作 `null_block`，实际可分配 4095） |
 | `kv_caches[layer]` | `(num_blocks, num_kv_heads, block_size, 2×head_dim)` | `(4096, 4, 16, 256)` | 每层 KV 张量形状（TP2 后 4 头），每 worker 16 个层张量；**形状由 `attn_backend.get_kv_cache_shape()` 决定，此处以 FlashAttention 后端（K/V 打包进最后一维）为例，换后端/布局会不同** |
-
-物理显存初始化启动期**一次性**执行 `EngineCore._initialize_kv_caches`（core.py:248），通过 profile_run 实测可用显存后算出 `num_blocks`，然后每 worker 一次性申请 16 个张量（大小 num_blocks × page_size_bytes）。产出两样供运行时消费：
-1. `num_blocks`（4096，跨 worker 对齐）→ `BlockPool.__init__` 建 `KVCacheBlock(0..4095)`，`block_id` 为 0-4095，运行时 `KVCacheManager` 的分配/释放只操作 `block_id` 和 `ref_cnt`
-2. `kv_caches[layer]` 物理张量 → 每 worker 的 `GPUModelRunner` 申请 16 层，`block_id` 即物理张量第 0 维行号，运行时按 `block_id` 读写
-
-该物理显存初始化时序图如下：
-
-```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
-sequenceDiagram
-    participant EngineCore
-    participant ModelExecutor
-    participant GPUWorker
-    participant GPUModelRunner
-    participant kv_cache_utils
-
-    Note over EngineCore,kv_cache_utils: 步骤1 各层产出 FullAttentionSpec
-    EngineCore->>ModelExecutor: get_kv_cache_specs()（收集每层 spec）
-    ModelExecutor->>GPUWorker: 遍历 attention 层（每 worker 16 层） → get_kv_cache_spec()<br/>→ FullAttentionSpec(block_size=16, num_kv_heads=4, head_size=128)<br/>（TP2 切分后每 worker 4 个 KV 头）
-    GPUWorker-->>ModelExecutor: dict[layer, FullAttentionSpec]
-    ModelExecutor-->>EngineCore: kv_cache_specs
-
-    Note over EngineCore,kv_cache_utils: 步骤2 profile_run 测可用显存 + 算 num_blocks
-    EngineCore->>ModelExecutor: determine_available_memory()（profile_run 测显存）
-    Note over ModelExecutor,GPUWorker: collective_rpc → GPUWorker.profile_run()<br/>available = total×util − weights − activations − cudagraph（非 KV 占用）
-    ModelExecutor-->>EngineCore: available_gpu_memory
-    EngineCore->>kv_cache_utils: get_kv_cache_configs(...)
-    Note over kv_cache_utils: num_blocks = available // page_size_bytes // 16<br/>（16 = 每 worker 层数，PP2 切 32 层 ÷ 2；页需按本卡全部层摊分）<br/>每卡 2GB ÷ 32 KB ÷ 16 → 4096；跨 4 worker 取 min 对齐
-    kv_cache_utils-->>EngineCore: KVCacheConfig(num_blocks=4096, ...)
-
-    Note over EngineCore,GPUModelRunner: 步骤3 Worker 申请 + 绑定张量
-    EngineCore->>ModelExecutor: initialize_from_config(kv_cache_configs)
-    ModelExecutor->>GPUWorker: collective_rpc("initialize_from_config")
-    GPUWorker->>GPUModelRunner: initialize_kv_cache(config)
-    Note over GPUModelRunner: 3a 以 int8 申请字节池（按字节申请）<br/>3b reshape: (4096, 4, 16, 256) 每层（每 worker 16 层，<br/>形状以 FlashAttention 后端为例）<br/>3c 绑定 kv_caches[layer]（block_id == 张量第 0 维行号）
-
-    GPUModelRunner-->>GPUWorker: 完成
-    GPUWorker-->>ModelExecutor: 完成
-    ModelExecutor-->>EngineCore: 完成
-    Note over EngineCore: Scheduler 读 num_blocks → BlockPool.__init__(4096)<br/>建 KVCacheBlock(0..4095)；kv_caches[layer] 就绪（每 worker 16 层），等运行时消费
-```
-
 
 ---
 
@@ -106,19 +48,19 @@ sequenceDiagram
 
 示例以 **Llama-3-8B（pp2tp2）** 为主线。
 
-**共享前缀（32 token = 2 个满块）**：P 与 R 共同复用的开头（如同一段 system prompt 或公共开场白），前 32 token 恰好装满 2 块。
-
 **前置请求 P（先于 R 服务、已结束）**：
 
-> 注：下文块号（0/1/2…）仅为便于叙述的示意编号。实际中 block 0 被 `BlockPool` 保留为 `null_block`，真实分配从块 1 起，不影响流程描述。
+> 注：下文块号即真实 `block_id`。block 0 开池即被 `BlockPool` 摘作 `null_block`（不分配、不释放，实际可分配 4095 块），因此示例中所有分配从块 1 起。
 
 ```
 prompt     = 共享前缀（32 token） + P 自己的追问（若干 token，与 R 不同）
-            → P 服务时把共享前缀写成满块 0/1，写满即哈希入前缀缓存表
+            → P 服务时把共享前缀写成满块 1/2，写满即哈希入前缀缓存表
 block_size = 16
 ```
 
-P 结束后，块 0/1 作为**带哈希的缓存块**被保留：进 free 队列**队尾**（LRU 保护），记录在 `cached_block_hash_to_block` 映射表。
+P 结束后，块 1/2 作为**带哈希的缓存块**被保留：进 free 队列**队尾**（LRU 保护），记录在 `cached_block_hash_to_block` 映射表。
+
+**共享前缀（32 token = 2 个满块）**：P 与 R 共同复用的开头（如同一段 system prompt 或公共开场白），前 32 token 恰好装满 2 块。
 
 **示例请求 R**：
 
@@ -128,9 +70,9 @@ max_tokens = 32
 block_size = 16
 ```
 
-R 的 prompt 前 32 token 恰与共享前缀相同 → prefill 时 `get_computed_blocks` 命中 P 缓存的块 0/1（`hit_length=32`）；后 38 token 为新内容，需新分配块 2/3/4（16+16+6）。
+R 的 prompt 前 32 token 恰与共享前缀相同 → prefill 时 `get_computed_blocks` 命中 P 缓存的块 1/2（`hit_length=32`）；后 38 token 为新内容，需新分配块 3/4/5（16+16+6）。
 
-宏观路径：**入队（WAITING）→ 首次调度 prefill（前 32 token 复用 P 缓存的块 0/1，只算剩余 38 token，→ RUNNING）→ 每步 decode 续写 1 token（至 32 个输出）→ 结束释放**。
+宏观路径：**入队（WAITING）→ 首次调度 prefill（前 32 token 复用 P 缓存的块 1/2，只算剩余 38 token，→ RUNNING）→ 每步 decode 续写 1 token（至 32 个输出）→ 结束释放**。
 
 ---
 
@@ -146,7 +88,7 @@ R 的 prompt 前 32 token 恰与共享前缀相同 → prefill 时 `get_computed
 <div style="white-space:pre;background-color:#e8f5e9">│  ├─ <span style="color:#1565c0">KVCacheManager.get_computed_blocks</span>（①）# 前缀缓存查找，遍历70//16=4个hash 查表 → hit_length=32
 │  │  └─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.find_longest_cache_hit</span>
 │  │     └─ <span style="color:#e65100">FullAttentionManager.find_longest_cache_hit</span>
-│  │        └─ <span style="color:#6a1b9a">BlockPool.get_cached_block</span> → 命中块 0/1（P 缓存的共享前缀块）</div>
+│  │        └─ <span style="color:#6a1b9a">BlockPool.get_cached_block</span> → 命中块 1/2（P 缓存的共享前缀块）</div>
 <div style="white-space:pre;background-color:#e3f2fd">│  ├─ <span style="color:#1565c0">KVCacheManager.allocate_slots</span>（②）
 │  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.get_num_blocks_to_allocate</span> # 计算本轮实际需要分配多少新块，检查空闲块是否足够
 │  │  │  └─ <span style="color:#e65100">FullAttentionManager.get_num_blocks_to_allocate</span> # 需要 3 块新块
@@ -155,14 +97,14 @@ R 的 prompt 前 32 token 恰与共享前缀相同 → prefill 时 `get_computed
 │  │  │     └─ <span style="color:#6a1b9a">BlockPool.touch</span> # touch 命中块（2 命中）
 │  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.allocate_new_blocks</span> # 为待计算的 token（new + lookahead）分配新块
 │  │  │  └─ <span style="color:#e65100">FullAttentionManager.allocate_new_blocks</span>
-│  │  │     └─ <span style="color:#6a1b9a">BlockPool.get_new_blocks</span> # 从空闲队列弹出块 2/3/4，block_table=[命中0, 命中1, 新2, 新3, 新4]
-│  │  └─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.cache_blocks</span> # 缓存新块 2, 3 入哈希表，未满块 4 不入，hash基于token ID
+│  │  │     └─ <span style="color:#6a1b9a">BlockPool.get_new_blocks</span> # 从空闲队列弹出块 3/4/5，block_table=[命中1, 命中2, 新3, 新4, 新5]
+│  │  └─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.cache_blocks</span> # 缓存新块 3, 4 入哈希表，未满块 5 不入，hash基于token ID
 │  │     └─ <span style="color:#e65100">FullAttentionManager.cache_blocks</span>
-│  │        └─ <span style="color:#6a1b9a">BlockPool.cache_full_blocks</span>（新满块 2, 3 入哈希表；未满块 4 不入）</div>
-<div style="white-space:pre">│  ├─ SchedulerOutput # 调度输出，附清零块 id 2/3/4</div>
+│  │        └─ <span style="color:#6a1b9a">BlockPool.cache_full_blocks</span>（新满块 3, 4 入哈希表；未满块 5 不入）</div>
+<div style="white-space:pre">│  ├─ SchedulerOutput # 调度输出，附清零块 id 3/4/5</div>
 <div style="white-space:pre;background-color:#fff3e0">│  └─ <span style="color:#c62828">GPUModelRunner.execute_model</span>: forward 写 70 token KV → sample → 第 1 token</div>
 <div style="white-space:pre;background-color:#f0f0f0">→ 请求进入 RUNNING 队列</div>
-<div style="white-space:pre;background-color:#f3e5f5">├─ decode（③）# 续写 31 步：块4占6/16 → 步1~10 填满块4（0分配）；步11 申请块5，步12~26 填满块5；步27 申请块6；步28~31 块6占5/16未满）
+<div style="white-space:pre;background-color:#f3e5f5">├─ decode（③）# 续写 31 步：块5占6/16 → 步1~10 填满块5（0分配）；步11 申请块6，步12~26 填满块6；步27 申请块7；步28~31 块7占5/16未满）
 │  ├─ <span style="color:#1565c0">KVCacheManager.allocate_slots</span> # 每步一次；情况A · 当前块未满需 0 块（token 直接续写）/ 情况B · 已满需 1 块（token 落进下一块）
 │  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.get_num_blocks_to_allocate</span> # 需新块数 = cdiv(需槽位数, 16) − 已有块数；A 算得 0 / B 算得 1
 │  │  │  └─ <span style="color:#e65100">FullAttentionManager.get_num_blocks_to_allocate</span>
@@ -172,10 +114,10 @@ R 的 prompt 前 32 token 恰与共享前缀相同 → prefill 时 `get_computed
 │  │  └─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.cache_blocks</span> # 每步都调
 │  │     └─ <span style="color:#e65100">FullAttentionManager.cache_blocks</span>
 │  │        └─ <span style="color:#6a1b9a">BlockPool.cache_full_blocks</span> # 恰写满当前块才入表；B 的新块未满不入
-│  ├─ SchedulerOutput # 调度输出，附清零块 id（新申请的块，如步11 的块5、步27 的块6）；0 分配步（情况A）无清零
+│  ├─ SchedulerOutput # 调度输出，附清零块 id（新申请的块，如步11 的块6、步27 的块7）；0 分配步（情况A）无清零
 │  └─ <span style="color:#c62828">GPUModelRunner.execute_model</span> # 每步一次：forward 依 block_table 读写 KV → sample → 1 个输出 token（与首次调度为同一组件）</div>
 <div style="white-space:pre;background-color:#f0f0f0">→ 请求生成结束（stop/EOS 或 max_tokens 满 → FINISHED_*）→ 从 RUNNING 队列移除</div>
-<div style="white-space:pre;background-color:#ffebee">└─ 结束释放（④）# 命中块 0/1 为共享块 → 仅减引用计数 · 有哈希（2/3/4/5）→ 逆序 append 队尾 · 无哈希（6）→ prepend 队首
+<div style="white-space:pre;background-color:#ffebee">└─ 结束释放（④）# 命中块 1/2 为共享块 → 仅减引用计数 · 有哈希（3/4/5/6）→ 逆序 append 队尾 · 无哈希（7）→ prepend 队首
    └─ <span style="color:#1565c0">KVCacheManager.free</span>
       └─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.free</span>
          └─ <span style="color:#e65100">FullAttentionManager.free</span>
@@ -199,10 +141,10 @@ sequenceDiagram
     Note over Scheduler,GPUModelRunner: 首次调度（prefill）
     EngineCore->>Scheduler: schedule()（调度 WAITING 请求）
     Scheduler->>KVCacheManager: ① get_computed_blocks（前缀查找）
-    KVCacheManager-->>Scheduler: 命中块 0/1（hit_length=32）
+    KVCacheManager-->>Scheduler: 命中块 1/2（hit_length=32）
     Scheduler->>KVCacheManager: ② allocate_slots（分配块）
     Note over KVCacheManager: 下钻链 KVCacheManager→UnitaryKVCacheCoordinator→<br/>FullAttentionManager→BlockPool；touch 命中块+申请新块 → block_table
-    KVCacheManager-->>Scheduler: 新块 2/3/4（block_table=[命中0, 命中1, 新2, 新3, 新4]）
+    KVCacheManager-->>Scheduler: 新块 3/4/5（block_table=[命中1, 命中2, 新3, 新4, 新5]）
     Note over Scheduler: 组装 SchedulerOutput（清零块 id）
     Scheduler->>EngineCore: SchedulerOutput
 
@@ -218,7 +160,7 @@ sequenceDiagram
         EngineCore->>Scheduler: schedule()（调度 RUNNING 请求）
         Scheduler->>KVCacheManager: allocate_slots（不查前缀；当前块未满需0块/已满需1块）
         KVCacheManager-->>Scheduler: KVCacheBlocks
-        Note over Scheduler: 跨块边界的新块进 new_block_ids_to_zero<br/>（如步11 的块5、步27 的块6）；0 分配步无清零
+        Note over Scheduler: 跨块边界的新块进 new_block_ids_to_zero<br/>（如步11 的块6、步27 的块7）；0 分配步无清零
         Scheduler->>EngineCore: SchedulerOutput
         EngineCore->>GPUModelRunner: execute_model
         Note over GPUModelRunner: forward 依 block_table 读+写 KV<br/>（当步填满的块入哈希表）
@@ -288,7 +230,7 @@ sequenceDiagram
     Note over FullAttentionManager: 逐块查表，遇 miss 即 break<br/>hit_length = 命中块数 × block_size
     FullAttentionManager->>BlockPool: get_cached_block(hash, [0])
     Note over BlockPool: 临时构造 BlockHashWithGroupId 作查询 key<br/>查 cached_block_hash_to_block；<br/>任一 group miss → 整块 None
-    BlockPool-->>FullAttentionManager: [block | None]
+    BlockPool-->>FullAttentionManager: 逐块返回 block 或 None
     FullAttentionManager-->>UnitaryKVCacheCoordinator: (hit_blocks, hit_length)
     UnitaryKVCacheCoordinator-->>KVCacheManager: (hit_blocks, hit_length, 0)
     KVCacheManager-->>Scheduler: (KVCacheBlocks, num_tokens, boundary)
@@ -329,7 +271,7 @@ sequenceDiagram
     KVCacheManager-->>Scheduler: KVCacheBlocks
 ```
 
-**要点（S1~S4 为 `allocate_slots` 内部编号，区别于主流程的 ①~④）**：
+**要点（S1-S4 为 `allocate_slots` 内部编号，区别于主流程的 ①-④）**：
 
 - **S1 容量检查** `get_num_blocks_to_allocate`（kv_cache_manager.py:510，下钻 KVCacheCoordinator 基类 → single_type_kv_cache_manager.py:144）：
   - FullAttentionManager 侧纯计算：`num_new = max(cdiv(num_tokens, block_size) − num_local_computed, 0)`，其中 `num_local_computed = 已算块数 + 已持块数`
@@ -338,7 +280,7 @@ sequenceDiagram
 - **S3 分配待计算块** `allocate_new_blocks`（kv_cache_manager.py:542 → single_type_kv_cache_manager.py:330）：`num_new = cdiv(num_tokens, block_size) − len(req_to_blocks[req_id])`
 - **S4 缓存满块** `cache_blocks`（kv_cache_manager.py:563 → single_type_kv_cache_manager.py:427 → `BlockPool.cache_full_blocks`）：`num_tokens_to_cache = min(total_computed + num_new, request.num_tokens)`，新块记入 `new_block_ids`，由 `take_new_block_ids` 取走清零
 
-**结合请求 R**：S1 容量检查通过后，S2 touch 前缀查找命中的前 2 块（即 P 缓存的共享前缀块 0/1，ref_cnt 0→1）；S3 剩余 38 token 按 16 切块需 3 块（16+16+6），`get_new_blocks(3)` → block_table 变 `[命中0, 命中1, 新2, 新3, 新4]`；S4 命中块 0/1 幂等早退，真正入表的是新满块 2、3，未满块 4 不入表。
+**结合请求 R**：S1 容量检查通过后，S2 touch 前缀查找命中的前 2 块（即 P 缓存的共享前缀块 1/2，ref_cnt 0→1）；S3 剩余 38 token 按 16 切块需 3 块（16+16+6），`get_new_blocks(3)` → block_table 变 `[命中1, 命中2, 新3, 新4, 新5]`；S4 命中块 1/2 幂等早退，真正入表的是新满块 3、4，未满块 5 不入表。
 
 #### 4.2.3 组装 SchedulerOutput
 
@@ -346,7 +288,7 @@ sequenceDiagram
 
  **清零新块** `new_block_ids_to_zero`：新分配的物理块在 GPU 内存里可能残留上一请求的旧数据，必须先清零再写入
 
-**结合请求 R**：R 是首次 prefill，3 个新块 id（2/3/4）进 `new_block_ids_to_zero`。Worker 收到后先清零这 3 个块，再执行 forward 写入 KV。
+**结合请求 R**：R 是首次 prefill，3 个新块 id（3/4/5）进 `new_block_ids_to_zero`。Worker 收到后先清零这 3 个块，再执行 forward 写入 KV。
 
 #### 4.2.4 附：BlockHash 的三级演变
 
@@ -384,7 +326,7 @@ sequenceDiagram
 - `block_table`（`req_to_blocks` 的 block_id 列表）作 fancy index，kernel 从 `kv_caches[layer][block_id]` 第 0 维 gather 对应行；同一 `block_id` 在全模型 32 层（每 worker 16 层）对应同一逻辑块，全套层共用一份 block_table
 - `sample_tokens` 由 **EngineCore** 调用（core.py:601），仅在 `execute_model` 未产出采样时补跑
 
-**结合请求 R**：3 个新块先清零；一次 forward 写 70 token 的 K/V 到 5 块（命中块 0/1 复用 P 的缓存、不重算）；`slot_mapping` 记录每个 token 落到哪个块的哪个 slot。
+**结合请求 R**：3 个新块先清零；一次 forward 写 70 token 的 K/V 到 5 块（命中块 1/2 复用 P 的缓存、不重算）；`slot_mapping` 记录每个 token 落到哪个块的哪个 slot。
 
 ### 4.4 ③ decode 续写（RUNNING）
 
@@ -423,7 +365,19 @@ sequenceDiagram
 - 所有请求分配完成后才一次性 `execute_model` + `sample_tokens`（共享同一 batch）
 - **新满块同样入缓存**：decode 每步的 `allocate_slots` 与 prefill 一样调 `cache_blocks`，某块当步填满即入哈希表，变为可命中的前缀缓存条目
 
-**结合请求 R**（块号 0 起始，与总览一致）：prefill 后块 4 装 6 token，decode 步 1~10 填满并入表（0 分配）；步 11 申请块 5、步 26 填满入表；步 27 申请块 6，至步 31 装 5 slot（未满不入表）。31 步共落 31 个输出 KV：块 4 补 10、块 5 装 16、块 6 装 5；第 32 个输出达到 max_tokens 仅采样、不再落 KV。填满的块同样入缓存——这是前缀缓存持续增长的方式。
+**结合请求 R**（块号 1 起始，块 0 为 null_block，与总览一致）：prefill 后块 5 装 6 token，decode 步 1~10 填满并入表（0 分配）；步 11 申请块 6、步 26 填满入表；步 27 申请块 7，至步 31 装 5 slot（未满不入表）。31 步共落 31 个输出 KV：块 5 补 10、块 6 装 16、块 7 装 5；第 32 个输出达到 max_tokens 仅采样、不再落 KV。填满的块同样入缓存——这是前缀缓存持续增长的方式。
+
+#### prefill 与 decode 的统一
+
+> 首次 prefill（4.2）与 ③ decode 续写共用同一套 **`allocate_slots` 分配块 → forward 写 KV → 满块 `cache_blocks` 入哈希** 骨架，只是规模不同。**唯一的阶段差异**在前置：前缀查找 `get_computed_blocks` 是 prefill 独有的（首次带着整段 prompt 查可复用前缀），decode 跳过它（续写的是全新 token，无前缀可查）。
+
+| 维度 | prefill（WAITING 首次） | decode（RUNNING 续写） |
+|---|---|---|
+| 处理 token 数 | 一次整个 prompt（70 个） | 每步 1 个 |
+| 前缀查找 | 是（`get_computed_blocks`） | 否（续写无新命中） |
+| 分配块数 | 一次多块（3 新块） | 0 或 1 块 |
+| 内部 4 步 | S1~S4 全走（S2 touch 命中块） | S2 跳过，S1/S3/S4 照走 |
+| 状态机 | `WAITING → RUNNING` | 保持 `RUNNING` 直到完成 |
 
 ### 4.5 ④ 请求结束 → 释放
 
@@ -452,20 +406,36 @@ sequenceDiagram
 - `ref_cnt > 0` 的共享块仅减计数不回收；归 0 才进 free 队列
 - 有哈希块 append 队尾（保护前缀缓存），无哈希块 prepend 队首（优先复用）
 
-**结合请求 R**：R 生成满 32 个输出（或命中 EOS）后结束，按释放顺序块 6→5→4→3→2→1→0：块 6 未满无哈希 → prepend 队首（优先复用）；块 5/4/3/2 填满带哈希 → append 队尾（LRU 保护）；命中块 0/1 为 P 缓存的共享前缀，仅 `ref_cnt--`，归零后带哈希进队尾（哈希条目保留），复用同一前缀的请求仍可命中。
+**结合请求 R**：R 生成满 32 个输出（或命中 EOS）后结束，按释放顺序块 7→6→5→4→3→2→1：块 7 未满无哈希 → prepend 队首（优先复用）；块 6/5/4/3 填满带哈希 → append 队尾（LRU 保护）；命中块 1/2 为 P 缓存的共享前缀，仅 `ref_cnt--`，归零后带哈希进队尾（哈希条目保留），复用同一前缀的请求仍可命中。
 
 ---
 
-## 5. 小结：prefill 与 decode 的统一
+## 5. 小结：一条请求的 KVCache 全生命周期
 
-> 首次 prefill 与 ③ decode 续写共用同一套 **`allocate_slots` 分配块 → forward 写 KV → 满块 `cache_blocks` 入哈希** 骨架，只是规模不同。**唯一的阶段差异**在前置：前缀查找 `get_computed_blocks` 是 prefill 独有的（首次带着整段 prompt 查可复用前缀），decode 跳过它（续写的是全新 token，无前缀可查）。
+全文以一条请求 R（Llama-3-8B pp2tp2，prompt 70 token / max_tokens 32）为主线，串起 KVCache 管理的端到端时序，可收拢为三个视角。
 
-| 维度 | prefill（WAITING 首次） | decode（RUNNING 续写） |
-|---|---|---|
-| 处理 token 数 | 一次整个 prompt（70 个） | 每步 1 个 |
-| 前缀查找 | 是（`get_computed_blocks`） | 否（续写无新命中） |
-| 分配块数 | 一次多块（3 新块） | 0 或 1 块 |
-| 内部 4 步 | S1~S4 全走（S2 touch 命中块） | S2 跳过，S1/S3/S4 照走 |
-| 状态机 | `WAITING → RUNNING` | 保持 `RUNNING` 直到完成 |
+**流程视角——五个阶段一气呵成**：
+
+| 阶段 | 章节 | 调度侧 | KVCache 侧（下钻到 BlockPool） | 产物 |
+|---|---|---|---|---|
+| 入队 | 4.1 | `add_request` 入 WAITING | 预计算链式哈希 `block_hashes` | 4 个满块 hash 备查 |
+| 首次调度 prefill（①②） | 4.2 | ① 前缀查找 → ② 分配物理块 → 组装 SchedulerOutput | 命中块 1/2；`allocate_slots` 四步 S1~S4：容量检查 → touch 命中块 → 新分配块 3/4/5 → 满块 3/4 入哈希 | block_table 就绪，新块待清零 |
+| GPU 写 KV | 4.3 | `execute_model` + `sample_tokens` | 清零新块 → attention 按 `block_table` 写 70 token KV | 第 1 个输出 token，→ RUNNING |
+| ③ decode 续写 | 4.4 | 每步 1 token 循环调度 | 同一套 `allocate_slots`：未满 0 块、满则 1 块（块 6、7），满块持续入哈希 | 32 个输出全部生成 |
+| ④ 结束释放 | 4.5 | 移出 RUNNING | `free` 逆序 7→1：`ref_cnt--` 归零才回收，带哈希进队尾、无哈希进队首 | 块归池，前缀缓存留存 |
 
 状态机全路径：`WAITING →(首次调度) RUNNING →(持续 decode) → 完成 → 释放`，与入队、释放两节无缝衔接。
+
+**结构视角——固定的四层下钻链**：
+
+调度器对 KV 的每一次操作（查、分、存、放）都走同一条链 `KVCacheManager → UnitaryKVCacheCoordinator → FullAttentionManager → BlockPool`：上层管编排时机，中层按 KVCacheSpec 分派，底层 `BlockPool` 管逻辑块记账（free 队列 + 哈希表 + `ref_cnt`）。**整条链都在逻辑侧**——调度全程只认 `block_id`、零显存拷贝；物理存储是初始化时绑在各 worker 上的 `kv_caches[layer]` 张量，靠 `block_id == 张量行号` 的两端约定桥接。记住这条链的职责切分，各阶段时序图只是它的重演。
+
+**数据视角——R 的 7 个块走完一生**（块 0 开池即摘作 `null_block`，实际分配从块 1 起）：
+
+```
+块 1/2   P 服务时写入并带哈希入缓存 → R 前缀查找命中 → touch(ref_cnt++) → 释放仅减计数归零
+块 3/4/5 prefill 新分配承载 70 token → 满块 3/4 即入哈希 → 释放回收进队尾
+块 6/7   decode 步 11 / 步 27 申请 → 满块入哈希 → 释放：7 无哈希进队首、6 带哈希进队尾
+```
+
+释放逆序 7→6→5→4→3→2→1——"最近使用的块最先回到可复用位置"；满块持续入哈希、带哈希块 LRU 保护，共同构成前缀缓存被下一个请求命中的机制闭环。

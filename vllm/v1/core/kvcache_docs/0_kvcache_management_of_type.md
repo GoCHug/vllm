@@ -156,7 +156,7 @@ real_page_size_bytes
 
 - **流入 `KVCacheGroupSpec`**：同规格层的 spec `merge()` 成组 spec（§3）。
 - **流入 `KVCacheConfig.num_blocks`**：`page_size_bytes` 参与 `num_blocks = available // page_size // group_size`（§5）。
-- **流入物理张量形状**：`_reshape_kv_cache_tensors()` 按它把 int8 字节池 reshape 成后端逻辑 shape（见 [`1_physical_memory.md`](./1_physical_memory.md) §2.4）。
+- **流入物理张量形状**：`_reshape_kv_cache_tensors()` 按它把 int8 字节池 reshape 成后端逻辑 shape（见 [`1_init_physical_memory.md`](./1_init_physical_memory.md) §2.4）。
 
 ---
 
@@ -187,7 +187,7 @@ for layer_names_one_group in grouped_layer_names:
     kv_cache_groups.append(KVCacheGroupSpec(layer_names_one_group, merged_layer_spec))
 ```
 
-谁能分进一组由上层的分组策略决定：纯 Full Attention 走 `is_kv_cache_spec_uniform()` → 全模型**单 group**；混合模型（Full+SWA+Mamba…）按 spec 类型切多组。四种划分见 [`1_physical_memory.md`](./1_physical_memory.md) "扩展"。
+谁能分进一组由上层的分组策略决定：纯 Full Attention 走 `is_kv_cache_spec_uniform()` → 全模型**单 group**；混合模型（Full+SWA+Mamba…）按 spec 类型切多组。四种划分见 [`1_init_physical_memory.md`](./1_init_physical_memory.md) "扩展"。
 
 ### 3.4 两个关键去向（组列表的下标即 group_id）
 
@@ -225,11 +225,11 @@ class KVCacheTensor:
 | ② packed 拼单 | `_use_packed_kv_cache_config()`（DeepSeek V4 默认 / `--enable-cross-layers`） | 多张单 alias 同一块物理分配，各带 `offset` / `block_stride`（`_get_kv_cache_config_packed()`，kv_cache_utils.py:1314） |
 | ③ 通用 | 其余所有情况（主线单组 FullAttention、多组混合模型都在此） | 建 `group_size` 张单，每张 `size = page_size × num_blocks`，`shared_by` = **每个组的第 i 层**拼一起（组内层数不足则跳过 = padding） |
 
-> ③ 的拼法是"错位共享"：第 i 号张量的第 b 行给"组 j 的第 i 层"第 b 块用——各组的 block_table 独立，同块号在不同组里各用各的页，天然不冲突。主线（纯 FullAttention 单组，组 spec 是 merge 出的普通 `FullAttentionSpec`）在 ③ 下退化为"每层一单独享"：`group_size = 组内层数`，第 i 单只 `shared_by` 第 i 层（见 [`1_physical_memory.md`](./1_physical_memory.md) §2.3）。主线并不命中 ①——那是"同类型但各层 hidden 大小不同"的特例分支。
+> ③ 的拼法是"错位共享"：第 i 号张量的第 b 行给"组 j 的第 i 层"第 b 块用——各组的 block_table 独立，同块号在不同组里各用各的页，天然不冲突。主线（纯 FullAttention 单组，组 spec 是 merge 出的普通 `FullAttentionSpec`）在 ③ 下退化为"每层一单独享"：`group_size = 组内层数`，第 i 单只 `shared_by` 第 i 层（见 [`1_init_physical_memory.md`](./1_init_physical_memory.md) §2.3）。主线并不命中 ①——那是"同类型但各层 hidden 大小不同"的特例分支。
 
 ### 4.4 消费方与忠告
 
-- **消费**：`GPUModelRunner._allocate_kv_cache_tensors()`（gpu_model_runner.py:7286）：按 `size` `torch.zeros(..., dtype=torch.int8)` 申请字节池 → `shared_by` 里每层挂到这块 raw tensor → 后续 reshape/bind（详见 [`1_physical_memory.md`](./1_physical_memory.md) §2.4）。packed 单据则按 `offset/block_stride` 做切片 view。
+- **消费**：`GPUModelRunner._allocate_kv_cache_tensors()`（gpu_model_runner.py:7286）：按 `size` `torch.zeros(..., dtype=torch.int8)` 申请字节池 → `shared_by` 里每层挂到这块 raw tensor → 后续 reshape/bind（详见 [`1_init_physical_memory.md`](./1_init_physical_memory.md) §2.4）。packed 单据则按 `offset/block_stride` 做切片 view。
 - **多 worker 对齐时会缩水**：`min(num_blocks)` 对齐时 `tensor.size` 按 `num_blocks_old → min_num_blocks` 等比缩小（kv_cache_utils.py:2191）。
 - **`shared_by` ≠ "共享数据的层"**：它是"共用同一次 `torch.zeros` 分配"的层集合；是否真的存同一份数据取决于 layout（通用 layout 各层各页不冲突；packed layout 是显式切片共享）。
 
@@ -618,4 +618,4 @@ class BlockPool:
 - **§7 全体块 + §9 空闲队列 + §10 登记簿 = §11 的三大内件**；§11 是块生命周期的唯一门面，§8 `KVCacheBlocks` 是它递给 Scheduler 的对外交接单（只装块引用，不搬显存）。
 - 数据真正被读写，由 **attention 算子**拿着 `block_table`（一串 `block_id`）在 §4 订出来的物理张量上索引完成——全程逻辑层零显存拷贝。
 
-> 与本套文档的关系：配置层四件套的生成过程，详见 [`1_physical_memory.md`](./1_physical_memory.md)；逻辑层六件套在五层架构中的位置见 [`0_kv_cache_management_arch.md`](./0_kv_cache_management_arch.md)；一次请求怎么一步步用它们，见时序文档 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md)。
+> 与本套文档的关系：配置层四件套的生成过程，详见 [`1_init_physical_memory.md`](./1_init_physical_memory.md)；逻辑层六件套在五层架构中的位置见 [`0_kv_cache_management_arch.md`](./0_kv_cache_management_arch.md)；一次请求怎么一步步用它们，见时序文档 [`0_runtime_sequence.md`](./0_runtime_sequence.md)。

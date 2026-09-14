@@ -129,9 +129,9 @@ Scheduler（调度器 · 调用者）
 | ④ 落张量 | 每 worker 每层 1 张物理张量（PP 下只含本 worker 负责的层） | 先按字节数申请、再零拷贝 view 成后端要求的 shape；同一个行号在所有层语义相同 |
 | ⑤ 建逻辑层 | 第 2～5 层全部对象 | 构造顺序见 3.2 |
 
-### 3.2 两个衔接点（理解后续章节的关键）
+### 3.2 衔接点
 
-**衔接点 1：物理 ↔ 逻辑——同一份配置定容量，`block_id` 即行号的约定做桥接**
+**物理 ↔ 逻辑：一份配置定容量，`block_id` 即行号**
 
 引擎算出 `num_blocks` 后写入 `KVCacheConfig` 并下发两侧，两侧各自做自己的事：
 
@@ -146,16 +146,6 @@ Scheduler（调度器 · 调用者）
   - 源码：`block_pool.py:175-177`。
 - **桥接结果**：同一份配置保证两侧容量相等，"从 0 顺序编号"的约定让 `block_id` 直接等于物理张量行号——无需查表或拷贝。此后物理张量不再变动，分配/共享/驱逐只改引用计数和哈希表。
   - 特例：`block_id=0` 开池即留作 `null_block` 占位，不维护引用计数、不可分配，实际可分配块为 `n−1`。
-
-**衔接点 2：逻辑层内部——代码上自上而下构造，持有关系自下而上**
-
-Scheduler 只 new 第 5 层，下层对象在各自构造函数中级联创建：
-
-1. `Scheduler` 构造第 5 层 `KVCacheManager`（`sched/scheduler.py:271`）；
-2. 其 `__init__` 调工厂 `get_kv_cache_coordinator()` 按 group 数选型——单 group 即 `UnitaryKVCacheCoordinator`（第 4 层）；
-3. 协调器构造函数内**先**建唯一的 `BlockPool`（第 2 层），**再**为每个 group 建一个 manager（主线 1 个 `FullAttentionManager`，第 3 层），各 manager 引用同一个 `BlockPool`。
-
-最终的持有树形如 §2 所示。
 
 ---
 
