@@ -157,35 +157,38 @@
                 <mxCell id="ppt_01_cover_c51" value="清零" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="658" y="548" width="130" height="32" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_01_cover_c52" value="02 总览 · 一条请求的一生" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=13;fontColor=#333333;align=center;" vertex="1" parent="1">
-                    <mxGeometry x="90" y="636" width="480" height="52" as="geometry"/>
+                <mxCell id="ppt_01_cover_c52" value="02 总览 · 一条请求的一生" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="90" y="636" width="350" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_01_cover_c53" value="03 全景架构 · 记账+搬砖" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=13;fontColor=#333333;align=center;" vertex="1" parent="1">
-                    <mxGeometry x="590" y="636" width="480" height="52" as="geometry"/>
+                <mxCell id="ppt_01_cover_c53" value="03 全景架构 · 记账+搬砖" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="456" y="636" width="350" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_01_cover_c54" value="04 入队 + ① 查前缀" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=13;fontColor=#333333;align=center;" vertex="1" parent="1">
-                    <mxGeometry x="1090" y="636" width="480" height="52" as="geometry"/>
+                <mxCell id="ppt_01_cover_c54" value="04 入队 + ① 查前缀" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="822" y="636" width="350" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_01_cover_c55" value="05 ② 分配执行 · S1-S4" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=13;fontColor=#333333;align=center;" vertex="1" parent="1">
-                    <mxGeometry x="90" y="702" width="480" height="52" as="geometry"/>
+                <mxCell id="ppt_01_cover_c55" value="05 ② 分配执行 · S1-S4" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="1188" y="636" width="350" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_01_cover_c56" value="06 ③ Decode ×31" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=13;fontColor=#333333;align=center;" vertex="1" parent="1">
-                    <mxGeometry x="590" y="702" width="480" height="52" as="geometry"/>
+                <mxCell id="ppt_01_cover_c56" value="06 ③ Decode ×31" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="90" y="702" width="350" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_01_cover_c57" value="07 ④ 释放 · 白拿闭环" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=13;fontColor=#333333;align=center;" vertex="1" parent="1">
-                    <mxGeometry x="1090" y="702" width="480" height="52" as="geometry"/>
+                <mxCell id="ppt_01_cover_c57" value="07 物理映射 · forward读写" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="456" y="702" width="350" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_01_cover_c58" value="vLLM V1 · KV Cache 全生命周期（源码版）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;" vertex="1" parent="1">
+                <mxCell id="ppt_01_cover_c58" value="08 ④ 释放 · 白拿闭环" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="822" y="702" width="350" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_01_cover_c59" value="vLLM V1 · KV Cache 全生命周期（源码版）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;" vertex="1" parent="1">
                     <mxGeometry x="40" y="862" width="900" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_01_cover_c59" value="1 / 7" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" vertex="1" parent="1">
+                <mxCell id="ppt_01_cover_c60" value="1 / 7" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" vertex="1" parent="1">
                     <mxGeometry x="1460" y="862" width="100" height="24" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>
     </diagram>
     <diagram id="ppt_02_overview" name="02 总览">
-        <mxGraphModel dx="1585" dy="1029" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+        <mxGraphModel grid="1" page="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -198,7 +201,7 @@
                 <mxCell id="ppt_02_overview_c3" value="vLLM V1 · KV Cache 全生命周期（源码版）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;" vertex="1" parent="1">
                     <mxGeometry x="40" y="862" width="900" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_02_overview_c4" value="2 / 7" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" vertex="1" parent="1">
+                <mxCell id="ppt_02_overview_c4" value="2 / 8" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" vertex="1" parent="1">
                     <mxGeometry x="1460" y="862" width="100" height="24" as="geometry"/>
                 </mxCell>
                 <mxCell id="ppt_02_overview_c5" value="▍R 的 102 token · 7 个块（✓ = 已入哈希表）" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" vertex="1" parent="1">
@@ -337,7 +340,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="ppt_03_arch" name="03 全景架构">
-        <mxGraphModel dx="872" dy="566" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+        <mxGraphModel grid="0" page="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -350,7 +353,7 @@
                 <mxCell id="ppt_03_arch_c3" value="vLLM V1 · KV Cache 全生命周期（源码版）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;" parent="1" vertex="1">
                     <mxGeometry x="40" y="862" width="900" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_03_arch_c4" value="3 / 7" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" parent="1" vertex="1">
+                <mxCell id="ppt_03_arch_c4" value="3 / 8" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" parent="1" vertex="1">
                     <mxGeometry x="1460" y="862" width="100" height="24" as="geometry"/>
                 </mxCell>
                 <mxCell id="ppt_03_arch_c5" value="逻辑侧" style="text;html=1;whiteSpace=wrap;fontSize=13;fontColor=#9673A6;align=right;fontStyle=1;" parent="1" vertex="1">
@@ -489,7 +492,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="ppt_04_enqueue_hit" name="04 入队+① 查前缀">
-        <mxGraphModel dx="872" dy="566" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+        <mxGraphModel grid="0" page="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -502,7 +505,7 @@
                 <mxCell id="ppt_04_enqueue_hit_c3" value="vLLM V1 · KV Cache 全生命周期（源码版）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;" parent="1" vertex="1">
                     <mxGeometry x="40" y="862" width="900" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_04_enqueue_hit_c4" value="4 / 7" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" parent="1" vertex="1">
+                <mxCell id="ppt_04_enqueue_hit_c4" value="4 / 8" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" parent="1" vertex="1">
                     <mxGeometry x="1460" y="862" width="100" height="24" as="geometry"/>
                 </mxCell>
                 <mxCell id="ppt_04_enqueue_hit_c5" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
@@ -656,7 +659,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="ppt_05_alloc_gpu" name="05 ② 分配执行">
-        <mxGraphModel dx="872" dy="566" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+        <mxGraphModel dx="1585" dy="1029" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -669,7 +672,7 @@
                 <mxCell id="ppt_05_alloc_gpu_c3" value="vLLM V1 · KV Cache 全生命周期（源码版）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;" parent="1" vertex="1">
                     <mxGeometry x="40" y="862" width="900" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_05_alloc_gpu_c4" value="5 / 7" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" parent="1" vertex="1">
+                <mxCell id="ppt_05_alloc_gpu_c4" value="5 / 8" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" parent="1" vertex="1">
                     <mxGeometry x="1460" y="862" width="100" height="24" as="geometry"/>
                 </mxCell>
                 <mxCell id="ppt_05_alloc_gpu_c5" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
@@ -774,7 +777,7 @@
                 <mxCell id="ppt_05_alloc_gpu_c38" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#9673A6;strokeWidth=2;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
                     <mxGeometry x="60" y="560" width="1480" height="214" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_05_alloc_gpu_c39" value="▍GPU 半步（EngineCore.step · core.py:581）" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_05_alloc_gpu_c39" value="▍GPU 执行 · execute_model + sample_tokens（core.py:581）" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="76" y="570" width="900" height="26" as="geometry"/>
                 </mxCell>
                 <mxCell id="ppt_05_alloc_gpu_c40" value="① 擦干净&#xa;清零 [3,4,5]" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=1;fontSize=13;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
@@ -798,17 +801,17 @@
                 <mxCell id="ppt_05_alloc_gpu_c46" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ppt_05_alloc_gpu_c42" target="ppt_05_alloc_gpu_c43" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_05_alloc_gpu_c47" value="32 层（每卡 16 份）共用同一 block_table · block_id 即行号" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#666666;align=left;" parent="1" vertex="1">
+                <mxCell id="ppt_05_alloc_gpu_c47" value="32 层（每卡 16 份）共用同一 block_table · block_id 即行号（寻址细节 → 见「物理映射」页）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#666666;align=left;" parent="1" vertex="1">
                     <mxGeometry x="90" y="706" width="1000" height="22" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_05_alloc_gpu_c48" value="一页记忆：账本先动（摘 · 弹 · 领哈希）→ GPU 照单执行（清零 → 写 → 采样）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_05_alloc_gpu_c48" value="一页记忆：一次 EngineCore.step = 先调度（上方 S1–S4 改账本）→ 再执行（本面板：清零 → 写 KV → 采样）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
                     <mxGeometry x="60" y="790" width="1480" height="40" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>
     </diagram>
     <diagram id="ppt_06_decode" name="06 ③ Decode×31">
-        <mxGraphModel dx="872" dy="566" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+        <mxGraphModel dx="1163" dy="755" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -821,7 +824,7 @@
                 <mxCell id="ppt_06_decode_c3" value="vLLM V1 · KV Cache 全生命周期（源码版）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;" parent="1" vertex="1">
                     <mxGeometry x="40" y="862" width="900" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_06_decode_c4" value="6 / 7" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" parent="1" vertex="1">
+                <mxCell id="ppt_06_decode_c4" value="6 / 8" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" parent="1" vertex="1">
                     <mxGeometry x="1460" y="862" width="100" height="24" as="geometry"/>
                 </mxCell>
                 <mxCell id="ppt_06_decode_c5" value="▍局面 A · 未满" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" parent="1" vertex="1">
@@ -1055,147 +1058,350 @@
             </root>
         </mxGraphModel>
     </diagram>
-    <diagram id="ppt_07_release" name="07 ④ 释放闭环">
-        <mxGraphModel dx="872" dy="566" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+    <diagram id="ppt_07_bridge" name="07 物理映射·forward读写">
+        <mxGraphModel dx="1585" dy="1029" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
-                <mxCell id="ppt_07_release_c1" value="④ 释放 · 逆序归位，白拿闭环" style="text;html=1;whiteSpace=wrap;fontSize=26;fontColor=#1F2A44;align=left;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_07_bridge_c1" value="物理映射 · forward 如何用 block_id 读写张量" style="text;html=1;whiteSpace=wrap;fontSize=26;fontColor=#1F2A44;align=left;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="40" y="22" width="1340" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c2" value="reversed 逆序 7→1：无哈希头插队首，有哈希尾插躺平（LRU 保护）（§4.5）" style="text;html=1;whiteSpace=wrap;fontSize=13;fontColor=#666666;align=left;" parent="1" vertex="1">
+                <mxCell id="ppt_07_bridge_c2" value="调度只产出 block_id —— attention 后端在 forward 里按块号定位张量行：prefill 一次写 70t，decode 每步读全部 + 写 1 槽（§4.3 / §5）" style="text;html=1;whiteSpace=wrap;fontSize=13;fontColor=#666666;align=left;" parent="1" vertex="1">
                     <mxGeometry x="40" y="64" width="1460" height="26" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c3" value="vLLM V1 · KV Cache 全生命周期（源码版）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;" parent="1" vertex="1">
+                <mxCell id="ppt_07_bridge_c3" value="vLLM V1 · KV Cache 全生命周期（源码版）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;" parent="1" vertex="1">
                     <mxGeometry x="40" y="862" width="900" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c4" value="7 / 7" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" parent="1" vertex="1">
+                <mxCell id="ppt_07_bridge_c4" value="7 / 8" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" parent="1" vertex="1">
                     <mxGeometry x="1460" y="862" width="100" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c5" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_07_bridge_c5" value="▍① 调度产出逻辑块号 —— block_table 交给 Worker（§4.2.3）" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="96" width="900" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c6" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#eef4fe;strokeColor=#b9d0f0;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="52" y="126" width="1496" height="68" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c7" value="block_table&#xa;req_to_blocks" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="68" y="134" width="170" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c8" value="1✓" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=14;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="250" y="134" width="86" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c9" value="2✓" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=14;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="344" y="134" width="86" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c10" value="3" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=14;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="438" y="134" width="86" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c11" value="4" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=14;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="532" y="134" width="86" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c12" value="5" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=14;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="626" y="134" width="86" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c13" value="block_ids = get_block_ids(request_id)&#xa;形如 [1, 7, 512, …] —— 乱序也直接用" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="736" y="134" width="400" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c14" value="清零名单 [3,4,5]&#xa;新块先擦净再写" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1156" y="134" width="380" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c15" value="▍② 两端约定 · 位置等同 —— 同一份 KVCacheConfig 定容量（§5）" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="206" width="900" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c16" value="逻辑侧 · BlockPool&#xa;KVCacheBlock(0..4095) · free 队列 + 哈希 + ref_cnt" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="240" width="470" height="76" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c17" value="位置等同&#xa;block_id == 张量第 0 维行号 · 零查表零拷贝" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="565" y="240" width="470" height="76" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c18" value="物理侧 · kv_caches[layer]&#xa;(4096, 4, 16, 256) · 128 MiB × 16 份" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1070" y="240" width="470" height="76" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c19" value="same num_blocks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ppt_07_bridge_c16" target="ppt_07_bridge_c17" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c20" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ppt_07_bridge_c17" target="ppt_07_bridge_c18" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c21" value="▍③ forward 读写流程 —— prefill / decode 同一骨架，attention 后端按块号定位张量行（§4.3）" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="336" width="900" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c22" value="execute_model&#xa;EngineCore 驱动" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="364" width="270" height="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c23" value="_zero_block_ids&#xa;清零新块 [3,4,5]" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="355" y="364" width="270" height="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c24" value="_prepare_inputs&#xa;block_table → 后端输入" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="650" y="364" width="270" height="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c25" value="forward · attention 逐层&#xa;按块号读 + 写 KV" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="945" y="364" width="270" height="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c26" value="model_output&#xa;→ sample_tokens 采样" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1240" y="364" width="270" height="58" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c27" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ppt_07_bridge_c22" target="ppt_07_bridge_c23" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c28" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ppt_07_bridge_c23" target="ppt_07_bridge_c24" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c29" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ppt_07_bridge_c24" target="ppt_07_bridge_c25" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c30" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ppt_07_bridge_c25" target="ppt_07_bridge_c26" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c31" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="434" width="720" height="336" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c32" value="▍Prefill · 1 次前向：读 2 行 + 写 3 行（写 70t）" style="text;html=1;whiteSpace=wrap;fontSize=13;fontColor=#333333;align=left;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="442" width="690" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c33" value="block_table" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="474" width="110" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c34" value="1✓" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="194" y="474" width="54" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c35" value="2✓" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="256" y="474" width="54" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c36" value="3" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="318" y="474" width="54" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c37" value="4" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="474" width="54" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c38" value="5" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="442" y="474" width="54" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c39" value="一次 forward 写 70t" style="text;html=1;whiteSpace=wrap;fontSize=10;fontColor=#666666;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="530" y="480" width="250" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c40" value="行 1 ← 块1 ｜ 读 gather：P 已算 16t（SP 前缀）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="522" width="688" height="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c41" value="行 2 ← 块2 ｜ 读 gather：P 已算 16t" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="570" width="688" height="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c42" value="行 3 ← 块3 ｜ 写 scatter：清零 → 写 16t" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="618" width="688" height="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c43" value="行 4 ← 块4 ｜ 写 scatter：清零 → 写 16t" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="666" width="688" height="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c44" value="行 5 ← 块5 ｜ 写 scatter：清零 → 写 6t（70 = 16×4 + 6）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="714" width="688" height="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c45" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="820" y="434" width="720" height="336" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c46" value="▍Decode · 31 次前向：每步读全部 + 写 1 槽（净写 31 槽）" style="text;html=1;whiteSpace=wrap;fontSize=13;fontColor=#333333;align=left;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="836" y="442" width="690" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c47" value="block_table" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="836" y="474" width="110" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c48" value="1✓" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="954" y="474" width="46" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c49" value="2✓" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1008" y="474" width="46" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c50" value="3" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1062" y="474" width="46" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c51" value="4" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1116" y="474" width="46" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c52" value="5" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1170" y="474" width="46" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c53" value="6" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
+                    <mxGeometry x="1224" y="474" width="46" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c54" value="7" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
+                    <mxGeometry x="1278" y="474" width="46" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c55" value="步 11 +块6 · 步 27 +块7" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=9;fontColor=#333333;align=center;dashed=1;" vertex="1" parent="1">
+                    <mxGeometry x="1340" y="474" width="190" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c56" value="行 1 ← 块1 ｜ 读 gather：P 前缀（16t）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="836" y="514" width="688" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c57" value="行 2 ← 块2 ｜ 读 gather：P 前缀（16t）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="836" y="550" width="688" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c58" value="行 3 ← 块3 ｜ 读 gather：prefill 已算 16t" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="836" y="586" width="688" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c59" value="行 4 ← 块4 ｜ 读 gather：prefill 已算 16t" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="836" y="622" width="688" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c60" value="行 5 ← 块5 ｜ 读 + 写：步 1–10 补满 10 槽（6/16 → 16/16）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="836" y="658" width="688" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c61" value="行 6 ← 块6 ｜ 写 scatter：步 11 弹块+清零 → 步 11–26 写 16t" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="836" y="694" width="688" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c62" value="行 7 ← 块7 ｜ 写 scatter：步 27 弹块+清零 → 步 27–31 写 5t（5/16）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="836" y="730" width="688" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c63" value="槽位级：kv_caches[layer][block_id] = (4 头, 16 槽, 256 = K128+V128) · token 按 slot 落位" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="60" y="782" width="500" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c64" value="读 = gather 历史 KV ｜ 写 = scatter 当前 token —— prefill / decode 同一机制" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
+                    <mxGeometry x="580" y="782" width="560" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_07_bridge_c65" value="形式 A/B 布局 · 哨兵 _S 探测（backend.py:100-117）" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="1160" y="782" width="380" height="40" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="ppt_08_release" name="08 ④ 释放闭环">
+        <mxGraphModel dx="1400" dy="820" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="ppt_08_release_c1" value="④ 释放 · 逆序归位，白拿闭环" style="text;html=1;whiteSpace=wrap;fontSize=26;fontColor=#1F2A44;align=left;fontStyle=1;" vertex="1" parent="1">
+                    <mxGeometry x="40" y="22" width="1340" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_08_release_c2" value="reversed 逆序 7→1：无哈希头插队首，有哈希尾插躺平（LRU 保护）（§4.5）" style="text;html=1;whiteSpace=wrap;fontSize=13;fontColor=#666666;align=left;" vertex="1" parent="1">
+                    <mxGeometry x="40" y="64" width="1460" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_08_release_c3" value="vLLM V1 · KV Cache 全生命周期（源码版）" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;" vertex="1" parent="1">
+                    <mxGeometry x="40" y="862" width="900" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_08_release_c4" value="8 / 8" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=right;" vertex="1" parent="1">
+                    <mxGeometry x="1460" y="862" width="100" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="ppt_08_release_c5" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="60" y="110" width="540" height="600" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c6" value="▍R 的 7 块各奔去处" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c6" value="▍R 的 7 块各奔去处" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="76" y="120" width="900" height="26" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c7" value="释放次序 7 → 6 → 5 → 4 → 3 → 2 → 1" style="text;html=1;whiteSpace=wrap;fontSize=12;fontColor=#333333;align=left;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c7" value="释放次序 7 → 6 → 5 → 4 → 3 → 2 → 1" style="text;html=1;whiteSpace=wrap;fontSize=12;fontColor=#333333;align=left;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="76" y="154" width="500" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c8" value="块7 · 未满无哈希 → 头插队首" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#B85450;strokeWidth=2;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c8" value="块7 · 未满无哈希 → 头插队首" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#B85450;strokeWidth=2;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="80" y="190" width="500" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c9" value="块6 · 满块有哈希 → 尾插队尾" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c9" value="块6 · 满块有哈希 → 尾插队尾" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="80" y="252" width="500" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c10" value="块5 · 满块有哈希 → 尾插队尾" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c10" value="块5 · 满块有哈希 → 尾插队尾" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="80" y="314" width="500" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c11" value="块4 · 满块有哈希 → 尾插队尾" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c11" value="块4 · 满块有哈希 → 尾插队尾" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="80" y="376" width="500" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c12" value="块3 · 满块有哈希 → 尾插队尾" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c12" value="块3 · 满块有哈希 → 尾插队尾" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="80" y="438" width="500" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c13" value="块2 · ref_cnt 1→0 · 带哈希 → 尾插" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c13" value="块2 · ref_cnt 1→0 · 带哈希 → 尾插" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="80" y="500" width="500" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c14" value="块1 · ref_cnt 1→0 · 带哈希 → 尾插" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c14" value="块1 · ref_cnt 1→0 · 带哈希 → 尾插" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="80" y="562" width="500" height="52" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c15" value="净效果：+4 个带哈希满块（3/4/5/6）&#xa;块 7 无哈希 · 下次优先复用" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c15" value="净效果：+4 个带哈希满块（3/4/5/6）&#xa;块 7 无哈希 · 下次优先复用" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="80" y="630" width="500" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c16" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c16" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="640" y="110" width="420" height="600" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c17" value="▍释放后的 free 队列" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c17" value="▍释放后的 free 队列" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="656" y="120" width="900" height="26" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c18" value="队首" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c18" value="队首" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="700" y="158" width="300" height="22" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c19" value="块7" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#B85450;strokeWidth=2;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c19" value="块7" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#B85450;strokeWidth=2;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="700" y="184" width="300" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c20" value="头插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#B85450;align=left;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c20" value="头插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#B85450;align=left;" vertex="1" parent="1">
                     <mxGeometry x="1008" y="196" width="46" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c21" value="⋯ 久未用，挤向队首 ⋯" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;dashed=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c21" value="⋯ 久未用，挤向队首 ⋯" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;fontSize=10;fontColor=#333333;align=center;dashed=1;" vertex="1" parent="1">
                     <mxGeometry x="700" y="236" width="300" height="36" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c22" value="块6" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c22" value="块6" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="700" y="280" width="300" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c23" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c23" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" vertex="1" parent="1">
                     <mxGeometry x="1008" y="292" width="46" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c24" value="块5" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c24" value="块5" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="700" y="332" width="300" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c25" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c25" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" vertex="1" parent="1">
                     <mxGeometry x="1008" y="344" width="46" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c26" value="块4" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c26" value="块4" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="700" y="384" width="300" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c27" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c27" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" vertex="1" parent="1">
                     <mxGeometry x="1008" y="396" width="46" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c28" value="块3" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c28" value="块3" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="700" y="436" width="300" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c29" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c29" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" vertex="1" parent="1">
                     <mxGeometry x="1008" y="448" width="46" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c30" value="块2" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c30" value="块2" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="700" y="488" width="300" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c31" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c31" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" vertex="1" parent="1">
                     <mxGeometry x="1008" y="500" width="46" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c32" value="块1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c32" value="块1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="700" y="540" width="300" height="44" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c33" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c33" value="尾插" style="text;html=1;whiteSpace=wrap;fontSize=9;fontColor=#999999;align=left;" vertex="1" parent="1">
                     <mxGeometry x="1008" y="552" width="46" height="24" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c34" value="队尾" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c34" value="队尾" style="text;html=1;whiteSpace=wrap;fontSize=11;fontColor=#999999;align=left;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="700" y="596" width="300" height="22" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c35" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c35" value="" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="1100" y="110" width="440" height="600" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c36" value="▍白拿闭环" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c36" value="▍白拿闭环" style="text;html=1;whiteSpace=wrap;fontSize=15;fontColor=#B85450;align=left;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="1116" y="120" width="900" height="26" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c37" value="④ free&#xa;逆序归还 ref_cnt--" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c37" value="④ free&#xa;逆序归还 ref_cnt--" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="1235" y="190" width="170" height="64" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c38" value="带哈希块躺队尾&#xa;哈希条目保留" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c38" value="带哈希块躺队尾&#xa;哈希条目保留" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="1355" y="310" width="170" height="64" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c39" value="下一条同前缀&#xa;① 查前缀命中" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c39" value="下一条同前缀&#xa;① 查前缀命中" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="1235" y="440" width="170" height="64" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c40" value="② S2 touch&#xa;ref_cnt++ 摘出开写" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c40" value="② S2 touch&#xa;ref_cnt++ 摘出开写" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;fontSize=11;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="1115" y="310" width="170" height="64" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c41" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#D6B656;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="ppt_07_release_c37" target="ppt_07_release_c38" edge="1">
+                <mxCell id="ppt_08_release_c41" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#D6B656;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="ppt_08_release_c37" target="ppt_08_release_c38">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c42" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ppt_07_release_c38" target="ppt_07_release_c39" edge="1">
+                <mxCell id="ppt_08_release_c42" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="ppt_08_release_c38" target="ppt_08_release_c39">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c43" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" source="ppt_07_release_c39" target="ppt_07_release_c40" edge="1">
+                <mxCell id="ppt_08_release_c43" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="ppt_08_release_c39" target="ppt_08_release_c40">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c44" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ppt_07_release_c40" target="ppt_07_release_c37" edge="1">
+                <mxCell id="ppt_08_release_c44" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;strokeWidth=2;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="ppt_08_release_c40" target="ppt_08_release_c37">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c45" value="已算 KV 零成本复用&#xa;缓存越滚越厚" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c45" value="已算 KV 零成本复用&#xa;缓存越滚越厚" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;fontStyle=1;" vertex="1" parent="1">
                     <mxGeometry x="1120" y="560" width="400" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="ppt_07_release_c46" value="至此闭环：入队造哈希 → ①② 白拿 → ③ 续写 → ④ 释放 → 下一条继续白拿" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" parent="1" vertex="1">
+                <mxCell id="ppt_08_release_c46" value="至此闭环：入队造哈希 → ①② 白拿 → ③ 续写 → ④ 释放 → 下一条继续白拿" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=1;fontSize=12;fontColor=#333333;align=center;" vertex="1" parent="1">
                     <mxGeometry x="60" y="750" width="1480" height="44" as="geometry"/>
                 </mxCell>
             </root>
