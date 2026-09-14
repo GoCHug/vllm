@@ -1,7 +1,7 @@
 # KVCacheManager 详解
 
 > 五层架构第 5 层（最顶门面，Scheduler 唯一交互入口）｜[总览](./0_kv_cache_management_arch.md) ｜下层 ➔ [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md)
-> 时序位置：[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) **③ 前缀查找 → ④ 分配与缓存 → ⑤ 组装 SchedulerOutput → ⑧ 释放，每一步都从它入口**
+> 时序位置：[`0_runtime_sequence.md`](./0_runtime_sequence.md) **③ 前缀查找 → ④ 分配与缓存 → ⑤ 组装 SchedulerOutput → ⑧ 释放，每一步都从它入口**
 >
 > 源文件：`vllm/vllm/v1/core/kv_cache_manager.py`
 >
@@ -30,7 +30,7 @@
 >
 > **请求 R**：prompt = 70 token (含 32 token 共享前缀 SP)，max_tokens = 32
 >
-> **前置**：请求 P 先于 R 服务，已把 SP（32 token = 2 满块）写入前缀缓存，块 0/1 作为带哈希缓存块保留。R 与 P 共享 SP 前缀。
+> **前置**：请求 P 先于 R 服务，已把 SP（32 token = 2 满块）写入前缀缓存，块 1/2 作为带哈希缓存块保留。R 与 P 共享 SP 前缀。
 
 下面以 R 的一生为线索，展示与 KVCacheManager 的完整交互：
 
@@ -50,19 +50,19 @@
 │   km.new_step_starts()                    新步开始，重置内部状态      │
 │                                                                      │
 │   ① km.get_computed_blocks(R)             前缀缓存查找               │
-│      → 链式哈希逐块查表，命中 P 缓存的块 0/1                          │
-│      → hit_length=32, 返回 KVCacheBlocks(([blk0, blk1],))            │
+│      → 链式哈希逐块查表，命中 P 缓存的块 1/2                          │
+│      → hit_length=32, 返回 KVCacheBlocks(([blk1, blk2],))            │
 │                                                                      │
 │   ② km.allocate_slots(R, num_new_tokens=70)  准入→分配→缓存          │
 │      ├─ 容量检查: 需 3 新块, 4096 池足够 → 通过                      │
-│      ├─ touch 命中块 0/1: ref_cnt 1→2, 移出 free 队列                │
-│      ├─ get_new_blocks(3): pop [2, 3, 4] from BlockPool             │
-│      ├─ block_table = [命中0, 命中1, 新2, 新3, 新4]                  │
-│      └─ cache_blocks: 满块 2/3 入哈希表 (块4 未满不入)               │
+│      ├─ touch 命中块 1/2: ref_cnt 1→2, 移出 free 队列                │
+│      ├─ get_new_blocks(3): pop [3, 4, 5] from BlockPool             │
+│      ├─ block_table = [命中1, 命中2, 新3, 新4, 新5]                  │
+│      └─ cache_blocks: 满块 3/4 入哈希表 (块5 未满不入)               │
 │                                                                      │
-│   ③ km.take_new_block_ids() → [2, 3, 4]    打包给 Worker 清零        │
+│   ③ km.take_new_block_ids() → [3, 4, 5]    打包给 Worker 清零        │
 │                                                                      │
-│   → SchedulerOutput(block_ids=([0,1,2,3,4],)) → 4 worker 各收到      │
+│   → SchedulerOutput(block_ids=([1,2,3,4,5],)) → 4 worker 各收到      │
 │      4 worker 共享同一 block_id 命名, 物理张量各自独立                │
 └───────────────────────────────────────────┬──────────────────────────┘
                                             │
@@ -71,7 +71,7 @@
 │ C. GPU forward（KVCacheManager 不参与）                               │
 │                                                                      │
 │   4 worker 各自:                                                     │
-│   清零 block 2/3/4 → forward 写 70 token KV → sample                 │
+│   清零 block 3/4/5 → forward 写 70 token KV → sample                 │
 │   kv_caches[layer][block_id] fancy index 第0维 (每 worker 16 张量)   │
 │   → 第 1 个输出 token → R 状态变 RUNNING                             │
 └───────────────────────────────────────────┬──────────────────────────┘
@@ -92,15 +92,15 @@
 │   └──────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │   R 的 block_table 演变:                                             │
-│   prefill 后  [0, 1, 2, 3, 4]     块4 有 6 token                     │
-│   步 1~10    [0, 1, 2, 3, 4]     填块4 → 步10 满 → 入哈希表          │
-│   步 11      [0, 1, 2, 3, 4, 5]  申块5, 0 分配中                     │
-│   步 11~26   [0, 1, 2, 3, 4, 5]  填块5 → 步26 满 → 入哈希表          │
-│   步 27      [0, 1, 2, 3, 4, 5, 6]  申块6                            │
-│   步 27~32   [0, 1, 2, 3, 4, 5, 6]  填块6 (6 token, 未满不入表)      │
+│   prefill 后  [1, 2, 3, 4, 5]     块5 有 6 token                     │
+│   步 1~10    [1, 2, 3, 4, 5]     填块5 → 步10 满 → 入哈希表          │
+│   步 11      [1, 2, 3, 4, 5, 6]  申块6, 0 分配中                     │
+│   步 11~26   [1, 2, 3, 4, 5, 6]  填块6 → 步26 满 → 入哈希表          │
+│   步 27      [1, 2, 3, 4, 5, 6, 7]  申块7                            │
+│   步 27~32   [1, 2, 3, 4, 5, 6, 7]  填块7 (6 token, 未满不入表)      │
 │                                                                      │
-│   32 步分布: 块4=10 · 块5=16 · 块6=6  (合计 32 ✓)                    │
-│   km.take_new_block_ids() 在步 11/27 返回 [5]/[6] 供 Worker 清零     │
+│   32 步分布: 块5=10 · 块6=16 · 块7=6  (合计 32 ✓)                    │
+│   km.take_new_block_ids() 在步 11/27 返回 [6]/[7] 供 Worker 清零     │
 └───────────────────────────────────────────┬──────────────────────────┘
                                             │
                                             ▼
@@ -108,13 +108,13 @@
 │ E. 释放                                                               │
 │                                                                      │
 │   km.free(R)                                                         │
-│   ├─ 逆序释放 block_table: 块6→5→4→3→2                               │
+│   ├─ 逆序释放 block_table: 块7→6→5→4→3                               │
 │   │   ref_cnt-- 归 0 → 回 free_block_queue                           │
 │   │   有哈希 → append 队尾 (LRU 保护, 可被后续请求前缀命中)            │
 │   │   无哈希 → prepend 队首 (优先复用)                                │
-│   └─ 命中块 0/1: 仅 ref_cnt-- (仍被 P 或其他请求共享, 不回收)          │
+│   └─ 命中块 1/2: 仅 ref_cnt-- (仍被 P 或其他请求共享, 不回收)          │
 │                                                                      │
-│   R 的 block_table 销毁, 7 个块 ID 归还 BlockPool (0/1 除外)         │
+│   R 的 block_table 销毁, 7 个块 ID 归还 BlockPool (1/2 除外)         │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -123,18 +123,18 @@
 | 阶段 | 方法 | R 的实际参数与结果 |
 |------|------|-------------------|
 | A 入队 | — | km 不参与（Scheduler 预计算哈希） |
-| B① 前缀查找 | `get_computed_blocks` | hit_blocks=[blk0, blk1], hit_length=32 |
-| B② 分配 | `allocate_slots` | 70 token → touch 2 命中 + pop 3 新[2,3,4] → block_table=[0,1,2,3,4] |
-| B③ 打包 | `take_new_block_ids` | 返回 [2,3,4] → Worker 清零 |
+| B① 前缀查找 | `get_computed_blocks` | hit_blocks=[blk1, blk2], hit_length=32 |
+| B② 分配 | `allocate_slots` | 70 token → touch 2 命中 + pop 3 新[3,4,5] → block_table=[1,2,3,4,5] |
+| B③ 打包 | `take_new_block_ids` | 返回 [3,4,5] → Worker 清零 |
 | C forward | — | km 不参与（GPU 侧执行） |
-| D decode×32 | `allocate_slots` | 每步 1 token → 步11 pop[5], 步27 pop[6] |
-| D drain×2 | `take_new_block_ids` | 步11→[5], 步27→[6] → Worker 清零 |
-| D 缓存 | `cache_blocks` | 块4 步10满→入表, 块5 步26满→入表 |
-| E 释放 | `free` | 逆序 6→5→4→3→2 归还; 0/1 ref_cnt-- |
+| D decode×32 | `allocate_slots` | 每步 1 token → 步11 pop[6], 步27 pop[7] |
+| D drain×2 | `take_new_block_ids` | 步11→[6], 步27→[7] → Worker 清零 |
+| D 缓存 | `cache_blocks` | 块5 步10满→入表, 块6 步26满→入表 |
+| E 释放 | `free` | 逆序 7→6→5→4→3 归还; 1/2 ref_cnt-- |
 
 **核心概念**：
 - **BlockPool 唯一**：全模型 1 个 BlockPool（4096 块），4 worker 共享同一 block_id 命名空间
-- **block_table**：每个请求维护的 block_id 列表，R 从 [0,1,2,3,4] 增长到 [0,1,2,3,4,5,6]
+- **block_table**：每个请求维护的 block_id 列表，R 从 [1,2,3,4] 增长到 [1,2,3,4,5,6,7]
 - **Drain（排空/取清单）**：调度中 km 一边干活一边"记账"（新分配了哪些块），等调度完了**一次性取走**交给 Worker（`take_*` 方法），取完内部列表清空
 - **touch vs allocate**：命中块只 touch（ref_cnt++ , 零拷贝复用），未命中才 allocate（从 free 队列 pop 新块）
 
@@ -364,7 +364,7 @@ class KVCacheManager:
             )
         )
         # 纯FullAttention返回：
-        # computed_blocks = ([hit0, hit1],)  （按组的命中块列表）
+        # computed_blocks = ([hit1, hit2],)  （按组的命中块列表）
         # num_new_computed_tokens = 32       （命中token数）
         # num_uncached = 0                   （单组无此概念）
 
@@ -381,11 +381,11 @@ class KVCacheManager:
         return blocks, num_new_computed_tokens, shared_prefix_boundary
 ```
 
-**端到端例子**：示例 R（prompt = 70 token，前 32 token 为共享前缀 SP，由前置请求 P 缓存为块 0/1）
+**端到端例子**：示例 R（prompt = 70 token，前 32 token 为共享前缀 SP，由前置请求 P 缓存为块 1/2）
 - `request.num_tokens = 70`
 - `max_cache_hit_length = 69`（减1）
 - `request.block_hashes = [hash(t0-15), hash(t16-31), hash(t32-47), hash(t48-63)]`——只有 4 个**满块**哈希（70 // 16 = 4）；尾块 t64-69 未满**没有哈希**，需等生成填满后由 `update_block_hashes()` 补上（`request.py:257`）
-- 查找返回：命中前2个满块（P 缓存的 SP 块 0/1），共32token
+- 查找返回：命中前2个满块（P 缓存的 SP 块 1/2），共32token
 - 返回：`(KVCacheBlocks([blockA, blockB]), 32, 0)`
 
 ### 5.3 核心方法：槽位分配 `allocate_slots`（最复杂，约130行）
@@ -434,7 +434,7 @@ class KVCacheManager:
 | **变量** | `request.num_computed_tokens` | `num_new_computed_tokens` = `len(new_computed_blocks) × block_size` | `num_external_computed_tokens` | `num_new_tokens` | `num_lookahead_tokens` |
 | **含义** | 之前步已算完的 token（decode 中持续增长） | 本步前缀查找新命中的 token（③的产出） | 外部 Connector 缓存的 token，vLLM 本地无物理块 | 本步要 GPU forward 计算的 token（含 draft） | EAGLE 投机解码的 lookahead token |
 | **KV 状态** | 已在 block_table 中，ref_cnt 已加 | 命中缓存块，ref_cnt **尚未**加（等 ④ touch） | 有 KV 但在 connector 侧，vLLM 需分配空块再加载 | 无 KV，需 forward 写入 | 无 KV，需 forward 写入 |
-| **R prefill** | **0**（首次 prefill，无历史） | **32**（命中 P 缓存的块 0/1，2×16） | **0**（无 connector） | **38**（70 − 32 = 38） | **0**（无投机解码） |
+| **R prefill** | **0**（首次 prefill，无历史） | **32**（命中 P 缓存的块 1/2，2×16） | **0**（无 connector） | **38**（70 − 32 = 38） | **0**（无投机解码） |
 | **R decode 步 N** | **70+N−1**（逐步增长） | **0**（RUNNING 不再查前缀） | **0**（RUNNING 不再查前缀） | **1**（每步 1 token） | **0**（无投机解码） |
 
 > R prefill 有效组合：`new_comp(32) + new(38)` = 70 token（comp=0, ext_comp=0, lookahead=0）
@@ -670,7 +670,7 @@ return self.create_kv_cache_blocks(new_blocks)
 
 #### 端到端例子
 
-示例 R（prompt = 70 token，前 32 token 为共享前缀 SP、已由前置请求 P 缓存为块 0/1），命中32token（2块），num_new_tokens=38：
+示例 R（prompt = 70 token，前 32 token 为共享前缀 SP、已由前置请求 P 缓存为块 1/2），命中32token（2块），num_new_tokens=38：
 
 - **前置准备**：`num_local_computed_tokens = 0 + 32 = 32`，`total_computed_tokens = 32`
 - **子阶段①**：
@@ -823,7 +823,7 @@ return self.create_kv_cache_blocks(new_blocks)
 | 补缓存（可选） | `cache_blocks(req, ...)` | async PP / KV Connector 场景 forward 后外部追加 |
 | **⑧ 释放** | `free(req)` / `pop_blocks_for_free(req)` | 正常结束直接释放；延迟释放先弹出再逆序释放 |
 
-时序图可见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) §3.2-§3.5。
+时序图可见 [`0_runtime_sequence.md`](./0_runtime_sequence.md) §3.2-§3.5。
 
 ---
 

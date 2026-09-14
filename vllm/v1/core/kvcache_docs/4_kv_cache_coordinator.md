@@ -1,7 +1,7 @@
 # vLLM V1 KVCacheCoordinator 跨组协调层（Full Attention 主线）
 
 > 五层架构第 4 层｜[总览](./0_kv_cache_management_arch.md) ｜下层 ➔ [`3_single_type_kv_cache_manager.md`](./3_single_type_kv_cache_manager.md) ｜上层 ➔ [`5_kv_cache_manager.md`](./5_kv_cache_manager.md)
-> 时序位置：[`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) ③前缀查找（find_longest_cache_hit）、④分配与缓存（两阶段分配 + cache_blocks）、⑧释放（free / pop_blocks_for_free）
+> 时序位置：[`0_runtime_sequence.md`](./0_runtime_sequence.md) ③前缀查找（find_longest_cache_hit）、④分配与缓存（两阶段分配 + cache_blocks）、⑧释放（free / pop_blocks_for_free）
 >
 > 源文件：`vllm/vllm/v1/core/kv_cache_coordinator.py`
 >
@@ -20,15 +20,15 @@
 | 调度阶段 | 职责 | 对应方法 | 示例 R 中的结果 |
 |---------|------|---------|----------------|
 | **初始化** | 创建全局唯一 `BlockPool`，创建各组的 `SingleTypeKVCacheManager` | `__init__` | BlockPool 容量 4096；1 个 FullAttentionManager（group_id=0） |
-| **前缀查找③** | 透传 `FullAttentionManager.find_longest_cache_hit` | `find_longest_cache_hit` | 命中块 0/1，hit_length=32 |
-| **命中块处理④-1** | touch 命中块（`ref_cnt`+1 防驱逐） | `allocate_new_computed_blocks` | 块 0/1 的 ref_cnt 0→1 |
-| **新块分配④-2** | 透传 `FullAttentionManager.allocate_new_blocks` | `allocate_new_blocks` | 从空闲队列弹出块 2/3/4 |
-| **缓存写入④-3** | 透传 `FullAttentionManager.cache_blocks`，满块写入哈希缓存 | `cache_blocks` | 满块 2/3 入哈希表；残块 4 不入 |
-| **块释放⑧** | 透传 `FullAttentionManager.free` | `free` / `pop_blocks_for_free` | 逆序释放块 6→5→4→3→2；命中块 0/1 仅减计数 |
+| **前缀查找③** | 透传 `FullAttentionManager.find_longest_cache_hit` | `find_longest_cache_hit` | 命中块 1/2，hit_length=32 |
+| **命中块处理④-1** | touch 命中块（`ref_cnt`+1 防驱逐） | `allocate_new_computed_blocks` | 块 1/2 的 ref_cnt 0→1 |
+| **新块分配④-2** | 透传 `FullAttentionManager.allocate_new_blocks` | `allocate_new_blocks` | 从空闲队列弹出块 3/4/5 |
+| **缓存写入④-3** | 透传 `FullAttentionManager.cache_blocks`，满块写入哈希缓存 | `cache_blocks` | 满块 3/4 入哈希表；残块 5 不入 |
+| **块释放⑧** | 透传 `FullAttentionManager.free` | `free` / `pop_blocks_for_free` | 逆序释放块 7→6→5→4→3；命中块 1/2 仅减计数 |
 
 ## 2. 示例设定（全文锚点）
 
-与 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md) §2 完全一致。
+与 [`0_runtime_sequence.md`](./0_runtime_sequence.md) §2 完全一致。
 
 ### 2.1 模型与部署配置：Llama-3-8B pp2tp2
 
@@ -38,7 +38,7 @@
 | 部署 | PP=2 × TP=2（4 卡） | 每卡 16 层 / 4 KV头 / 可用显存 2 GiB |
 | block_size | 16 | scheduler_block_size = hash_block_size = block_size = 16 |
 | page_size_bytes | 32 KiB | 16×4×128×2B×2（单卡单层一页） |
-| num_blocks | **4096** | 2GiB÷32KiB÷16，min(4 卡) 对齐后（见 [`1_physical_memory.md`](./1_physical_memory.md) §4） |
+| num_blocks | **4096** | 2GiB÷32KiB÷16，min(4 卡) 对齐后（见 [`1_init_physical_memory.md`](./1_init_physical_memory.md) §4） |
 | KV 组 | **1 个**（全局，32 层） | `group_id = 0`；这是 Unitary 子类生效的前提 |
 | BlockPool | 全局唯一 | `coordinator.py:128` 基类构造中创建，所有组共享 |
 
@@ -47,15 +47,15 @@
 ```
 前置请求 P（先于 R 服务、已结束）:
   prompt = 共享前缀 SP（32 token）+ P 自己的追问
-  → P 服务时把 SP 写成满块 0/1，写满即哈希入 cached_block_hash_to_block
-  → P 结束释放后，块 0/1 成为"带哈希的缓存块"：ref_cnt=0、进 free 队列队尾（LRU 保护）
+  → P 服务时把 SP 写成满块 1/2，写满即哈希入 cached_block_hash_to_block
+  → P 结束释放后，块 1/2 成为"带哈希的缓存块"：ref_cnt=0、进 free 队列队尾（LRU 保护）
 
 示例请求 R:
   prompt     = 共享前缀 SP（32 token）+ 追加问题（38 token） = 70 token
   max_tokens = 32
-  → prefill: 命中 P 缓存的块 0/1（hit_length=32），新分配块 2/3/4
-  → decode:  续写 32 token，写满块 4 后再分配块 5/6
-  → 结束时:  block_table = [0,1,2,3,4,5,6]（102 token = 6 满块 + 1 残块）
+  → prefill: 命中 P 缓存的块 1/2（hit_length=32），新分配块 3/4/5
+  → decode:  续写 32 token，写满块 5 后再分配块 6/7
+  → 结束时:  block_table = [1,2,3,4,5,6,7]（102 token = 6 满块 + 1 残块）
 ```
 
 ## 3. 端到端时序（请求 R 视角）
@@ -73,27 +73,27 @@
 │ B. 首次调度 prefill（WAITING → RUNNING）                              │
 │                                                                      │
 │  ① coord.find_longest_cache_hit(R的hash, 69)    透传→ FM[0]         │
-│     → 逐哈希查表: 命中 P 缓存的块 0/1 (hit_length=32)                │
-│     → 返回 ([块0, 块1], 32, 0)                                      │
+│     → 逐哈希查表: 命中 P 缓存的块 1/2 (hit_length=32)                │
+│     → 返回 ([块1, 块2], 32, 0)                                      │
 │                                                                      │
-│  ② coord.allocate_new_computed_blocks(R, ([块0,块1],), 32, 0)        │
+│  ② coord.allocate_new_computed_blocks(R, ([块1,块2],), 32, 0)        │
 │     透传→ FM[0]                                                      │
-│     → touch 块 0/1: ref_cnt 0→1 (移出 free 队列, 防驱逐)              │
+│     → touch 块 1/2: ref_cnt 0→1 (移出 free 队列, 防驱逐)              │
 │                                                                      │
 │  ③ coord.allocate_new_blocks(R, 70, 70)         透传→ FM[0]         │
-│     → pop [2, 3, 4] from BlockPool.free_block_queue                  │
-│     → block_table = [0, 1, 2, 3, 4]                                 │
-│     → new_block_ids = [2, 3, 4] (供 Worker 清零)                     │
+│     → pop [3, 4, 5] from BlockPool.free_block_queue                  │
+│     → block_table = [1, 2, 3, 4, 5]                                 │
+│     → new_block_ids = [3, 4, 5] (供 Worker 清零)                     │
 │                                                                      │
 │  ④ coord.cache_blocks(R, 70)                    透传→ FM[0]         │
-│     → 满块 2(t32-47)/3(t48-63) 入 cached_block_hash_to_block         │
-│     → 残块 4(t64-69) 未满 16, 不入表                                │
+│     → 满块 3(t32-47)/4(t48-63) 入 cached_block_hash_to_block         │
+│     → 残块 5(t64-69) 未满 16, 不入表                                │
 └───────────────────────────────────────────┬──────────────────────────┘
                                             │
                                             ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │ C. GPU forward（Coordinator 不参与）                                  │
-│   4 worker 各自清零 block 2/3/4 → forward 写 70 token KV → sample    │
+│   4 worker 各自清零 block 3/4/5 → forward 写 70 token KV → sample    │
 │   → 第 1 个输出 token → R 变 RUNNING                                  │
 └───────────────────────────────────────────┬──────────────────────────┘
                                             │
@@ -106,22 +106,22 @@
 │   │  → 重置 new_block_ids (本步重新收集新块)                       │   │
 │   └──────────────────────────────────────────────────────────────┘   │
 │                                                                      │
-│   步 1~9:   coord.allocate_new_blocks(R, N, N) → 0 新块 (块4 未满)    │
+│   步 1~9:   coord.allocate_new_blocks(R, N, N) → 0 新块 (块5 未满)    │
 │             coord.cache_blocks(R, N)       → 无满块不入表              │
 │                                                                      │
 │   步 10:   coord.allocate_new_blocks(R, N, N) → 0 新块               │
-│             coord.cache_blocks(R, N)       → 块4 满(6+10=16) → 入表    │
+│             coord.cache_blocks(R, N)       → 块5 满(6+10=16) → 入表    │
 │                                                                      │
-│   步 11:   coord.allocate_new_blocks(R, N, N) → pop [5] → table+1    │
-│   步 12~25: ...                        → 0 新块, 填块5                │
+│   步 11:   coord.allocate_new_blocks(R, N, N) → pop [6] → table+1    │
+│   步 12~25: ...                        → 0 新块, 填块6                │
 │                                                                      │
-│   步 26:   coord.cache_blocks(R, N)       → 块5 满(16) → 入表         │
+│   步 26:   coord.cache_blocks(R, N)       → 块6 满(16) → 入表         │
 │                                                                      │
-│   步 27:   coord.allocate_new_blocks(R, N, N) → pop [6] → table+1    │
-│   步 28~32: ...                        → 0 新块 (块6 仅 6 token)      │
-│             coord.cache_blocks(R, N)       → 块6 未满, 不入表         │
+│   步 27:   coord.allocate_new_blocks(R, N, N) → pop [7] → table+1    │
+│   步 28~32: ...                        → 0 新块 (块7 仅 6 token)      │
+│             coord.cache_blocks(R, N)       → 块7 未满, 不入表         │
 │                                                                      │
-│   block_table 演变: [0,1,2,3,4] → [0..5] → [0..6]                    │
+│   block_table 演变: [1,2,3,4,5] → [1..6] → [1..7]                    │
 └───────────────────────────────────────────┬──────────────────────────┘
                                             │
                                             ▼
@@ -129,11 +129,11 @@
 │ E. 释放                                                               │
 │                                                                      │
 │  coord.free(R)                                  透传→ FM[0]         │
-│     → 逆序释放 block_table: 块6→5→4→3→2                            │
+│     → 逆序释放 block_table: 块7→6→5→4→3                            │
 │     ├─ ref_cnt-- 归 0 → 回 free_block_queue                          │
 │     │  有哈希 → append 队尾 (LRU 保护, 后续可前缀命中)                 │
 │     │  无哈希 → prepend 队首 (优先复用)                               │
-│     └─ 命中块 0/1: ref_cnt 1→0 (仍被 P 或其他共享, 不回收)            │
+│     └─ 命中块 1/2: ref_cnt 1→0 (P 已结束, 归零回收, 带哈希回队尾)            │
 │                                                                      │
 │  ※ pop_blocks_for_free (延迟释放变体): 先弹出不归还, 等 GPU 确认      │
 │    后再逆序 free_blocks. 示例 R 正常结束时直接 free, 不走此分支.       │
@@ -145,15 +145,15 @@
 | 阶段 | Coordinator 方法 | 透传目标 | R 的实际参数与结果 |
 |------|-----------------|----------|-------------------|
 | A 入队 | — | — | 不参与（Scheduler 预计算哈希） |
-| B① 前缀查找 | `find_longest_cache_hit` | FM[0] | 命中 [块0,块1], hit_length=32 |
-| B② touch | `allocate_new_computed_blocks` | FM[0] | touch 0/1, ref_cnt 0→1 |
-| B③ 分配 | `allocate_new_blocks` | FM[0] | pop [2,3,4] → block_table=[0,1,2,3,4] |
-| B④ 缓存 | `cache_blocks` | FM[0] | 满块2/3 入哈希表 |
+| B① 前缀查找 | `find_longest_cache_hit` | FM[0] | 命中 [块1,块2], hit_length=32 |
+| B② touch | `allocate_new_computed_blocks` | FM[0] | touch 1/2, ref_cnt 0→1 |
+| B③ 分配 | `allocate_new_blocks` | FM[0] | pop [3,4,5] → block_table=[1,2,3,4,5] |
+| B④ 缓存 | `cache_blocks` | FM[0] | 满块3/4 入哈希表 |
 | C forward | — | — | 不参与（GPU 侧执行） |
 | D 每步 | `new_step_starts` | FM[0] | 重置 new_block_ids |
-| D decode | `allocate_new_blocks` | FM[0] | 步11→pop[5], 步27→pop[6] |
-| D 满块 | `cache_blocks` | FM[0] | 步10→块4入表, 步26→块5入表 |
-| E 释放 | `free` | FM[0] | 逆序 6→5→4→3→2 归还; 0/1 ref_cnt-- |
+| D decode | `allocate_new_blocks` | FM[0] | 步11→pop[6], 步27→pop[7] |
+| D 满块 | `cache_blocks` | FM[0] | 步10→块5入表, 步26→块6入表 |
+| E 释放 | `free` | FM[0] | 逆序 7→6→5→4→3 归还; 1/2 ref_cnt-- |
 
 > **一句话总结**：R 与 Coordinator 的全部交互只有 7 个方法，每个都**原样透传**给唯一的 `FullAttentionManager`。Coordinator 在单组场景下的存在价值纯粹是**接口统一**——让上层 KVCacheManager 的代码不必区分单组还是多组。
 
@@ -238,7 +238,7 @@ class KVCacheCoordinator(ABC):
 
 > **Llama-3-8B pp2tp2 中各关键值的落点**：
 > - `kv_cache_config.kv_cache_groups` 只有 1 个元素 → `single_type_managers` 是长度为 1 的 tuple，`single_type_managers[0]` 就是 `FullAttentionManager`，`kv_cache_group_id=0`
-> - `BlockPool(num_gpu_blocks=4096)` —— 全局唯一，此后块 0/1/2/3/4/5/6 全部从这里分配
+> - `BlockPool(num_gpu_blocks=4096)` —— 全局唯一，此后块 1..7 全部从这里分配（块 0 开池即摘作 `null_block`，不参与分配）
 > - `scheduler_block_size = hash_block_size = block_size = 16`（三者相等，校验断言轻松通过）
 > - `eagle_group_ids = set()`（Llama-3-8B 不用 EAGLE）
 
@@ -272,7 +272,7 @@ class KVCacheCoordinator(ABC):
         return num_blocks_to_allocate
 ```
 
-> **示例 R 中发生了什么**：prefill 时 `num_tokens=70`、`new_computed_blocks=([块0, 块1],)`、`num_local_computed_tokens=32`。组 0 的 manager 算出：70 token 需 5 块槽位，已有 2 块 → **返回 3**。Scheduler 拿这个数做调度准入判断（显存够不够），真正分配在 §5.4。
+> **示例 R 中发生了什么**：prefill 时 `num_tokens=70`、`new_computed_blocks=([块1, 块2],)`、`num_local_computed_tokens=32`。组 0 的 manager 算出：70 token 需 5 块槽位，已有 2 块 → **返回 3**。Scheduler 拿这个数做调度准入判断（显存够不够），真正分配在 §5.4。
 
 ### 5.3 touch 命中块 `allocate_new_computed_blocks`
 
@@ -315,7 +315,7 @@ class KVCacheCoordinator(ABC):
             ...
 ```
 
-> **示例 R 中发生了什么**：单组，循环只跑 i=0 一次 → `FullAttentionManager.add_local_computed_blocks(R, [块0, 块1], 32, 0)` → `block_pool.touch()` 把块 0/1 的 `ref_cnt` 从 0 加到 1。touch 后块 0/1 脱离"可驱逐"状态，接下来分配块 2/3/4 时**绝不会**把刚命中的前缀块挤出去。
+> **示例 R 中发生了什么**：单组，循环只跑 i=0 一次 → `FullAttentionManager.add_local_computed_blocks(R, [块1, 块2], 32, 0)` → `block_pool.touch()` 把块 1/2 的 `ref_cnt` 从 0 加到 1。touch 后块 1/2 脱离"可驱逐"状态，接下来分配块 3/4/5 时**绝不会**把刚命中的前缀块挤出去。
 
 ### 5.4 分配新块 `allocate_new_blocks`
 
@@ -336,11 +336,11 @@ class KVCacheCoordinator(ABC):
             )
             for manager in self.single_type_managers
         )
-        # 纯 FullAttention 返回: ([块2, 块3, 块4],)
+        # 纯 FullAttention 返回: ([块3, 块4, 块5],)
         # 外层 tuple 是组维度，内层 list 是该组的新块
 ```
 
-> **示例 R 中发生了什么**：返回 `([块2, 块3, 块4],)`。三个块从 BlockPool 的 free_block_queue 弹出（`popleft_n(3)`），`req_to_blocks[R] = [块0, 块1, 块2, 块3, 块4]`，`new_block_ids` 收集 [2,3,4] 供 SchedulerOutput⑤ 附带清零。decode 期间本方法还会被调用：块 4 写满后再分配块 5、块 6 各一次。
+> **示例 R 中发生了什么**：返回 `([块3, 块4, 块5],)`。三个块从 BlockPool 的 free_block_queue 弹出（`popleft_n(3)`），`req_to_blocks[R] = [块1, 块2, 块3, 块4, 块5]`，`new_block_ids` 收集 [3,4,5] 供 SchedulerOutput⑤ 附带清零。decode 期间本方法还会被调用：块 5 写满后再分配块 6、块 7 各一次。
 
 ### 5.5 缓存写入 `cache_blocks`
 
@@ -353,7 +353,7 @@ class KVCacheCoordinator(ABC):
             manager.cache_blocks(request, num_computed_tokens)
 ```
 
-> **示例 R 中发生了什么**：prefill forward 完成后 `num_computed_tokens=70` → 满块 2/3（t32-47、t48-63）以链式哈希 `hash(P的hash前缀 + 本块token)` 写入 `cached_block_hash_to_block`；残块 4（6 token）未满**不入表**。decode 期间每写满一块（块 4 步10、块 5 步26）都会再触发一次入表。
+> **示例 R 中发生了什么**：prefill forward 完成后 `num_computed_tokens=70` → 满块 3/4（t32-47、t48-63）以链式哈希 `hash(P的hash前缀 + 本块token)` 写入 `cached_block_hash_to_block`；残块 5（6 token）未满**不入表**。decode 期间每写满一块（块 5 步10、块 6 步26）都会再触发一次入表。
 
 ### 5.6 块释放 `free`
 
@@ -370,7 +370,7 @@ class KVCacheCoordinator(ABC):
             # 3. 删除 req_to_blocks 中的记录
 ```
 
-> **示例 R 中发生了什么**：R 生成完 32 token 结束（共 102 token，7 块）→ `manager.free(R)` 处理块 0~6：命中块 0/1 `ref_cnt` 1→0（重新可复用）；自有块 2~6 `ref_cnt` 1→0 放回空闲队列——有哈希的进**队尾**、无哈希的进**队首**。
+> **示例 R 中发生了什么**：R 生成完 32 token 结束（共 102 token，7 块）→ `manager.free(R)` 处理块 1~7：命中块 1/2 `ref_cnt` 1→0（重新可复用）；自有块 3~7 `ref_cnt` 1→0 放回空闲队列——有哈希的进**队尾**、无哈希的进**队首**。
 
 ### 5.7 延迟释放 `pop_blocks_for_free`
 
@@ -386,8 +386,8 @@ class KVCacheCoordinator(ABC):
         for manager in self.single_type_managers:
             blocks.extend(manager.pop_blocks_for_free(request_id))
         return blocks
-        # 返回分配顺序: [块0, 块1, ..., 块6]
-        # 上层逆序: free([块6, 块5, 块4, 块3, 块2]) — 残块先归还, 下次优先复用
+        # 返回分配顺序: [块1, 块2, ..., 块7]
+        # 上层逆序: free([块7, 块6, 块5, 块4, 块3]) — 残块先归还, 下次优先复用
 ```
 
 > **示例 R 中发生了什么**：R 正常结束时直接 `free`，不走此分支。此方法用于 GPU in-flight 期间不能立即释放的场景（如异步 KV 加载）。
@@ -410,7 +410,7 @@ class KVCacheCoordinator(ABC):
         """获取请求当前的所有块（按组）"""
         return tuple(m.req_to_blocks.get(request_id) or []
                      for m in self.single_type_managers)
-        # 示例 R prefill 后: ([块0, 块1, 块2, 块3, 块4],)
+        # 示例 R prefill 后: ([块1, 块2, 块3, 块4, 块5],)
 
     def new_step_starts(self) -> None:
         """通知每个 manager 新调度步开始（重置 new_block_ids 等）"""
@@ -489,14 +489,14 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
 
         # 单组场景没有"未缓存公共前缀"，第三个返回值恒为 0
         return hit_blocks, hit_length, 0
-        # hit_blocks 格式: ([blk0, blk1],)  ← 外层 tuple 是组维度
+        # hit_blocks 格式: ([blk1, blk2],)  ← 外层 tuple 是组维度
 ```
 
 > **示例 R 中发生了什么（端到端）**：
 > - 入参：`block_hashes = [hash(t0-15), hash(t16-31), hash(t32-47), hash(t48-63)]`、`max_cache_hit_length=69`
 > - 透传：`FullAttentionManager.find_longest_cache_hit(..., kv_cache_group_ids=[0], alignment_tokens=16)` 逐哈希查 `cached_block_hash_to_block`
-> - 查表：前 2 个哈希命中（P 缓存的 SP 块 0/1）；hash(t32-47) 未命中（P 只缓存到 t31 就结束）→ 链式查找到此截断
-> - 返回：`([块0, 块1], 32, 0)` —— 命中 2 个满块共 32 token，剩余 38 token 需重新计算
+> - 查表：前 2 个哈希命中（P 缓存的 SP 块 1/2）；hash(t32-47) 未命中（P 只缓存到 t31 就结束）→ 链式查找到此截断
+> - 返回：`([块1, 块2], 32, 0)` —— 命中 2 个满块共 32 token，剩余 38 token 需重新计算
 
 ## 7. 扩展子类概述
 
@@ -508,7 +508,7 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
 
 - **适用场景**：配置中关闭了前缀缓存（`enable_caching=False`）
 - **核心特点**：`find_longest_cache_hit` 永远返回空，所有请求每次从头分配新块
-- **存在意义**：提供一个"关闭前缀缓存"的开关，不用改其他代码逻辑。若示例 R 走这里：块 0/1 不可复用，prefill 5 块全新分配
+- **存在意义**：提供一个"关闭前缀缓存"的开关，不用改其他代码逻辑。若示例 R 走这里：块 1/2 不可复用，prefill 5 块全新分配
 
 ### 7.2 HybridKVCacheCoordinator
 
@@ -526,7 +526,7 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
 
 1. **BlockPool 统一管理**：基类 `__init__` 创建唯一 BlockPool（示例中容量 4096），所有 SingleTypeKVCacheManager 共享，保证 block_id 全局唯一
 2. **透传层设计**：UnitaryKVCacheCoordinator 是典型的"透明代理"，存在意义是**接口统一**——让上层 KVCacheManager 用完全相同的代码处理单组和多组
-3. **两阶段分配**：`allocate_new_computed_blocks`（touch）→ `allocate_new_blocks`（分配）的顺序修复了多组竞态（issue #33775）；单组场景同样执行，示例 R 中 touch 块 0/1 后才分块 2/3/4
-4. **逆序释放优化**：`pop_blocks_for_free` 返回分配顺序的块，上层必须逆序 `free_blocks`（示例 R：块 6→5→4→3→2），让残块优先被复用
+3. **两阶段分配**：`allocate_new_computed_blocks`（touch）→ `allocate_new_blocks`（分配）的顺序修复了多组竞态（issue #33775）；单组场景同样执行，示例 R 中 touch 块 1/2 后才分块 3/4/5
+4. **逆序释放优化**：`pop_blocks_for_free` 返回分配顺序的块，上层必须逆序 `free_blocks`（示例 R：块 7→6→5→4→3），让残块优先被复用
 5. **多组复杂度隔离**：不动点迭代、SpecGroup 等复杂逻辑全部封装在 HybridKVCacheCoordinator，纯 FullAttention 场景零开销
 6. **抽象工厂创建**：`get_kv_cache_coordinator` 按组数自动选择实现，上层无感知

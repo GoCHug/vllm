@@ -4,7 +4,7 @@
 > 与按文件分章节的文档不同，这里以**一次调用的路径**为序，把散落在 4 个文件里的函数**就地**串起来讲。
 >
 > 环境：Llama-3-8B · Pipeline/Tensor Parallel 均为 2（4 卡）· 单 KV group（纯 Full Attention）· 单 BlockPool（4096 块，`block_size=16`）。
-> 请求 **R**：prompt = 70 token（含 32 token 共享前缀 SP），前置请求 P 已把 SP 写入前缀缓存（块 0/1 为带哈希缓存块）。R 续写 31 个 token 后完成释放，最终占用块 0..6 共 7 块。
+> 请求 **R**：prompt = 70 token（含 32 token 共享前缀 SP），前置请求 P 已把 SP 写入前缀缓存（块 1/2 为带哈希缓存块）。R 续写 31 个 token 后完成释放，最终占用块 1..7 共 7 块（block 0 开池即被 `BlockPool` 摘作 `null_block`，不参与分配）。
 > **本章编号**：① 前缀查找 · ② 分配与缓存 · ③ decode · ④ 释放。
 >
 > 涉及源文件（调用栈自顶向下）：
@@ -29,7 +29,7 @@
 │  │  │ KVCacheManager.get_computed_blocks        kv_cache_manager.py│
 │  │  │   └─ UnitaryKVCacheCoordinator.find_longest_cache_hit     │
 │  │  │        └─ FullAttentionManager.find_longest_cache_hit     │
-│  │  │             └─ BlockPool.get_cached_block → 命中块 0/1     │
+│  │  │             └─ BlockPool.get_cached_block → 命中块 1/2     │
 │  │  └───────────────────────────────────────────────────────────┘
 │  ├─ 阶段② 分配与缓存  allocate_slots（调度 ②-step）
 │  │  ┌───────────────────────────────────────────────────────────┐
@@ -41,26 +41,26 @@
 │  │  │   │           └─ BlockPool.touch       → 命中块 ref_cnt++   │
 │  │  │   ├─ ②c Coordinator.allocate_new_blocks                    │
 │  │  │   │     └─ FullAttentionManager.allocate_new_blocks        │
-│  │  │   │           └─ BlockPool.get_new_blocks → 弹 2/3/4        │
-│  │  │   │       block_table = [命中0, 命中1, 新2, 新3, 新4]        │
+│  │  │   │           └─ BlockPool.get_new_blocks → 弹 3/4/5        │
+│  │  │   │       block_table = [命中1, 命中2, 新3, 新4, 新5]        │
 │  │  │   └─ ②d Coordinator.cache_blocks                           │
 │  │  │         └─ FullAttentionManager.cache_blocks               │
-│  │  │               └─ BlockPool.cache_full_blocks → 满块2、3入哈希│
-│  │  │                   （块4 未满不入）                           │
+│  │  │               └─ BlockPool.cache_full_blocks → 满块3、4入哈希│
+│  │  │                   （块5 未满不入）                           │
 │  │  └───────────────────────────────────────────────────────────┘
-│  ├─ SchedulerOutput   # 调度输出，附清零块 id 2/3/4
+│  ├─ SchedulerOutput   # 调度输出，附清零块 id 3/4/5
 │  └─ GPUModelRunner.execute_model   # forward 写 70 token KV → sample → 第1token
 → 请求进入 RUNNING 队列
 ├─ 阶段③ decode（续写 31 步，每步都做 ② 的"减配版" + SchedulerOutput + execute_model）
-│  块4占6/16 → 步1~10 填满块4(0分配)；步11 申请块5；步12~26 填满块5；步27 申请块6；步28~31 块6占5/16未满
+│  块5占6/16 → 步1~10 填满块5(0分配)；步11 申请块6；步12~26 填满块6；步27 申请块7；步28~31 块7占5/16未满
 │  情况A·0分配（当前块未满） / 情况B·申请1块（跨块边界）
-│  SchedulerOutput 附清零块 id = 新申请的块（步11块5、步27块6）；0分配步无清零
+│  SchedulerOutput 附清零块 id = 新申请的块（步11块6、步27块7）；0分配步无清零
 → 请求生成结束（FINISHED_*）→ 从 RUNNING 移除
-└─ 阶段④ 释放  KVCacheManager.free（逆序归还 6→5→4→3→2→1→0）
+└─ 阶段④ 释放  KVCacheManager.free（逆序归还 7→6→5→4→3→2→1）
    └─ UnitaryKVCacheCoordinator.free
       └─ FullAttentionManager.free
          └─ BlockPool.free_blocks   # ref_cnt--，归 0 才回收
-             命中块 0/1（共享）→ 仅减 ref_cnt；有哈希 2/3/4/5 → 逆序 append 队尾；无哈希 6 → prepend 队首
+             命中块 1/2（共享）→ 仅减 ref_cnt；有哈希 3/4/5/6 → 逆序 append 队尾；无哈希 7 → prepend 队首
 ```
 
 > **阅读口诀**：全生命周期=「**一次 prefill（①查+②分）** → **③ 的 31 步 decode（②减配重复）** → **④ 释放**」。其中 ①只**查**（读已有缓存，不做分配）；②才**分**（touch 命中 + 申请新块），并在分配后**顺手缓存新增的满块**。两阶段共用一个 BlockPool、一套 `ref_cnt`。SchedulerOutput / `execute_model` 是每个调度步的连接件（无独立编号）。
@@ -116,7 +116,7 @@ def get_computed_blocks(self, request: Request) -> tuple[KVCacheBlocks, int, int
     return blocks, num_new_computed_tokens, shared_prefix_boundary
 ```
 
-**R 的落点**：`block_hashes` 是 4 个**满块**哈希（`70 // 16 = 4`，尾块 t64-69 未满无哈希）。本层把 `max_cache_hit_length=69` 传下去，最终拿到 `computed_blocks=([hit0块, hit1块],)`、`num_new_computed_tokens=32`。
+**R 的落点**：`block_hashes` 是 4 个**满块**哈希（`70 // 16 = 4`，尾块 t64-69 未满无哈希）。本层把 `max_cache_hit_length=69` 传下去，最终拿到 `computed_blocks=([hit1块, hit2块],)`、`num_new_computed_tokens=32`。
 
 ***
 
@@ -204,14 +204,14 @@ def find_longest_cache_hit(cls, block_hashes, max_length, kv_cache_group_ids,
     num_blocks = cdiv(hit_length, block_size)
     for computed in computed_blocks:
         del computed[num_blocks:]     # 裁掉超出命中长度的块
-    return computed_blocks, hit_length   # = ([块0, 块1],), 32
+    return computed_blocks, hit_length   # = ([块1, 块2],), 32
 ```
 
 **R 的命中过程**：
 
-- 4 个满块哈希依次查：`hash(t0-15)`→**命中块0**；`hash(t16-31)`→**命中块1**；`hash(t32-47)`→**miss**，`break`。
+- 4 个满块哈希依次查：`hash(t0-15)`→**命中块1**；`hash(t16-31)`→**命中块2**；`hash(t32-47)`→**miss**，`break`。
 
-- `hit_length = 2 * 16 = 32`，返回 `([块0, 块1],), 32`。
+- `hit_length = 2 * 16 = 32`，返回 `([块1, 块2],), 32`。
 
 > **生活化类比**：这像对着一本"读书笔记目录"逐页对答案——第一页对上了、第二页对上了，到第三页第一次没对上，说明后面的页也不再是同一个"章节"了，直接停。这就是链式哈希带来的**提前短路**。
 
@@ -235,7 +235,7 @@ def get_cached_block(self, block_hash, kv_cache_group_ids) -> list[KVCacheBlock]
     return cached_blocks                # 返回该哈希在每组的缓存块
 ```
 
-**R 的落点**：`hash(t0-15)+group0` 命中块 0，`hash(t16-31)+group0` 命中块 1；`hash(t32-47)` 在哈希表中查不到 → 返回 `None` → 触发 ①-3 的 `break`。
+**R 的落点**：`hash(t0-15)+group0` 命中块 1，`hash(t16-31)+group0` 命中块 2；`hash(t32-47)` 在哈希表中查不到 → 返回 `None` → 触发 ①-3 的 `break`。
 
 > `cached_block_hash_to_block` 就是五层架构里的**前缀缓存哈希表**。键 = `(token哈希, group_id)`，值 = `KVCacheBlock`；同时块上也存着 `block_hash`（`KVCacheBlock` 的 `_block_hash` 字段）形成双向索引，驱逐/更新时能互删（见 ②d）。
 
@@ -375,7 +375,7 @@ if self._has_partial_local_hit(...):                           # 无部分命中
 return num_new_blocks + num_evictable_blocks                   # = 3
 ```
 
-**结论**：需要 **3 个新块**（块 2、3、4）。加上命中的 2 块，R 最终占 5 块。
+**结论**：需要 **3 个新块**（块 3、4、5）。加上命中的 2 块，R 最终占 5 块。
 
 > **为什么是"总块 - 命中块"**：`5` 是装着全部 70 token 所需的总块数，其中 `2` 块已被前缀缓存命中（复用不新分），所以真正要从空闲池 pop 的只有 `5 - 2 = 3` 块。
 
@@ -421,12 +421,12 @@ num_total_computed_tokens = num_local_computed_tokens + num_external_computed_to
 
 # FullAttention：get_num_skipped_tokens=0 → 不裁剪，直接全部touch
 if self.enable_caching:
-    self.block_pool.touch(new_computed_blocks)  # 命中块 0/1 → touch（见 ②b-3）
+    self.block_pool.touch(new_computed_blocks)  # 命中块 1/2 → touch（见 ②b-3）
 else:
     assert not any(new_computed_blocks)
 
 # 把命中的块正式挂到本请求名下
-req_blocks.extend(new_computed_blocks)          # req_to_blocks[R] = [块0, 块1]
+req_blocks.extend(new_computed_blocks)          # req_to_blocks[R] = [块1, 块2]
 
 # 标记这些块"已缓存"，cache_blocks 不用重复缓存
 self.num_cached_block[request_id] = len(req_blocks)          # = 2
@@ -449,13 +449,13 @@ def touch(self, blocks: Sequence[KVCacheBlock]) -> None:
             self.metrics_collector.on_block_accessed(block)
 ```
 
-**R 的落点**：块 0、块 1 的 `ref_cnt` 各 +1（此前 P 在用时已是 1，touch 后变 2，表示 P、R 共享）。这两个命中块**零拷贝复用**，不重新分配物理块。
+**R 的落点**：块 1、块 2 的 `ref_cnt` 各 +1（此前 P 在用时已是 1，touch 后变 2，表示 P、R 共享）。这两个命中块**零拷贝复用**，不重新分配物理块。
 
 > **为什么必须 touch 后再分新块**：只有 `ref_cnt > 0` 的块才能免疫驱逐。若先申请新块（可能触发 LRU 驱逐）再 touch，命中块可能在驱逐名单上被误杀。
 
 ***
 
-### ②c. `allocate_new_blocks`：为新 token 申请新块 `2/3/4`
+### ②c. `allocate_new_blocks`：为新 token 申请新块 `3/4/5`
 
 #### ②c-1. `UnitaryKVCacheCoordinator.allocate_new_blocks`
 
@@ -485,14 +485,14 @@ if request_id in self._partial_hit_reqs:
     # 部分命中才走CoW：把共享尾部重定向到私有副本块（本环境无部分命中）
     ...
 
-req_blocks = self.req_to_blocks[request_id]            # [块0, 块1]
+req_blocks = self.req_to_blocks[request_id]            # [块1, 块2]
 num_required_blocks = cdiv(num_tokens, self.block_size) # cdiv(70,16)=5
 num_new_blocks = num_required_blocks - len(req_blocks)  # 5 - 2 = 3
 if num_new_blocks <= 0:
     return cow_blocks
 else:
-    new_blocks = self.block_pool.get_new_blocks(num_new_blocks)  # pop 2/3/4
-    req_blocks.extend(new_blocks)        # block_table=[0,1,2,3,4]
+    new_blocks = self.block_pool.get_new_blocks(num_new_blocks)  # pop 3/4/5
+    req_blocks.extend(new_blocks)        # block_table=[1,2,3,4,5]
     if self._record_new_block_ids:
         self.new_block_ids.extend(b.block_id for b in new_blocks)  # 记下待清零
     return cow_blocks + new_blocks
@@ -507,7 +507,7 @@ def get_new_blocks(self, num_blocks: int) -> list[KVCacheBlock]:
     if num_blocks > self.get_num_free_blocks():
         raise ValueError(...)              # 防超额申请
 
-    ret: list[KVCacheBlock] = self.free_block_queue.popleft_n(num_blocks)  # 队首 pop 2/3/4
+    ret: list[KVCacheBlock] = self.free_block_queue.popleft_n(num_blocks)  # 队首 pop 3/4/5
 
     if self.enable_caching:
         for block in ret:
@@ -518,16 +518,16 @@ def get_new_blocks(self, num_blocks: int) -> list[KVCacheBlock]:
     else:
         ...   # 不缓存场景：只 ref_cnt++
 
-    return ret     # 返回 2/3/4 三块
+    return ret     # 返回 3/4/5 三块
 ```
 
-**R 的落点**：从空闲队列队首弹出块 2、3、4，`ref_cnt` 各记为 1，挂到 `req_to_blocks[R]`，使 `block_table=[0,1,2,3,4]`。同时 `new_block_ids` 攒下 `[2,3,4]`，供调度收尾时 `take_new_block_ids()` 交给 4 个 worker 在 forward 前清零。
+**R 的落点**：从空闲队列队首弹出块 3、4、5，`ref_cnt` 各记为 1，挂到 `req_to_blocks[R]`，使 `block_table=[1,2,3,4,5]`。同时 `new_block_ids` 攒下 `[3,4,5]`，供调度收尾时 `take_new_block_ids()` 交给 4 个 worker 在 forward 前清零。
 
 > **生活化类比**：命中块 = "练习题册里的旧笔记页"（直接复用前面那本书的页）；新块 = "从练习册拆下 3 张空白页"填到当前这本里。`new_block_ids` 像一张"待批注页"清单，交给工人(worker)先把页清空再写字。
 
 ***
 
-### ②d. `cache_blocks`：把新增满块写进前缀缓存 `2/3`
+### ②d. `cache_blocks`：把新增满块写进前缀缓存 `3/4`
 
 #### ②d-1. `UnitaryKVCacheCoordinator.cache_blocks`
 
@@ -559,8 +559,8 @@ def cache_blocks(self, request, num_tokens, retention_interval=None):
 
     self.block_pool.cache_full_blocks(
         request=request,
-        blocks=self.req_to_blocks[request.request_id],   # [0,1,2,3,4]
-        num_cached_blocks=num_cached_blocks,             # 2（块0/1已缓存）
+        blocks=self.req_to_blocks[request.request_id],   # [1,2,3,4,5]
+        num_cached_blocks=num_cached_blocks,             # 2（块1/2已缓存）
         num_full_blocks=num_full_blocks,                 # 4（要缓存到第4块）
         block_size=self.block_size,                      # 16
         kv_cache_group_id=self.kv_cache_group_id,
@@ -577,7 +577,7 @@ def cache_blocks(self, request, num_tokens, retention_interval=None):
     self._cache_partial_tail_block(request, num_tokens)
 ```
 
-**关键解读**：`num_full_blocks=4` 表示要缓存到第 4 块满块；但前两块（块0/1）已在前缀缓存中（`num_cached_blocks=2`），所以实际**新缓存的区间是** **`blocks[2:4]`，即块 2、块 3**。块 4 只有 6 个 token 未满，**不入哈希表**。
+**关键解读**：`num_full_blocks=4` 表示要缓存到第 4 块满块；但前两块（块1/2）已在前缀缓存中（`num_cached_blocks=2`），所以实际**新缓存的区间是** **`blocks[2:4]`（列表位置 2..3），即块 3、块 4**。块 5 只有 6 个 token 未满，**不入哈希表**。
 
 #### ②d-3. `BlockPool.cache_full_blocks`
 
@@ -590,13 +590,13 @@ def cache_full_blocks(self, request, blocks, num_cached_blocks,
     if num_cached_blocks >= num_full_blocks:
         return
 
-    new_full_blocks = blocks[num_cached_blocks:num_full_blocks]   # = [块2, 块3]
+    new_full_blocks = blocks[num_cached_blocks:num_full_blocks]   # = [块3, 块4]
 
     # 把请求的全部块哈希里，取本轮要缓存的部分
     block_hashes = resolve_block_hashes(request.block_hashes, self.hash_block_size, block_size)
     new_block_hashes = block_hashes[num_cached_blocks:]           # 从头取
 
-    for i, blk in enumerate(new_full_blocks):                     # 依次处理块2、块3
+    for i, blk in enumerate(new_full_blocks):                     # 依次处理块3、块4
         if blk.is_null or (block_mask is not None and not block_mask[i]):
             continue
         block_hash = new_block_hashes[i]                          # hash(t32-47)/hash(t48-63)
@@ -604,7 +604,7 @@ def cache_full_blocks(self, request, blocks, num_cached_blocks,
 
         block_hash_with_group_id = make_block_hash_with_group_id(block_hash, kv_cache_group_id)
         if blk.block_hash is not None:
-            # 该块已有hash（partial→full升级）才需要先清旧键（本环境块2/3是全新块，不走）
+            # 该块已有hash（partial→full升级）才需要先清旧键（本环境块3/4是全新块，不走）
             ...
         self._insert_block_hash(block_hash_with_group_id, blk, num_tokens=num_hash_tokens)
     ...
@@ -613,7 +613,7 @@ def cache_full_blocks(self, request, blocks, num_cached_blocks,
 
 `_insert_block_hash`（`block_pool.py:607-627`）：把 `(块哈希, group)` → `块` 写进 `cached_block_hash_to_block`，同/反向索引一起维护（块上 `set_block_hash`）。
 
-**R 的落点**：块 2 记 `hash(t32-47)`、块 3 记 `hash(t48-63)`，双双入前缀缓存哈希表。此后任何请求碰到 `t32-63` 的哈希都能命中复用。块 4（只有 t64-69，6 token）**未满**，等 decode 填满后再由后续步的 `cache_blocks` 补录。
+**R 的落点**：块 3 记 `hash(t32-47)`、块 4 记 `hash(t48-63)`，双双入前缀缓存哈希表。此后任何请求碰到 `t32-63` 的哈希都能命中复用。块 5（只有 t64-69，6 token）**未满**，等 decode 填满后再由后续步的 `cache_blocks` 补录。
 
 ***
 
@@ -629,7 +629,7 @@ def take_new_block_ids(self) -> list[int]:
     ids = []
     for mgr in self.coordinator.single_type_managers:
         ids.extend(mgr.take_new_block_ids())   # 取出并清空
-    return ids          # R场景返回 [2, 3, 4]
+    return ids          # R场景返回 [3, 4, 5]
 
 # SingleTypeManager（真正持 new_block_ids）
 def take_new_block_ids(self):
@@ -638,7 +638,7 @@ def take_new_block_ids(self):
     return ids
 ```
 
-4 个 worker 拿到 `[2,3,4]` 后在 GPU 上对这三块的 KV 内存执行 memset 清零，随后 forward 写入新 KV。
+4 个 worker 拿到 `[3,4,5]` 后在 GPU 上对这三块的 KV 内存执行 memset 清零，随后 forward 写入新 KV。
 
 > **Drain 模式**：调度过程中先"记账"（`new_block_ids` 累加），调度结束后**一次性取走并清空**，取完内部归零，避免反复取、重复清零。
 
@@ -659,21 +659,21 @@ R 进入 RUNNING 后不再 prefill，而是单 token 逐次续写。**每个 dec
 
 ### ③-2. R 的 31 步数值分布（对照你的 outline）
 
-prefill 结束时块 4 已占 `6/16`（t64-69），还剩 10 个空位：
+prefill 结束时块 5 已占 `6/16`（t64-69），还剩 10 个空位：
 
 | 步数         | 落点             | 动作       | 状态变化                                                |
 | ---------- | -------------- | -------- | --------------------------------------------------- |
-| 步1 \~ 步10  | 写进块4剩余 10 个空位  | 情况A（0分配） | 块4 填满（步10 时满 → ②d cache 补录 `hash(t64-79)`）          |
-| **步11**    | 跨入块5           | **情况B**  | 申请块5（`get_new_blocks(1)`），SchedulerOutput 附清零块 id=5 |
-| 步12 \~ 步26 | 写进块5（15 token） | 情况A      | 块5 填满（步26 时满 → ②d 补录 `hash(t80-95)`）                |
-| **步27**    | 跨入块6           | **情况B**  | 申请块6，SchedulerOutput 附清零块 id=6                      |
-| 步28 \~ 步31 | 写进块6（4 token）  | 情况A      | 块6 占 `5/16` 未满 → 不入哈希表，也无清零块                        |
+| 步1 \~ 步10  | 写进块5剩余 10 个空位  | 情况A（0分配） | 块5 填满（步10 时满 → ②d cache 补录 `hash(t64-79)`）          |
+| **步11**    | 跨入块6           | **情况B**  | 申请块6（`get_new_blocks(1)`），SchedulerOutput 附清零块 id=6 |
+| 步12 \~ 步26 | 写进块6（15 token） | 情况A      | 块6 填满（步26 时满 → ②d 补录 `hash(t80-95)`）                |
+| **步27**    | 跨入块7           | **情况B**  | 申请块7，SchedulerOutput 附清零块 id=7                      |
+| 步28 \~ 步31 | 写进块7（4 token）  | 情况A      | 块7 占 `5/16` 未满 → 不入哈希表，也无清零块                        |
 
 - **31 步里两次申请新块**（步11、步27），其余 29 步为 0 分配；0 分配步的 `SchedulerOutput` **不附带清零块 id**。
 
 - 步11/步27 的"新申请块"即本步要清零的块（`take_new_block_ids` 取到后交给 worker memset）。
 
-- 最终 `req_to_blocks[R] = [块0, 块1, 块2, 块3, 块4, 块5, 块6]`，共 7 块；`ref_cnt`：块0/1=2（共享），块2..6=1。
+- 最终 `req_to_blocks[R] = [块1, 块2, 块3, 块4, 块5, 块6, 块7]`，共 7 块；`ref_cnt`：块1/2=2（共享），块3..7=1。
 
 - 每步末尾的 `GPUModelRunner.execute_model` 与首次调度为**同一组件**：按 `block_table` 读写 KV → forward → sample → 产出 1 个 token。
 
@@ -695,14 +695,14 @@ KVCacheManager.free(request)         # kv_cache_manager.py:567
 ```python
 # SingleTypeManager.free —— pop 本请求全部块，逆序交给 BlockPool
 def free(self, request_id: str) -> None:
-    # 逆序释放（rev → 6,5,4,3,2,1,0），让尾块先被回收/保留
+    # 逆序释放（rev → 7,6,5,4,3,2,1），让尾块先被回收/保留
     self.block_pool.free_blocks(reversed(self.pop_blocks_for_free(request_id)))
 
 # BlockPool.free_blocks —— 逐个 ref_cnt-1，归 0 的块才决定去队首/队尾
 def free_blocks(self, ordered_blocks):
     blocks_with_hash = []
     blocks_without_hash = []
-    for block in ordered_blocks:            # 逐个逆序到位：6→5→4→3→2→1→0
+    for block in ordered_blocks:            # 逐个逆序到位：7→6→5→4→3→2→1
         block.ref_cnt -= 1                  # 引用计数-1
         if block.ref_cnt == 0 and not block.is_null:   # 归 0 才真正回收
             if block.block_hash is None and self.enable_caching:
@@ -713,17 +713,17 @@ def free_blocks(self, ordered_blocks):
     self.free_block_queue.append_n(blocks_with_hash)      # 有哈希 → append 队尾
 ```
 
-逆序释放 `6→5→4→3→2→1→0` 的三种命运：
+逆序释放 `7→6→5→4→3→2→1` 的三种命运：
 
 | 释放的块     | 块属性                         | `free_blocks` 的行为                              |
 | -------- | --------------------------- | ---------------------------------------------- |
-| 块0/1     | **共享命中块**（ref\_cnt=2，P 仍在用） | 仅 `ref_cnt -= 1`（2→1），**不回收**，仍在结构里供 P 继续使用    |
-| 块2/3/4/5 | **有哈希**（已入前缀缓存）             | `ref_cnt -= 1`（1→0）后 **append 队尾**（保留缓存，供再次命中） |
-| 块6       | **无哈希**（从未填满，没入缓存）          | `ref_cnt -= 1`（1→0）后 **prepend 队首**（立即复用）      |
+| 块1/2     | **共享命中块**（ref\_cnt=2，P 仍在用） | 仅 `ref_cnt -= 1`（2→1），**不回收**，仍在结构里供 P 继续使用    |
+| 块3/4/5/6 | **有哈希**（已入前缀缓存）             | `ref_cnt -= 1`（1→0）后 **append 队尾**（保留缓存，供再次命中） |
+| 块7       | **无哈希**（从未填满，没入缓存）          | `ref_cnt -= 1`（1→0）后 **prepend 队首**（立即复用）      |
 
-> **生活化类比**：块6 像一张废弃草稿纸——没记入"读书笔记"（无哈希），直接扔回抽屉最上面随时取用；块2/3/4/5 像记好的笔记页，放回书架留作参考（队尾）。命中块0/1 是 P、R 共用的共享页，R 不再用时只是把"正在读"的人数减一，页面仍留给 P。
+> **生活化类比**：块7 像一张废弃草稿纸——没记入"读书笔记"（无哈希），直接扔回抽屉最上面随时取用；块3/4/5/6 像记好的笔记页，放回书架留作参考（队尾）。命中块1/2 是 P、R 共用的共享页，R 不再用时只是把"正在读"的人数减一，页面仍留给 P。
 
-**free 之后**：块0/1 `ref_cnt=1`（归 P 独占）；块2/3/4/5 回空闲队列队尾、块6 回队首；前缀缓存哈希表里 2/3/4/5 的键值**保留**（供新请求命中），其中块 2/3（hash t32-63）可反哺给下一个拥有相同前缀的请求。
+**free 之后**：块1/2 `ref_cnt=1`（归 P 独占）；块3/4/5/6 回空闲队列队尾、块7 回队首；前缀缓存哈希表里 3/4/5/6 的键值**保留**（供新请求命中），其中块 3/4（hash t32-63）可反哺给下一个拥有相同前缀的请求。
 
 ***
 
@@ -731,20 +731,20 @@ def free_blocks(self, ordered_blocks):
 
 | 步骤       | 执行函数                                                | 状态变化                                              |
 | -------- | --------------------------------------------------- | ------------------------------------------------- |
-| ① 前缀查找   | `get_computed_blocks` → … → `get_cached_block`      | 命中块 0/1，`hit_length=32`                           |
+| ① 前缀查找   | `get_computed_blocks` → … → `get_cached_block`      | 命中块 1/2，`hit_length=32`                           |
 | ②a 需求计算  | `get_num_blocks_to_allocate`                        | `5 − 2 = 3` 新块                                    |
-| ②b touch | `allocate_new_computed_blocks` → `touch`            | 块0/1 `ref_cnt 1→2`                                |
-| ②c 分新块   | `allocate_new_blocks` → `get_new_blocks`            | pop 2/3/4，`block_table=[0,1,2,3,4]`               |
-| 收尾       | `take_new_block_ids`                                | 返回 `[2,3,4]` 交 worker 清零                          |
-| ②d 缓存    | `cache_blocks` → `cache_full_blocks`                | 块2(hash t32-47)、块3(hash t48-63) 入哈希表；块4未满不入       |
+| ②b touch | `allocate_new_computed_blocks` → `touch`            | 块1/2 `ref_cnt 1→2`                                |
+| ②c 分新块   | `allocate_new_blocks` → `get_new_blocks`            | pop 3/4/5，`block_table=[1,2,3,4,5]`               |
+| 收尾       | `take_new_block_ids`                                | 返回 `[3,4,5]` 交 worker 清零                          |
+| ②d 缓存    | `cache_blocks` → `cache_full_blocks`                | 块3(hash t32-47)、块4(hash t48-63) 入哈希表；块5未满不入       |
 | ③ decode | 每步 `get_computed_blocks`+`allocate_slots`（减配）       | 步11/27 各 +1 块，附清零块 id；步10/26 块满补录哈希               |
-| ④ free   | `KVCacheManager.free` → … → `BlockPool.free_blocks` | 块6 prepend 队首、块2/3/4/5 append 队尾、块0/1 仅减 ref\_cnt |
+| ④ free   | `KVCacheManager.free` → … → `BlockPool.free_blocks` | 块7 prepend 队首、块3/4/5/6 append 队尾、块1/2 仅减 ref\_cnt |
 
-**prefill 结束时** **`req_to_blocks[R]`**：`[块0, 块1, 块2, 块3, 块4]`
-**prefill 结束时** **`ref_cnt`**：块0/1 = 2（P+R 共享），块2/3/4 = 1
-**前缀缓存里新增键值**：`(hash(t32-47), g0)→块2`、`(hash(t48-63), g0)→块3`
-**decode 结束时**：`req_to_blocks[R] = [块0..块6]`（7块），步10/26 补录块4(hash t64-79)、块5(hash t80-95)
-**free 之后**：块0/1 ref\_cnt=1（归 P）、块2/3/4/5 回队尾保留哈希、块6 回队首
+**prefill 结束时** **`req_to_blocks[R]`**：`[块1, 块2, 块3, 块4, 块5]`
+**prefill 结束时** **`ref_cnt`**：块1/2 = 2（P+R 共享），块3/4/5 = 1
+**前缀缓存里新增键值**：`(hash(t32-47), g0)→块3`、`(hash(t48-63), g0)→块4`
+**decode 结束时**：`req_to_blocks[R] = [块1..块7]`（7块），步10/26 补录块5(hash t64-79)、块6(hash t80-95)
+**free 之后**：块1/2 ref\_cnt=1（归 P）、块3/4/5/6 回队尾保留哈希、块7 回队首
 
 ***
 

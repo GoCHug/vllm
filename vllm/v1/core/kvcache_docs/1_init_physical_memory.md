@@ -45,6 +45,49 @@
 
 ## 2. 初始化流程详解
 
+物理显存初始化启动期**一次性**执行 `EngineCore._initialize_kv_caches`（core.py:248），通过 profile_run 实测可用显存后算出 `num_blocks`，然后每 worker 一次性申请 16 个张量（大小 num_blocks × page_size_bytes）。产出两样供运行时消费：
+1. `num_blocks`（4096，跨 worker 对齐）→ `BlockPool.__init__` 建 `KVCacheBlock(0..4095)`，`block_id` 为 0-4095，运行时 `KVCacheManager` 的分配/释放只操作 `block_id` 和 `ref_cnt`
+2. `kv_caches[layer]` 物理张量 → 每 worker 的 `GPUModelRunner` 申请 16 层，`block_id` 即物理张量第 0 维行号，运行时按 `block_id` 读写
+
+该物理显存初始化时序图如下：
+
+```mermaid
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
+sequenceDiagram
+    participant EngineCore
+    participant ModelExecutor
+    participant GPUWorker
+    participant GPUModelRunner
+    participant kv_cache_utils
+
+    Note over EngineCore,kv_cache_utils: ① 算规格：各层产出 FullAttentionSpec
+    EngineCore->>ModelExecutor: get_kv_cache_specs()（收集每层 spec）
+    ModelExecutor->>GPUWorker: 遍历 attention 层（每 worker 16 层） → get_kv_cache_spec()<br/>→ FullAttentionSpec(block_size=16, num_kv_heads=4, head_size=128)<br/>（TP2 切分后每 worker 4 个 KV 头）
+    GPUWorker-->>ModelExecutor: dict[layer, FullAttentionSpec]
+    ModelExecutor-->>EngineCore: kv_cache_specs
+
+    Note over EngineCore,kv_cache_utils: ② 测预算：profile_run 实测 KV 可用显存
+    EngineCore->>ModelExecutor: determine_available_memory()（profile_run 测显存）
+    Note over ModelExecutor,GPUWorker: collective_rpc → GPUWorker.profile_run()<br/>available = total×util − weights − activations − cudagraph（非 KV 占用）
+    ModelExecutor-->>EngineCore: available_gpu_memory
+
+    Note over EngineCore,kv_cache_utils: ③ 做编排：get_kv_cache_configs 算 num_blocks + min 对齐
+    EngineCore->>kv_cache_utils: get_kv_cache_configs(...)
+    Note over kv_cache_utils: num_blocks = available // page_size_bytes // 16<br/>（16 = 每 worker 层数，PP2 切 32 层 ÷ 2；页需按本卡全部层摊分）<br/>每卡 2GB ÷ 32 KB ÷ 16 → 4096；跨 4 worker 取 min 对齐
+    kv_cache_utils-->>EngineCore: KVCacheConfig(num_blocks=4096, ...)
+
+    Note over EngineCore,GPUModelRunner: ④ 落张量：Worker 申请 + 绑定张量
+    EngineCore->>ModelExecutor: initialize_from_config(kv_cache_configs)
+    ModelExecutor->>GPUWorker: collective_rpc("initialize_from_config")
+    GPUWorker->>GPUModelRunner: initialize_kv_cache(config)
+    Note over GPUModelRunner: 4a 以 int8 申请字节池（按字节申请）<br/>4b reshape: (4096, 4, 16, 256) 每层（每 worker 16 层，<br/>形状以 FlashAttention 后端为例）<br/>4c 绑定 kv_caches[layer]（block_id == 张量第 0 维行号）
+
+    GPUModelRunner-->>GPUWorker: 完成
+    GPUWorker-->>ModelExecutor: 完成
+    ModelExecutor-->>EngineCore: 完成
+    Note over EngineCore: Scheduler 读 num_blocks → BlockPool.__init__(4096)<br/>建 KVCacheBlock(0..4095)；kv_caches[layer] 就绪（每 worker 16 层），等运行时消费
+```
+
 ### 2.0 调用链总览
 
 以纯 Full Attention 模型（Llama-3-8B pp2tp2，每 worker 16 层 / 4 KV 头，合并后全模型 32 层**单 group**）为例。
@@ -411,7 +454,7 @@ forward 伪代码（以形式 A 为例，`block_ids` 即该请求的 `block_tabl
 
 ```python
 # GPU forward 前，Worker 已通过 get_block_ids() 拿到该请求的 block_id 列表
-block_ids = get_block_ids(request_id)             # 形如 [0, 7, 512, ...]，来自 req_to_blocks
+block_ids = get_block_ids(request_id)             # 形如 [1, 7, 512, ...]，来自 req_to_blocks
 kv = kv_caches[layer][block_ids]                  # 形式A：dim0 fancy indexing
 # kv = kv_caches[layer][:, block_ids]             # 形式B：dim1 索引，保留 dim0 的 K/V
 ```

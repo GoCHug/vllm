@@ -1,27 +1,25 @@
 # Block Size 全家福：vLLM (GPU) 与 vLLM-Ascend (NPU) 所有 block size 一次性讲清
 
-> 专题横切文档（同系列参考 [`0_hybrid_page_size_alignment.md`](./0_hybrid_page_size_alignment.md)，该文聚焦混合模型 page size 对齐路径，本文聚焦"各种 block size 到底谁是谁"）。
->
 > 源码基线：`vllm/`（主库）、`vllm-ascend/vllm_ascend/`（NPU 适配层），行号以 2026 库为准。
 >
-> 一句话总纲：**block size 只有一个真正可配的（`cache_config.block_size`），其余全是从它推导的派生量——或向上放大（hybrid 对齐）、或向下拆分（kernel 虚拟块）、或取 LCM/GCD（多 group）**。
+> 一句话总纲：**block size 只有一个真正可配的（`cache_config.block_size`），其余全是从它推导的派生量——或向上放大（hybrid 对齐）、或向下拆分（kernel 虚拟块）、或取 LCM/GCD（多 group 汇合：LCM，Least Common Multiple 最小公倍数 → `scheduler_block_size`；GCD，Greatest Common Divisor 最大公约数 → `hash_block_size`）**。
 
 ---
 
 ## 0. 先给答案：速查表
 
-| 名字 | 是什么 | vLLM GPU | vLLM-Ascend NPU |
-|---|---|---|---|
-| `cache_config.block_size` | 用户可配的**调度器/逻辑块**大小（`--block-size`） | 默认 **16**（`config/cache.py:47`） | 默认 **128**（`vllm_ascend/utils.py:1241`） |
-| DeepSeek-V3 (MLA) serving 惯例值 | FlashMLA kernel 页要求 | **64** | 128 |
-| DeepSeek-V4 | 专用 sparse kernel | **256**（kernel 固定） | **32**（默认，允许 {32,64,128}） |
-| `scheduler_block_size` | 调度器 token 对齐粒度 | 单 group：`block_size × DCP`；多 group：LCM（`v1/core/kv_cache_utils.py:626`） | 同 GPU（走主库同一套代码），hybrid 时 patch 里的 `attn_block_size` 会抬高它 |
-| `hash_block_size` | `Request.block_hashes` 计算粒度 | 单 group = scheduler；多 group = `prefix_match_unit`（若设）否则 GCD | 同 GPU |
-| `kernel_block_size` | attention kernel 读物理 KV 的**虚拟块**粒度 | 由 `get_supported_kernel_block_sizes()` 按模型/后端解析，通常 = `block_size` | 几乎恒为 **128**（310P 可 64） |
-| `attn_block_size`（NPU patch 内变量） | hybrid 模型里"刚好装下 SSM 页"的块大小（128 的倍数） | ——（GPU 对应物是 `_align_hybrid_block_size` 算出的同名逻辑） | `vllm_ascend/patch/platform/patch_mamba_config.py:94` |
-| `mamba_block_size` | mamba 层块粒度（哈希解锁用） | = `block_size`（prefix cache 开）或 `max_model_len` | 同左，由 patch_mamba_config.py:143-146 决定（kv-transfer 场景另见 platform.py:311） |
-| `mamba_page_size_padded` | mamba 页垫大后的统一页字节 | `_align_hybrid_block_size` 设置 | patch_mamba_config.py:113-124 设置 = `attn_page_size + conv_block_page_size` |
-| `storage_block_size`（DSv4） | 压缩后物理 latent 槽数 = `block_size // compress_ratio` | ∈ {1, 4, 128} 对应 compress_ratio {1,4,128} | 同主库定义，另见 `layer.py:32-47` 配套表 |
+### 0.1 Block size 相关变量与典型取值一览（vLLM 主库共享概念在前，NPU 特有在后）
+
+| 名字 | 是什么 | vLLM GPU | GPU 场景/典配 | vLLM-Ascend NPU | NPU 场景/典配 |
+|---|---|---|---|---|---|
+| `cache_config.block_size` | 用户可配的**KV cache group 逻辑块**大小（`--block-size`），配置层唯一真源 | 默认 **16**（`config/cache.py:47`） | MLA (DSv3) 惯例 **64**（FlashMLA/FlashInfer kernel 页硬性固定，§2.3）；DSv4 **256**（sparse kernel 固定，§2.3） | 默认 **128**（`vllm_ascend/utils.py:1241`） | DSv3 MLA 用 **128**（`AscendMLABackend` 页，§3.2）；DSv4 **32**（默认，允许 {32,64,128}，§3.1/§3.5） |
+| `scheduler_block_size` | 调度器**全局** token 对齐粒度（管理层派生量，非独立配置） | 单 group：`block_size × DCP`；多 group：LCM（`v1/core/kv_cache_utils.py:626`） | 单 group 无 DCP 时恰等于 `cache_config.block_size`（纯 GQA 模型基本如此） | 同 GPU（走主库同一套代码） | hybrid 时 patch 里的 `attn_block_size` 会抬高它（§3.4） |
+| `hash_block_size` | `Request.block_hashes` 计算粒度 | 单 group = scheduler；多 group = `prefix_match_unit`（若设）否则 GCD | prefix cache 命中可细于物理块（如 1024-token hybrid 块内按 32 对齐命中，§1.2）；仅 prefix cache / KV transfer 激活时生效，否则回退 = scheduler | 同 GPU | 同 GPU，无平台特例 |
+| `kernel_block_size` | attention kernel 读物理 KV 的**虚拟块**粒度 | 由 `get_supported_kernel_block_sizes()` 按模型/后端解析，通常 = `block_size` | 多后端协商（`select_common_block_size`）可能触发虚拟拆分；MLA+FlashMLA 建议把调度块直接设成 kernel 页（64）让两者永远相等（FAQ Q1） | 几乎恒为 **128**（310P 可 64） | 单值 [128] 无需协商，只有 hybrid 物理张量按 128 重排（§3.3）真正用到拆分 |
+| `mamba_block_size` | mamba 层块粒度（哈希解锁用） | = `block_size`（prefix cache 开）或 `max_model_len` | 仅 hybrid（GDN/Mamba）模型的 mamba 组用到 | 由 patch_mamba_config.py:143-146 决定（kv-transfer 场景另见 platform.py:311） | prefix cache 且 `mamba_cache_mode="align"` 时 = `block_size`，否则 = `max_model_len` |
+| `mamba_page_size_padded` | mamba 页垫大后的统一页字节 | `_align_hybrid_block_size` 设置 | 与 NPU 同构：GPU 用垫页兜底余数，浪费较小（§3.4、§4） | patch_mamba_config.py:113-124 设置 = `attn_page_size + conv_block_page_size` | 仅 hybrid 模型有此派生量，即 FAQ Q5 说的"统一页" |
+| `storage_block_size`（DSv4） | 压缩后物理 latent 槽数 = `block_size // compress_ratio` | ∈ {1, 4, 128} 对应 compress_ratio {1,4,128} | DSv4 压缩 cache 的物理槽位：c4a/c128a 压缩块只装这么多 latent（§2.3） | 同主库定义 | 配套表见 `layer.py:32-47`（§3.5 的 c4_state/c128_state 列；A5 设备值不同，`models/0_deepseek_v4_arch.md` §6.5） |
+| `attn_block_size`（NPU patch 内变量） | hybrid 模型里"刚好装下 SSM 页"的块大小（128 的倍数） | ——（对应物是 `_align_hybrid_block_size` 的同名逻辑） | GPU 无此变量，对应物见上两行 | `patch_mamba_config.py:94`：`128 × cdiv(SSM 页, 128 × K 页)`，只增不减地覆盖 `cache_config.block_size`（:102-107） | 仅 hybrid 模型触发；要求 SSM 页精确整除，否则起服务失败（§3.4） |
 
 ---
 

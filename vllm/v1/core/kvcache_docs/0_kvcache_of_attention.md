@@ -699,7 +699,7 @@ MambaSpec:      raw[:num_blocks*page].view(num_blocks, 1, 1, page_size_bytes)   
 ```
 
 - **逻辑块号**：第 `i` 个逻辑块 = token `[i·bs, (i+1)·bs)`；每请求块数 `num_blocks = cdiv(L, bs)`，即 `max_num_blocks_per_req`（决定 block table 列数，§3.1）。
-- **物理 block id**：BlockPool 中 0..`num_blocks-1` 的页号；分配器按需发放、回收复用（明细见 [`2_block_pool.md`](./2_block_pool.md)）。
+- **物理 block id**：BlockPool 中 0..`num_blocks-1` 的页号（块 0 开池即摘作 `null_block` 占位，不参与分配）；分配器按需发放、回收复用（明细见 [`2_block_pool.md`](./2_block_pool.md)）。
 - **block table**：`[max_num_reqs, max_num_blocks_per_req]` 的 int32 张量（`gpu_model_runner.py:2322`），行=请求、列=逻辑块号、值=物理 block id。kernel 侧拿 `block_id` 直接 fancy index 物理张量第 `block_dim` 维（`kv_cache[block_id]` 得整页）。
 - **写入位置（slot mapping）**：新 token 的 KV 写到 `slot = block_id × block_size + offset_in_block` 指定的一格；家族 C 则按块号原地更新状态（`conv_state[block_id]` / `ssm_state[block_id]`）。
 
@@ -756,4 +756,4 @@ return shape.index(_S)             # 0 = blocks-first；1 = kv-first
 
 ***
 
-> **相关文档**：端到端时序见 [`0_end_to_end_sequence.md`](./0_end_to_end_sequence.md)；物理张量分配与 reshape 细节见 [`1_physical_memory.md`](./1_physical_memory.md)；块的分配/复用/驱逐见 [`2_block_pool.md`](./2_block_pool.md)；分层管理见 [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md) 与 [`5_kv_cache_manager.md`](./5_kv_cache_manager.md)。
+> **相关文档**：端到端时序见 [`0_runtime_sequence.md`](./0_runtime_sequence.md)；物理张量分配与 reshape 细节见 [`1_init_physical_memory.md`](./1_init_physical_memory.md)；块的分配/复用/驱逐见 [`2_block_pool.md`](./2_block_pool.md)；分层管理见 [`4_kv_cache_coordinator.md`](./4_kv_cache_coordinator.md) 与 [`5_kv_cache_manager.md`](./5_kv_cache_manager.md)。
