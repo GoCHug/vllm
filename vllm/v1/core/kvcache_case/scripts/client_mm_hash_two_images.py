@@ -51,7 +51,7 @@ def _png_b64(img):
 
 QUESTION = "Describe precisely the structure you see in the image. Then count visual intersections."
 
-def ask(base_url, model, image_uri, question):
+def ask(base_url, model, image_uri, question, dump_usage=False):
     payload = {
         "model": model,
         "messages": [
@@ -68,8 +68,13 @@ def ask(base_url, model, image_uri, question):
                       timeout=600)
     r.raise_for_status()
     d = r.json()
-    cached = d["usage"]["prompt_tokens_details"].get("cached_tokens", 0)
+    usage = d.get("usage", {})
+    ptd = usage.get("prompt_tokens_details") or {}
+    cached = ptd.get("cached_tokens", 0) if isinstance(ptd, dict) else 0
     text = d["choices"][0]["message"]["content"]
+    if dump_usage:
+        import json as _json
+        print(f"  [debug] usage={_json.dumps(usage, ensure_ascii=False)}")
     return cached, text
 
 
@@ -78,31 +83,40 @@ def main():
     ap.add_argument("--base-url", default="http://127.0.0.1:8000")
     ap.add_argument("--model", required=True)
     ap.add_argument("--size", type=int, default=640)
+    ap.add_argument("--debug", action="store_true",
+                    help="打印完整 usage 结构，用于诊断 prefix cache 是否启用")
     args = ap.parse_args()
 
     img1 = _png_b64(gen_maze(seed=1, size=args.size))
     img2 = _png_b64(gen_maze(seed=999, size=args.size))
 
     print("A1 (img1 first):")
-    c, t = ask(args.base_url, args.model, img1, QUESTION)
+    c, t = ask(args.base_url, args.model, img1, QUESTION, dump_usage=args.debug)
     print(f"  cached_tokens={c}\n  answer={t[:80]!r}")
     print("B1 (img2 first, same text):")
-    c_b, t_b = ask(args.base_url, args.model, img2, QUESTION)
+    c_b, t_b = ask(args.base_url, args.model, img2, QUESTION, dump_usage=args.debug)
     print(f"  cached_tokens={c_b}\n  answer={t_b[:80]!r}")
     print("A2 (img1 again, same text):")
-    c_a2, _ = ask(args.base_url, args.model, img1, QUESTION)
+    c_a2, _ = ask(args.base_url, args.model, img1, QUESTION, dump_usage=args.debug)
     print(f"  cached_tokens={c_a2}")
     print("B2 (img2 again, same text):")
-    c_b2, _ = ask(args.base_url, args.model, img2, QUESTION)
+    c_b2, _ = ask(args.base_url, args.model, img2, QUESTION, dump_usage=args.debug)
     print(f"  cached_tokens={c_b2}")
 
     print("-" * 60)
     if c_b > 0:
         print("REPRO: 图2 首次请求即命中（cached_tokens>0）-> 跨图复用缓存，")
         print("  即 issue #20261 形态（旧版本）。")
+    elif c_a2 > 0 and c_b2 > 0:
+        print("PASS: 图2 首次未命中、同图复访命中 -> mm hash 隔离正常。")
+    elif c_a2 == 0 and c_b2 == 0:
+        print("WARN: 所有请求 cached_tokens 均为 0，prefix cache 可能未启用。")
+        print("  请检查:")
+        print("    1) 是否设置 VLLM_USE_V1=1（V0 对多模态禁用 prefix caching）")
+        print("    2) 启动是否加了 --enable-prompt-tokens-details（否则该字段恒为 null）")
+        print("    3) 加 --debug 查看完整 usage 结构")
     else:
-        print("PASS: 图2 首次未命中、复访各自的第二句命中 -> mm hash 隔离正常。")
-        print("  版本判定：B2（是否>0）体现同图复访命中，也应 >0。")
+        print("UNKNOWN: 命中模式不一致，A2={}, B2={}，需人工分析。".format(c_a2, c_b2))
 
 
 if __name__ == "__main__":

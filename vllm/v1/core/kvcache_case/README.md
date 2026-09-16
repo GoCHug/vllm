@@ -29,8 +29,10 @@
 | 05 | abort 风暴下的泄漏不变量检测 | 健壮性 / 泄漏（自设计） | 自设计（机制背景 vllm#31857 等） | 低-中（单卡） | `scripts/client_abort_storm.py` |
 | 06 | cache_salt 多租户隔离验证 | 特性验证（自设计） | 官方设计文档 + 自设计 | 低（单卡） | `scripts/client_cache_salt_test.py` |
 | 07 | hybrid 模型 PD 分离下 prefix cache 挂死 | 分布式 / PD 分离 | [vllm-ascend#7722](https://github.com/vllm-project/vllm-ascend/issues/7722)、[#7944](https://github.com/vllm-project/vllm-ascend/issues/7944) | 高（1P1D 多卡） | 手工步骤见文档 |
+| 08 | Qwen2.5-VL tool call 乱码 addCriterion（模型层）+ PC 顺序效应 | 正确性 / 模型层行为 | [Qwen3-VL#1093](https://github.com/QwenLM/Qwen3-VL/issues/1093)（vllm#20261 评论关联） | 低（单卡 VL 模型） | `scripts/client_tool_call.py`、`scripts/client_seq_order.py`、`scripts/qwen2_5_tools.jinja` |
+| 09 | hybrid + EAGLE 投机解码 → prefix cache 命中率坍塌 0% | 命中率回归 / 调度协调 | [vllm#32802](https://github.com/vllm-project/vllm/issues/32802)（引入 #31707、修复 [#33524](https://github.com/vllm-project/vllm/pull/33524)，2026-09-15 本仓库 A/B 已复现） | 低（纯 CPU，git 历史自带现场；服务级才需 GPT-OSS 权重） | `scripts/run_hybrid_eagle_ab_test.sh` |
 
-建议顺序：01/02/06（门槛最低）→ 05（压力观察能力）→ 03（调度交互）→ 04/07（大型/分布式）。
+建议顺序：01/02/06/09（门槛最低，09 纯 CPU 无需模型/卡）→ 08（多轮对话行为）→ 05（压力观察能力）→ 03（调度交互）→ 04/07（大型/分布式）。
 
 ## 通用观测方法
 
