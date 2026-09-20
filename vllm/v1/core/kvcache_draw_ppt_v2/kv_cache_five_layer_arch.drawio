@@ -1,558 +1,558 @@
-<mxfile host="65bd71144e">
-    <diagram id="p1_why" name="1-为什么需要">
-        <mxGraphModel dx="1342" dy="871" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
-            <root>
-                <mxCell id="g1_0"/>
-                <mxCell id="g1_1" parent="g1_0"/>
-                <mxCell id="g1_title" value="1. 为什么需要 KV Cache 管理" style="text;html=1;fontSize=24;fontStyle=1;align=left;" parent="g1_1" vertex="1">
-                    <mxGeometry x="40" y="24" width="900" height="34" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_badge" value="图表类型 · 系统示意图" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#1f4e79;strokeColor=none;fontColor=#ffffff;fontSize=12;fontStyle=1;align=center;" parent="g1_1" vertex="1">
-                    <mxGeometry x="1020" y="26" width="220" height="28" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_sub" value="Full Attention 主线（Llama-3-8B · pp2tp2）｜ 用显存换计算：把每步 O(n²) 的重复计算降为 O(n)" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" parent="g1_1" vertex="1">
-                    <mxGeometry x="40" y="62" width="960" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_prob" value="&lt;b&gt;问题&lt;/b&gt;　自回归推理：每生成一个 token 都依赖之前所有 token 的 K/V；不缓存则每步重算全部历史，注意力计算量随序列长度呈 &lt;b&gt;O(n²)&lt;/b&gt; 增长" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=16;spacingRight=12;fontSize=13;" parent="g1_1" vertex="1">
-                    <mxGeometry x="40" y="100" width="590" height="84" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_sol" value="&lt;b&gt;办法&lt;/b&gt;　把算好的 K/V 缓存起来，每步只算新 token → 注意力降为 &lt;b&gt;O(n)&lt;/b&gt;；代价：KV 状态随并发与序列长度增长，占用大量 GPU 显存，必须精细管理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=16;spacingRight=12;fontSize=13;" parent="g1_1" vertex="1">
-                    <mxGeometry x="650" y="100" width="590" height="84" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_v1t" value="无缓存：第 n 步要重算 t1…tn 的全部 K/V → O(n²)" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#b85450;" parent="g1_1" vertex="1">
-                    <mxGeometry x="40" y="196" width="590" height="20" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_t1" value="t1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" parent="g1_1" vertex="1">
-                    <mxGeometry x="185" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_t2" value="t2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" parent="g1_1" vertex="1">
-                    <mxGeometry x="237" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_t3" value="t3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" parent="g1_1" vertex="1">
-                    <mxGeometry x="289" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_t4" value="t4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" parent="g1_1" vertex="1">
-                    <mxGeometry x="341" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_t5" value="t5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" parent="g1_1" vertex="1">
-                    <mxGeometry x="393" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_t6" value="t6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;" parent="g1_1" vertex="1">
-                    <mxGeometry x="445" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_ra" style="endArrow=block;startArrow=block;endFill=1;startFill=1;html=1;strokeColor=#b85450;strokeWidth=2;" parent="g1_1" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="205" y="264" as="sourcePoint"/>
-                        <mxPoint x="465" y="264" as="targetPoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="g1_rl" value="每步重算全部历史 K/V" style="text;html=1;fontSize=10;align=center;fontColor=#b85450;" parent="g1_1" vertex="1">
-                    <mxGeometry x="185" y="272" width="300" height="18" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_v2t" value="有 KV Cache：历史 K/V 命中缓存，每步只算新 token → O(n)" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#82b366;" parent="g1_1" vertex="1">
-                    <mxGeometry x="650" y="196" width="590" height="20" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_u1" value="t1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="g1_1" vertex="1">
-                    <mxGeometry x="795" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_u2" value="t2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="g1_1" vertex="1">
-                    <mxGeometry x="847" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_u3" value="t3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="g1_1" vertex="1">
-                    <mxGeometry x="899" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_u4" value="t4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="g1_1" vertex="1">
-                    <mxGeometry x="951" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_u5" value="t5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="g1_1" vertex="1">
-                    <mxGeometry x="1003" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_u6" value="t6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;" parent="g1_1" vertex="1">
-                    <mxGeometry x="1080" y="224" width="40" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_ua" style="endArrow=block;endFill=1;html=1;strokeColor=#82b366;strokeWidth=2;" parent="g1_1" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="1047" y="239" as="sourcePoint"/>
-                        <mxPoint x="1076" y="239" as="targetPoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="g1_kc" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="g1_1" vertex="1">
-                    <mxGeometry x="795" y="262" width="248" height="8" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_kl" value="KV Cache（已缓存 t1…t5）" style="text;html=1;fontSize=10;align=center;fontColor=#82b366;" parent="g1_1" vertex="1">
-                    <mxGeometry x="795" y="272" width="248" height="18" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_a1" value="&lt;font style=&quot;font-size:15px&quot;&gt;&lt;b&gt;① PagedAttention 分页管理&lt;/b&gt;&lt;/font&gt;&#xa;&#xa;连续 KV 序列切成固定大小的 block（如每块 16 token）&#xa;&#xa;按块分配 / 回收 / 共享&#xa;&#xa;彻底解决内存碎片问题" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=top;spacingTop=16;spacingLeft=16;spacingRight=14;fontSize=12;align=left;" parent="g1_1" vertex="1">
-                    <mxGeometry x="40" y="312" width="386" height="180" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_a2" value="&lt;font style=&quot;font-size:15px&quot;&gt;&lt;b&gt;② 逻辑管理与物理存储分离&lt;/b&gt;&lt;/font&gt;&#xa;&#xa;BlockPool 只管逻辑块（KVCacheBlock：block_id ＋ 元数据）&#xa;&#xa;物理显存由 GPUModelRunner 一次性申请并 reshape&#xa;&#xa;两者通过 block_id 关联，调度决策全程零显存拷贝" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;spacingTop=16;spacingLeft=16;spacingRight=14;fontSize=12;align=left;" parent="g1_1" vertex="1">
-                    <mxGeometry x="447" y="312" width="386" height="180" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_a3" value="&lt;font style=&quot;font-size:15px&quot;&gt;&lt;b&gt;③ 前缀缓存 ＋ 引用计数共享&lt;/b&gt;&lt;/font&gt;&#xa;&#xa;相同前缀的 block 通过链式哈希定位&#xa;&#xa;多请求共享同一块物理空间，ref_cnt 跟踪生命周期&#xa;&#xa;LRU 空闲队列决定驱逐顺序：有哈希的缓存块尽量保留" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=top;spacingTop=16;spacingLeft=16;spacingRight=14;fontSize=12;align=left;" parent="g1_1" vertex="1">
-                    <mxGeometry x="854" y="312" width="386" height="180" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_key" value="核心：调度器全程只搬运 block_id（整数）；物理张量启动时一次成型，运行期所有分配 / 共享 / 驱逐只改引用计数与哈希表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=middle;align=center;fontSize=13;fontStyle=1;" parent="g1_1" vertex="1">
-                    <mxGeometry x="40" y="508" width="1200" height="68" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_nav" value="后文路线：§2 五层架构静态总览 → §3 启动时五层如何装配 → §4 一条请求的动态生命周期" style="text;html=1;fontSize=12;align=center;fontColor=#888888;fontStyle=2;" parent="g1_1" vertex="1">
-                    <mxGeometry x="40" y="590" width="1200" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_leg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;" parent="g1_1" vertex="1">
-                    <mxGeometry x="40" y="640" width="1200" height="48" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_lgt" value="图例" style="text;html=1;fontSize=12;fontStyle=1;align=left;" parent="g1_1" vertex="1">
-                    <mxGeometry x="56" y="652" width="44" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_c1" value="问题" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
-                    <mxGeometry x="108" y="652" width="70" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_c2" value="方案" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
-                    <mxGeometry x="184" y="652" width="70" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_c3" value="设计①" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
-                    <mxGeometry x="260" y="652" width="76" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_c4" value="设计②" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
-                    <mxGeometry x="342" y="652" width="76" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_c5" value="设计③" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
-                    <mxGeometry x="424" y="652" width="76" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g1_c6" value="结论" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
-                    <mxGeometry x="506" y="652" width="70" height="24" as="geometry"/>
-                </mxCell>
-            </root>
-        </mxGraphModel>
-    </diagram>
-    <diagram id="p2_arch" name="2-五层架构总览">
-        <mxGraphModel dx="1342" dy="871" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
-            <root>
-                <mxCell id="g2_0"/>
-                <mxCell id="g2_1" parent="g2_0"/>
-                <mxCell id="g2_title" value="2. vLLM V1 KV Cache 管理五层架构（Full Attention 视角）" style="text;html=1;fontSize=24;fontStyle=1;align=left;" parent="g2_1" vertex="1">
-                    <mxGeometry x="40" y="24" width="900" height="34" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_badge" value="图表类型 · 分层架构图" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#1f4e79;strokeColor=none;fontColor=#ffffff;fontSize=12;fontStyle=1;align=center;" parent="g2_1" vertex="1">
-                    <mxGeometry x="1020" y="26" width="220" height="28" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_sub" value="层号自下而上（第 1 层最底）、图自上而下排列，Scheduler 是调用者不算层；右上＝运行期持有图，右下＝2.1 关键文件地图" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" parent="g2_1" vertex="1">
-                    <mxGeometry x="40" y="62" width="960" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_sch" value="&lt;b&gt;Scheduler（调度器 · 调用者）&lt;/b&gt;　只通过第 5 层门面统一调用，不直接触碰 KV cache 内部结构" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;" parent="g2_1" vertex="1">
-                    <mxGeometry x="40" y="96" width="680" height="50" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_L5" value="&lt;b&gt;第 5 层 · 顶层门面　KVCacheManager&lt;/b&gt;　持有 1 个第 4 层；对 Scheduler 暴露统一 API（get_computed_blocks / allocate_slots / free 等）" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;" parent="g2_1" vertex="1">
-                    <mxGeometry x="40" y="188" width="680" height="50" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_L4" value="&lt;b&gt;第 4 层 · 协调器　UnitaryKVCacheCoordinator（主线）&lt;/b&gt;　持有 N 个第 3 层（每 spec group 1 个，主线 N=1）＋ 1 个第 2 层；混合模型协调器为扩展" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;" parent="g2_1" vertex="1">
-                    <mxGeometry x="40" y="280" width="680" height="50" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_L3" value="&lt;b&gt;第 3 层 ×N · 单类型管理　FullAttentionManager（主线 N=1）&lt;/b&gt;　前缀查找（链式哈希）/ 分配释放 / block_table 维护" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;" parent="g2_1" vertex="1">
-                    <mxGeometry x="40" y="372" width="680" height="50" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_L2" value="&lt;b&gt;第 2 层 ×1 · 逻辑块池　BlockPool（唯一，所有第 3 层共享）&lt;/b&gt;　逻辑块分配 / 释放 / 缓存哈希 / LRU 驱逐（仅 block_id，无显存）&#xa;内件：FreeKVCacheBlockQueue（LRU 空闲块队列）＋ BlockHashToBlockMap（链式哈希 → block 映射）" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;" parent="g2_1" vertex="1">
-                    <mxGeometry x="40" y="464" width="680" height="62" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_bnote" value="桥接（非持有）：L2 在引擎进程、L1 在 worker 进程，无对象引用——同一份 KVCacheConfig 定两侧容量，block_id 从 0 编号即物理张量行号" style="text;html=1;fontSize=10;align=left;spacingLeft=110;fontColor=#9673a6;fontStyle=2;" parent="g2_1" vertex="1">
-                    <mxGeometry x="40" y="530" width="680" height="38" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_L1" value="&lt;b&gt;第 1 层 · 物理显存　GPUModelRunner.kv_caches[layer]（worker 进程）&lt;/b&gt;&#xa;torch [num_blocks, num_kv_heads, block_size, 2·head_dim]；block_id 直接索引第 0 维（物理行号）；真正读写 K/V 的是 attention 算子" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;" parent="g2_1" vertex="1">
-                    <mxGeometry x="40" y="576" width="680" height="56" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_e1" value="调用" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="g2_1" source="g2_sch" target="g2_L5" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_e2" value="持有 1 个" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="g2_1" source="g2_L5" target="g2_L4" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_e3" value="持有 ×N（主线 N=1）" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="g2_1" source="g2_L4" target="g2_L3" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_e4" value="引用同一个 BlockPool" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="g2_1" source="g2_L3" target="g2_L2" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_e5" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#9673a6;strokeWidth=2;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;exitX=0.13;exitY=1;exitDx=0;exitDy=0;entryX=0.13;entryY=0;entryDx=0;entryDy=0;" parent="g2_1" source="g2_L2" target="g2_L1" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_hs" value="&lt;b&gt;Scheduler&lt;/b&gt;（调用者）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" vertex="1" parent="g2_1">
-                    <mxGeometry x="768" y="96" width="464" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_h5" value="&lt;b&gt;L5　KVCacheManager&lt;/b&gt;——持有 1 个 L4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" vertex="1" parent="g2_1">
-                    <mxGeometry x="768" y="166" width="464" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_h4" value="&lt;b&gt;L4　UnitaryKVCacheCoordinator&lt;/b&gt;——持 N×L3 ＋ 1×L2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" vertex="1" parent="g2_1">
-                    <mxGeometry x="768" y="236" width="464" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_h3" value="&lt;b&gt;L3×N&lt;/b&gt;　FullAttentionManager（N=1）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" vertex="1" parent="g2_1">
-                    <mxGeometry x="768" y="306" width="214" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_h2" value="&lt;b&gt;L2　BlockPool&lt;/b&gt;（唯一·共享）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" vertex="1" parent="g2_1">
-                    <mxGeometry x="1018" y="306" width="214" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_he1" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="g2_1" source="g2_hs" target="g2_h5">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_he2" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="g2_1" source="g2_h5" target="g2_h4">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_he3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.23;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="g2_1" source="g2_h4" target="g2_h3">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_he4" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.77;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="g2_1" source="g2_h4" target="g2_h2">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_he5" value="同一池" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;labelBackgroundColor=#ffffff;" edge="1" parent="g2_1" source="g2_h3" target="g2_h2">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_hl1" value="&lt;b&gt;L1　GPUModelRunner.kv_caches[layer]&lt;/b&gt;（worker 进程）——调度从不触碰：真正读写 K/V 的是 attention 算子；block 0＝null_block 占位" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f2fa;strokeColor=#9673a6;strokeWidth=2;dashed=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10;" vertex="1" parent="g2_1">
-                    <mxGeometry x="768" y="352" width="464" height="44" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_fmap" value="&lt;b&gt;2.1 关键文件地图（vllm/v1/ 下）&lt;/b&gt;&#xa;&lt;font color=&quot;#d79b00&quot;&gt;&lt;b&gt;L5&lt;/b&gt;&lt;/font&gt; core/kv_cache_manager.py——门面：get_computed_blocks / allocate_slots / free&#xa;&lt;font color=&quot;#d6b656&quot;&gt;&lt;b&gt;L4&lt;/b&gt;&lt;/font&gt; core/kv_cache_coordinator.py——单组直通 / 混合对齐；工厂 get_kv_cache_coordinator&#xa;&lt;font color=&quot;#82b366&quot;&gt;&lt;b&gt;L3&lt;/b&gt;&lt;/font&gt; core/single_type_kv_cache_manager.py——前缀查找 / 分配释放；工厂 get_manager_for_kv_cache_spec&#xa;&lt;font color=&quot;#6c8ebf&quot;&gt;&lt;b&gt;L2&lt;/b&gt;&lt;/font&gt; core/block_pool.py——分配 / 释放 / 缓存哈希 / LRU 驱逐&#xa;&lt;font color=&quot;#6c8ebf&quot;&gt;&lt;b&gt;L2&lt;/b&gt;&lt;/font&gt; core/kv_cache_utils.py——KVCacheBlock、BlockHash、空闲队列；容量规划 get_num_blocks&#xa;&lt;font color=&quot;#9673a6&quot;&gt;&lt;b&gt;L1&lt;/b&gt;&lt;/font&gt; worker/gpu_model_runner.py——int8 字节缓冲 → reshape 零拷贝视图并 bind 到层&#xa;&lt;font color=&quot;#9673a6&quot;&gt;&lt;b&gt;L1&lt;/b&gt;&lt;/font&gt; kv_cache_interface.py——KVCacheSpec / FullAttentionSpec / KVCacheConfig（real_page_size_bytes）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#666666;strokeWidth=2;verticalAlign=top;spacingTop=8;spacingLeft=12;fontSize=10;align=left;" vertex="1" parent="g2_1">
-                    <mxGeometry x="768" y="412" width="464" height="220" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_leg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;" parent="g2_1" vertex="1">
-                    <mxGeometry x="40" y="640" width="1200" height="48" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_lgt" value="图例" style="text;html=1;fontSize=12;fontStyle=1;align=left;" parent="g2_1" vertex="1">
-                    <mxGeometry x="56" y="652" width="44" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_c0" value="Scheduler" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;fontStyle=1;align=center;" parent="g2_1" vertex="1">
-                    <mxGeometry x="108" y="652" width="88" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_c5" value="L5 门面" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;fontStyle=1;align=center;" parent="g2_1" vertex="1">
-                    <mxGeometry x="202" y="652" width="80" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_c4" value="L4 协调器" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;align=center;" parent="g2_1" vertex="1">
-                    <mxGeometry x="288" y="652" width="80" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_c3" value="L3 管理" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;align=center;" parent="g2_1" vertex="1">
-                    <mxGeometry x="374" y="652" width="80" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_c2" value="L2 块池" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;align=center;" parent="g2_1" vertex="1">
-                    <mxGeometry x="460" y="652" width="80" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_c1" value="L1 物理" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=1;align=center;" parent="g2_1" vertex="1">
-                    <mxGeometry x="546" y="652" width="80" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_ls1" style="endArrow=block;endFill=1;html=1;strokeColor=#595959;strokeWidth=2;" parent="g2_1" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="660" y="664" as="sourcePoint"/>
-                        <mxPoint x="700" y="664" as="targetPoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="g2_l1t" value="持有 / 调用" style="text;html=1;fontSize=10;align=left;" parent="g2_1" vertex="1">
-                    <mxGeometry x="704" y="652" width="80" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g2_ls2" style="endArrow=block;endFill=1;html=1;strokeColor=#9673a6;strokeWidth=2;dashed=1;dashPattern=8 4;" parent="g2_1" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="800" y="664" as="sourcePoint"/>
-                        <mxPoint x="840" y="664" as="targetPoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="g2_l2t" value="桥接（非持有）" style="text;html=1;fontSize=10;align=left;" parent="g2_1" vertex="1">
-                    <mxGeometry x="844" y="652" width="110" height="24" as="geometry"/>
-                </mxCell>
-            </root>
-        </mxGraphModel>
-    </diagram>
-    <diagram id="p4_deploy" name="3-启动期装配与衔接">
-        <mxGraphModel dx="1453" dy="943" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
-            <root>
-                <mxCell id="g4_0"/>
-                <mxCell id="g4_1" parent="g4_0"/>
-                <mxCell id="g4_title" value="3. 系统启动期：五层初始化" style="text;html=1;fontSize=24;fontStyle=1;align=left;" parent="g4_1" vertex="1">
-                    <mxGeometry x="40" y="24" width="900" height="34" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_badge" value="图表类型 · 系统部署图" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#1f4e79;strokeColor=none;fontColor=#ffffff;fontSize=12;fontStyle=1;align=center;" parent="g4_1" vertex="1">
-                    <mxGeometry x="1020" y="26" width="220" height="28" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_sub" value="上（3.1 装配全景）：规格先行，物理先于逻辑；下（3.2 衔接点）：同一份 KVCacheConfig 定两侧容量，block_id 即行号" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" parent="g4_1" vertex="1">
-                    <mxGeometry x="40" y="62" width="960" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_lane_e" value="引擎进程（EngineCore）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=14;fontStyle=1;align=center;dashed=1;" parent="g4_1" vertex="1">
-                    <mxGeometry x="40" y="90" width="700" height="288" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_lane_w" value="worker 进程（每卡）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f0f8;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=14;fontStyle=1;align=center;dashed=1;" parent="g4_1" vertex="1">
-                    <mxGeometry x="800" y="90" width="440" height="288" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_s1" value="&lt;b&gt;① 算规格　get_kv_cache_specs()&lt;/b&gt;&#xa;收集每个 attention 层的 spec；纯 Full Attention 各层相同" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;strokeWidth=1.5;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=11;" parent="g4_1" vertex="1">
-                    <mxGeometry x="64" y="118" width="650" height="50" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_w1" value="每层 attention 返回一个&lt;b&gt;FullAttentionSpec&lt;/b&gt;&#xa;同规格 ⇒ 合并为全模型唯一 KV cache group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.5;verticalAlign=middle;align=center;fontSize=11;" parent="g4_1" vertex="1">
-                    <mxGeometry x="816" y="118" width="410" height="50" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_s2" value="&lt;b&gt;② 测预算　determine_available_memory()&lt;/b&gt;&#xa;RPC 让各卡 dummy forward（profile_run）实测可用显存" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;strokeWidth=1.5;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=11;" parent="g4_1" vertex="1">
-                    <mxGeometry x="64" y="186" width="650" height="50" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_w2" value="总显存 × 利用率 − 权重 − 激活 − CUDAGraph 预留&#xa;&lt;b&gt;＝ 本卡 KV 可用字节数&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.5;verticalAlign=middle;align=center;fontSize=11;" parent="g4_1" vertex="1">
-                    <mxGeometry x="816" y="186" width="410" height="50" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_s3" value="&lt;b&gt;③ 做编排　get_kv_cache_configs()&lt;/b&gt;&#xa;同规格层合并为 1 个 group；page_size ＝ 2 × block_size × num_kv_heads × head_dim × dtype_size（系数 2 对应 K＋V）&#xa;本卡 num_blocks ＝ 可用显存 // page_size // 本 worker 层数；多卡取最小值、共享同一套 block_id 空间 ⇒ 产出 &lt;b&gt;KVCacheConfig&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=11;" parent="g4_1" vertex="1">
-                    <mxGeometry x="64" y="254" width="650" height="60" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_w4" value="&lt;b&gt;④ 落张量　initialize_from_config()&lt;/b&gt;&#xa;遍历 config.kv_cache_tensors，按 size 申请 int8 字节张量 → 零拷贝 view 成后端 shape → bind 到各 attention 层&#xa;worker 只按配置执行，不自行算块数&#xa;〔engine/core.py:329 · gpu_worker.py:649 → gpu_model_runner.py:7606〕" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=11;" parent="g4_1" vertex="1">
-                    <mxGeometry x="816" y="254" width="410" height="116" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_s5" value="&lt;b&gt;⑤ 建逻辑层（RPC 返回后）&lt;/b&gt;&#xa;Scheduler（engine/core.py:158）→ KVCacheManager（sched/scheduler.py:271）&#xa;→ Coordinator（L4）→ 先建 BlockPool（L2）再建 FullAttentionManager（L3）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=11;" parent="g4_1" vertex="1">
-                    <mxGeometry x="64" y="330" width="650" height="40" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_e1" value="RPC" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#9673a6;strokeWidth=1.5;endArrow=block;endFill=1;fontSize=10;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g4_1" source="g4_s1" target="g4_w1" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_e2" value="RPC" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#9673a6;strokeWidth=1.5;endArrow=block;endFill=1;fontSize=10;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g4_1" source="g4_s2" target="g4_w2" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_e3" value="下发" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#d6b656;strokeWidth=2;dashed=1;endArrow=block;endFill=1;fontSize=10;fontStyle=1;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="g4_1" source="g4_s3" target="g4_w4" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_e4" value="RPC 返回" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#82b366;strokeWidth=2;dashed=1;endArrow=block;endFill=1;fontSize=10;fontStyle=1;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="g4_1" source="g4_w4" target="g4_s5" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_note" value="入口：EngineCore._initialize_kv_caches()（engine/core.py:248）　·　物理先于逻辑：Scheduler 在物理张量落地之后才创建" style="text;html=1;fontSize=12;align=center;fontColor=#666666;" parent="g4_1" vertex="1">
-                    <mxGeometry x="40" y="386" width="1200" height="20" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_h32" value="&lt;b&gt;3.2 衔接点：物理 ↔ 逻辑——同一份 KVCacheConfig 定两侧容量，block_id 从 0 编号即物理行号&lt;/b&gt;" style="text;html=1;fontSize=13;align=left;fontColor=#333333;" vertex="1" parent="g4_1">
-                    <mxGeometry x="40" y="416" width="1200" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_cfg2" value="&lt;b&gt;KVCacheConfig&lt;/b&gt;&#xa;num_blocks ＋ kv_cache_tensors[*].size / shared_by" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" vertex="1" parent="g4_1">
-                    <mxGeometry x="450" y="444" width="380" height="46" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_physc" value="&lt;b&gt;物理侧（worker）&lt;/b&gt;　· 按 size（＝num_blocks × page_size 字节）torch.zeros int8 → reshape 零拷贝视图 → bind 到层；只按配置执行，不自行算块数&#xa;〔kv_cache_interface.py:926-932 · gpu_model_runner.py:7303-7320〕" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=10;" vertex="1" parent="g4_1">
-                    <mxGeometry x="100" y="536" width="520" height="62" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_logicc" value="&lt;b&gt;逻辑侧（引擎 BlockPool）&lt;/b&gt;　· new 出 num_blocks 个 KVCacheBlock（0 … n−1，仅元数据，不含 K/V）　· 块 0＝null_block 占位，实分 n−1&#xa;· 此后物理张量不变：分配 / 共享 / 驱逐只改 ref_cnt 与哈希表　〔block_pool.py:175-177〕" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=10;" vertex="1" parent="g4_1">
-                    <mxGeometry x="660" y="536" width="520" height="62" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_ce1" value="下发" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="g4_1" source="g4_cfg2" target="g4_physc">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_ce2" value="下发" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;endFill=1;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="g4_1" source="g4_cfg2" target="g4_logicc">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_res2" value="&lt;b&gt;桥接结果&lt;/b&gt;　两侧容量必然相等；block_id 即物理张量第 0 维行号——无需查表或拷贝，调度全程零显存拷贝" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" vertex="1" parent="g4_1">
-                    <mxGeometry x="140" y="602" width="1000" height="26" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_leg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;" parent="g4_1" vertex="1">
-                    <mxGeometry x="40" y="640" width="1200" height="48" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_lgt" value="图例" style="text;html=1;fontSize=12;fontStyle=1;align=left;" parent="g4_1" vertex="1">
-                    <mxGeometry x="56" y="652" width="44" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_c1" value="引擎 / worker 步骤" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;fontStyle=1;align=center;" parent="g4_1" vertex="1">
-                    <mxGeometry x="108" y="652" width="120" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_c2" value="KVCacheConfig" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;align=center;" parent="g4_1" vertex="1">
-                    <mxGeometry x="234" y="652" width="110" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_c3" value="物理落张量" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=1;align=center;" parent="g4_1" vertex="1">
-                    <mxGeometry x="350" y="652" width="100" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_c4" value="逻辑层构建" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;align=center;" parent="g4_1" vertex="1">
-                    <mxGeometry x="456" y="652" width="100" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_l1" style="endArrow=block;endFill=1;html=1;strokeColor=#9673a6;strokeWidth=1.5;" parent="g4_1" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="580" y="664" as="sourcePoint"/>
-                        <mxPoint x="620" y="664" as="targetPoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="g4_l1t" value="RPC 调用" style="text;html=1;fontSize=10;align=left;" parent="g4_1" vertex="1">
-                    <mxGeometry x="624" y="652" width="80" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g4_l2" style="endArrow=block;endFill=1;html=1;strokeColor=#d6b656;strokeWidth=2;dashed=1;dashPattern=8 4;" parent="g4_1" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="720" y="664" as="sourcePoint"/>
-                        <mxPoint x="760" y="664" as="targetPoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="g4_l2t" value="配置下发 / 返回" style="text;html=1;fontSize=10;align=left;" parent="g4_1" vertex="1">
-                    <mxGeometry x="764" y="652" width="110" height="24" as="geometry"/>
-                </mxCell>
-            </root>
-        </mxGraphModel>
-    </diagram>
-    <diagram id="p6_fsm" name="4-运行期请求生命周期">
-        <mxGraphModel dx="1453" dy="943" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
-            <root>
-                <mxCell id="g6_0"/>
-                <mxCell id="g6_1" parent="g6_0"/>
-                <mxCell id="g6_title" value="4. 系统运行期：一条请求的 KV Cache 生命周期" style="text;html=1;fontSize=24;fontStyle=1;align=left;" parent="g6_1" vertex="1">
-                    <mxGeometry x="40" y="24" width="900" height="34" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_badge" value="图表类型 · 状态机＋矩阵图" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#1f4e79;strokeColor=none;fontColor=#ffffff;fontSize=12;fontStyle=1;align=center;" parent="g6_1" vertex="1">
-                    <mxGeometry x="1020" y="26" width="220" height="28" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_sub" value="EngineCore 每步 schedule → execute_model → sample；4.1 状态机与编排链 · 4.2 五阶段×五层矩阵 · 4.3 三大结论" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" parent="g6_1" vertex="1">
-                    <mxGeometry x="40" y="62" width="960" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_start" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;" parent="g6_1" vertex="1">
-                    <mxGeometry x="58" y="106" width="26" height="26" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_wait" value="&lt;b&gt;WAITING&lt;/b&gt;　等待首次调度&#xa;入队即切块、按满块预计算链式哈希" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;" parent="g6_1" vertex="1">
-                    <mxGeometry x="110" y="96" width="300" height="66" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_run" value="&lt;b&gt;RUNNING&lt;/b&gt;&#xa;prefill 完成后持续 decode" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;" parent="g6_1" vertex="1">
-                    <mxGeometry x="470" y="96" width="300" height="66" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_done" value="&lt;b&gt;生成结束 → 释放&lt;/b&gt;&#xa;EOS / max_tokens：逆序归还、ref_cnt--" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;" parent="g6_1" vertex="1">
-                    <mxGeometry x="850" y="96" width="270" height="66" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_endo" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;" parent="g6_1" vertex="1">
-                    <mxGeometry x="1148" y="113" width="30" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_endi" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;" parent="g6_1" vertex="1">
-                    <mxGeometry x="1156" y="120" width="14" height="14" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_se0" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_start" target="g6_wait" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_se1" value="首次调度（prefill）" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_wait" target="g6_run" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_se2" value="生成结束" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_run" target="g6_done" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_se3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_done" target="g6_endo" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_loop" value="decode 循环：每步 分配 slot → GPU 执行（新增 0/1 块 · 跳过前缀查找）" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;strokeColor=#82b366;strokeWidth=2;endArrow=block;endFill=1;fontSize=10;fontStyle=2;labelBackgroundColor=#ffffff;exitX=0.2;exitY=1;exitDx=0;exitDy=0;entryX=0.8;entryY=1;entryDx=0;entryDy=0;" parent="g6_1" source="g6_run" target="g6_run" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="530" y="196"/>
-                            <mxPoint x="710" y="196"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="g6_chain_lbl" value="&lt;b&gt;固定编排链&lt;/b&gt;（整个生命周期唯一的逻辑调用路径，逐层透传）" style="text;html=1;fontSize=13;align=left;fontColor=#333333;" parent="g6_1" vertex="1">
-                    <mxGeometry x="40" y="174" width="700" height="20" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_c0" value="Scheduler" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;fontStyle=1;" parent="g6_1" vertex="1">
-                    <mxGeometry x="56" y="202" width="140" height="48" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_c5" value="L5&#xa;KVCacheManager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;fontStyle=1;" parent="g6_1" vertex="1">
-                    <mxGeometry x="226" y="202" width="150" height="48" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_c4" value="L4&#xa;Coordinator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;fontStyle=1;" parent="g6_1" vertex="1">
-                    <mxGeometry x="406" y="202" width="150" height="48" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_c3" value="L3&#xa;FullAttentionManager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;fontStyle=1;" parent="g6_1" vertex="1">
-                    <mxGeometry x="586" y="202" width="170" height="48" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_c2" value="L2&#xa;BlockPool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;fontStyle=1;" parent="g6_1" vertex="1">
-                    <mxGeometry x="786" y="202" width="140" height="48" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_ce0" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_c0" target="g6_c5" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_ce1" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_c5" target="g6_c4" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_ce2" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_c4" target="g6_c3" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_ce3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_c3" target="g6_c2" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_l1n" value="&lt;b&gt;L1 物理显存不在编排链上&lt;/b&gt;——逻辑链只产出整数 block_id 列表（block_table，经 SchedulerOutput 下发 worker）；真正读写 K/V 的是 attention 算子" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f2fa;strokeColor=#9673a6;strokeWidth=2;dashed=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=11;" vertex="1" parent="g6_1">
-                    <mxGeometry x="40" y="262" width="1200" height="30" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_mh1" value="阶段 / 时机" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="g6_1">
-                    <mxGeometry x="40" y="306" width="190" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_mh2" value="第 2～5 层（逻辑：全程零物理操作）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="g6_1">
-                    <mxGeometry x="230" y="306" width="710" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_mh3" value="第 1 层（物理）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="g6_1">
-                    <mxGeometry x="940" y="306" width="300" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r1a" value="入队｜WAITING" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="40" y="328" width="190" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r1b" value="不创建管理对象；Request 只持有按满块预计算的链式哈希" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=left;spacingLeft=12;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="230" y="328" width="710" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r1c" value="无" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="940" y="328" width="300" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r2a" value="前缀查找｜仅 prefill 一次" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="40" y="370" width="190" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r2b" value="沿编排链只读哈希表；命中块只标记可复用，ref_cnt 不变" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=left;spacingLeft=12;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="230" y="370" width="710" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r2c" value="无" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="940" y="370" width="300" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r3a" value="分配 slot｜prefill ＋ 每步 decode" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="40" y="412" width="190" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r3b" value="touch 命中块（ref_cnt++、摘出空闲队列）→ 弹空闲块得新 block_id → 组成 block_table；写满的块顺带写入哈希表" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="230" y="412" width="710" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r3c" value="无；仅登记「待清零新块」清单" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="940" y="412" width="300" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r4a" value="GPU 执行｜每调度步" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="40" y="454" width="190" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r4b" value="不参与；SchedulerOutput 把 block_table 下发给 worker" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=left;spacingLeft=12;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="230" y="454" width="710" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r4c" value="先清零本轮新块；attention 算子按 block_table 为 fancy index gather 物理行、写入新 K/V" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f0f8;strokeColor=#cccccc;verticalAlign=middle;align=center;spacingLeft=8;spacingRight=8;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="940" y="454" width="300" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r5a" value="释放｜生成结束" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="40" y="496" width="190" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r5b" value="逆序 ref_cnt--；共享块只减计数，归零才回收（有哈希入队尾、无哈希入队首）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="230" y="496" width="710" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_r5c" value="无" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
-                    <mxGeometry x="940" y="496" width="300" height="42" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_con1" value="&lt;b&gt;① 唯一接口：block_table&lt;/b&gt;　逻辑链用它完成全部分配 / 共享 / 驱逐，物理算子用它 gather 张量行；调度全程零显存拷贝，物理张量自申请后不再变动" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=top;spacingTop=8;spacingLeft=12;spacingRight=10;fontSize=10;align=left;" vertex="1" parent="g6_1">
-                    <mxGeometry x="40" y="552" width="386" height="80" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_con2" value="&lt;b&gt;② prefill / decode 同一骨架&lt;/b&gt;　都走「分配 slot → GPU 执行」；decode 每步 1 个新 token、新增 0/1 块、跳过前缀查找；没有两套逻辑、没有全局阶段切换" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;spacingTop=8;spacingLeft=12;spacingRight=10;fontSize=10;align=left;" vertex="1" parent="g6_1">
-                    <mxGeometry x="447" y="552" width="386" height="80" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_con3" value="&lt;b&gt;③ 块的命运＝引用计数＋队列位置&lt;/b&gt;　命中前缀 → touch 零拷贝共享；归零才回收：有哈希入队尾（LRU 保护）、无哈希入队首（优先复用）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;strokeWidth=2;verticalAlign=top;spacingTop=8;spacingLeft=12;spacingRight=10;fontSize=10;align=left;" vertex="1" parent="g6_1">
-                    <mxGeometry x="854" y="552" width="386" height="80" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_leg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;" parent="g6_1" vertex="1">
-                    <mxGeometry x="40" y="640" width="1200" height="48" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_lgt" value="图例" style="text;html=1;fontSize=12;fontStyle=1;align=left;" parent="g6_1" vertex="1">
-                    <mxGeometry x="56" y="652" width="44" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_cw" value="WAITING" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;fontStyle=1;align=center;" parent="g6_1" vertex="1">
-                    <mxGeometry x="108" y="652" width="88" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_cr" value="RUNNING" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;align=center;" parent="g6_1" vertex="1">
-                    <mxGeometry x="202" y="652" width="88" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_cd" value="释放" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;align=center;" parent="g6_1" vertex="1">
-                    <mxGeometry x="296" y="652" width="80" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_l1s" style="endArrow=block;endFill=1;html=1;strokeColor=#595959;strokeWidth=2;" parent="g6_1" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="660" y="664" as="sourcePoint"/>
-                        <mxPoint x="700" y="664" as="targetPoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="g6_l1t" value="状态迁移 / 调用" style="text;html=1;fontSize=10;align=left;" parent="g6_1" vertex="1">
-                    <mxGeometry x="704" y="652" width="110" height="24" as="geometry"/>
-                </mxCell>
-                <mxCell id="g6_l2s" style="endArrow=block;endFill=1;html=1;strokeColor=#9673a6;strokeWidth=2;dashed=1;dashPattern=8 4;" parent="g6_1" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="830" y="664" as="sourcePoint"/>
-                        <mxPoint x="870" y="664" as="targetPoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="g6_l2t" value="桥接（非持有）" style="text;html=1;fontSize=10;align=left;" parent="g6_1" vertex="1">
-                    <mxGeometry x="874" y="652" width="110" height="24" as="geometry"/>
-                </mxCell>
-            </root>
-        </mxGraphModel>
-    </diagram>
+<mxfile host="app.diagrams.net" pages="4">
+  <diagram id="p1_why" name="1-为什么需要">
+    <mxGraphModel dx="1342" dy="871" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
+      <root>
+        <mxCell id="g1_0" />
+        <mxCell id="g1_1" parent="g1_0" />
+        <mxCell id="g1_title" value="1. 为什么需要 KV Cache 管理" style="text;html=1;fontSize=24;fontStyle=1;align=left;" parent="g1_1" vertex="1">
+          <mxGeometry x="40" y="24" width="900" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_badge" value="图表类型 · 系统示意图" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#1f4e79;strokeColor=none;fontColor=#ffffff;fontSize=12;fontStyle=1;align=center;" parent="g1_1" vertex="1">
+          <mxGeometry x="1020" y="26" width="220" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_sub" value="Full Attention 主线（Llama-3-8B · pp2tp2）｜ 用显存换计算：把每步 O(n²) 的重复计算降为 O(n)" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" parent="g1_1" vertex="1">
+          <mxGeometry x="40" y="62" width="960" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_prob" value="&lt;b&gt;问题&lt;/b&gt;　自回归推理：每生成一个 token 都依赖之前所有 token 的 K/V；不缓存则每步重算全部历史，注意力计算量随序列长度呈 &lt;b&gt;O(n²)&lt;/b&gt; 增长" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=16;spacingRight=12;fontSize=13;" parent="g1_1" vertex="1">
+          <mxGeometry x="40" y="100" width="590" height="84" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_sol" value="&lt;b&gt;办法&lt;/b&gt;　把算好的 K/V 缓存起来，每步只算新 token → 注意力降为 &lt;b&gt;O(n)&lt;/b&gt;；代价：KV 状态随并发与序列长度增长，占用大量 GPU 显存，必须精细管理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=16;spacingRight=12;fontSize=13;" parent="g1_1" vertex="1">
+          <mxGeometry x="650" y="100" width="590" height="84" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_v1t" value="无缓存：第 n 步要重算 t1…tn 的全部 K/V → O(n²)" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#b85450;" parent="g1_1" vertex="1">
+          <mxGeometry x="40" y="196" width="590" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_t1" value="t1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" parent="g1_1" vertex="1">
+          <mxGeometry x="185" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_t2" value="t2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" parent="g1_1" vertex="1">
+          <mxGeometry x="237" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_t3" value="t3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" parent="g1_1" vertex="1">
+          <mxGeometry x="289" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_t4" value="t4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" parent="g1_1" vertex="1">
+          <mxGeometry x="341" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_t5" value="t5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=11;" parent="g1_1" vertex="1">
+          <mxGeometry x="393" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_t6" value="t6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;" parent="g1_1" vertex="1">
+          <mxGeometry x="445" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_ra" style="endArrow=block;startArrow=block;endFill=1;startFill=1;html=1;strokeColor=#b85450;strokeWidth=2;" parent="g1_1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="205" y="264" as="sourcePoint" />
+            <mxPoint x="465" y="264" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g1_rl" value="每步重算全部历史 K/V" style="text;html=1;fontSize=10;align=center;fontColor=#b85450;" parent="g1_1" vertex="1">
+          <mxGeometry x="185" y="272" width="300" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_v2t" value="有 KV Cache：历史 K/V 命中缓存，每步只算新 token → O(n)" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#82b366;" parent="g1_1" vertex="1">
+          <mxGeometry x="650" y="196" width="590" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_u1" value="t1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="g1_1" vertex="1">
+          <mxGeometry x="795" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_u2" value="t2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="g1_1" vertex="1">
+          <mxGeometry x="847" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_u3" value="t3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="g1_1" vertex="1">
+          <mxGeometry x="899" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_u4" value="t4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="g1_1" vertex="1">
+          <mxGeometry x="951" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_u5" value="t5" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="g1_1" vertex="1">
+          <mxGeometry x="1003" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_u6" value="t6" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;" parent="g1_1" vertex="1">
+          <mxGeometry x="1080" y="224" width="40" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_ua" style="endArrow=block;endFill=1;html=1;strokeColor=#82b366;strokeWidth=2;" parent="g1_1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1047" y="239" as="sourcePoint" />
+            <mxPoint x="1076" y="239" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g1_kc" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="g1_1" vertex="1">
+          <mxGeometry x="795" y="262" width="248" height="8" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_kl" value="KV Cache（已缓存 t1…t5）" style="text;html=1;fontSize=10;align=center;fontColor=#82b366;" parent="g1_1" vertex="1">
+          <mxGeometry x="795" y="272" width="248" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_a1" value="&lt;font style=&quot;font-size:15px&quot;&gt;&lt;b&gt;① PagedAttention 分页管理&lt;/b&gt;&lt;/font&gt;&#xa;&#xa;连续 KV 序列切成固定大小的 block（如每块 16 token）&#xa;&#xa;按块分配 / 回收 / 共享&#xa;&#xa;彻底解决内存碎片问题" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=top;spacingTop=16;spacingLeft=16;spacingRight=14;fontSize=12;align=left;" parent="g1_1" vertex="1">
+          <mxGeometry x="40" y="312" width="386" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_a2" value="&lt;font style=&quot;font-size:15px&quot;&gt;&lt;b&gt;② 逻辑管理与物理存储分离&lt;/b&gt;&lt;/font&gt;&#xa;&#xa;BlockPool 只管逻辑块（KVCacheBlock：block_id ＋ 元数据）&#xa;&#xa;物理显存由 GPUModelRunner 一次性申请并 reshape&#xa;&#xa;两者通过 block_id 关联，调度决策全程零显存拷贝" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;spacingTop=16;spacingLeft=16;spacingRight=14;fontSize=12;align=left;" parent="g1_1" vertex="1">
+          <mxGeometry x="447" y="312" width="386" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_a3" value="&lt;font style=&quot;font-size:15px&quot;&gt;&lt;b&gt;③ 前缀缓存 ＋ 引用计数共享&lt;/b&gt;&lt;/font&gt;&#xa;&#xa;相同前缀的 block 通过链式哈希定位&#xa;&#xa;多请求共享同一块物理空间，ref_cnt 跟踪生命周期&#xa;&#xa;LRU 空闲队列决定驱逐顺序：有哈希的缓存块尽量保留" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=top;spacingTop=16;spacingLeft=16;spacingRight=14;fontSize=12;align=left;" parent="g1_1" vertex="1">
+          <mxGeometry x="854" y="312" width="386" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_key" value="核心：调度器全程只搬运 block_id（整数）；物理张量启动时一次成型，运行期所有分配 / 共享 / 驱逐只改引用计数与哈希表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=middle;align=center;fontSize=13;fontStyle=1;" parent="g1_1" vertex="1">
+          <mxGeometry x="40" y="508" width="1200" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_nav" value="后文路线：§2 五层架构静态总览 → §3 启动时五层如何装配 → §4 一条请求的动态生命周期" style="text;html=1;fontSize=12;align=center;fontColor=#888888;fontStyle=2;" parent="g1_1" vertex="1">
+          <mxGeometry x="40" y="590" width="1200" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_leg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;" parent="g1_1" vertex="1">
+          <mxGeometry x="40" y="640" width="1200" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_lgt" value="图例" style="text;html=1;fontSize=12;fontStyle=1;align=left;" parent="g1_1" vertex="1">
+          <mxGeometry x="56" y="652" width="44" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_c1" value="问题" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
+          <mxGeometry x="108" y="652" width="70" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_c2" value="方案" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
+          <mxGeometry x="184" y="652" width="70" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_c3" value="设计①" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
+          <mxGeometry x="260" y="652" width="76" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_c4" value="设计②" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
+          <mxGeometry x="342" y="652" width="76" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_c5" value="设计③" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
+          <mxGeometry x="424" y="652" width="76" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g1_c6" value="结论" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;fontStyle=1;align=center;" parent="g1_1" vertex="1">
+          <mxGeometry x="506" y="652" width="70" height="24" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="p2_arch" name="2-五层架构总览">
+    <mxGraphModel dx="1940" dy="1155" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
+      <root>
+        <mxCell id="g2_0" />
+        <mxCell id="g2_1" parent="g2_0" />
+        <mxCell id="g2_title" parent="g2_1" style="text;html=1;fontSize=24;fontStyle=1;align=left;" value="2. vLLM V1 KV Cache 管理五层架构（Full Attention 视角）" vertex="1">
+          <mxGeometry height="34" width="900" x="40" y="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_sub" parent="g2_1" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" value="启动期初始化持有关系架构图" vertex="1">
+          <mxGeometry height="22" width="170" x="295" y="62" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_sch" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;" value="&lt;b&gt;Scheduler（调度器 · 调用者）&lt;/b&gt;　只通过第 5 层门面统一调用，不直接触碰 KV cache 内部结构" vertex="1">
+          <mxGeometry height="50" width="680" x="40" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_L5" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;" value="&lt;b&gt;第 5 层 · 顶层门面　KVCacheManager&lt;/b&gt;　持有 1 个第 4 层；对 Scheduler 暴露统一 API（get_computed_blocks / allocate_slots / free 等）" vertex="1">
+          <mxGeometry height="50" width="680" x="40" y="188" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_L4" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;" value="&lt;b&gt;第 4 层 · 协调器　UnitaryKVCacheCoordinator（主线）&lt;/b&gt;　持有 N 个第 3 层（每 spec group 1 个，主线 N=1）＋ 1 个第 2 层" vertex="1">
+          <mxGeometry height="50" width="680" x="40" y="280" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_L3" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;" value="&lt;b&gt;第 3 层 ×N · 单类型管理　FullAttentionManager（主线 N=1）&lt;/b&gt;　前缀查找（链式哈希）/ 分配释放 / block_table 维护" vertex="1">
+          <mxGeometry height="50" width="680" x="40" y="372" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_L2" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;" value="&lt;b&gt;第 2 层 ×1 · 逻辑块池　BlockPool（唯一，所有第 3 层共享）&lt;/b&gt;　逻辑块分配 / 释放 / 缓存哈希 / LRU 驱逐（仅 block_id，无显存）&#xa;内件：FreeKVCacheBlockQueue（LRU 空闲块队列）＋ BlockHashToBlockMap（链式哈希 → block 映射）" vertex="1">
+          <mxGeometry height="62" width="680" x="40" y="464" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_bnote" parent="g2_1" style="text;html=1;fontSize=10;align=left;spacingLeft=110;fontColor=#9673a6;fontStyle=2;" value="桥接（非持有）：L2 在引擎进程、L1 在 worker 进程，无对象引用——同一份 KVCacheConfig 定两侧容量，block_id 从 0 编号即物理张量行号" vertex="1">
+          <mxGeometry height="38" width="680" x="40" y="530" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_L1" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;" value="&lt;b&gt;第 1 层 · 物理显存　GPUModelRunner.kv_caches[layer]（worker 进程）&lt;/b&gt;&#xa;torch [num_blocks, num_kv_heads, block_size, 2·head_dim]；block_id 直接索引第 0 维（物理行号）；真正读写 K/V 的是 attention 算子" vertex="1">
+          <mxGeometry height="56" width="680" x="40" y="576" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_e1" edge="1" parent="g2_1" source="g2_sch" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" target="g2_L5" value="调用">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_e2" edge="1" parent="g2_1" source="g2_L5" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" target="g2_L4" value="持有 1 个">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_e3" edge="1" parent="g2_1" source="g2_L4" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" target="g2_L3" value="持有 ×N（主线 N=1）">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_e4" edge="1" parent="g2_1" source="g2_L3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" target="g2_L2" value="引用同一个 BlockPool">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_e5" edge="1" parent="g2_1" source="g2_L2" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#9673a6;strokeWidth=2;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;exitX=0.13;exitY=1;exitDx=0;exitDy=0;entryX=0.13;entryY=0;entryDx=0;entryDy=0;" target="g2_L1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_hs" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" value="&lt;b&gt;Scheduler&lt;/b&gt;（调用者）" vertex="1">
+          <mxGeometry height="30" width="464" x="768" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_h5" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" value="&lt;b&gt;L5　KVCacheManager&lt;/b&gt;——持有 1 个 L4" vertex="1">
+          <mxGeometry height="30" width="464" x="768" y="166" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_h4" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" value="&lt;b&gt;L4　UnitaryKVCacheCoordinator&lt;/b&gt;——持 N×L3 ＋ 1×L2" vertex="1">
+          <mxGeometry height="30" width="464" x="768" y="236" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_h3" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" value="&lt;b&gt;L3×N&lt;/b&gt;　FullAttentionManager（N=1）" vertex="1">
+          <mxGeometry height="30" width="214" x="768" y="306" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_h2" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" value="&lt;b&gt;L2　BlockPool&lt;/b&gt;（唯一·共享）" vertex="1">
+          <mxGeometry height="30" width="214" x="1018" y="306" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_he1" edge="1" parent="g2_1" source="g2_hs" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g2_h5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_he2" edge="1" parent="g2_1" source="g2_h5" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g2_h4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_he3" edge="1" parent="g2_1" source="g2_h4" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.23;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g2_h3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_he4" edge="1" parent="g2_1" source="g2_h4" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.77;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g2_h2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_he5" edge="1" parent="g2_1" source="g2_h3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#595959;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;labelBackgroundColor=#ffffff;" target="g2_h2" value="同一池">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_hl1" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f2fa;strokeColor=#9673a6;strokeWidth=2;dashed=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10;" value="&lt;b&gt;L1　GPUModelRunner.kv_caches[layer]&lt;/b&gt;（worker 进程）——调度从不触碰：真正读写 K/V 的是 attention 算子；block 0＝null_block 占位" vertex="1">
+          <mxGeometry height="44" width="464" x="768" y="352" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_fmap" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#666666;strokeWidth=2;verticalAlign=top;spacingTop=8;spacingLeft=12;fontSize=10;align=left;" value="&lt;b&gt;2.1 关键文件地图（vllm/v1/ 下）&lt;/b&gt;&#xa;&lt;font color=&quot;#d79b00&quot;&gt;&lt;b&gt;L5&lt;/b&gt;&lt;/font&gt; core/kv_cache_manager.py——门面：get_computed_blocks / allocate_slots / free&#xa;&lt;font color=&quot;#d6b656&quot;&gt;&lt;b&gt;L4&lt;/b&gt;&lt;/font&gt; core/kv_cache_coordinator.py——单组直通 / 混合对齐；工厂 get_kv_cache_coordinator&#xa;&lt;font color=&quot;#82b366&quot;&gt;&lt;b&gt;L3&lt;/b&gt;&lt;/font&gt; core/single_type_kv_cache_manager.py——前缀查找 / 分配释放；工厂 get_manager_for_kv_cache_spec&#xa;&lt;font color=&quot;#6c8ebf&quot;&gt;&lt;b&gt;L2&lt;/b&gt;&lt;/font&gt; core/block_pool.py——分配 / 释放 / 缓存哈希 / LRU 驱逐&#xa;&lt;font color=&quot;#6c8ebf&quot;&gt;&lt;b&gt;L2&lt;/b&gt;&lt;/font&gt; core/kv_cache_utils.py——KVCacheBlock、BlockHash、空闲队列；容量规划 get_num_blocks&#xa;&lt;font color=&quot;#9673a6&quot;&gt;&lt;b&gt;L1&lt;/b&gt;&lt;/font&gt; worker/gpu_model_runner.py——int8 字节缓冲 → reshape 零拷贝视图并 bind 到层&#xa;&lt;font color=&quot;#9673a6&quot;&gt;&lt;b&gt;L1&lt;/b&gt;&lt;/font&gt; kv_cache_interface.py——KVCacheSpec / FullAttentionSpec / KVCacheConfig（real_page_size_bytes）" vertex="1">
+          <mxGeometry height="220" width="464" x="768" y="412" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_leg" parent="g2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;" value="" vertex="1">
+          <mxGeometry height="48" width="1200" x="40" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_lgt" parent="g2_1" style="text;html=1;fontSize=12;fontStyle=1;align=left;" value="图例" vertex="1">
+          <mxGeometry height="24" width="44" x="56" y="652" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_c0" parent="g2_1" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;fontStyle=1;align=center;" value="Scheduler" vertex="1">
+          <mxGeometry height="24" width="88" x="108" y="652" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_c5" parent="g2_1" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;fontStyle=1;align=center;" value="L5 门面" vertex="1">
+          <mxGeometry height="24" width="80" x="202" y="652" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_c4" parent="g2_1" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;align=center;" value="L4 协调器" vertex="1">
+          <mxGeometry height="24" width="80" x="288" y="652" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_c3" parent="g2_1" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;align=center;" value="L3 管理" vertex="1">
+          <mxGeometry height="24" width="80" x="374" y="652" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_c2" parent="g2_1" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;align=center;" value="L2 块池" vertex="1">
+          <mxGeometry height="24" width="80" x="460" y="652" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_c1" parent="g2_1" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=1;align=center;" value="L1 物理" vertex="1">
+          <mxGeometry height="24" width="80" x="546" y="652" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_ls1" edge="1" parent="g2_1" style="endArrow=block;endFill=1;html=1;strokeColor=#595959;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="660" y="664" as="sourcePoint" />
+            <mxPoint x="700" y="664" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g2_l1t" parent="g2_1" style="text;html=1;fontSize=10;align=left;" value="持有 / 调用" vertex="1">
+          <mxGeometry height="24" width="80" x="704" y="652" as="geometry" />
+        </mxCell>
+        <mxCell id="g2_ls2" edge="1" parent="g2_1" style="endArrow=block;endFill=1;html=1;strokeColor=#9673a6;strokeWidth=2;dashed=1;dashPattern=8 4;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="800" y="664" as="sourcePoint" />
+            <mxPoint x="840" y="664" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g2_l2t" parent="g2_1" style="text;html=1;fontSize=10;align=left;" value="桥接（非持有）" vertex="1">
+          <mxGeometry height="24" width="110" x="844" y="652" as="geometry" />
+        </mxCell>
+        <mxCell id="OV2DMrqSw9yUISHD6j-1-0" parent="g2_1" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" value="运行期持有关系图，右下＝2.1 关键文件地图" vertex="1">
+          <mxGeometry height="22" width="170" x="812" y="58" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="p4_deploy" name="3-启动期装配与衔接">
+    <mxGraphModel dx="1453" dy="943" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
+      <root>
+        <mxCell id="g4_0" />
+        <mxCell id="g4_1" parent="g4_0" />
+        <mxCell id="g4_title" value="3. 系统启动期：五层初始化" style="text;html=1;fontSize=24;fontStyle=1;align=left;" parent="g4_1" vertex="1">
+          <mxGeometry x="40" y="24" width="900" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_badge" value="图表类型 · 系统部署图" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#1f4e79;strokeColor=none;fontColor=#ffffff;fontSize=12;fontStyle=1;align=center;" parent="g4_1" vertex="1">
+          <mxGeometry x="1020" y="26" width="220" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_sub" value="上（3.1 装配全景）：规格先行，物理先于逻辑；下（3.2 衔接点）：同一份 KVCacheConfig 定两侧容量，block_id 即行号" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" parent="g4_1" vertex="1">
+          <mxGeometry x="40" y="62" width="960" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_lane_e" value="引擎进程（EngineCore）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=14;fontStyle=1;align=center;dashed=1;" parent="g4_1" vertex="1">
+          <mxGeometry x="40" y="90" width="700" height="288" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_lane_w" value="worker 进程（每卡）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f0f8;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=14;fontStyle=1;align=center;dashed=1;" parent="g4_1" vertex="1">
+          <mxGeometry x="800" y="90" width="440" height="288" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_s1" value="&lt;b&gt;① 算规格　get_kv_cache_specs()&lt;/b&gt;&#xa;收集每个 attention 层的 spec；纯 Full Attention 各层相同" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;strokeWidth=1.5;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=11;" parent="g4_1" vertex="1">
+          <mxGeometry x="64" y="118" width="650" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_w1" value="每层 attention 返回一个&lt;b&gt;FullAttentionSpec&lt;/b&gt;&#xa;同规格 ⇒ 合并为全模型唯一 KV cache group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.5;verticalAlign=middle;align=center;fontSize=11;" parent="g4_1" vertex="1">
+          <mxGeometry x="816" y="118" width="410" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_s2" value="&lt;b&gt;② 测预算　determine_available_memory()&lt;/b&gt;&#xa;RPC 让各卡 dummy forward（profile_run）实测可用显存" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;strokeWidth=1.5;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=11;" parent="g4_1" vertex="1">
+          <mxGeometry x="64" y="186" width="650" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_w2" value="总显存 × 利用率 − 权重 − 激活 − CUDAGraph 预留&#xa;&lt;b&gt;＝ 本卡 KV 可用字节数&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.5;verticalAlign=middle;align=center;fontSize=11;" parent="g4_1" vertex="1">
+          <mxGeometry x="816" y="186" width="410" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_s3" value="&lt;b&gt;③ 做编排　get_kv_cache_configs()&lt;/b&gt;&#xa;同规格层合并为 1 个 group；page_size ＝ 2 × block_size × num_kv_heads × head_dim × dtype_size（系数 2 对应 K＋V）&#xa;本卡 num_blocks ＝ 可用显存 // page_size // 本 worker 层数；多卡取最小值、共享同一套 block_id 空间 ⇒ 产出 &lt;b&gt;KVCacheConfig&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=11;" parent="g4_1" vertex="1">
+          <mxGeometry x="64" y="254" width="650" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_w4" value="&lt;b&gt;④ 落张量　initialize_from_config()&lt;/b&gt;&#xa;遍历 config.kv_cache_tensors，按 size 申请 int8 字节张量 → 零拷贝 view 成后端 shape → bind 到各 attention 层&#xa;worker 只按配置执行，不自行算块数&#xa;〔engine/core.py:329 · gpu_worker.py:649 → gpu_model_runner.py:7606〕" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=11;" parent="g4_1" vertex="1">
+          <mxGeometry x="816" y="254" width="410" height="116" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_s5" value="&lt;b&gt;⑤ 建逻辑层（RPC 返回后）&lt;/b&gt;&#xa;Scheduler（engine/core.py:158）→ KVCacheManager（sched/scheduler.py:271）&#xa;→ Coordinator（L4）→ 先建 BlockPool（L2）再建 FullAttentionManager（L3）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=11;" parent="g4_1" vertex="1">
+          <mxGeometry x="64" y="330" width="650" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_e1" value="RPC" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#9673a6;strokeWidth=1.5;endArrow=block;endFill=1;fontSize=10;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g4_1" source="g4_s1" target="g4_w1" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_e2" value="RPC" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#9673a6;strokeWidth=1.5;endArrow=block;endFill=1;fontSize=10;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g4_1" source="g4_s2" target="g4_w2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_e3" value="下发" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#d6b656;strokeWidth=2;dashed=1;endArrow=block;endFill=1;fontSize=10;fontStyle=1;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="g4_1" source="g4_s3" target="g4_w4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_e4" value="RPC 返回" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#82b366;strokeWidth=2;dashed=1;endArrow=block;endFill=1;fontSize=10;fontStyle=1;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="g4_1" source="g4_w4" target="g4_s5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_note" value="入口：EngineCore._initialize_kv_caches()（engine/core.py:248）　·　物理先于逻辑：Scheduler 在物理张量落地之后才创建" style="text;html=1;fontSize=12;align=center;fontColor=#666666;" parent="g4_1" vertex="1">
+          <mxGeometry x="40" y="386" width="1200" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_h32" value="&lt;b&gt;3.2 衔接点：物理 ↔ 逻辑——同一份 KVCacheConfig 定两侧容量，block_id 从 0 编号即物理行号&lt;/b&gt;" style="text;html=1;fontSize=13;align=left;fontColor=#333333;" vertex="1" parent="g4_1">
+          <mxGeometry x="40" y="416" width="1200" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_cfg2" value="&lt;b&gt;KVCacheConfig&lt;/b&gt;&#xa;num_blocks ＋ kv_cache_tensors[*].size / shared_by" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" vertex="1" parent="g4_1">
+          <mxGeometry x="450" y="444" width="380" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_physc" value="&lt;b&gt;物理侧（worker）&lt;/b&gt;　· 按 size（＝num_blocks × page_size 字节）torch.zeros int8 → reshape 零拷贝视图 → bind 到层；只按配置执行，不自行算块数&#xa;〔kv_cache_interface.py:926-932 · gpu_model_runner.py:7303-7320〕" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=10;" vertex="1" parent="g4_1">
+          <mxGeometry x="100" y="536" width="520" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_logicc" value="&lt;b&gt;逻辑侧（引擎 BlockPool）&lt;/b&gt;　· new 出 num_blocks 个 KVCacheBlock（0 … n−1，仅元数据，不含 K/V）　· 块 0＝null_block 占位，实分 n−1&#xa;· 此后物理张量不变：分配 / 共享 / 驱逐只改 ref_cnt 与哈希表　〔block_pool.py:175-177〕" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=10;" vertex="1" parent="g4_1">
+          <mxGeometry x="660" y="536" width="520" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_ce1" value="下发" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="g4_1" source="g4_cfg2" target="g4_physc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_ce2" value="下发" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;endFill=1;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" edge="1" parent="g4_1" source="g4_cfg2" target="g4_logicc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_res2" value="&lt;b&gt;桥接结果&lt;/b&gt;　两侧容量必然相等；block_id 即物理张量第 0 维行号——无需查表或拷贝，调度全程零显存拷贝" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=middle;align=center;fontSize=11;" vertex="1" parent="g4_1">
+          <mxGeometry x="140" y="602" width="1000" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_leg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;" parent="g4_1" vertex="1">
+          <mxGeometry x="40" y="640" width="1200" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_lgt" value="图例" style="text;html=1;fontSize=12;fontStyle=1;align=left;" parent="g4_1" vertex="1">
+          <mxGeometry x="56" y="652" width="44" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_c1" value="引擎 / worker 步骤" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;fontStyle=1;align=center;" parent="g4_1" vertex="1">
+          <mxGeometry x="108" y="652" width="120" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_c2" value="KVCacheConfig" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;align=center;" parent="g4_1" vertex="1">
+          <mxGeometry x="234" y="652" width="110" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_c3" value="物理落张量" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=1;align=center;" parent="g4_1" vertex="1">
+          <mxGeometry x="350" y="652" width="100" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_c4" value="逻辑层构建" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;align=center;" parent="g4_1" vertex="1">
+          <mxGeometry x="456" y="652" width="100" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_l1" style="endArrow=block;endFill=1;html=1;strokeColor=#9673a6;strokeWidth=1.5;" parent="g4_1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="580" y="664" as="sourcePoint" />
+            <mxPoint x="620" y="664" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g4_l1t" value="RPC 调用" style="text;html=1;fontSize=10;align=left;" parent="g4_1" vertex="1">
+          <mxGeometry x="624" y="652" width="80" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g4_l2" style="endArrow=block;endFill=1;html=1;strokeColor=#d6b656;strokeWidth=2;dashed=1;dashPattern=8 4;" parent="g4_1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="720" y="664" as="sourcePoint" />
+            <mxPoint x="760" y="664" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g4_l2t" value="配置下发 / 返回" style="text;html=1;fontSize=10;align=left;" parent="g4_1" vertex="1">
+          <mxGeometry x="764" y="652" width="110" height="24" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="p6_fsm" name="4-运行期请求生命周期">
+    <mxGraphModel dx="1453" dy="943" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
+      <root>
+        <mxCell id="g6_0" />
+        <mxCell id="g6_1" parent="g6_0" />
+        <mxCell id="g6_title" value="4. 系统运行期：一条请求的 KV Cache 生命周期" style="text;html=1;fontSize=24;fontStyle=1;align=left;" parent="g6_1" vertex="1">
+          <mxGeometry x="40" y="24" width="900" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_badge" value="图表类型 · 状态机＋矩阵图" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#1f4e79;strokeColor=none;fontColor=#ffffff;fontSize=12;fontStyle=1;align=center;" parent="g6_1" vertex="1">
+          <mxGeometry x="1020" y="26" width="220" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_sub" value="EngineCore 每步 schedule → execute_model → sample；4.1 状态机与编排链 · 4.2 五阶段×五层矩阵 · 4.3 三大结论" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" parent="g6_1" vertex="1">
+          <mxGeometry x="40" y="62" width="960" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_start" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;" parent="g6_1" vertex="1">
+          <mxGeometry x="58" y="106" width="26" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_wait" value="&lt;b&gt;WAITING&lt;/b&gt;　等待首次调度&#xa;入队即切块、按满块预计算链式哈希" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;" parent="g6_1" vertex="1">
+          <mxGeometry x="110" y="96" width="300" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_run" value="&lt;b&gt;RUNNING&lt;/b&gt;&#xa;prefill 完成后持续 decode" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;" parent="g6_1" vertex="1">
+          <mxGeometry x="470" y="96" width="300" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_done" value="&lt;b&gt;生成结束 → 释放&lt;/b&gt;&#xa;EOS / max_tokens：逆序归还、ref_cnt--" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;" parent="g6_1" vertex="1">
+          <mxGeometry x="850" y="96" width="270" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_endo" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;" parent="g6_1" vertex="1">
+          <mxGeometry x="1148" y="113" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_endi" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;" parent="g6_1" vertex="1">
+          <mxGeometry x="1156" y="120" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_se0" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_start" target="g6_wait" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_se1" value="首次调度（prefill）" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;fontSize=9;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_wait" target="g6_run" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_se2" value="生成结束" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_run" target="g6_done" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_se3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_done" target="g6_endo" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_loop" value="decode 循环：每步 分配 slot → GPU 执行（新增 0/1 块 · 跳过前缀查找）" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;strokeColor=#82b366;strokeWidth=2;endArrow=block;endFill=1;fontSize=10;fontStyle=2;labelBackgroundColor=#ffffff;exitX=0.2;exitY=1;exitDx=0;exitDy=0;entryX=0.8;entryY=1;entryDx=0;entryDy=0;" parent="g6_1" source="g6_run" target="g6_run" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="530" y="196" />
+              <mxPoint x="710" y="196" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g6_chain_lbl" value="&lt;b&gt;固定编排链&lt;/b&gt;（整个生命周期唯一的逻辑调用路径，逐层透传）" style="text;html=1;fontSize=13;align=left;fontColor=#333333;" parent="g6_1" vertex="1">
+          <mxGeometry x="40" y="174" width="700" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_c0" value="Scheduler" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;fontStyle=1;" parent="g6_1" vertex="1">
+          <mxGeometry x="56" y="202" width="140" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_c5" value="L5&#xa;KVCacheManager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;fontStyle=1;" parent="g6_1" vertex="1">
+          <mxGeometry x="226" y="202" width="150" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_c4" value="L4&#xa;Coordinator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;fontStyle=1;" parent="g6_1" vertex="1">
+          <mxGeometry x="406" y="202" width="150" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_c3" value="L3&#xa;FullAttentionManager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;fontStyle=1;" parent="g6_1" vertex="1">
+          <mxGeometry x="586" y="202" width="170" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_c2" value="L2&#xa;BlockPool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=middle;align=center;fontSize=12;fontStyle=1;" parent="g6_1" vertex="1">
+          <mxGeometry x="786" y="202" width="140" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_ce0" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_c0" target="g6_c5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_ce1" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_c5" target="g6_c4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_ce2" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_c4" target="g6_c3" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_ce3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="g6_1" source="g6_c3" target="g6_c2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_l1n" value="&lt;b&gt;L1 物理显存不在编排链上&lt;/b&gt;——逻辑链只产出整数 block_id 列表（block_table，经 SchedulerOutput 下发 worker）；真正读写 K/V 的是 attention 算子" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f2fa;strokeColor=#9673a6;strokeWidth=2;dashed=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=10;fontSize=11;" vertex="1" parent="g6_1">
+          <mxGeometry x="40" y="262" width="1200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_mh1" value="阶段 / 时机" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="g6_1">
+          <mxGeometry x="40" y="306" width="190" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_mh2" value="第 2～5 层（逻辑：全程零物理操作）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="g6_1">
+          <mxGeometry x="230" y="306" width="710" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_mh3" value="第 1 层（物理）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="g6_1">
+          <mxGeometry x="940" y="306" width="300" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r1a" value="入队｜WAITING" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="40" y="328" width="190" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r1b" value="不创建管理对象；Request 只持有按满块预计算的链式哈希" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=left;spacingLeft=12;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="230" y="328" width="710" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r1c" value="无" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="940" y="328" width="300" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r2a" value="前缀查找｜仅 prefill 一次" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="40" y="370" width="190" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r2b" value="沿编排链只读哈希表；命中块只标记可复用，ref_cnt 不变" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=left;spacingLeft=12;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="230" y="370" width="710" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r2c" value="无" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="940" y="370" width="300" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r3a" value="分配 slot｜prefill ＋ 每步 decode" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="40" y="412" width="190" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r3b" value="touch 命中块（ref_cnt++、摘出空闲队列）→ 弹空闲块得新 block_id → 组成 block_table；写满的块顺带写入哈希表" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="230" y="412" width="710" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r3c" value="无；仅登记「待清零新块」清单" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="940" y="412" width="300" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r4a" value="GPU 执行｜每调度步" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="40" y="454" width="190" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r4b" value="不参与；SchedulerOutput 把 block_table 下发给 worker" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=left;spacingLeft=12;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="230" y="454" width="710" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r4c" value="先清零本轮新块；attention 算子按 block_table 为 fancy index gather 物理行、写入新 K/V" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f0f8;strokeColor=#cccccc;verticalAlign=middle;align=center;spacingLeft=8;spacingRight=8;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="940" y="454" width="300" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r5a" value="释放｜生成结束" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="40" y="496" width="190" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r5b" value="逆序 ref_cnt--；共享块只减计数，归零才回收（有哈希入队尾、无哈希入队首）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="230" y="496" width="710" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_r5c" value="无" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;verticalAlign=middle;align=center;fontSize=10;" vertex="1" parent="g6_1">
+          <mxGeometry x="940" y="496" width="300" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_con1" value="&lt;b&gt;① 唯一接口：block_table&lt;/b&gt;　逻辑链用它完成全部分配 / 共享 / 驱逐，物理算子用它 gather 张量行；调度全程零显存拷贝，物理张量自申请后不再变动" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=2;verticalAlign=top;spacingTop=8;spacingLeft=12;spacingRight=10;fontSize=10;align=left;" vertex="1" parent="g6_1">
+          <mxGeometry x="40" y="552" width="386" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_con2" value="&lt;b&gt;② prefill / decode 同一骨架&lt;/b&gt;　都走「分配 slot → GPU 执行」；decode 每步 1 个新 token、新增 0/1 块、跳过前缀查找；没有两套逻辑、没有全局阶段切换" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;spacingTop=8;spacingLeft=12;spacingRight=10;fontSize=10;align=left;" vertex="1" parent="g6_1">
+          <mxGeometry x="447" y="552" width="386" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_con3" value="&lt;b&gt;③ 块的命运＝引用计数＋队列位置&lt;/b&gt;　命中前缀 → touch 零拷贝共享；归零才回收：有哈希入队尾（LRU 保护）、无哈希入队首（优先复用）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;strokeWidth=2;verticalAlign=top;spacingTop=8;spacingLeft=12;spacingRight=10;fontSize=10;align=left;" vertex="1" parent="g6_1">
+          <mxGeometry x="854" y="552" width="386" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_leg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#cccccc;" parent="g6_1" vertex="1">
+          <mxGeometry x="40" y="640" width="1200" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_lgt" value="图例" style="text;html=1;fontSize=12;fontStyle=1;align=left;" parent="g6_1" vertex="1">
+          <mxGeometry x="56" y="652" width="44" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_cw" value="WAITING" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;fontStyle=1;align=center;" parent="g6_1" vertex="1">
+          <mxGeometry x="108" y="652" width="88" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_cr" value="RUNNING" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;align=center;" parent="g6_1" vertex="1">
+          <mxGeometry x="202" y="652" width="88" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_cd" value="释放" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;align=center;" parent="g6_1" vertex="1">
+          <mxGeometry x="296" y="652" width="80" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_l1s" style="endArrow=block;endFill=1;html=1;strokeColor=#595959;strokeWidth=2;" parent="g6_1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="660" y="664" as="sourcePoint" />
+            <mxPoint x="700" y="664" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g6_l1t" value="状态迁移 / 调用" style="text;html=1;fontSize=10;align=left;" parent="g6_1" vertex="1">
+          <mxGeometry x="704" y="652" width="110" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g6_l2s" style="endArrow=block;endFill=1;html=1;strokeColor=#9673a6;strokeWidth=2;dashed=1;dashPattern=8 4;" parent="g6_1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="830" y="664" as="sourcePoint" />
+            <mxPoint x="870" y="664" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g6_l2t" value="桥接（非持有）" style="text;html=1;fontSize=10;align=left;" parent="g6_1" vertex="1">
+          <mxGeometry x="874" y="652" width="110" height="24" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
 </mxfile>
