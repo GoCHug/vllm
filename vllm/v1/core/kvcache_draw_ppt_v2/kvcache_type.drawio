@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="kvcache_types_v2" name="KVCache 类型整理">
-        <mxGraphModel dx="2083" dy="1685" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="3200" math="0" shadow="0">
+        <mxGraphModel dx="2876" dy="2856" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="3200" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -278,8 +278,135 @@
             </root>
         </mxGraphModel>
     </diagram>
+    <diagram id="wzq10Kn3_xXUMWn6sCEg" name="Spec体系与生命周期">
+        <mxGraphModel dx="1027" dy="1020" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-1" value="KVCacheSpec 类型体系与生命周期" style="text;html=1;fontSize=22;fontStyle=1;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="18" width="1200" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-2" value="Spec = 一层 KV cache 的格式定义（frozen dataclass）；block_size 全局统一，page_size_bytes 才是类型差异" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="52" width="1200" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-3" value="① 继承树（蓝=Attention 支 · 橙=Mamba 支 · 绿=家族 B）" style="text;html=1;fontSize=13;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="88" width="1200" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-4" value="&lt;b&gt;UniformTypeKVCacheSpecs&lt;/b&gt;&#10;同类型聚合容器" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b3b3b3;dashed=1;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="222" width="274" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-5" value="&lt;b&gt;KVCacheSpec&lt;/b&gt;&#10;frozen · 唯一字段 block_size" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" parent="1" vertex="1">
+                    <mxGeometry x="510" y="114" width="280" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-6" value="&lt;b&gt;AttentionSpec&lt;/b&gt;　·　num_kv_heads / head_size / dtype" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" parent="1" vertex="1">
+                    <mxGeometry x="362" y="222" width="274" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-7" value="&lt;b&gt;MambaSpec&lt;/b&gt;&#10;shapes / dtypes / cache mode" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" parent="1" vertex="1">
+                    <mxGeometry x="664" y="222" width="274" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-8" value="&lt;b&gt;FullAttentionSpec&lt;/b&gt;&#10;head_size_v / sliding_window / non_causal&#10;变体：TQ · RSWA · Sink · HiddenState" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="322" width="376" height="64" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-9" value="&lt;b&gt;MLAAttentionSpec（家族 B）&lt;/b&gt;&#10;compress_ratio / cache_dtype&#10;SWA 版 = SlidingWindowMLASpec（V4）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" parent="1" vertex="1">
+                    <mxGeometry x="462" y="322" width="376" height="64" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-10" value="&lt;b&gt;其他 Attention 子类&lt;/b&gt;&#10;SlidingWindow · ChunkedLocal&#10;CrossAttention · EncoderOnly（无 KV）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" parent="1" vertex="1">
+                    <mxGeometry x="864" y="322" width="376" height="64" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-11" value="&lt;b&gt;家族 C 子形态&lt;/b&gt;&#10;Mamba1(ShortConv) · Mamba2(LinearAttn) · GDN(KDA)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" parent="1" vertex="1">
+                    <mxGeometry x="966" y="222" width="274" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-12" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="orLBNixG1kcZBuIvpBrF-5" target="orLBNixG1kcZBuIvpBrF-6" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-13" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.85;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="orLBNixG1kcZBuIvpBrF-5" target="orLBNixG1kcZBuIvpBrF-7" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="650" y="158" as="sourcePoint"/>
+                        <Array as="points">
+                            <mxPoint x="650" y="190"/>
+                            <mxPoint x="801" y="190"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-14" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="orLBNixG1kcZBuIvpBrF-6" target="orLBNixG1kcZBuIvpBrF-8" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="499" y="298"/>
+                            <mxPoint x="248" y="298"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-15" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="orLBNixG1kcZBuIvpBrF-6" target="orLBNixG1kcZBuIvpBrF-9" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-16" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;endArrow=block;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="orLBNixG1kcZBuIvpBrF-6" target="orLBNixG1kcZBuIvpBrF-10" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="510" y="290" as="sourcePoint"/>
+                        <Array as="points">
+                            <mxPoint x="499" y="298"/>
+                            <mxPoint x="1052" y="298"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-17" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#d79b00;strokeWidth=1.5;dashed=1;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="orLBNixG1kcZBuIvpBrF-7" target="orLBNixG1kcZBuIvpBrF-11" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-18" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#b3b3b3;strokeWidth=1.5;dashed=1;endArrow=block;endFill=1;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="orLBNixG1kcZBuIvpBrF-5" target="orLBNixG1kcZBuIvpBrF-4" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="650" y="160" as="sourcePoint"/>
+                        <Array as="points">
+                            <mxPoint x="650" y="190"/>
+                            <mxPoint x="197" y="190"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-19" value="② Spec 生命周期（框架侧五步）" style="text;html=1;fontSize=13;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="388" width="1200" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-20" value="S1 · 各层 backend 初始化 → 每层产出 Spec" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10.5;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1.5;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="414" width="210" height="62" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-21" value="S2 · KVCacheConfig 汇总全部层 Spec" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10.5;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1.5;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="305" y="414" width="210" height="62" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-22" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#b3b3b3;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="orLBNixG1kcZBuIvpBrF-20" target="orLBNixG1kcZBuIvpBrF-21" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-23" value="S3 · 按 spec 值分组 → 组列表（混合统一 page）" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10.5;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1.5;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="550" y="414" width="210" height="62" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-24" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#b3b3b3;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="orLBNixG1kcZBuIvpBrF-21" target="orLBNixG1kcZBuIvpBrF-23" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-25" value="S4 · num_blocks = 可用显存 // 每块字节" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10.5;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1.5;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="795" y="414" width="210" height="62" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-26" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#b3b3b3;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="orLBNixG1kcZBuIvpBrF-23" target="orLBNixG1kcZBuIvpBrF-25" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-27" value="S5 · Worker：int8 底座 → reshape / bind" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10.5;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1.5;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1040" y="414" width="210" height="62" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-28" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#b3b3b3;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="orLBNixG1kcZBuIvpBrF-25" target="orLBNixG1kcZBuIvpBrF-27" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-29" value="③ Spec 的三个核心量：一个统一字段 + 两个多态量" style="text;html=1;fontSize=13;fontStyle=1;align=left;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="504" width="1200" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-30" value="&lt;b&gt;block_size&lt;/b&gt;&lt;br&gt;· 每块容纳的 token 数 —— 逻辑 ↔ 物理的换算系数&lt;br&gt;· 全局统一（CacheConfig，默认 16）" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;strokeWidth=2;fillColor=#ffffff;strokeColor=#999999;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="534" width="380" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-31" value="&lt;b&gt;page_size_bytes&lt;/b&gt;&lt;br&gt;· 每个物理块占的字节数&lt;br&gt;· 各 Spec 子类多态实现 —— 类型间唯一真正各异的量" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;strokeWidth=2;fillColor=#ffffff;strokeColor=#d79b00;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="534" width="380" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="orLBNixG1kcZBuIvpBrF-32" value="&lt;b&gt;storage_block_size&lt;/b&gt;&lt;br&gt;· 物理块实际容纳的 token 槽数&lt;br&gt;· 基类默认 = block_size；仅 MLA 覆写：block_size // compress_ratio" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;strokeWidth=2;fillColor=#ffffff;strokeColor=#82b366;" parent="1" vertex="1">
+                    <mxGeometry x="860" y="534" width="380" height="110" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
     <diagram id="hash_system" name="BlockHash 与链式哈希">
-        <mxGraphModel dx="1196" dy="809" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="430" math="0" shadow="0">
+        <mxGraphModel dx="719" dy="714" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="430" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -658,133 +785,6 @@
                 </mxCell>
                 <mxCell id="bm_pa1" value="pop(key, 5)" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="1" source="bm_ph2" target="bm_ph3" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-            </root>
-        </mxGraphModel>
-    </diagram>
-    <diagram id="wzq10Kn3_xXUMWn6sCEg" name="Spec体系与生命周期">
-        <mxGraphModel dx="833" dy="674" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
-            <root>
-                <mxCell id="0"/>
-                <mxCell id="1" parent="0"/>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-1" value="KVCacheSpec 类型体系与生命周期" style="text;html=1;fontSize=22;fontStyle=1;align=left;" vertex="1" parent="1">
-                    <mxGeometry x="40" y="18" width="1200" height="32" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-2" value="Spec = 一层 KV cache 的格式定义（frozen dataclass）；block_size 全局统一，page_size_bytes 才是类型差异" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" vertex="1" parent="1">
-                    <mxGeometry x="40" y="52" width="1200" height="20" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-3" value="① 继承树（蓝=Attention 支 · 橙=Mamba 支 · 绿=家族 B）" style="text;html=1;fontSize=13;fontStyle=1;align=left;fontColor=#333333;" vertex="1" parent="1">
-                    <mxGeometry x="40" y="88" width="1200" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-4" value="&lt;b&gt;UniformTypeKVCacheSpecs&lt;/b&gt;&#10;同类型聚合容器" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b3b3b3;dashed=1;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" vertex="1" parent="1">
-                    <mxGeometry x="60" y="222" width="274" height="52" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-5" value="&lt;b&gt;KVCacheSpec&lt;/b&gt;&#10;frozen · 唯一字段 block_size" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" vertex="1" parent="1">
-                    <mxGeometry x="510" y="114" width="280" height="44" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-6" value="&lt;b&gt;AttentionSpec&lt;/b&gt;　·　num_kv_heads / head_size / dtype" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" vertex="1" parent="1">
-                    <mxGeometry x="362" y="222" width="274" height="52" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-7" value="&lt;b&gt;MambaSpec&lt;/b&gt;&#10;shapes / dtypes / cache mode" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" vertex="1" parent="1">
-                    <mxGeometry x="664" y="222" width="274" height="52" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-8" value="&lt;b&gt;FullAttentionSpec&lt;/b&gt;&#10;head_size_v / sliding_window / non_causal&#10;变体：TQ · RSWA · Sink · HiddenState" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" vertex="1" parent="1">
-                    <mxGeometry x="60" y="322" width="376" height="64" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-9" value="&lt;b&gt;MLAAttentionSpec（家族 B）&lt;/b&gt;&#10;compress_ratio / cache_dtype&#10;SWA 版 = SlidingWindowMLASpec（V4）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" vertex="1" parent="1">
-                    <mxGeometry x="462" y="322" width="376" height="64" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-10" value="&lt;b&gt;其他 Attention 子类&lt;/b&gt;&#10;SlidingWindow · ChunkedLocal&#10;CrossAttention · EncoderOnly（无 KV）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" vertex="1" parent="1">
-                    <mxGeometry x="864" y="322" width="376" height="64" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-11" value="&lt;b&gt;家族 C 子形态&lt;/b&gt;&#10;Mamba1(ShortConv) · Mamba2(LinearAttn) · GDN(KDA)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;verticalAlign=middle;align=left;spacingLeft=8;" vertex="1" parent="1">
-                    <mxGeometry x="966" y="222" width="274" height="52" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-12" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-5" target="orLBNixG1kcZBuIvpBrF-6">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-13" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.85;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-5" target="orLBNixG1kcZBuIvpBrF-7">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="650" y="158" as="sourcePoint"/>
-                        <Array as="points">
-                            <mxPoint x="650" y="190"/>
-                            <mxPoint x="801" y="190"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-14" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-6" target="orLBNixG1kcZBuIvpBrF-8">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="499" y="298"/>
-                            <mxPoint x="248" y="298"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-15" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-6" target="orLBNixG1kcZBuIvpBrF-9">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-16" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#888888;strokeWidth=1.5;endArrow=block;endFill=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-6" target="orLBNixG1kcZBuIvpBrF-10">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="510" y="290" as="sourcePoint"/>
-                        <Array as="points">
-                            <mxPoint x="499" y="298"/>
-                            <mxPoint x="1052" y="298"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-17" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#d79b00;strokeWidth=1.5;dashed=1;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-7" target="orLBNixG1kcZBuIvpBrF-11">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-18" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#b3b3b3;strokeWidth=1.5;dashed=1;endArrow=block;endFill=1;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-5" target="orLBNixG1kcZBuIvpBrF-4">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="650" y="160" as="sourcePoint"/>
-                        <Array as="points">
-                            <mxPoint x="650" y="190"/>
-                            <mxPoint x="197" y="190"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-19" value="② Spec 生命周期（框架侧五步）" style="text;html=1;fontSize=13;fontStyle=1;align=left;fontColor=#333333;" vertex="1" parent="1">
-                    <mxGeometry x="40" y="388" width="1200" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-20" value="S1 · 各层 backend 初始化 → 每层产出 Spec" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10.5;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1.5;fontStyle=1;" vertex="1" parent="1">
-                    <mxGeometry x="60" y="414" width="210" height="62" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-21" value="S2 · KVCacheConfig 汇总全部层 Spec" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10.5;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1.5;fontStyle=1;" vertex="1" parent="1">
-                    <mxGeometry x="305" y="414" width="210" height="62" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-22" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#b3b3b3;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-20" target="orLBNixG1kcZBuIvpBrF-21">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-23" value="S3 · 按 spec 值分组 → 组列表（混合统一 page）" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10.5;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1.5;fontStyle=1;" vertex="1" parent="1">
-                    <mxGeometry x="550" y="414" width="210" height="62" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-24" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#b3b3b3;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-21" target="orLBNixG1kcZBuIvpBrF-23">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-25" value="S4 · num_blocks = 可用显存 // 每块字节" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10.5;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1.5;fontStyle=1;" vertex="1" parent="1">
-                    <mxGeometry x="795" y="414" width="210" height="62" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-26" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#b3b3b3;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-23" target="orLBNixG1kcZBuIvpBrF-25">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-27" value="S5 · Worker：int8 底座 → reshape / bind" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=8;fontSize=10.5;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1.5;fontStyle=1;" vertex="1" parent="1">
-                    <mxGeometry x="1040" y="414" width="210" height="62" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-28" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=0;strokeColor=#b3b3b3;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="orLBNixG1kcZBuIvpBrF-25" target="orLBNixG1kcZBuIvpBrF-27">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-29" value="③ Spec 的三个核心量：一个统一字段 + 两个多态量" style="text;html=1;fontSize=13;fontStyle=1;align=left;fontColor=#333333;" vertex="1" parent="1">
-                    <mxGeometry x="40" y="504" width="1200" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-30" value="&lt;b&gt;block_size&lt;/b&gt;&lt;br&gt;· 每块容纳的 token 数 —— 逻辑 ↔ 物理的换算系数&lt;br&gt;· 全局统一（CacheConfig，默认 16）" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;strokeWidth=2;fillColor=#ffffff;strokeColor=#999999;" vertex="1" parent="1">
-                    <mxGeometry x="60" y="534" width="380" height="110" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-31" value="&lt;b&gt;page_size_bytes&lt;/b&gt;&lt;br&gt;· 每个物理块占的字节数&lt;br&gt;· 各 Spec 子类多态实现 —— 类型间唯一真正各异的量" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;strokeWidth=2;fillColor=#ffffff;strokeColor=#d79b00;" vertex="1" parent="1">
-                    <mxGeometry x="460" y="534" width="380" height="110" as="geometry"/>
-                </mxCell>
-                <mxCell id="orLBNixG1kcZBuIvpBrF-32" value="&lt;b&gt;storage_block_size&lt;/b&gt;&lt;br&gt;· 物理块实际容纳的 token 槽数&lt;br&gt;· 基类默认 = block_size；仅 MLA 覆写：block_size // compress_ratio" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=14;spacingRight=10;fontSize=11;strokeWidth=2;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="1">
-                    <mxGeometry x="860" y="534" width="380" height="110" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>
