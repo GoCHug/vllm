@@ -545,4 +545,3 @@ class KVCacheBlocks:
 2. **逻辑侧（5 个类型）**：下篇 §1 哈希 → §2 块 → §3/§4 块的两个存储位置（空闲队列 / 哈希映射表）→ §5 块集合返回 Scheduler。其中 §2+§3+§4 是 `BlockPool` 管理器的三大数据内件（管理器见架构文档），§5 是第 5 层门面对外接口；全程只装块引用、不搬显存。
 3. **物理侧**：worker 据 `kv_cache_tensors` 申请 int8 字节张量并 reshape 成 `kv_caches[layer]`，`block_id` 直接索引张量行号。真正读写 K/V 的是 attention 算子——它拿着 block_table（逻辑侧产出的 `block_id` 列表）索引物理张量，调度全程零显存拷贝。
 
-> 延伸阅读：配置生成详见 [`1_init_physical_memory.md`](./1_init_physical_memory.md)；五层架构与 `BlockPool` 管理器见 [`0_kv_cache_management_arch.md`](./0_kv_cache_management_arch.md)；请求运行时序见 [`0_runtime_sequence.md`](./0_runtime_sequence.md)。
