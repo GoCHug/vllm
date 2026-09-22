@@ -1,0 +1,17 @@
+--- a/vllm/v1/request.py
++++ b/vllm/v1/request.py
+@@ -178,6 +178,14 @@
+         # immediate garbage collection via reference counting.
+         self._block_hasher: Callable[[Request], list[BlockHash]] | None = block_hasher
+         self.update_block_hashes()
++        # [KVC][ENQ] 入队阶段: 预计算满块链式哈希 (BlockHash, 纯哈希不含 group_id)
++        print(
++            f"[KVC][ENQ] Request(request_id={self.request_id}) 入队: "
++            f"num_prompt_tokens={self.num_prompt_tokens}, max_tokens={self.max_tokens}, "
++            f"满块链式哈希 BlockHash × {len(self.block_hashes)}: "
++            f"{[h.hex()[:12] for h in self.block_hashes]}",
++            flush=True,
++        )
+ 
+         self.skip_reading_prefix_cache = self.get_skip_reading_prefix_cache()
+ 
