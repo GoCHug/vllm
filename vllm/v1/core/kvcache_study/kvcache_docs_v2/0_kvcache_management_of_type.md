@@ -169,7 +169,7 @@ real_page_size_bytes
 
 ### 2.1 是什么
 
-`KVCacheGroupSpec`（`kv_cache_interface.py:937`）是**一组共享同一份 KV cache block_table 的模型层**。这些层在 KV cache manager 眼里"被当作一个层"：一起分配块、一起命中前缀、一起驱逐。
+`KVCacheGroupSpec`（`kv_cache_interface.py:839`）是**一组共享同一份 KV cache block_table 的模型层**。这些层在 KV cache manager 眼里"被当作一个层"：一起分配块、一起命中前缀、一起驱逐。
 
 ### 2.2 定义
 
@@ -181,7 +181,7 @@ class KVCacheGroupSpec:
     is_eagle_group: bool = False  # 是否含 EAGLE/MTP draft 注意力层
 ```
 
-### 2.3 怎么来的：`create_kv_cache_group_specs()`（`kv_cache_utils.py:882`）
+### 2.3 怎么来的：`create_kv_cache_group_specs()`（`kv_cache_utils.py:844`）
 
 ```python
 for layer_names_one_group in grouped_layer_names:
@@ -205,7 +205,7 @@ for layer_names_one_group in grouped_layer_names:
 
 ### 3.1 是什么
 
-`KVCacheTensor`（`kv_cache_interface.py:925`）是**描述物理张量如何申请的元数据**。**它不是 `torch.Tensor`**——本类型只是元数据；真正的张量要到物理分配那一步（worker 收到 `KVCacheConfig` 后）才创建。
+`KVCacheTensor`（`kv_cache_interface.py:829`）是**描述物理张量如何申请的元数据**。**它不是 `torch.Tensor`**——本类型只是元数据；真正的张量要到物理分配那一步（worker 收到 `KVCacheConfig` 后）才创建。
 
 ### 3.2 定义
 
@@ -214,25 +214,25 @@ for layer_names_one_group in grouped_layer_names:
 class KVCacheTensor:
     size: int              # 张量字节数（不是元素个数）
     shared_by: list[str]   # 哪些层共享这块张量（通常每层一块独立的；packed 下多层拼一块）
-    offset: int = 0        # packed 布局下：本层在连续块内的字节偏移
-    block_stride: int = 0  # packed 布局下：每块总字节数（0 = 非 packed）
+# （vllm-study 新版本在此之上增加两个 packed 布局字段：offset = 本层在连续块内的
+#  字节偏移；block_stride = 每块总字节数。releases/v0.23.0 尚无这两个字段）
 ```
 
-### 3.3 怎么来的：`get_kv_cache_config_from_groups()`（`kv_cache_utils.py:1340`）三种场景
+### 3.3 怎么来的：`get_kv_cache_config_from_groups()`（`kv_cache_utils.py:1247`）三种场景
 
 | 场景 | 条件 | 生成方式 |
 |------|------|----------|
 | ① 每层按需单开 | 单组且 spec 为 `UniformTypeKVCacheSpecs`（同类型、各层 hidden 大小可不同） | 每层一张单：`size = 该层 page_size_bytes × num_blocks`，`shared_by=[该层]` |
-| ② packed 拼单 | `_use_packed_kv_cache_config()`（DeepSeek V4 默认 / `--enable-cross-layers`） | 多张单 alias 同一块物理分配，各带 `offset` / `block_stride`（`_get_kv_cache_config_packed()`，kv_cache_utils.py:1314） |
+| ② DeepSeek V4 拼桶 | 全部组均为 `UniformTypeKVCacheSpecs`（多组） | 每个 `(slot_idx, page_size)` 桶一张单，`shared_by` = 同 slot 各层（`_get_kv_cache_config_deepseek_v4()`，kv_cache_utils.py:1226；新版本改为 `_use_packed_kv_cache_config()` + `offset/block_stride` 显式 packed 布局，0.23.0 尚无） |
 | ③ 通用 | 其余所有情况（主线单组 FullAttention、多组混合模型都在此） | 建 `group_size` 张单，每张 `size = page_size × num_blocks`，`shared_by` = **每个组的第 i 层**拼一起（组内层数不足则跳过 = padding） |
 
 > ③ 的拼法是"错位共享"：第 i 号张量的第 b 行给"组 j 的第 i 层"第 b 块用——各组的 block_table 独立，同块号在不同组里各用各的页，天然不冲突。主线（纯 FullAttention 单组，组 spec 是 merge 出的普通 `FullAttentionSpec`）在 ③ 下退化为"每层一单独享"：`group_size = 组内层数`，第 i 单只 `shared_by` 第 i 层（见 [`1_init_physical_memory.md`](./1_init_physical_memory.md) §2.3）。主线并不命中 ①——那是"同类型但各层 hidden 大小不同"的特例分支。
 
 ### 3.4 消费方与忠告
 
-- **消费**：`GPUModelRunner._allocate_kv_cache_tensors()`（gpu_model_runner.py:7286）：按 `size` `torch.zeros(..., dtype=torch.int8)` 申请字节池 → `shared_by` 里每层挂到这块 raw tensor → 后续 reshape/bind（详见 [`1_init_physical_memory.md`](./1_init_physical_memory.md) §2.4）。packed 单据则按 `offset/block_stride` 做切片 view。
-- **多 worker 对齐时会缩水**：`min(num_blocks)` 对齐时 `tensor.size` 按 `num_blocks_old → min_num_blocks` 等比缩小（kv_cache_utils.py:2191）。
-- **`shared_by` ≠ "共享数据的层"**：它是"共用同一次 `torch.zeros` 分配"的层集合；是否真的存同一份数据取决于 layout（通用 layout 各层各页不冲突；packed layout 是显式切片共享）。
+- **消费**：`GPUModelRunner._allocate_kv_cache_tensors()`（gpu_model_runner.py:6999）：按 `size` `torch.zeros(..., dtype=torch.int8)` 申请字节池 → `shared_by` 里每层挂到这块 raw tensor → 后续 reshape/bind（详见 [`1_init_physical_memory.md`](./1_init_physical_memory.md) §2.4）。
+- **多 worker 对齐时会缩水**：`min(num_blocks)` 对齐时 `tensor.size` 按 `num_blocks_old → min_num_blocks` 等比缩小（kv_cache_utils.py:2074）。
+- **`shared_by` ≠ "共享数据的层"**：它是"共用同一次 `torch.zeros` 分配"的层集合；是否真的存同一份数据取决于 layout（通用 layout 各层各页不冲突；DeepSeek V4 拼桶下同桶各层显式共享同一物理分配）。
 
 ---
 
@@ -240,7 +240,7 @@ class KVCacheTensor:
 
 ### 4.1 是什么
 
-`KVCacheConfig`（`kv_cache_interface.py:952`）是**一次 KV cache 初始化编排的最终产物**，也是**配置侧出口**：配置生成链路（算规格 → 测预算 → 做编排）的输出、下发物理侧与逻辑侧的输入。三个字段把上述三个类型组装为一个整体：`num_blocks` 定义块数量，`kv_cache_tensors` 定义物理张量申请方式，`kv_cache_groups` 定义层分组。
+`KVCacheConfig`（`kv_cache_interface.py:854`）是**一次 KV cache 初始化编排的最终产物**，也是**配置侧出口**：配置生成链路（算规格 → 测预算 → 做编排）的输出、下发物理侧与逻辑侧的输入。三个字段把上述三个类型组装为一个整体：`num_blocks` 定义块数量，`kv_cache_tensors` 定义物理张量申请方式，`kv_cache_groups` 定义层分组。
 
 ### 4.2 定义
 
@@ -261,7 +261,7 @@ class KVCacheConfig:
 
 > `needs_kv_cache_zeroing = has_mamba_layers or has_mixed_precision_kv_cache`：Mamba 状态会"先读后写"（#35219）；混合精度下块跨组复用会被按另一种精度解析，脏字节可能读出 NaN/Inf——这两类模型新块必须清零，纯 FullAttention 不用。
 
-### 4.3 怎么来的：`get_kv_cache_configs()`（`kv_cache_utils.py:2073`）
+### 4.3 怎么来的：`get_kv_cache_configs()`（`kv_cache_utils.py:1956`）
 
 ```text
 合并各 worker 的 spec → 全局分组 → _project 投影到每 worker 实际层
@@ -275,11 +275,11 @@ class KVCacheConfig:
 
 | 字段 | 流向 | 在下游变成什么 |
 |------|------|---------------|
-| `num_blocks` | `cache_config.num_gpu_blocks`（core.py:314）；`BlockPool.__init__`；`watermark_blocks` | 建 `KVCacheBlock(0..num_blocks-1)`；块池容量；水位线 |
+| `num_blocks` | `cache_config.num_gpu_blocks`（core.py:280）；`BlockPool.__init__`；`watermark_blocks` | 建 `KVCacheBlock(0..num_blocks-1)`；块池容量；水位线 |
 | `kv_cache_tensors` | worker 的 `_allocate_kv_cache_tensors()` | int8 字节池 → reshape → `kv_caches[layer]` 物理张量（`block_id` = 行号） |
 | `kv_cache_groups` | coordinator `single_type_managers`、每请求 block_ids 结构、`BlockHashWithGroupId` 的 group_id | 每组一个 manager；组下标身份贯穿调度与缓存 key |
 
-> 也存在特例：attention-free 模型（无 KV 层）返回 `num_blocks=1` 的最小 config（kv_cache_utils.py:1359），只为满足 `BlockPool` 必须有一个 null block。
+> 也存在特例：attention-free 模型（无 KV 层）返回 `num_blocks=1` 的最小 config（kv_cache_utils.py:1266），只为满足 `BlockPool` 必须有一个 null block。
 
 ---
 
@@ -467,7 +467,7 @@ class BlockHashToBlockMap:
 
 ### 5.1 是什么
 
-`KVCacheBlocks`（`kv_cache_manager.py:33`）是 **KVCacheManager 分配/查询结果的载体**：一轮前缀命中（`get_computed_blocks`）或新块分配（`allocate_slots`）之后，"这个请求在第 i 组拿到了哪些块"被打包进它的 `blocks`。它是 **Scheduler ↔ KVCacheManager 之间的接口**——Scheduler 只通过该接口获取结果，接触不到 `BlockPool` / single-type manager 的内部结构。
+`KVCacheBlocks`（`kv_cache_manager.py:26`）是 **KVCacheManager 分配/查询结果的载体**：一轮前缀命中（`get_computed_blocks`）或新块分配（`allocate_slots`）之后，"这个请求在第 i 组拿到了哪些块"被打包进它的 `blocks`。它是 **Scheduler ↔ KVCacheManager 之间的接口**——Scheduler 只通过该接口获取结果，接触不到 `BlockPool` / single-type manager 的内部结构。
 
 ### 5.2 定义与方法
 
@@ -498,12 +498,12 @@ class KVCacheBlocks:
 
 ### 5.3 怎么来、到哪里去
 
-- **工厂 + 单例复用**：`KVCacheManager.create_kv_cache_blocks()`（kv_cache_manager.py:771）只在非空时新建对象，全空则复用启动时预建的 `empty_kv_cache_blocks`（kv_cache_manager.py:185，内层是空 `tuple`，天然不可变）——避免调度每步制造海量短命空对象的 GC 开销。
+- **工厂 + 单例复用**：`KVCacheManager.create_kv_cache_blocks()`（kv_cache_manager.py:564）只在非空时新建对象，全空则复用启动时预建的 `empty_kv_cache_blocks`（kv_cache_manager.py:171，内层是空 `tuple`，天然不可变）——避免调度每步制造海量短命空对象的 GC 开销。
 - **三个生产者**（都在 `KVCacheManager`）：
   - `get_computed_blocks(request)`：前缀缓存命中的块（来源是 §4 映射表的查询）；
   - `allocate_slots(...)`：本次步新分配的块（底层是 `BlockPool` 的 `get_new_blocks`/`touch`），内存不足返回 `None`；
   - `get_blocks(request_id)`：某请求当前持有的全部块。
-- **去向**：Scheduler 把它暂存进 `req_to_new_blocks`，随后 `get_block_ids()` 抽出各组 block_id 列表交给 Worker 组装 `block_table`（`scheduler.py:1111`/`scheduler.py:1406`）。
+- **去向**：Scheduler 把它暂存进 `req_to_new_blocks`，随后 `get_block_ids()` 抽出各组 block_id 列表交给 Worker 组装 `block_table`（`scheduler.py:900`/`scheduler.py:1128`）。
 
 ### 5.4 两个要点
 

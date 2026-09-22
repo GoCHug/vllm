@@ -15,7 +15,7 @@
 
 ### 1.1 初始化流水线
 
-从 `EngineCore._initialize_kv_caches()`（core.py:248）起步，物理显存初始化沿**四阶段单向管线**推进，将 KV cache 抽象规格逐级物化为设备张量：
+从 `EngineCore._initialize_kv_caches()`（core.py:236）起步，物理显存初始化沿**四阶段单向管线**推进，将 KV cache 抽象规格逐级物化为设备张量：
 
 ```
 模型层配置 ──①──▶ KVCacheSpec ──②──▶ available_memory ──③──▶ KVCacheConfig ──④──▶ kv_caches[layer]
@@ -45,7 +45,7 @@
 
 ## 2. 初始化流程详解
 
-物理显存初始化启动期**一次性**执行 `EngineCore._initialize_kv_caches`（core.py:248），通过 profile_run 实测可用显存后算出 `num_blocks`，然后每 worker 一次性申请 16 个张量（大小 num_blocks × page_size_bytes）。产出两样供运行时消费：
+物理显存初始化启动期**一次性**执行 `EngineCore._initialize_kv_caches`（core.py:236），通过 profile_run 实测可用显存后算出 `num_blocks`，然后每 worker 一次性申请 16 个张量（大小 num_blocks × page_size_bytes）。产出两样供运行时消费：
 1. `num_blocks`（4096，跨 worker 对齐）→ `BlockPool.__init__` 建 `KVCacheBlock(0..4095)`，`block_id` 为 0-4095，运行时 `KVCacheManager` 的分配/释放只操作 `block_id` 和 `ref_cnt`
 2. `kv_caches[layer]` 物理张量 → 每 worker 的 `GPUModelRunner` 申请 16 层，`block_id` 即物理张量第 0 维行号，运行时按 `block_id` 读写
 
@@ -93,7 +93,7 @@ sequenceDiagram
 以纯 Full Attention 模型（Llama-3-8B pp2tp2，每 worker 16 层 / 4 KV 头，合并后全模型 32 层**单 group**）为例。
 
 ```text
-EngineCore._initialize_kv_caches()                        # engine/core.py:248  启动期唯一入口
+EngineCore._initialize_kv_caches()                        # engine/core.py:236  启动期唯一入口
 │
 ├─ ※  register_all_kvcache_specs(vllm_config)            # FullAttentionSpec ↔ FullAttentionManager 注册表
 │
@@ -126,7 +126,7 @@ EngineCore._initialize_kv_caches()                        # engine/core.py:248  
 进入正题前，`EngineCore` 进程内先执行 `register_all_kvcache_specs(vllm_config)`，把 `FullAttentionSpec` 注册到 `FullAttentionManager`：
 
 ```python
-# single_type_kv_cache_manager.py:1881
+# single_type_kv_cache_manager.py:1349
 def register_all_kvcache_specs(vllm_config):
     """Built-in spec registration"""
     KVCacheSpecRegistry.register(
@@ -140,10 +140,10 @@ def register_all_kvcache_specs(vllm_config):
 
 ### 2.1 第 1 步 · 算规格：各层产出 KVCacheSpec
 
-**调用链**：`EngineCore` → `ModelExecutor.get_kv_cache_specs()`（core.py:255）→ RPC 到各 worker → `GPUWorker.get_kv_cache_spec()`（gpu_worker.py:633）→ **`GPUModelRunner.get_kv_cache_spec()`（gpu_model_runner.py:7782）**。
+**调用链**：`EngineCore` → `ModelExecutor.get_kv_cache_specs()`（core.py:243）→ RPC 到各 worker → `GPUWorker.get_kv_cache_spec()`（gpu_worker.py:547）→ **`GPUModelRunner.get_kv_cache_spec()`（gpu_model_runner.py:7440）**。
 
 ```python
-# gpu_model_runner.py:7782 GPUModelRunner 实例方法（用 self）
+# gpu_model_runner.py:7440 GPUModelRunner 实例方法（用 self）
 def get_kv_cache_spec(self) -> dict[str, KVCacheSpec]:
     kv_cache_spec: dict[str, KVCacheSpec] = {}
     layer_type = cast(type[Any], AttentionLayerBase)
@@ -169,7 +169,7 @@ def get_kv_cache_spec(self) -> dict[str, KVCacheSpec]:
 **※ 边注 · 扫描 `non_causal`**——specs 收集齐后，EngineCore 检查是否有层标记 `non_causal=True`（如 Prefix LM attention）：
 
 ```python
-# core.py:263
+# core.py:263（vllm-study 主线；releases/v0.23.0 尚无此检查）
 if any(getattr(spec, "non_causal", False)
        for worker_specs in kv_cache_specs
        for spec in worker_specs.values()):
@@ -181,12 +181,12 @@ if any(getattr(spec, "non_causal", False)
 
 ### 2.2 第 2 步 · 测预算：profile 量出可用显存
 
-**调用链**：`EngineCore` → `ModelExecutor.determine_available_memory()`（core.py:291）→ RPC 到各 worker → `GPUWorker.determine_available_memory()`（gpu_worker.py:459）→ **内部 `self.model_runner.profile_run()`**（dummy forward 量峰值）→ 写回 `self.available_kv_cache_memory_bytes`（gpu_worker.py:542）→ 返回每个 worker 的 `available_memory` 字节数 `list[int]`。
+**调用链**：`EngineCore` → `ModelExecutor.determine_available_memory()`（core.py:257）→ RPC 到各 worker → `GPUWorker.determine_available_memory()`（gpu_worker.py:372）→ **内部 `self.model_runner.profile_run()`**（dummy forward 量峰值）→ 写回 `self.available_kv_cache_memory_bytes`（gpu_worker.py:460）→ 返回每个 worker 的 `available_memory` 字节数 `list[int]`。
 
 **核心公式**：
 
 ```
-requested_memory = total_memory × gpu_memory_utilization        (request_memory, utils.py:393)
+requested_memory = total_memory × gpu_memory_utilization        (request_memory, utils.py:405)
 
 available_kv_cache_memory = requested_memory
                            − non_kv_cache_memory                (权重 + 激活 + 其他)
@@ -199,12 +199,12 @@ available_kv_cache_memory = requested_memory
 
 ### 2.3 第 3 步 · 做编排：合并 / 分组 / num_blocks / 对齐
 
-**调用链**：`EngineCore` → `get_kv_cache_configs()`（kv_cache_utils.py:2073），顶层入口，依次五步（PP 下含投影）：
+**调用链**：`EngineCore` → `get_kv_cache_configs()`（kv_cache_utils.py:1956），顶层入口，依次五步（PP 下含投影）：
 
 **① 合并全 worker spec**
 
 ```python
-# kv_cache_utils.py:2111（节选）
+# kv_cache_utils.py:1994（节选）
 merged_kv_cache_specs: dict[str, KVCacheSpec] = {}
 for kv_cache_spec_one_worker in kv_cache_specs:
     for layer_name, layer_spec in kv_cache_spec_one_worker.items():
@@ -216,7 +216,7 @@ for kv_cache_spec_one_worker in kv_cache_specs:
 **② 分组 `get_kv_cache_groups()`**—— 纯 FullAttention 走 `is_kv_cache_spec_uniform()` → `_get_kv_cache_groups_uniform_spec()` → 全模型**单 group**。
 
 ```python
-# kv_cache_utils.py:912
+# kv_cache_utils.py:874
 def is_kv_cache_spec_uniform(kv_cache_spec) -> bool:
     if not kv_cache_spec:
         return True  # encoder-only 模型
@@ -232,10 +232,10 @@ def is_kv_cache_spec_uniform(kv_cache_spec) -> bool:
 
 **③ 投影到各 worker：按 projected groups 计算 num_blocks**
 
-`num_blocks` 是 **per-worker 容量**——每个 worker 只物化本 rank 负责的层（PP 切层；TP 切头已折进各 worker spec 的 `page_size_bytes`），可用显存必须按 worker 实际承载的层数折算，不能以全局合并层数为除数。`get_kv_cache_configs()` 先执行 `_project_kv_cache_groups_to_worker()`，把 global groups（32 层）投影为各 worker 的 **projected groups**（16 层），再传入 `get_kv_cache_config_from_groups()`（kv_cache_utils.py:1340，单组 `FullAttentionSpec` 走通用 else 路径）：
+`num_blocks` 是 **per-worker 容量**——每个 worker 只物化本 rank 负责的层（PP 切层；TP 切头已折进各 worker spec 的 `page_size_bytes`），可用显存必须按 worker 实际承载的层数折算，不能以全局合并层数为除数。`get_kv_cache_configs()` 先执行 `_project_kv_cache_groups_to_worker()`，把 global groups（32 层）投影为各 worker 的 **projected groups**（16 层），再传入 `get_kv_cache_config_from_groups()`（kv_cache_utils.py:1247，单组 `FullAttentionSpec` 走通用 else 路径）：
 
 ```python
-# kv_cache_utils.py:1399-1416（节选）
+# kv_cache_utils.py:1309-1326（节选）
 group_size = max(len(group.layer_names) for group in kv_cache_groups)  # = 16（projected 后每 worker 层数）
 num_blocks = available_memory // page_size // group_size
 # group_size = projected group 的层数（pp2tp2 下每 worker 16，不是合并的 32）
@@ -246,7 +246,7 @@ num_blocks = available_memory // page_size // group_size
 **对照 · UniformType 单组路径**（同类型异页大小，不除层数）：
 
 ```python
-# kv_cache_utils.py:1372-1383（节选）
+# kv_cache_utils.py:1279-1290（节选）
 num_blocks = available_memory // kv_cache_groups[0].kv_cache_spec.page_size_bytes
 # 每层张量 size = per_layer_specs[layer].page_size_bytes × num_blocks（按各层实际页大小分配）
 ```
@@ -254,7 +254,7 @@ num_blocks = available_memory // kv_cache_groups[0].kv_cache_spec.page_size_byte
 **④ 校验 `_check_enough_kv_cache_memory()`**
 
 ```python
-# kv_cache_utils.py:751（节选）
+# kv_cache_utils.py:713（节选）
 needed_memory = get_needed_memory()  # max_model_len 下需要的 KV cache
 if needed_memory > available_memory:
     estimated_max_len = estimate_max_model_len(available_memory)
@@ -264,7 +264,7 @@ if needed_memory > available_memory:
 **⑤ 多 worker 对齐**——集中式调度下，同一请求的 `block_table` 由所有 worker 共用：PP 各 stage 按段索引本 rank 的层，TP 各 rank 只读写本 rank 的 KV 头子集，因此 `block_id` 必须在任意 rank 上都对应有效物理行。对齐策略：取各 worker `num_blocks` 的最小值作为全局统一值（以 KV 预算最小的 worker 为基准），确保任一 `block_id` 在所有 worker 上均有效：
 
 ```python
-# kv_cache_utils.py:2191（节选）
+# kv_cache_utils.py:2074（节选）
 min_num_blocks = min(cfg.num_blocks for cfg in kv_cache_configs)
 for kv_cache_config in kv_cache_configs:
     num_blocks_old = kv_cache_config.num_blocks
@@ -277,7 +277,7 @@ for kv_cache_config in kv_cache_configs:
 **产出数据结构**
 
 ```python
-# kv_cache_interface.py:952（节选）
+# kv_cache_interface.py:854（节选）
 @dataclass
 class KVCacheConfig:
     num_blocks: int                        # 对齐后的 block 总数
@@ -299,17 +299,17 @@ class KVCacheGroupSpec:
 
 ### 2.4 第 4 步 · 落张量：申请 int8 池 / reshape / 绑定 + 编译预热
 
-**调用链**：`EngineCore` → `ModelExecutor.initialize_from_config()`（core.py:329 / abstract.py:118）——内部**连续两个 RPC**：
+**调用链**：`EngineCore` → `ModelExecutor.initialize_from_config()`（core.py:290 / abstract.py:118）——内部**连续两个 RPC**：
 
-1. `collective_rpc("initialize_from_config")` → `GPUWorker.initialize_from_config()`（gpu_worker.py:649）→ `GPUModelRunner.initialize_kv_cache()`（gpu_model_runner.py:7606），完成 4a/4b/4c 落张量；
-2. `collective_rpc("compile_or_warm_up_model")` → `GPUWorker.compile_or_warm_up_model()`（gpu_worker.py:678），完成 4d 编译预热。
+1. `collective_rpc("initialize_from_config")` → `GPUWorker.initialize_from_config()`（gpu_worker.py:563）→ `GPUModelRunner.initialize_kv_cache()`（gpu_model_runner.py:7284），完成 4a/4b/4c 落张量；
+2. `collective_rpc("compile_or_warm_up_model")` → `GPUWorker.compile_or_warm_up_model()`（gpu_worker.py:592），完成 4d 编译预热。
 
-这一步**每卡并行各自执行**：`collective_rpc` 广播 `list[KVCacheConfig]`，各卡按 `global_rank` 取本 rank 的配置（worker_base.py:321-325）；`GPUWorker.initialize_from_config()`（gpu_worker.py:649）先把对齐后的 `num_blocks` 写回本卡 `cache_config.num_gpu_blocks`（供 warmup RPC 读取），再委托本卡 `model_runner.initialize_kv_cache()`（gpu_model_runner.py:7606）完成三件事：
+这一步**每卡并行各自执行**：`collective_rpc` 广播 `list[KVCacheConfig]`，各卡按 `global_rank` 取本 rank 的配置（worker_base.py:315-319）；`GPUWorker.initialize_from_config()`（gpu_worker.py:563）先把对齐后的 `num_blocks` 写回本卡 `cache_config.num_gpu_blocks`（供 warmup RPC 读取），再委托本卡 `model_runner.initialize_kv_cache()`（gpu_model_runner.py:7284）完成三件事：
 
 **4a. 分配 int8 字节池 `_allocate_kv_cache_tensors()`**
 
 ```python
-# gpu_model_runner.py:7286（节选）
+# gpu_model_runner.py:6999（节选）
 for kv_cache_tensor in kv_cache_config.kv_cache_tensors:
     if kv_cache_tensor.block_stride > 0:
         ...
@@ -326,23 +326,27 @@ for kv_cache_tensor in kv_cache_config.kv_cache_tensors:
 **4b. reshape 为后端逻辑 shape `_reshape_kv_cache_tensors()`**
 
 ```python
-# gpu_model_runner.py:7346（节选）
+# gpu_model_runner.py:7040（节选）
 # 获取后端期望的逻辑 shape
 kv_cache_shape = attn_backend.get_kv_cache_shape(
     kernel_num_blocks, shape_block_size,
     kv_cache_spec.num_kv_heads, kv_cache_spec.head_size, ...)
 # int8 → dtype → permute（零拷贝 view）
-kv_caches[layer_name] = _reshape_attention_kv_cache(
-    raw_tensor, kv_cache_spec, kv_cache_shape, ...)
+kv_caches = _reshape_kv_cache(
+    attn_groups, kv_cache_raw_tensors, cache_dtype, kernel_block_sizes, ...)
+# _reshape_kv_cache 内部（attn_utils.py:169 起逐 group 逐层）：
+#   kv_cache_shape = attn_backend.get_kv_cache_shape(...)  # 后端期望的逻辑 shape
+#   int8 → dtype → permute（零拷贝 view）填入 kv_caches[layer_name]
 ```
 
-`_reshape_attention_kv_cache()` 有三种路径（attn_utils.py:212）：
+`_reshape_kv_cache()` 有两种路径（attn_utils.py:169）：
 
 | 场景 | 条件 | 方式 |
 |------|------|------|
-| **packed layout** | `packing is not None` | `view(-1, block_stride)[:, offset:offset+page_bytes].view(dtype).view(shape)` |
 | **有 padding** | `page_size_padded is not None` | `torch.as_strided()` 跳过物理页间 padding |
 | **普通** | 默认 | `raw.view(dtype).view(shape)` 连续 view |
+
+> vllm-study 新版本将该函数拆出 `_reshape_attention_kv_cache` 并增加第三种 packed layout 路径（`view(-1, block_stride)[:, offset:offset+page_bytes]` 切片），releases/v0.23.0 尚无。
 
 最终 `permute(*inv_order)` 把物理布局转成逻辑布局。
 
@@ -351,7 +355,7 @@ kv_caches[layer_name] = _reshape_attention_kv_cache(
 **block_dim 探测**——不同后端 `num_blocks` 所在轴不同（dim 0 或 dim 1），通过向 `get_kv_cache_shape` 传哨兵值 `_S=1234567` 再 `shape.index(_S)` 定位：
 
 ```python
-# backend.py:100（节选）
+# backend.py:99（节选）
 @classmethod
 def get_kv_cache_block_dim(cls, block_size, num_kv_heads, head_size, ...):
     _S = 1234567
@@ -362,7 +366,7 @@ def get_kv_cache_block_dim(cls, block_size, num_kv_heads, head_size, ...):
 **4c. 绑定 `bind_kv_cache()`**
 
 ```python
-# utils.py:450（节选）
+# utils.py:462（节选）
 def bind_kv_cache(kv_caches, forward_context, runner_kv_caches, num_attn_module=1):
     # 1. 按层号排序，填入 ModelRunner.kv_caches
     for layer_index in sorted(index2name.keys()):
@@ -380,7 +384,7 @@ def bind_kv_cache(kv_caches, forward_context, runner_kv_caches, num_attn_module=
 KV 张量就绪后，`ModelExecutor.initialize_from_config()` 发起第二个 RPC，让各 worker 编译并预热执行路径：
 
 ```python
-# gpu_worker.py:678
+# gpu_worker.py:592
 def compile_or_warm_up_model(self) -> CompilationTimes:
     for size in sorted(warmup_sizes, reverse=True):
         self.model_runner._dummy_run(size, skip_eplb=True, remove_lora=False)  # 各 batch size 各跑一次 dummy forward
@@ -389,13 +393,13 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
         cuda_graph_memory_bytes = self.model_runner.capture_model()  # CUDAGraph capture
 ```
 
-`_dummy_run()`（gpu_model_runner.py:5817）用 `num_tokens` 个 dummy token 跑一次真实前向，触发 torch.compile 编译与内核 warmup。至此物理层全部就绪，可进入第 2 层 `BlockPool` 建块。
+`_dummy_run()`（gpu_model_runner.py:5599）用 `num_tokens` 个 dummy token 跑一次真实前向，触发 torch.compile 编译与内核 warmup。至此物理层全部就绪，可进入第 2 层 `BlockPool` 建块。
 
 
 ## 3. Llama-3-8B PP / TP 下 KV cache 的物理分布
 
-- **PP 按层切分**：`model.py:1409-1420` `get_layers_start_end_indices()` 按 `pp_rank` 切层范围，`get_kv_cache_spec()` 只返回本 worker 负责的层。
-- **TP 按 KV 头切分**：`model.py:1386-1395` `get_num_kv_heads()` 除以 `tensor_parallel_size`，同一 PP stage 的不同 TP rank 存同层但不同头子集。
+- **PP 按层切分**：`model.py:1309-1320` `get_layers_start_end_indices()` 按 `pp_rank` 切层范围，`get_kv_cache_spec()` 只返回本 worker 负责的层。
+- **TP 按 KV 头切分**：`model.py:1286-1295` `get_num_kv_heads()` 除以 `tensor_parallel_size`，同一 PP stage 的不同 TP rank 存同层但不同头子集。
 
 **关键推论**：同一 PP stage 的不同 TP rank `num_kv_heads` 相同（都是切分后的值）→ `FullAttentionSpec` 相等 → §2.3 合并断言通过。但 **spec 相等 ≠ 物理相同**：每个 TP rank 独立分配自己的 `1/tensor_parallel_size` 份 KV 张量；调度器只管 `block_id`，对 TP 内部头分布透明。
 
@@ -448,7 +452,7 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
 | 形式 A（主线） | K/V packed in content dim（FlashAttn / FlashInfer / CPU） | `(num_blocks, num_kv_heads, block_size, 2*head_size)` | 0 | `kv_caches[layer][block_ids]` |
 | 形式 B | K/V as separate dim（ROCm） | `(2, num_blocks, block_size, num_kv_heads, head_size)` | 1 | `kv_caches[layer][:, block_ids]` |
 
-`block_dim` 无需硬编码：`AttentionBackend.get_kv_cache_block_dim()`（backend.py:100-117）向 `get_kv_cache_shape` 传哨兵值 `_S=1234567`，再 `shape.index(_S)` 运行时探测（返回 0 或 1）。
+`block_dim` 无需硬编码：`AttentionBackend.get_kv_cache_block_dim()`（backend.py:99-116）向 `get_kv_cache_shape` 传哨兵值 `_S=1234567`，再 `shape.index(_S)` 运行时探测（返回 0 或 1）。
 
 forward 伪代码（以形式 A 为例，`block_ids` 即该请求的 `block_table`）：
 
@@ -477,7 +481,7 @@ kv = kv_caches[layer][block_ids]                  # 形式A：dim0 fancy indexin
 
 ## 扩展：其他注意力类型
 
-- **四种 group 划分**（`_get_kv_cache_groups_*`）：`uniform_spec`（主线：所有层 spec 可 merge，全模型 1 组，kv_cache_utils.py:1022）/ `uniform_type`（按 KV 类型分组，同类型各层合成 `UniformTypeKVCacheSpecs`、保留各自页大小，:1039）/ `uniform_page_size`（跨类型对齐到统一页大小，:1140）/ `uniform_groups`（MLA 主组 + 层元组切分，:1649）。
-- **num_blocks 三条配置路径**（`get_kv_cache_config_from_groups`，kv_cache_utils.py:1340）：① 单组 `UniformTypeKVCacheSpecs`（同类型异页大小）——不除层数，每层张量按自身页大小定尺寸；② packed 打包（`_use_packed_kv_cache_config`，:1287，DeepSeek V4 默认、其他多 group 可用 `--enable-cross-layers` 选择加入）——多 group 打进共享张量，按 `offset/block_stride` 切片；③ 通用路径（主线）——除以 projected 层数，组内第 i 层共享第 i 张张量，层数不足的组补 padding 槽位。
-- **三种 block_size**：纯 FullAttention 下 `scheduler_block_size = hash_block_size = block_size`；混合模型由 `resolve_kv_cache_block_sizes()`（kv_cache_utils.py:626）经 LCM/GCD 统一。
-- **Mamba/混合布局协调**：`_update_hybrid_attention_mamba_layout()`（gpu_model_runner.py:7489）把 `block_dim==1` 的层 `as_strided_` 成 `block_dim==0`，纯 FullAttention 不触发。
+- **四种 group 划分**（`_get_kv_cache_groups_*`）：`uniform_spec`（主线：所有层 spec 可 merge，全模型 1 组，kv_cache_utils.py:981）/ `uniform_type`（按 KV 类型分组，同类型各层合成 `UniformTypeKVCacheSpecs`、保留各自页大小，:1039）/ `uniform_page_size`（跨类型对齐到统一页大小，:1074）/ `uniform_groups`（MLA 主组 + 层元组切分，:1504）。
+- **num_blocks 三条配置路径**（`get_kv_cache_config_from_groups`，kv_cache_utils.py:1247）：① 单组 `UniformTypeKVCacheSpecs`（同类型异页大小）——不除层数，每层张量按自身页大小定尺寸；② DeepSeek V4 打包（全部组均为 `UniformTypeKVCacheSpecs` 时走 `_get_kv_cache_config_deepseek_v4()`，kv_cache_utils.py:1226）——各 group 同 slot 层共享一张张量，按 `(slot_idx, page_size)` 桶划分（新版本改由 `_use_packed_kv_cache_config` 判定并按 `offset/block_stride` 切片，0.23.0 尚无）；③ 通用路径（主线）——除以 projected 层数，组内第 i 层共享第 i 张张量，层数不足的组补 padding 槽位。
+- **三种 block_size**：纯 FullAttention 下 `scheduler_block_size = hash_block_size = block_size`；混合模型由 `resolve_kv_cache_block_sizes()`（kv_cache_utils.py:593）经 LCM/GCD 统一。
+- **Mamba/混合布局协调**：`_update_hybrid_attention_mamba_layout()`（gpu_model_runner.py:7167）把 `block_dim==1` 的层 `as_strided_` 成 `block_dim==0`，纯 FullAttention 不触发。

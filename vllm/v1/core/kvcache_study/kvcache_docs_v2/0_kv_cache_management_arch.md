@@ -106,7 +106,7 @@ Scheduler（调度器 · 调用者）
 
 ### 3.1 装配全景：规格先行，物理先于逻辑
 
-启动装配是一条单向流水线，横跨**引擎进程**与 **worker 进程**：①～③ 在引擎进程完成"规格推导"（全程不碰显存），④ RPC 到每卡完成"物理落地"，RPC 返回后 ⑤ 才在引擎进程创建 Scheduler 及其逻辑三层。入口为 `EngineCore._initialize_kv_caches()`（`engine/core.py:248`）。
+启动装配是一条单向流水线，横跨**引擎进程**与 **worker 进程**：①～③ 在引擎进程完成"规格推导"（全程不碰显存），④ RPC 到每卡完成"物理落地"，RPC 返回后 ⑤ 才在引擎进程创建 Scheduler 及其逻辑三层。入口为 `EngineCore._initialize_kv_caches()`（`engine/core.py:236`）。
 
 ```
 引擎进程                                                        worker 进程（每卡）
@@ -115,10 +115,10 @@ Scheduler（调度器 · 调用者）
 ③ 做编排  get_kv_cache_configs()：同规格层合并为 1 个 group
           → 算 num_blocks → 多卡取 min 对齐，产出 KVCacheConfig
 ④ 落张量  initialize_from_config()      ── RPC ──▶  按字节申请物理张量 → view 成后端 shape
-          （engine/core.py:329）                    → bind 到各 attention 层
-                                                    （gpu_worker.py:649 → gpu_model_runner.py:7606）
-⑤ 建逻辑层 Scheduler(...)（engine/core.py:158）
-          └ KVCacheManager（sched/scheduler.py:271）→ Coordinator → BlockPool + FullAttentionManager
+          （engine/core.py:290）                    → bind 到各 attention 层
+                                                    （gpu_worker.py:563 → gpu_model_runner.py:7284）
+⑤ 建逻辑层 Scheduler(...)（engine/core.py:149）
+          └ KVCacheManager（sched/scheduler.py:231）→ Coordinator → BlockPool + FullAttentionManager
 ```
 
 | 步骤 | 产物 | 架构级结论 |
@@ -139,11 +139,11 @@ Scheduler（调度器 · 调用者）
   - 遍历 `KVCacheConfig.kv_cache_tensors`；
   - 对每个 `KVCacheTensor` 按其 `size`（普通 layout 下恰为 `num_blocks × page_size` 字节）调 `torch.zeros(..., dtype=torch.int8)`，得到一张扁平字节张量；
   - 该条目 `shared_by` 列出的层名都指向这同一张张量——纯 Full Attention 主线无层共享，恰好每层一张。
-  - 源码：`kv_cache_interface.py:926-932`（配置定义）、`gpu_model_runner.py:7303-7320`（申请执行）。
+  - 源码：`kv_cache_interface.py:830-836`（配置定义）、`gpu_model_runner.py:7013-7030`（申请执行）。
 - **逻辑侧（引擎进程的 BlockPool，只建元数据对象）**
   - new 出 `num_blocks` 个 `KVCacheBlock`，`block_id` 取序号 `0 … n−1`；
   - 每个对象只带 `block_id`、引用计数等元数据，**不含任何 K/V 数据**。
-  - 源码：`block_pool.py:175-177`。
+  - 源码：`block_pool.py:162-164`。
 - **桥接结果**：同一份配置保证两侧容量相等，"从 0 顺序编号"的约定让 `block_id` 直接等于物理张量行号——无需查表或拷贝。此后物理张量不再变动，分配/共享/驱逐只改引用计数和哈希表。
   - 特例：`block_id=0` 开池即留作 `null_block` 占位，不维护引用计数、不可分配，实际可分配块为 `n−1`。
 
