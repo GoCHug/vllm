@@ -1,0 +1,77 @@
+# [KVC] print location inventory: container path + post-patch actual line numbers (generated on Tue Sep 22 06:57:24 UTC 2026, total 40 print invocation points)
+# Application/revert method see patch/README.md; the following line numbers are the real current state of the container constellation (the latest patch -p1 applied state)
+
+## /vllm-workspace/vllm/vllm/v1/request.py
+181: # [KVC][ENQ] 入队阶段: 预计算满块链式哈希 (BlockHash, 纯哈希不含 group_id)
+
+## /vllm-workspace/vllm/vllm/v1/core/kv_cache_utils.py
+216: # [KVC][L2] FreeKVCacheBlockQueue 初始化: 双向链表 + 伪头尾哨兵
+258: # [KVC][L2] 队头弹出(分配/null块摘取)
+341: # [KVC][L2] 单块归还队尾
+368: # [KVC][L2] 批量插队头(无哈希块优先复用)
+399: # [KVC][L2] 批量归还队尾(带哈希块LRU保护)
+621: # [KVC][ENQ] 链式哈希: H(bn) = fn(H(bn-1), tokens(bn)); 首块 parent=NONE_HASH
+
+## /vllm-workspace/vllm/vllm/v1/core/block_pool.py
+69: # [KVC][L2] 哈希映射表查询命中
+85: # [KVC][L2] 哈希映射表查询未命中
+110: # [KVC][L2] 哈希映射表插入(不去重, block_table 保持 append-only)
+121: # [KVC][L2] 哈希映射表驱逐(块被复用时弹出缓存条目)
+213: # [KVC][L2] BlockPool 初始化: 三大内件(KVCacheBlock 列表/空闲队列/哈希映射表)
+247: # [KVC][L2] 前缀哈希查块: 任一 group miss 即整块 miss
+255: # [KVC][L2] 前缀哈希查块: 全部 group 命中
+298: # [KVC][L2] 满块入表: 幂等早退(无新满块)
+343: # [KVC][L2] 满块入表: 新满块 set_block_hash + insert 映射表
+420: # [KVC][L2] 从空闲队列弹出新块 (ref_cnt 0->1)
+468: # [KVC][L2] 块复用前驱逐: 从映射表弹出并 reset_hash
+502: # [KVC][L2] touch: 命中块 ref_cnt+1 并从空闲队列摘出(O(1) remove)
+528: # [KVC][L2] 释放: ref_cnt--, 归零才回收; 无哈希 prepend 队首优先复用, 带哈希 append 队尾 LRU 保护
+
+## /vllm-workspace/vllm/vllm/v1/core/kv_cache_manager.py
+174: # [KVC][L5] KVCacheManager 初始化: 顶层门面装配(第4层协调器 + 第2层块池)
+223: # [KVC][L5] 前缀缓存关闭或请求跳过 KV 读 -> 不进查找
+244: # [KVC][L5] 前缀查找结果: hit_length = 命中块数 × block_size
+261: # [KVC][L5] 返回 KVCacheBlocks(第5层接口类型, Scheduler 视角的命中结果)
+363: # [KVC][L5] allocate_slots 进入: prefill 与 decode 共用同一入口
+435: # [KVC][L5] S1 容量检查: 需求块数 vs 可用块数
+456: # [KVC][L5] S2 处理命中块: touch 命中块 (ref_cnt++ / 摘出空闲队列)
+475: # [KVC][L5] S3 为待计算 token 分配新块
+496: # [KVC][L5] S4 缓存满块(新满块入哈希表) + 返回 KVCacheBlocks
+520: # [KVC][L5] 请求结束释放: 逆序归还, ref_cnt 归零才回收
+
+## /vllm-workspace/vllm/vllm/v1/core/kv_cache_coordinator.py
+184: # [KVC][L4] S1 各组所需新块数求和
+217: # [KVC][L4] S2 逐组下放: touch 命中块
+259: # [KVC][L4] S3 逐组下放: 为待计算 token 分配新块
+283: # [KVC][L4] S4 缓存满块: 逐组下放 cache_blocks
+299: # [KVC][L4] 释放: 逐组下放 free
+462: # [KVC][L4] 单组直通协调器初始化: 持有 1 个第3层 manager + 1 个第2层 BlockPool
+478: # [KVC][L4] 前缀查找: 单组直通 single_type_managers[0] (纯 Full Attention 只有 1 组)
+497: # [KVC][L4] 前缀查找返回: hit_length = 命中块数 × block_size
+
+## /vllm-workspace/vllm/vllm/v1/core/single_type_kv_cache_manager.py
+230: # [KVC][L3] S2 后半: touch 命中块, ref_cnt++ 并摘出空闲队列
+291: # [KVC][L3] S3 下放: num_new = cdiv(num_tokens, block_size) - 已有块数
+346: # [KVC][L3] S4 下放: 满块哈希入表 (num_full_blocks = num_tokens // block_size)
+395: # [KVC][L3] 释放: 持有块逆序归还第2层 BlockPool
+577: # [KVC][L3] 前缀查找(第3层): 逐块查链式哈希, 遇 miss 即 break
+591: # [KVC][L3] 逐块查表: HIT
+600: # [KVC][L3] 逐块查表: MISS -> 链式哈希断, 之后的块必 miss
+617: # [KVC][L3] 前缀查找(第3层)返回
+
+## /vllm-workspace/vllm/vllm/v1/engine/core.py
+264: # [KVC][CFG] 配置侧·测预算: 各 worker profile_run 实测可用 KV 显存 (以实际跑为准)
+277: # [KVC][CFG] 配置侧·编排产物: KVCacheSpec -> KVCacheGroupSpec -> KVCacheTensor -> KVCacheConfig
+320: # [KVC][CFG] 多 worker min(num_blocks) 对齐后的最终逻辑块数 (下发逻辑侧 BlockPool)
+
+## /vllm-workspace/vllm/vllm/v1/worker/gpu_model_runner.py
+7017: # [KVC][L1] 物理侧: 按 KVCacheTensor.size 申请 int8 字节池 (block_id=张量行号的桥接前提)
+7147: # [KVC][L1] 物理侧: reshape 后的最终 KV 张量 (block_id 索引第0维)
+
+## /vllm-workspace/vllm-ascend/vllm_ascend/worker/model_runner_v1.py
+4256: # [KVC][L1] 物理侧(vllm-ascend 重写): K/V 分开两张 int8 张量 (2M 对齐, 支持 PD 分离)
+4693: # [KVC][L1] 物理侧(vllm-ascend 重写): K/V 分离布局最终张量 (block_id 索引第0维)
+
+## Notes
+# 08 gpu_model_runner.py: originally print version line numbers 7017/7144 were outdated; the latest line numbers above are based on the current logger.info version
+# 08 is not on the NPU execution path (overridden by 09 rewrite), kept only for symmetry, take effect after switching to GPU environment

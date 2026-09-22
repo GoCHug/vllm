@@ -1,0 +1,45 @@
+diff --git a/vllm_ascend/worker/model_runner_v1.py b/vllm_ascend/worker/model_runner_v1.py
+index 70ef1d79a..5a472e1d3 100644
+--- a/vllm_ascend/worker/model_runner_v1.py
++++ b/vllm_ascend/worker/model_runner_v1.py
+@@ -4253,6 +4253,19 @@ class NPUModelRunner(GPUModelRunner):
+                             v_tensor_size,
+                             alignment,
+                         )
++                        # [KVC][L1] 物理侧(vllm-ascend 重写): K/V 分开两张 int8 张量 (2M 对齐, 支持 PD 分离)
++                        logger.info(
++                            "[KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: "
++                            "%s: KVCacheTensor(size=%d bytes = %.2fMiB) -> K int8 %.2fMiB + V int8 %.2fMiB"
++                            " (alignment=%d, device=%s)",
++                            layer_name,
++                            kv_cache_tensor.size,
++                            kv_cache_tensor.size / 1024**2,
++                            k_tensor_size / 1024**2,
++                            v_tensor_size / 1024**2,
++                            alignment,
++                            self.device,
++                        )
+ 
+                     if self.use_sparse and dsa_k_tensor_size is not None:
+                         if current_sparse_li_c8:
+@@ -4677,6 +4690,20 @@ class NPUModelRunner(GPUModelRunner):
+                     elif self.use_sparse and current_sparse_sfa_c8:
+                         kv_caches[layer_name] = (k_cache,)
+                     else:
++                        # [KVC][L1] 物理侧(vllm-ascend 重写): K/V 分离布局最终张量 (block_id 索引第0维)
++                        if layer_name == group.layer_names[0]:
++                            logger.info(
++                                "[KVC][L1] vllm-ascend _reshape_kv_cache_tensors: "
++                                "%s (本组 %d 层同形) -> K_cache shape=%s dtype=%s / "
++                                "V_cache shape=%s dtype=%s, device=%s (K/V 分离布局)",
++                                layer_name,
++                                len(group.layer_names),
++                                tuple(k_cache.shape),
++                                k_cache.dtype,
++                                tuple(v_cache.shape) if v_cache is not None else None,
++                                v_cache.dtype if v_cache is not None else None,
++                                k_cache.device,
++                            )
+                         kv_caches[layer_name] = (k_cache, v_cache)
+                 elif isinstance(current_kv_cache_spec, MambaSpec):
+                     raw_tensor = kv_cache_raw_tensors[layer_name]

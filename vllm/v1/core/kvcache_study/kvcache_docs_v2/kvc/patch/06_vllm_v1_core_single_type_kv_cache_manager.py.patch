@@ -1,0 +1,108 @@
+--- a/vllm/v1/core/single_type_kv_cache_manager.py
++++ b/vllm/v1/core/single_type_kv_cache_manager.py
+@@ -227,6 +227,13 @@
+             )
+ 
+         # Touch the computed blocks to make sure they won't be evicted.
++        # [KVC][L3] S2 后半: touch 命中块, ref_cnt++ 并摘出空闲队列
++        print(
++            f"[KVC][L3] SingleTypeKVCacheManager.allocate_new_computed_blocks: "
++            f"req={request_id}, touch 命中块 {[b.block_id for b in new_computed_blocks]}, "
++            f"此前请求持有块数={len(req_blocks)}",
++            flush=True,
++        )
+         if self.enable_caching:
+             self.block_pool.touch(new_computed_blocks)
+         else:
+@@ -281,6 +288,14 @@
+         else:
+             new_blocks = self.block_pool.get_new_blocks(num_new_blocks)
+             req_blocks.extend(new_blocks)
++            # [KVC][L3] S3 下放: num_new = cdiv(num_tokens, block_size) - 已有块数
++            print(
++                f"[KVC][L3] SingleTypeKVCacheManager.allocate_new_blocks: req={request_id}, "
++                f"num_tokens={num_tokens}, block_size={self.block_size}, 需 {num_required_blocks} 块 "
++                f"- 已有 {num_required_blocks - num_new_blocks} = 新分配 {num_new_blocks} 块 "
++                f"{[b.block_id for b in new_blocks]}, 持有 req_blocks={[b.block_id for b in req_blocks]}",
++                flush=True,
++            )
+             if type(self.kv_cache_spec) in (
+                 FullAttentionSpec,
+                 TQFullAttentionSpec,
+@@ -328,6 +343,13 @@
+             retention_interval=retention_interval,
+             num_prompt_tokens=request.num_prompt_tokens,
+         )
++        # [KVC][L3] S4 下放: 满块哈希入表 (num_full_blocks = num_tokens // block_size)
++        print(
++            f"[KVC][L3] SingleTypeKVCacheManager.cache_blocks: req={request.request_id}, "
++            f"num_tokens={num_tokens}, block_size={self.block_size}, "
++            f"已缓存 {num_cached_blocks} 块 -> 满块数 {num_full_blocks}",
++            flush=True,
++        )
+         self.block_pool.cache_full_blocks(
+             request=request,
+             blocks=self.req_to_blocks[request.request_id],
+@@ -370,6 +392,13 @@
+         # Default to [] in case a request is freed (aborted) before alloc.
+         req_blocks = self.req_to_blocks.pop(request_id, [])
+ 
++        # [KVC][L3] 释放: 持有块逆序归还第2层 BlockPool
++        print(
++            f"[KVC][L3] SingleTypeKVCacheManager.free: req={request_id}, "
++            f"持有 blocks={[b.block_id for b in req_blocks]} (reversed 后释放)",
++            flush=True,
++        )
++
+         # Free blocks in reverse order so that the tail blocks are
+         # freed first.
+         ordered_blocks = reversed(req_blocks)
+@@ -545,6 +574,13 @@
+         if dcp_world_size * pcp_world_size > 1:
+             block_size *= dcp_world_size * pcp_world_size
+         max_num_blocks = max_length // block_size
++        # [KVC][L3] 前缀查找(第3层): 逐块查链式哈希, 遇 miss 即 break
++        print(
++            f"[KVC][L3] FullAttentionManager.find_longest_cache_hit: block_size={block_size}, "
++            f"max_length={max_length}, 最多查 {max_num_blocks} 个hash, groups={kv_cache_group_ids}, "
++            f"spec={type(kv_cache_spec).__name__}",
++            flush=True,
++        )
+         for block_hash in itertools.islice(block_hashes, max_num_blocks):
+             # block_hashes is a chain of block hashes. If a block hash is not
+             # in the cached_block_hash_to_id, the following block hashes are
+@@ -552,9 +588,21 @@
+             if cached_block := block_pool.get_cached_block(
+                 block_hash, kv_cache_group_ids
+             ):
++                # [KVC][L3] 逐块查表: HIT
++                print(
++                    f"[KVC][L3]   第 {len(computed_blocks[0]) + 1} 块 HIT: "
++                    f"BlockHash={block_hash.hex()[:12]} -> cached blocks={[b.block_id for b in cached_block]}",
++                    flush=True,
++                )
+                 for computed, cached in zip(computed_blocks, cached_block):
+                     computed.append(cached)
+             else:
++                # [KVC][L3] 逐块查表: MISS -> 链式哈希断, 之后的块必 miss
++                print(
++                    f"[KVC][L3]   第 {len(computed_blocks[0]) + 1} 块 MISS: "
++                    f"BlockHash={block_hash.hex()[:12]} -> break",
++                    flush=True,
++                )
+                 break
+         if drop_eagle_block and computed_blocks[0]:
+             # Need to drop the last matched block if eagle is enabled.
+@@ -566,6 +614,12 @@
+         ):
+             for computed in computed_blocks:
+                 computed.pop()
++        # [KVC][L3] 前缀查找(第3层)返回
++        print(
++            f"[KVC][L3] FullAttentionManager.find_longest_cache_hit 返回: "
++            f"computed_blocks={[[b.block_id for b in g] for g in computed_blocks]}",
++            flush=True,
++        )
+         return computed_blocks
+ 
+     def get_num_common_prefix_blocks(self, running_request_id: str) -> int:

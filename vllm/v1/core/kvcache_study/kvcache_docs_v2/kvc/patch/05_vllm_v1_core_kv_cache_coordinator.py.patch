@@ -1,0 +1,123 @@
+--- a/vllm/v1/core/kv_cache_coordinator.py
++++ b/vllm/v1/core/kv_cache_coordinator.py
+@@ -181,6 +181,12 @@
+                     num_tokens_main_model,
+                     apply_admission_cap=apply_admission_cap,
+                 )
++        # [KVC][L4] S1 各组所需新块数求和
++        print(
++            f"[KVC][L4] KVCacheCoordinator.get_num_blocks_to_allocate: req={request_id}, "
++            f"num_tokens={num_tokens} -> 需分配 {num_blocks_to_allocate} 块(含touch需腾挪的块)",
++            flush=True,
++        )
+         return num_blocks_to_allocate
+ 
+     def allocate_new_computed_blocks(
+@@ -208,6 +214,13 @@
+                 num_local_computed_tokens,
+                 num_external_computed_tokens,
+             )
++            # [KVC][L4] S2 逐组下放: touch 命中块
++            print(
++                f"[KVC][L4] KVCacheCoordinator.allocate_new_computed_blocks: req={request_id}, "
++                f"group={i}, new_computed_blocks={[b.block_id for b in new_computed_blocks[i]]}, "
++                f"num_local_computed_tokens={num_local_computed_tokens}",
++                flush=True,
++            )
+ 
+     def allocate_new_blocks(
+         self,
+@@ -233,7 +246,7 @@
+         Returns:
+             The new allocated blocks.
+         """
+-        return tuple(
++        _res_blocks = tuple(
+             manager.allocate_new_blocks(
+                 request_id,
+                 num_encoder_tokens
+@@ -243,6 +256,13 @@
+             )
+             for manager in self.single_type_managers
+         )
++        # [KVC][L4] S3 逐组下放: 为待计算 token 分配新块
++        print(
++            f"[KVC][L4] KVCacheCoordinator.allocate_new_blocks: req={request_id}, "
++            f"num_tokens={num_tokens} -> {[[b.block_id for b in g] for g in _res_blocks]}",
++            flush=True,
++        )
++        return _res_blocks
+ 
+     def cache_blocks(self, request: Request, num_computed_tokens: int) -> None:
+         """
+@@ -260,6 +280,12 @@
+                 num_computed_tokens,
+                 retention_interval=self.retention_interval,
+             )
++        # [KVC][L4] S4 缓存满块: 逐组下放 cache_blocks
++        print(
++            f"[KVC][L4] KVCacheCoordinator.cache_blocks: req={request.request_id}, "
++            f"num_computed_tokens={num_computed_tokens}",
++            flush=True,
++        )
+ 
+     def free(self, request_id: str) -> None:
+         """
+@@ -270,6 +296,11 @@
+         """
+         for manager in self.single_type_managers:
+             manager.free(request_id)
++        # [KVC][L4] 释放: 逐组下放 free
++        print(
++            f"[KVC][L4] KVCacheCoordinator.free: req={request_id} 已逐组下放第3层释放",
++            flush=True,
++        )
+ 
+     def get_num_common_prefix_blocks(self, running_request_id: str) -> list[int]:
+         """
+@@ -428,12 +459,29 @@
+         )
+         # Single group; useless but just set ``use_eagle`` for consistency regardless.
+         self.single_type_managers[0].use_eagle = 0 in self.eagle_group_ids
++        # [KVC][L4] 单组直通协调器初始化: 持有 1 个第3层 manager + 1 个第2层 BlockPool
++        print(
++            f"[KVC][L4] UnitaryKVCacheCoordinator.__init__: 单组直通, "
++            f"managers={[type(m).__name__ for m in self.single_type_managers]}, "
++            f"kv_cache_spec={type(self.kv_cache_spec).__name__}"
++            f"(block_size={self.kv_cache_spec.block_size}, "
++            f"page_size_bytes={self.kv_cache_spec.page_size_bytes}), "
++            f"coordinator_block_size={self.block_size}",
++            flush=True,
++        )
+ 
+     def find_longest_cache_hit(
+         self,
+         block_hashes: list[BlockHash],
+         max_cache_hit_length: int,
+     ) -> tuple[tuple[list[KVCacheBlock], ...], int]:
++        # [KVC][L4] 前缀查找: 单组直通 single_type_managers[0] (纯 Full Attention 只有 1 组)
++        print(
++            f"[KVC][L4] UnitaryKVCacheCoordinator.find_longest_cache_hit: "
++            f"满块hash数={len(block_hashes)}, max_cache_hit_length={max_cache_hit_length}, "
++            f"下钻 single_type_managers[0]",
++            flush=True,
++        )
+         hit_blocks = self.single_type_managers[0].find_longest_cache_hit(
+             block_hashes=block_hashes,
+             max_length=max_cache_hit_length,
+@@ -445,7 +493,14 @@
+             dcp_world_size=self.dcp_world_size,
+             pcp_world_size=self.pcp_world_size,
+         )
+-        return hit_blocks, len(hit_blocks[0]) * self.block_size
++        _hit_len = len(hit_blocks[0]) * self.block_size
++        # [KVC][L4] 前缀查找返回: hit_length = 命中块数 × block_size
++        print(
++            f"[KVC][L4] UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: "
++            f"hit_blocks={[[b.block_id for b in g] for g in hit_blocks]}, hit_length={_hit_len}",
++            flush=True,
++        )
++        return hit_blocks, _hit_len
+ 
+ 
+ class SpecGroup(NamedTuple):

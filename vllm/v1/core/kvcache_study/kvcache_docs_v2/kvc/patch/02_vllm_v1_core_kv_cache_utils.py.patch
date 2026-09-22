@@ -1,0 +1,86 @@
+--- a/vllm/v1/core/kv_cache_utils.py
++++ b/vllm/v1/core/kv_cache_utils.py
+@@ -213,6 +213,12 @@
+             # For empty list, simply connect the fake head and tail.
+             self.fake_free_list_head.next_free_block = self.fake_free_list_tail
+             self.fake_free_list_tail.prev_free_block = self.fake_free_list_head
++        # [KVC][L2] FreeKVCacheBlockQueue 初始化: 双向链表 + 伪头尾哨兵
++        print(
++            f"[KVC][L2] FreeKVCacheBlockQueue.__init__: num_free_blocks={self.num_free_blocks}, "
++            f"伪头尾哨兵 fake_free_list_head/tail(block_id=-1), 类型={type(self).__name__}",
++            flush=True,
++        )
+ 
+     def popleft(self) -> KVCacheBlock:
+         """Pop the first free block and reduce num_free_blocks by 1.
+@@ -249,6 +255,12 @@
+         first_block.prev_free_block = first_block.next_free_block = None
+ 
+         self.num_free_blocks -= 1
++        # [KVC][L2] 队头弹出(分配/null块摘取)
++        print(
++            f"[KVC][L2] FreeKVCacheBlockQueue.popleft -> KVCacheBlock(block_id={first_block.block_id}), "
++            f"num_free_blocks={self.num_free_blocks}",
++            flush=True,
++        )
+         return first_block
+ 
+     def popleft_n(self, n: int) -> list[KVCacheBlock]:
+@@ -326,6 +338,12 @@
+         self.fake_free_list_tail.prev_free_block = block
+ 
+         self.num_free_blocks += 1
++        # [KVC][L2] 单块归还队尾
++        print(
++            f"[KVC][L2] FreeKVCacheBlockQueue.append(block_id={block.block_id}), "
++            f"num_free_blocks={self.num_free_blocks}",
++            flush=True,
++        )
+ 
+     def prepend_n(self, blocks: list[KVCacheBlock]) -> None:
+         """Put a list of blocks at the front of the free list."""
+@@ -347,6 +365,12 @@
+         first_block.prev_free_block = prev_block
+ 
+         self.num_free_blocks += len(blocks)
++        # [KVC][L2] 批量插队头(无哈希块优先复用)
++        print(
++            f"[KVC][L2] FreeKVCacheBlockQueue.prepend_n(blocks={[b.block_id for b in blocks]}), "
++            f"num_free_blocks={self.num_free_blocks}",
++            flush=True,
++        )
+ 
+     def append_n(self, blocks: list[KVCacheBlock]) -> None:
+         """Put a list of blocks back into the free list
+@@ -372,6 +396,12 @@
+         self.fake_free_list_tail.prev_free_block = last_block
+ 
+         self.num_free_blocks += len(blocks)
++        # [KVC][L2] 批量归还队尾(带哈希块LRU保护)
++        print(
++            f"[KVC][L2] FreeKVCacheBlockQueue.append_n(blocks={[b.block_id for b in blocks]}), "
++            f"num_free_blocks={self.num_free_blocks}",
++            flush=True,
++        )
+ 
+     def get_all_free_blocks(self) -> list[KVCacheBlock]:
+         """Get all free blocks in the free list. Mainly used for testing.
+@@ -585,9 +615,17 @@
+         parent_block_hash = NONE_HASH
+ 
+     curr_block_token_ids_tuple = tuple(curr_block_token_ids)
+-    return BlockHash(
++    _block_hash = BlockHash(
+         hash_function((parent_block_hash, curr_block_token_ids_tuple, extra_keys))
+     )
++    # [KVC][ENQ] 链式哈希: H(bn) = fn(H(bn-1), tokens(bn)); 首块 parent=NONE_HASH
++    print(
++        f"[KVC][ENQ] hash_block_tokens: parent="
++        f"{'NONE_HASH' if parent_block_hash == NONE_HASH else parent_block_hash.hex()[:12]}, "
++        f"tokens={len(curr_block_token_ids_tuple)} -> BlockHash={_block_hash.hex()[:12]}",
++        flush=True,
++    )
++    return _block_hash
+ 
+ 
+ def resolve_kv_cache_block_sizes(

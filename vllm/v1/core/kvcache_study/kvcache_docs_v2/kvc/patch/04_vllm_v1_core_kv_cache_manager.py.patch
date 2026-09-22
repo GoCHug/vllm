@@ -1,0 +1,161 @@
+--- a/vllm/v1/core/kv_cache_manager.py
++++ b/vllm/v1/core/kv_cache_manager.py
+@@ -171,6 +171,16 @@
+         self.empty_kv_cache_blocks = KVCacheBlocks(
+             tuple(() for _ in range(self.num_kv_cache_groups))
+         )
++        # [KVC][L5] KVCacheManager 初始化: 顶层门面装配(第4层协调器 + 第2层块池)
++        print(
++            f"[KVC][L5] KVCacheManager.__init__: coordinator={type(self.coordinator).__name__}, "
++            f"num_kv_cache_groups={self.num_kv_cache_groups}, "
++            f"managers={[type(m).__name__ for m in self.coordinator.single_type_managers]}, "
++            f"block_pool(num_gpu_blocks={self.block_pool.num_gpu_blocks}), enable_caching={enable_caching}, "
++            f"max_model_len={self.max_model_len}, empty_kv_cache_blocks={type(self.empty_kv_cache_blocks).__name__}"
++            f"{self.empty_kv_cache_blocks.get_block_ids()}",
++            flush=True,
++        )
+ 
+     @property
+     def usage(self) -> float:
+@@ -210,6 +220,13 @@
+         # (which happens when the request requires prompt logprobs
+         # or calls a pooling model with all pooling).
+         if not self.enable_caching or request.skip_reading_prefix_cache:
++            # [KVC][L5] 前缀缓存关闭或请求跳过 KV 读 -> 不进查找
++            print(
++                f"[KVC][L5] KVCacheManager.get_computed_blocks: req={request.request_id} "
++                f"跳过前缀查找 (enable_caching={self.enable_caching}, "
++                f"skip_reading_prefix_cache={request.skip_reading_prefix_cache})",
++                flush=True,
++            )
+             return self.empty_kv_cache_blocks, 0
+ 
+         # NOTE: When all tokens hit the cache, we must recompute the last token
+@@ -224,6 +241,13 @@
+                 request.block_hashes, max_cache_hit_length
+             )
+         )
++        # [KVC][L5] 前缀查找结果: hit_length = 命中块数 × block_size
++        print(
++            f"[KVC][L5] KVCacheManager.get_computed_blocks: req={request.request_id} "
++            f"num_tokens={request.num_tokens}, max_cache_hit_length={max_cache_hit_length}, "
++            f"hit_length={num_new_computed_tokens}, hit_blocks={[[b.block_id for b in g] for g in computed_blocks]}",
++            flush=True,
++        )
+ 
+         if self.log_stats:
+             assert self.prefix_cache_stats is not None
+@@ -233,7 +257,15 @@
+                 preempted=request.num_preemptions > 0,
+             )
+ 
+-        return self.create_kv_cache_blocks(computed_blocks), num_new_computed_tokens
++        _computed_kv_blocks = self.create_kv_cache_blocks(computed_blocks)
++        # [KVC][L5] 返回 KVCacheBlocks(第5层接口类型, Scheduler 视角的命中结果)
++        print(
++            f"[KVC][L5] KVCacheManager.get_computed_blocks 返回: "
++            f"KVCacheBlocks(blocks={_computed_kv_blocks.get_block_ids()}), "
++            f"num_computed_tokens={num_new_computed_tokens}",
++            flush=True,
++        )
++        return _computed_kv_blocks, num_new_computed_tokens
+ 
+     def allocate_slots(
+         self,
+@@ -328,6 +360,13 @@
+         Returns:
+             A list of new allocated blocks.
+         """
++        # [KVC][L5] allocate_slots 进入: prefill 与 decode 共用同一入口
++        print(
++            f"[KVC][L5] KVCacheManager.allocate_slots 进入: req={request.request_id}, "
++            f"num_new_tokens={num_new_tokens}, num_new_computed_tokens={num_new_computed_tokens}, "
++            f"request.num_computed_tokens={request.num_computed_tokens}, request.num_tokens={request.num_tokens}",
++            flush=True,
++        )
+         # When loading KV data asynchronously, we may have zero new tokens to
+         # compute while still allocating slots for externally computed tokens.
+         if num_new_tokens == 0 and num_external_computed_tokens == 0:
+@@ -393,8 +432,19 @@
+         )
+ 
+         available_blocks = self.block_pool.get_num_free_blocks() - reserved_blocks
++        # [KVC][L5] S1 容量检查: 需求块数 vs 可用块数
++        print(
++            f"[KVC][L5] S1 get_num_blocks_to_allocate: 需分配 {num_blocks_to_allocate} 块 "
++            f"vs 可用 {available_blocks} 块 (free={self.block_pool.get_num_free_blocks()} - "
++            f"reserved={reserved_blocks})",
++            flush=True,
++        )
+         if num_blocks_to_allocate > available_blocks:
+             # Cannot allocate new blocks
++            print(
++                f"[KVC][L5] S1 容量不足: {num_blocks_to_allocate} > {available_blocks} -> return None 等待下轮调度",
++                flush=True,
++            )
+             return None
+ 
+         if (
+@@ -403,6 +453,12 @@
+         ):
+             # Append the new computed blocks to the request blocks until now to
+             # avoid the case where the new blocks cannot be allocated.
++            # [KVC][L5] S2 处理命中块: touch 命中块 (ref_cnt++ / 摘出空闲队列)
++            print(
++                f"[KVC][L5] S2 allocate_new_computed_blocks: req={request.request_id}, "
++                f"new_computed_blocks={[[b.block_id for b in g] for g in new_computed_block_list]}",
++                flush=True,
++            )
+             self.coordinator.allocate_new_computed_blocks(
+                 request_id=request.request_id,
+                 new_computed_blocks=new_computed_block_list,
+@@ -416,6 +472,12 @@
+             num_tokens_main_model,
+             num_encoder_tokens,
+         )
++        # [KVC][L5] S3 为待计算 token 分配新块
++        print(
++            f"[KVC][L5] S3 allocate_new_blocks: req={request.request_id}, "
++            f"num_tokens_need_slot={num_tokens_need_slot} -> 新块 {[b.block_id for g in new_blocks for b in g]}",
++            flush=True,
++        )
+ 
+         # P/D: delay caching blocks if we have to recv from
+         # remote. Update state for locally cached blocks.
+@@ -431,9 +493,21 @@
+             total_computed_tokens + num_new_tokens,
+             request.num_tokens,
+         )
++        # [KVC][L5] S4 缓存满块(新满块入哈希表) + 返回 KVCacheBlocks
+         self.coordinator.cache_blocks(request, num_tokens_to_cache)
+-
+-        return self.create_kv_cache_blocks(new_blocks)
++        _res_kv_blocks = self.create_kv_cache_blocks(new_blocks)
++        print(
++            f"[KVC][L5] S4 cache_blocks: req={request.request_id}, "
++            f"num_tokens_to_cache={num_tokens_to_cache}",
++            flush=True,
++        )
++        print(
++            f"[KVC][L5] KVCacheManager.allocate_slots 返回: "
++            f"KVCacheBlocks(blocks={_res_kv_blocks.get_block_ids()}), "
++            f"req={request.request_id} 当前完整 block_table={self.get_block_ids(request.request_id)}",
++            flush=True,
++        )
++        return _res_kv_blocks
+ 
+     def free(self, request: Request) -> None:
+         """Free the blocks allocated for the request.
+@@ -443,6 +517,12 @@
+         Args:
+             request: The request to free the blocks.
+         """
++        # [KVC][L5] 请求结束释放: 逆序归还, ref_cnt 归零才回收
++        print(
++            f"[KVC][L5] KVCacheManager.free: req={request.request_id}, "
++            f"释放前持有 block_table={self.get_block_ids(request.request_id)}",
++            flush=True,
++        )
+         self.coordinator.free(request.request_id)
+ 
+     def remove_skipped_blocks(
