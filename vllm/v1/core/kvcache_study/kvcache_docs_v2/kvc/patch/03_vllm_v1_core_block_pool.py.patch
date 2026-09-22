@@ -1,0 +1,181 @@
+--- a/vllm/v1/core/block_pool.py
++++ b/vllm/v1/core/block_pool.py
+@@ -66,10 +66,28 @@
+         blocks = self._cache.get(key)
+         if blocks is not None:
+             if isinstance(blocks, KVCacheBlock):
++                # [KVC][L2] 哈希映射表查询命中
++                print(
++                    f"[KVC][L2] BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash={get_block_hash(key).hex()[:12]}, "
++                    f"group_id={get_group_id(key)}) -> HIT KVCacheBlock(block_id={blocks.block_id})",
++                    flush=True,
++                )
+                 return blocks
+             if isinstance(blocks, dict):
+-                return next(iter(blocks.values()))
++                _b = next(iter(blocks.values()))
++                print(
++                    f"[KVC][L2] BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash={get_block_hash(key).hex()[:12]}, "
++                    f"group_id={get_group_id(key)}) -> HIT(多块dict) KVCacheBlock(block_id={_b.block_id})",
++                    flush=True,
++                )
++                return _b
+             self._unexpected_blocks_type(blocks)
++        # [KVC][L2] 哈希映射表查询未命中
++        print(
++            f"[KVC][L2] BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash={get_block_hash(key).hex()[:12]}, "
++            f"group_id={get_group_id(key)}) -> MISS",
++            flush=True,
++        )
+         return None
+ 
+     def insert(self, key: BlockHashWithGroupId, block: KVCacheBlock) -> None:
+@@ -89,11 +107,23 @@
+             blocks[block.block_id] = block
+         else:
+             self._unexpected_blocks_type(blocks)
++        # [KVC][L2] 哈希映射表插入(不去重, block_table 保持 append-only)
++        print(
++            f"[KVC][L2] BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash={get_block_hash(key).hex()[:12]}, "
++            f"group_id={get_group_id(key)}) <- KVCacheBlock(block_id={block.block_id}), map size={len(self._cache)}",
++            flush=True,
++        )
+ 
+     def pop(self, key: BlockHashWithGroupId, block_id: int) -> KVCacheBlock | None:
+         """
+         Checks if block_hash exists and pop block_id from the cache
+         """
++        # [KVC][L2] 哈希映射表驱逐(块被复用时弹出缓存条目)
++        print(
++            f"[KVC][L2] BlockHashToBlockMap.pop: key=BlockHashWithGroupId(hash={get_block_hash(key).hex()[:12]}, "
++            f"group_id={get_group_id(key)}), block_id={block_id}",
++            flush=True,
++        )
+         blocks = self._cache.pop(key, None)
+         if blocks is None:
+             # block_hash not found in the cache
+@@ -180,6 +210,16 @@
+         self.kv_event_queue: list[KVCacheEvent] = []
+ 
+         self.metrics_collector = metrics_collector
++        # [KVC][L2] BlockPool 初始化: 三大内件(KVCacheBlock 列表/空闲队列/哈希映射表)
++        print(
++            f"[KVC][L2] BlockPool.__init__: num_gpu_blocks={self.num_gpu_blocks}, "
++            f"创建 KVCacheBlock × {self.num_gpu_blocks} (block_id=0..{self.num_gpu_blocks - 1}), "
++            f"free_block_queue={type(self.free_block_queue).__name__}(num_free_blocks={self.free_block_queue.num_free_blocks}), "
++            f"cached_block_hash_to_block={type(self.cached_block_hash_to_block).__name__}(size={len(self.cached_block_hash_to_block)}), "
++            f"null_block=KVCacheBlock(block_id={self.null_block.block_id}, is_null={self.null_block.is_null}), "
++            f"enable_caching={self.enable_caching}, hash_block_size={self.hash_block_size}",
++            flush=True,
++        )
+ 
+     def get_cached_block(
+         self, block_hash: BlockHash, kv_cache_group_ids: list[int]
+@@ -204,8 +244,20 @@
+                 block_hash_with_group_id
+             )
+             if not block:
++                # [KVC][L2] 前缀哈希查块: 任一 group miss 即整块 miss
++                print(
++                    f"[KVC][L2] BlockPool.get_cached_block: MISS BlockHash={block_hash.hex()[:12]} "
++                    f"(group_id={group_id} 未命中) -> None",
++                    flush=True,
++                )
+                 return None
+             cached_blocks.append(block)
++        # [KVC][L2] 前缀哈希查块: 全部 group 命中
++        print(
++            f"[KVC][L2] BlockPool.get_cached_block: HIT BlockHash={block_hash.hex()[:12]} "
++            f"groups={kv_cache_group_ids} -> blocks={[b.block_id for b in cached_blocks]}",
++            flush=True,
++        )
+         return cached_blocks
+ 
+     def cache_full_blocks(
+@@ -243,6 +295,12 @@
+                 map.
+         """
+         if num_cached_blocks >= num_full_blocks:
++            # [KVC][L2] 满块入表: 幂等早退(无新满块)
++            print(
++                f"[KVC][L2] BlockPool.cache_full_blocks: 早退 (num_cached_blocks={num_cached_blocks} "
++                f">= num_full_blocks={num_full_blocks}), 无新满块入表",
++                flush=True,
++            )
+             return
+         new_full_blocks = blocks[num_cached_blocks:num_full_blocks]
+         assert len(request.block_hashes) >= num_full_blocks
+@@ -282,6 +340,20 @@
+             if new_hashes is not None:
+                 new_hashes.append(maybe_convert_block_hash(block_hash))
+ 
++        # [KVC][L2] 满块入表: 新满块 set_block_hash + insert 映射表
++        _inserted = [
++            blk.block_id
++            for i, blk in enumerate(new_full_blocks)
++            if not blk.is_null and (block_mask is None or block_mask[i])
++        ]
++        print(
++            f"[KVC][L2] BlockPool.cache_full_blocks: req={request.request_id} 新满块 {len(_inserted)} 块 "
++            f"block_ids={_inserted} 入 BlockHashToBlockMap "
++            f"(num_cached_blocks {num_cached_blocks} -> {num_full_blocks}, "
++            f"group_id={kv_cache_group_id}, map size={len(self.cached_block_hash_to_block)})",
++            flush=True,
++        )
++
+         if self.enable_kv_cache_events:
+             if num_cached_blocks == 0:
+                 parent_block_hash: ExternalBlockHash | None = None
+@@ -345,6 +417,12 @@
+             raise ValueError(f"Cannot get {num_blocks} free blocks from the pool")
+ 
+         ret: list[KVCacheBlock] = self.free_block_queue.popleft_n(num_blocks)
++        # [KVC][L2] 从空闲队列弹出新块 (ref_cnt 0->1)
++        print(
++            f"[KVC][L2] BlockPool.get_new_blocks({num_blocks}): popleft_n -> block_ids={[b.block_id for b in ret]}, "
++            f"剩余 num_free_blocks={self.get_num_free_blocks()}",
++            flush=True,
++        )
+ 
+         # In order to only iterate the list once, we duplicated code a bit
+         if self.enable_caching:
+@@ -387,6 +465,12 @@
+             # eviction is not needed
+             return False
+ 
++        # [KVC][L2] 块复用前驱逐: 从映射表弹出并 reset_hash
++        print(
++            f"[KVC][L2] BlockPool._maybe_evict_cached_block: 驱逐缓存块 block_id={block.block_id} "
++            f"(hash={get_block_hash(block_hash).hex()[:12]}), 重置块哈希",
++            flush=True,
++        )
+         block.reset_hash()
+ 
+         if self.enable_kv_cache_events:
+@@ -415,6 +499,12 @@
+             block.ref_cnt += 1
+             if self.metrics_collector:
+                 self.metrics_collector.on_block_accessed(block)
++        # [KVC][L2] touch: 命中块 ref_cnt+1 并从空闲队列摘出(O(1) remove)
++        print(
++            f"[KVC][L2] BlockPool.touch: blocks={[(b.block_id, b.ref_cnt) for b in blocks if not b.is_null]} "
++            f"(ref_cnt 已 +1)",
++            flush=True,
++        )
+ 
+     def free_blocks(
+         self, ordered_blocks: Iterable[KVCacheBlock], prepend: bool = False
+@@ -435,6 +525,13 @@
+         freed_blocks = [
+             block for block in blocks_list if block.ref_cnt == 0 and not block.is_null
+         ]
++        # [KVC][L2] 释放: ref_cnt--, 归零才回收; 无哈希 prepend 队首优先复用, 带哈希 append 队尾 LRU 保护
++        print(
++            f"[KVC][L2] BlockPool.free_blocks: blocks={[(b.block_id, b.ref_cnt) for b in blocks_list if not b.is_null]} "
++            f"(ref_cnt 已 -1), 归零回收 {len(freed_blocks)} 块 {[b.block_id for b in freed_blocks]}, "
++            f"{'prepend_n -> 队首(优先复用)' if prepend else 'append_n -> 队尾(LRU保护)'}",
++            flush=True,
++        )
+         if prepend:
+             self.free_block_queue.prepend_n(freed_blocks)
+         else:

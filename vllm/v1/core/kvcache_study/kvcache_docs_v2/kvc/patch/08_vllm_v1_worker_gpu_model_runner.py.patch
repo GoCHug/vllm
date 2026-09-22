@@ -1,0 +1,42 @@
+--- a/vllm/v1/worker/gpu_model_runner.py
++++ b/vllm/v1/worker/gpu_model_runner.py
+@@ -7014,6 +7014,18 @@
+             tensor = torch.zeros(
+                 kv_cache_tensor.size, dtype=torch.int8, device=self.device
+             )
++            # [KVC][L1] 物理侧: 按 KVCacheTensor.size 申请 int8 字节池 (block_id=张量行号的桥接前提)
++            logger.info(
++                "[KVC][L1] GPUModelRunner._allocate_kv_cache_tensors: "
++                "KVCacheTensor(size=%d bytes = %.2fMiB, shared_by %d 层 %s..%s) -> "
++                "torch.zeros(int8, device=%s)",
++                kv_cache_tensor.size,
++                kv_cache_tensor.size / 1024**2,
++                len(kv_cache_tensor.shared_by),
++                kv_cache_tensor.shared_by[0],
++                kv_cache_tensor.shared_by[-1],
++                self.device,
++            )
+             for layer_name in kv_cache_tensor.shared_by:
+                 kv_cache_raw_tensors[layer_name] = tensor
+ 
+@@ -7130,7 +7142,19 @@
+                     else:
+                         # No padding — safe to use a contiguous view.
+                         kv_cache = raw_tensor.view(kv_cache_shape)
+-                    kv_caches[layer_name] = kv_cache.permute(*inv_order)
++                    _kv_cache = kv_cache.permute(*inv_order)
++                    if layer_name == group.layer_names[0]:
++                        # [KVC][L1] 物理侧: reshape 后的最终 KV 张量 (block_id 索引第0维)
++                        logger.info(
++                            "[KVC][L1] GPUModelRunner._reshape_kv_cache_tensors: "
++                            "%s (本组 %d 层同形) -> shape=%s, dtype=%s, device=%s",
++                            layer_name,
++                            len(group.layer_names),
++                            tuple(_kv_cache.shape),
++                            _kv_cache.dtype,
++                            _kv_cache.device,
++                        )
++                    kv_caches[layer_name] = _kv_cache
+ 
+                 elif isinstance(kv_cache_spec, MambaSpec):
+                     has_mamba = True

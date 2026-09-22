@@ -1,0 +1,1380 @@
+<mxfile host="65bd71144e">
+    <diagram id="startup_fullattn" name="FullAttention·Llama-3-8B 启动期全流程（物理+逻辑层·融合第2页图示）">
+        <mxGraphModel dx="1700" dy="859" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1980" pageHeight="3664" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t_title" value="FullAttention · Llama-3-8B pp2tp2 —— 系统启动期全流程：物理层 + 逻辑层初始化（源码口径）" style="text;html=1;fontSize=20;fontStyle=1;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="10" width="1780" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="t_params" value="真实例：num_hidden_layers=32 全 FullAttention（32 份 spec 全等）· PP2×TP2 每卡 16 层 · TP 切 KV 头 8→4（head_dim=128，bf16）· block_size=16 → page=32KiB&lt;br&gt;各卡可用显存 2GiB（教学值）→ num_blocks=4,096 · 16 张量/卡 · 每张 128MiB ｜ 全模型物理 4 卡 × 2GiB = 8GiB&lt;br&gt;引擎进程：③⑤ 纯引擎侧 + ①②④ 的发起端 ｜ worker 进程：①②④ 的执行端（唯一碰显存的地方）—— 物理先于逻辑：Scheduler 在 ④ RPC 返回后才创建" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#555555;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="48" width="1860" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="pre_label" value="前置 · 启动入口与两件预备工作" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="108" width="1340" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="pre_entry" value="&lt;b&gt;EngineCore._initialize_kv_caches()&lt;/b&gt;（engine/core.py:248）&lt;br&gt;启动期唯一入口：串起 ①②③④ 四次交互与 ⑤ 建逻辑层" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontSize=11;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="136" width="410" height="76" as="geometry"/>
+                </mxCell>
+                <mxCell id="pre_reg" value="&lt;b&gt;※ 注册 spec ↔ manager&lt;/b&gt;（single_type_kv_cache_manager.py:1881）&lt;br&gt;register_all_kvcache_specs：FullAttentionSpec → FullAttentionManager（③ 分组后按 spec 类型查表实例化 manager）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;fontSize=10;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="490" y="136" width="410" height="76" as="geometry"/>
+                </mxCell>
+                <mxCell id="pre_nc" value="&lt;b&gt;※ 扫描 non_causal&lt;/b&gt;（core.py:263，位于 ①② 之间）&lt;br&gt;存在非因果层则关闭 chunked prefill + 前缀缓存；纯 Full Attention 全因果 → 不触发" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;fontSize=10;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="920" y="136" width="480" height="76" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_pre" value="" style="edgeStyle=none;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="pre_entry" target="pre_reg" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_pre2" value="" style="edgeStyle=none;strokeColor=#666666;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="pre_reg" target="pre_nc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="s1_label" value="① 算规格（RPC）——每卡只遍历本卡实例化的层，产出 16 份 FullAttentionSpec" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="246" width="1340" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="s1_desc" value="get_kv_cache_specs（core.py:255）→ RPC → GPUModelRunner.get_kv_cache_spec（gpu_model_runner.py:7782）｜ kv_sharing 目标层跳过 ｜ TP 同层 spec 相等（KV 头 8→4）｜ 层名全局唯一（model.layers.N）" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="270" width="1340" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s1_box" value="① 每卡提交两样东西：&lt;br&gt;1) 本卡 16 份 FullAttentionSpec&lt;br&gt;　（TP 切头后 num_kv_heads=4）&lt;br&gt;2) ② profile 出的可用显存 2GiB&lt;br&gt;&lt;br&gt;TP 镜像卡用虚线（头 4–7）&lt;br&gt;四卡同构：均 16 层单类型&lt;br&gt;32 份 spec 按值全等 → 单组前提&lt;br&gt;GPU：block_size=16（通用默认，无对齐 patch）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fbff;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=10;spacingTop=6;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="294" width="300" height="210" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0" value="Worker 0 · PP0·TP0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="294" width="460" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c0" value="full.0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c1" value="full.1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="468" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c2" value="full.2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="522" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c3" value="full.3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="576" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c4" value="full.4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="630" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c5" value="full.5" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="684" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c6" value="full.6" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="738" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c7" value="full.7" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="792" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c8" value="full.8" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c9" value="full.9" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="468" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c10" value="full.10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="522" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c11" value="full.11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="576" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c12" value="full.12" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="630" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c13" value="full.13" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="684" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c14" value="full.14" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="738" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_c15" value="full.15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="792" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w0_t" value="16 份 spec · KV 头 0–3 · 可用显存 2GiB" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="366" width="432" height="12" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1" value="Worker 1 · PP0·TP1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=1;dashed=1;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="294" width="460" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c0" value="full.0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c1" value="full.1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="968" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c2" value="full.2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1022" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c3" value="full.3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1076" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c4" value="full.4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1130" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c5" value="full.5" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1184" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c6" value="full.6" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1238" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c7" value="full.7" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1292" y="318" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c8" value="full.8" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c9" value="full.9" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="968" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c10" value="full.10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1022" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c11" value="full.11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1076" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c12" value="full.12" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1130" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c13" value="full.13" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1184" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c14" value="full.14" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1238" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_c15" value="full.15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1292" y="340" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w1_t" value="同层同 spec（TP 镜像：KV 头 4–7）· 可用显存 2GiB" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="366" width="432" height="12" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2" value="Worker 2 · PP1·TP0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="404" width="460" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c0" value="full.16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c1" value="full.17" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="468" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c2" value="full.18" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="522" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c3" value="full.19" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="576" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c4" value="full.20" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="630" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c5" value="full.21" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="684" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c6" value="full.22" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="738" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c7" value="full.23" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="792" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c8" value="full.24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c9" value="full.25" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="468" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c10" value="full.26" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="522" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c11" value="full.27" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="576" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c12" value="full.28" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="630" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c13" value="full.29" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="684" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c14" value="full.30" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="738" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_c15" value="full.31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="792" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w2_t" value="16 份 spec · KV 头 0–3 · 可用显存 2GiB" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="476" width="432" height="12" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3" value="Worker 3 · PP1·TP1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;strokeWidth=1;dashed=1;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="404" width="460" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c0" value="full.16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c1" value="full.17" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="968" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c2" value="full.18" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1022" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c3" value="full.19" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1076" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c4" value="full.20" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1130" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c5" value="full.21" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1184" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c6" value="full.22" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1238" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c7" value="full.23" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1292" y="428" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c8" value="full.24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c9" value="full.25" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="968" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c10" value="full.26" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1022" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c11" value="full.27" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1076" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c12" value="full.28" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1130" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c13" value="full.29" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1184" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c14" value="full.30" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1238" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_c15" value="full.31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1292" y="450" width="52" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="w3_t" value="同层同 spec（TP 镜像：KV 头 4–7）· 可用显存 2GiB" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="476" width="432" height="12" as="geometry"/>
+                </mxCell>
+                <mxCell id="s2_label" value="② 测预算（RPC）——profile 实测每卡 KV 可用显存" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="538" width="1340" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="s2_desc" value="determine_available_memory（core.py:291）→ RPC → GPUWorker :459 → profile_run dummy forward → 写回 available_kv_cache_memory_bytes（gpu_worker.py:542）→ list[int]" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="562" width="1340" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s2_box" value="available_kv_cache_memory&lt;br&gt;= total × gpu_memory_utilization&lt;br&gt;　− 权重 − 激活 − CUDAGraph 预留&lt;br&gt;（request_memory，utils.py:393）&lt;br&gt;&lt;br&gt;四卡 profile 结果均 = 2GiB（教学值）&lt;br&gt;→ ③ min 对齐无 shrink&lt;br&gt;&lt;br&gt;旁路：显式设置 cache_config.&lt;br&gt;kv_cache_memory_bytes 时跳过 profile" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=10;align=left;spacingLeft=12;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="586" width="300" height="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="prof_card" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1.5;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="586" width="960" height="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="prof_ttl" value="GPUWorker.profile_run（gpu_worker.py:459 / :542）—— 一次 dummy forward 实测占用，剩余即 KV 可用显存（比例为示意）" style="text;html=1;fontSize=10;fontStyle=1;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="596" width="932" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="seg_w" value="模型权重（本卡 16 层 · bf16）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=9;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="420" y="624" width="360" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="seg_a" value="激活峰值" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="780" y="624" width="150" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="seg_g" value="CUDAGraph 预留" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="930" y="624" width="150" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="seg_k" value="KV 可用 = 2GiB" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=10;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1080" y="624" width="240" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="prof_note" value="total × gpu_memory_utilization（显存天花板）→ 扣减三类已占用 → 剩余即 available_kv_cache_memory_bytes（写回 list[int]）" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="420" y="676" width="900" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="pw0" value="W0 · PP0·TP0&lt;br&gt;available = 2GiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ef;strokeColor=#d79b00;fontSize=9;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="420" y="700" width="216" height="48" as="geometry"/>
+                </mxCell>
+                <mxCell id="pw1" value="W1 · PP0·TP1（镜像）&lt;br&gt;available = 2GiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ef;strokeColor=#d79b00;dashed=1;fontSize=9;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="648" y="700" width="216" height="48" as="geometry"/>
+                </mxCell>
+                <mxCell id="pw2" value="W2 · PP1·TP0&lt;br&gt;available = 2GiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f9f0;strokeColor=#82b366;fontSize=9;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="876" y="700" width="216" height="48" as="geometry"/>
+                </mxCell>
+                <mxCell id="pw3" value="W3 · PP1·TP1（镜像）&lt;br&gt;available = 2GiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f9f0;strokeColor=#82b366;dashed=1;fontSize=9;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1104" y="700" width="216" height="48" as="geometry"/>
+                </mxCell>
+                <mxCell id="s3_label" value="③ 做编排（引擎侧纯 CPU）——合并 → 分组 → 投影 → num_blocks → min 对齐" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="800" width="1340" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="s3_desc" value="get_kv_cache_configs（kv_cache_utils.py:2073）顶层入口，依次五步（PP 下含投影）；全程不碰设备显存，产出每 worker 一份 KVCacheConfig（list[KVCacheConfig]）" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="824" width="1340" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="m_lab1" value="③-1 控制器合并 spec → 按值去重 → 单类型只有 1 组（:2111 合并 ｜ :1022 uniform 分支）" style="text;html=1;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="846" width="1340" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_merge_box" value="merged_kv_cache_specs（32 个层名；跨 TP 去重后 32 份 spec 全部相等）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#999999;fontSize=11;fontStyle=1;verticalAlign=top;spacingTop=4;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="872" width="700" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc0" value="full.0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc1" value="full.1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="117" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc2" value="full.2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="158" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc3" value="full.3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="199" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc4" value="full.4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="240" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc5" value="full.5" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="281" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc6" value="full.6" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="322" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc7" value="full.7" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="363" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc8" value="full.8" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="404" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc9" value="full.9" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="445" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc10" value="full.10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="486" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc11" value="full.11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="527" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc12" value="full.12" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="568" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc13" value="full.13" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="609" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc14" value="full.14" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="650" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc15" value="full.15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="691" y="894" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc16" value="full.16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc17" value="full.17" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="117" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc18" value="full.18" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="158" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc19" value="full.19" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="199" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc20" value="full.20" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="240" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc21" value="full.21" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="281" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc22" value="full.22" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="322" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc23" value="full.23" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="363" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc24" value="full.24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="404" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc25" value="full.25" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="445" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc26" value="full.26" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="486" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc27" value="full.27" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="527" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc28" value="full.28" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="568" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc29" value="full.29" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="609" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc30" value="full.30" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="650" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mc31" value="full.31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=7;" parent="1" vertex="1">
+                    <mxGeometry x="691" y="916" width="39" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_stride_chip" value="单类型走 uniform 分支 :1022（不进 stride 切分）&lt;br&gt;32 份 spec 按值去重 → 只有 1 种值 ⇒ 1 组&lt;br&gt;num_groups = 1（全模型唯一 1 个组块表）&lt;br&gt;无 stride、无 padding、无空组" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;fontSize=10;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="800" y="872" width="600" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_ng_note" value="按值去重：full(32) 全等 → 1 组（num_groups=1，全模型唯一组块表）· 分组阶段不做 padding：1 组含全部 32 层（投影到本卡后组内 16 层）" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="948" width="1340" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0" value="Group 0 (full) · 32 层（全模型唯一 1 组）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=4;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="972" width="1340" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0c0" value="full.0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="1010" width="140" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0c1" value="full.1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="1010" width="140" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0c2" value="full.2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="364" y="1010" width="140" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0c3" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="508" y="1010" width="140" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0c4" value="full.15" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="652" y="1010" width="140" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0c5" value="|" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="796" y="1010" width="140" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0c6" value="full.16" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="940" y="1010" width="140" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0c7" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="1084" y="1010" width="140" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0c8" value="full.31" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="1228" y="1010" width="140" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_G0m" value="Manager 0 · 全模型唯一组块表（num_groups=1）· 单类型 → 无 stride 切分、无 padding（PP 均分 16+16，四卡同构）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="1080" width="1292" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="m_lab2" value="③-2 投影：全局 group 只过滤本地层 → 每卡独立算 num_blocks（_project_kv_cache_groups_to_worker :2031）" style="text;html=1;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="1124" width="1340" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_gp_global" value="全局分组结果（合并后只分组一次 :2128）· 1 个 group 对所有 worker 唯一：G0 = full.0/1/…/31（32 层，全 FullAttention）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;strokeWidth=2;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="1150" width="1340" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_s3_box" value="③ 投影要点（:2031）：&lt;br&gt;全局组 ∩ 本卡层名，只裁层名&lt;br&gt;—— 组数/顺序/gid 不变，空组也保留&lt;br&gt;（本例四卡都保留 G0，各 16 层）&lt;br&gt;&lt;br&gt;每层拿到唯一 (gid, 组内序)&lt;br&gt;块表按 gid 组织、同组共享&lt;br&gt;—— 与层在哪张卡上无关&lt;br&gt;&lt;br&gt;④ 的张量数 = max(各组本卡层数) = 16&lt;br&gt;组块表跨卡共享同一块 ID 空间" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fbff;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=10;spacingTop=6;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="1188" width="300" height="240" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0" value="W0 · PP0·TP0 · 投影后本地 16 层（全在 G0）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ef;strokeColor=#d79b00;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="1188" width="460" height="124" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_l1" value="本地投影层（16）" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="1206" width="180" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c0" value="full.0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c1" value="full.1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="468" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c2" value="full.2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="522" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c3" value="full.3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="576" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c4" value="full.4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="630" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c5" value="full.5" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="684" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c6" value="full.6" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="738" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c7" value="full.7" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="792" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c8" value="full.8" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c9" value="full.9" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="468" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c10" value="full.10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="522" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c11" value="full.11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="576" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c12" value="full.12" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="630" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c13" value="full.13" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="684" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c14" value="full.14" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="738" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_c15" value="full.15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="792" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_g" value="G0 · full：full.0 + … + full.15（16 层）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="1256" width="418" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj0_nb" value="num_blocks = 2GiB ÷ 32KiB ÷ 16 = 4,096" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="1286" width="430" height="12" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1" value="W1 · PP0·TP1（TP 镜像：KV 头 4–7）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=1;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="1188" width="460" height="124" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_l1" value="本地投影层（16）" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="1206" width="180" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c0" value="full.0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c1" value="full.1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="968" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c2" value="full.2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1022" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c3" value="full.3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1076" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c4" value="full.4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1130" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c5" value="full.5" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1184" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c6" value="full.6" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1238" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c7" value="full.7" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1292" y="1214" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c8" value="full.8" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c9" value="full.9" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="968" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c10" value="full.10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1022" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c11" value="full.11" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1076" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c12" value="full.12" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1130" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c13" value="full.13" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1184" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c14" value="full.14" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1238" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_c15" value="full.15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1292" y="1234" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_g" value="G0 · full：full.0 + … + full.15（16 层）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="1256" width="418" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj1_nb" value="num_blocks = 4,096（spec 同镜像源卡：TP 同层头数相等）" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="1286" width="430" height="12" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2" value="W2 · PP1·TP0 · 投影后本地 16 层（全在 G0）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f9f0;strokeColor=#82b366;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="1332" width="460" height="124" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_l1" value="本地投影层（16）" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="1350" width="180" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c0" value="full.16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c1" value="full.17" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="468" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c2" value="full.18" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="522" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c3" value="full.19" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="576" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c4" value="full.20" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="630" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c5" value="full.21" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="684" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c6" value="full.22" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="738" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c7" value="full.23" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="792" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c8" value="full.24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c9" value="full.25" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="468" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c10" value="full.26" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="522" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c11" value="full.27" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="576" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c12" value="full.28" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="630" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c13" value="full.29" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="684" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c14" value="full.30" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="738" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_c15" value="full.31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="792" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_g" value="G0 · full：full.16 + … + full.31（16 层）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="1400" width="418" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj2_nb" value="num_blocks = 2GiB ÷ 32KiB ÷ 16 = 4,096" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" parent="1" vertex="1">
+                    <mxGeometry x="414" y="1430" width="430" height="12" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3" value="W3 · PP1·TP1（TP 镜像：KV 头 4–7）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f7ec;strokeColor=#82b366;strokeWidth=1;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="1332" width="460" height="124" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_l1" value="本地投影层（16）" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="1350" width="180" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c0" value="full.16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c1" value="full.17" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="968" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c2" value="full.18" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1022" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c3" value="full.19" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1076" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c4" value="full.20" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1130" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c5" value="full.21" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1184" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c6" value="full.22" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1238" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c7" value="full.23" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1292" y="1358" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c8" value="full.24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c9" value="full.25" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="968" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c10" value="full.26" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1022" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c11" value="full.27" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1076" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c12" value="full.28" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1130" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c13" value="full.29" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1184" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c14" value="full.30" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1238" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_c15" value="full.31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="1292" y="1378" width="52" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_g" value="G0 · full：full.16 + … + full.31（16 层）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="1400" width="418" height="26" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_pj3_nb" value="num_blocks = 4,096（spec 同镜像源卡：TP 同层头数相等）" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" parent="1" vertex="1">
+                    <mxGeometry x="914" y="1430" width="430" height="12" as="geometry"/>
+                </mxCell>
+                <mxCell id="m_lab3" value="③-3 每卡算 num_blocks（get_num_blocks :993）→ 预算校验（:751）→ 多 worker min 对齐（:2191-2192）" style="text;html=1;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="1468" width="1340" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_calc" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fbff;strokeColor=#6c8ebf;strokeWidth=2;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="1496" width="640" height="150" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_ct" value="num_blocks = 可用显存 ÷ 页大小 ÷ 投影后本地组内层数（:993）" style="text;html=1;fontSize=10;fontStyle=1;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="1506" width="608" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_b0" value="可用显存&lt;br&gt;2GiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="1540" width="104" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_b1" value="页大小&lt;br&gt;32KiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="200" y="1540" width="96" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_b2" value="每卡总页数&lt;br&gt;65,536" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="316" y="1540" width="116" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_b3" value="张量数&lt;br&gt;16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="452" y="1540" width="72" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_b4" value="num_blocks&lt;br&gt;4,096" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="544" y="1540" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_a0" value="÷" style="edgeStyle=none;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="nb_b0" target="nb_b1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_a1" value="=" style="edgeStyle=none;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="nb_b1" target="nb_b2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_a2" value="÷" style="edgeStyle=none;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="nb_b2" target="nb_b3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_a3" value="=" style="edgeStyle=none;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="nb_b3" target="nb_b4" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_cn" value="65,536 = 2GiB ÷ 32KiB（每卡物理总页数）· 再 ÷ 16 张张量：每张量 4,096 页&lt;br&gt;→ 全卡共享同一 block ID 空间（每 ID 在 16 张张量上各落一页）" style="text;html=1;fontSize=9;fontColor=#555555;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="1592" width="608" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_min" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f8e9;strokeColor=#558b2f;strokeWidth=2;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="740" y="1496" width="660" height="150" as="geometry"/>
+                </mxCell>
+                <mxCell id="nb_mt" value="多 worker 对齐（:2191-2192）：num_blocks = min(各卡结果) —— 保证任一块 ID 在四卡上均有效" style="text;html=1;fontSize=10;fontStyle=1;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="756" y="1506" width="628" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="nm_0" value="W0&lt;br&gt;4,096" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="756" y="1540" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nm_1" value="W1（镜像）&lt;br&gt;4,096" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="892" y="1540" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nm_2" value="W2&lt;br&gt;4,096" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1028" y="1540" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nm_3" value="W3（镜像）&lt;br&gt;4,096" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1164" y="1540" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nm_res" value="min&lt;br&gt;= 4,096" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1304" y="1540" width="90" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nm_e" value="min(…)" style="edgeStyle=none;strokeColor=#558b2f;strokeWidth=1.5;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="nm_3" target="nm_res" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="nm_ok" value="四卡同构 → 无 shrink&lt;br&gt;（PP 均分 16+16）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#2e7d32;fontSize=10;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="756" y="1592" width="280" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="nm_chk" value="预算校验（:751）：max_model_len 的块需求 ≤ 4,096&lt;br&gt;→ 校验通过方可建张量" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;fontSize=10;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1052" y="1592" width="342" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4_label" value="④ 落张量（RPC，每卡并行）——按投影后的组为每卡建 16 张量：int8 字节池 → 零拷贝 reshape → bind → 编译预热" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="1678" width="1340" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4_desc" value="initialize_from_config（core.py:329 / abstract.py:118）发起 RPC 完成 4a/4b/4c；之后第二个 RPC compile_or_warm_up_model 完成 4d —— 下面 4a/4b/4c 各画一张田字图（上行 PP0 / 下行 PP1，虚线 = TP 镜像卡），四卡并行各做一遍；4d 仅文字说明不图示" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="1702" width="1340" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4_lab_a" value="④-1 4a 分配 int8 字节池（_allocate_kv_cache_tensors :7286）—— 四卡并行：每卡 16 个 torch.zeros(dtype=int8)，每个 128MiB" style="text;html=1;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="1734" width="1340" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4_basis" value="&lt;b&gt;依据：为什么每卡 16 池&lt;/b&gt;（:1399-1416）&lt;br&gt;&lt;br&gt;① 输入 = 投影后 G0（本卡 16 层）&lt;br&gt;② 张量数 = max(组内层数) = 16（:1399）&lt;br&gt;③ 张量 j.shared_by=[第 j 层]（:1413），每层独享 1 张量&lt;br&gt;④ 同组一块表：每 block_id 在 16 张量上各占一页&lt;br&gt;&lt;br&gt;&lt;b&gt;4a 动作&lt;/b&gt;（:7286）：for t → torch.zeros(t.size, int8, device)&lt;br&gt;block_stride=0 → 普通 layout；int8 与 dtype 解耦，4b 再 view 成 bf16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="1762" width="300" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4_cap" value="&lt;b&gt;容量对齐 · 落显存&lt;/b&gt;（min 对齐 :2191-2192）&lt;br&gt;&lt;br&gt;每池 size = 32KiB × 4,096 = 128MiB（134,217,728 B）&lt;br&gt;每卡 16 池 = 16 × 128MiB = 2GiB（= ② profile 可用量）&lt;br&gt;&lt;br&gt;num_blocks = min(四卡) = 4,096；四卡同构无 shrink（PP 均分 16+16）&lt;br&gt;&lt;br&gt;块 ID 空间全 worker 统一：同一张全局组块表，任一块 ID 在四卡均有效&lt;br&gt;&lt;br&gt;int8 池直接落 GPU 显存（:7286）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="1904" width="300" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w0" value="W0 · PP0·TP0 · 16 个 int8 池（full.0–15 · KV 头 0–3）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ef;strokeColor=#d79b00;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="1762" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w0_p00" value="张量 0 · torch.zeros(dtype=int8) · 128MiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="1786" width="432" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w0_mid" value="⋮ 张量1 … 张量14（14 张同构：各 128MiB int8 字节池）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="1804" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w0_p15" value="张量15 · torch.zeros(dtype=int8) · 128MiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="1824" width="432" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w0_sum" value="16 张 × 32KiB × 4,096 = 16 × 128MiB = 2GiB（本卡 KV 总量）&lt;br&gt;gpu_model_runner.py:7286 · int8 池直接落 GPU 显存" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="1846" width="432" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w1" value="W1 · PP0·TP1 · 镜像 16 池（KV 头 4–7，虚线）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=1;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="1762" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w1_p00" value="张量 0 · torch.zeros(dtype=int8) · 128MiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3edf7;strokeColor=#9673a6;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="1786" width="432" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w1_mid" value="⋮ 张量1 … 张量14（14 张同构：各 128MiB int8 字节池）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="1804" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w1_p15" value="张量15 · torch.zeros(dtype=int8) · 128MiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3edf7;strokeColor=#9673a6;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="1824" width="432" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w1_sum" value="16 张 × 32KiB × 4,096 = 16 × 128MiB = 2GiB（本卡 KV 总量）&lt;br&gt;gpu_model_runner.py:7286 · int8 池直接落 GPU 显存" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="1846" width="432" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w2" value="W2 · PP1·TP0 · 16 个 int8 池（full.16–31 · KV 头 0–3）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f9f0;strokeColor=#82b366;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="1904" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w2_p00" value="张量 0 · torch.zeros(dtype=int8) · 128MiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="1928" width="432" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w2_mid" value="⋮ 张量1 … 张量14（14 张同构：各 128MiB int8 字节池）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="1946" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w2_p15" value="张量15 · torch.zeros(dtype=int8) · 128MiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="1966" width="432" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w2_sum" value="16 张 × 32KiB × 4,096 = 16 × 128MiB = 2GiB（本卡 KV 总量）&lt;br&gt;gpu_model_runner.py:7286 · int8 池直接落 GPU 显存" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="1988" width="432" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w3" value="W3 · PP1·TP1 · 镜像 16 池（full.16–31 · KV 头 4–7）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f7ec;strokeColor=#82b366;strokeWidth=1;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="1904" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w3_p00" value="张量 0 · torch.zeros(dtype=int8) · 128MiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3edf7;strokeColor=#9673a6;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="1928" width="432" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w3_mid" value="⋮ 张量1 … 张量14（14 张同构：各 128MiB int8 字节池）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="1946" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w3_p15" value="张量15 · torch.zeros(dtype=int8) · 128MiB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3edf7;strokeColor=#9673a6;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="1966" width="432" height="11" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4a_w3_sum" value="16 张 × 32KiB × 4,096 = 16 × 128MiB = 2GiB（本卡 KV 总量）&lt;br&gt;gpu_model_runner.py:7286 · int8 池直接落 GPU 显存" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="1988" width="432" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4_lab_b" value="④-2 4b reshape 为后端逻辑 shape（_reshape_kv_cache_tensors :7346）—— 四卡：每卡 16 张张量各自零拷贝切成 4,096 页，每页 (4,16,256)" style="text;html=1;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="2046" width="1340" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_n1" value="&lt;b&gt;零拷贝 reshape&lt;/b&gt;（:7346）&lt;br&gt;&lt;br&gt;① get_kv_cache_shape&lt;br&gt;　→ (4096, 4, 16, 256)&lt;br&gt;② raw.view(bf16).view(shape)&lt;br&gt;③ permute(*inv_order)&lt;br&gt;&lt;br&gt;同一块 128MiB 存储只换视图&lt;br&gt;attn_utils:212 三路径：普通（本例）&lt;br&gt;/ packed / padding(as_strided)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="2074" width="300" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_n2" value="&lt;b&gt;页语义 · block_id&lt;/b&gt;&lt;br&gt;&lt;br&gt;每张量切 4,096 页，一页：&lt;br&gt;shape (4,16,256) = 32KiB&lt;br&gt;（4 KV头 × 16 token × 256 × 2B）&lt;br&gt;&lt;br&gt;dim0 行号即 block_id：&lt;br&gt;kv_caches[layer][block_ids]&lt;br&gt;哨兵 _S=1234567 → shape.index&lt;br&gt;探测 block_dim（backend.py:100）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="2216" width="300" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0" value="W0 · PP0·TP0 · 16 池 reshape（full.0–15 · KV 头 0–3）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ef;strokeColor=#d79b00;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="2074" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_tl00" value="张 0" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2098" width="42" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_u00_0" value="p0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="2098" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_u00_1" value="p1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="494" y="2098" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_u00_2" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="528" y="2098" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_u00_3" value="p4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="562" y="2098" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_nt00" value="×4,096 页 · 每页 (4,16,256) · 32KiB" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="604" y="2100" width="240" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_mid" value="⋮ 张1 … 张14（14 张同构：各自零拷贝切成 4,096 页）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2122" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_tl15" value="张15" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2142" width="42" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_u15_0" value="p0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="2142" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_u15_1" value="p1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="494" y="2142" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_u15_2" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="528" y="2142" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_u15_3" value="p4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="562" y="2142" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_nt15" value="×4,096 页 · 每页 (4,16,256) · 32KiB" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="604" y="2144" width="240" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_f1" value="同一存储零拷贝：int8 → view(bf16) → view(4096,4,16,256) → permute" style="text;html=1;fontSize=8;fontColor=#555555;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2168" width="432" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w0_f2" value="dim0 行号 = block_id · :7346 / attn_utils:212 普通路径" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2184" width="432" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1" value="W1 · PP0·TP1 · 镜像 16 池（KV 头 4–7，虚线）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=1;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="2074" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_tl00" value="张 0" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2098" width="42" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_u00_0" value="p0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="960" y="2098" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_u00_1" value="p1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="994" y="2098" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_u00_2" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1028" y="2098" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_u00_3" value="p4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1062" y="2098" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_nt00" value="×4,096 页 · 每页 (4,16,256) · 32KiB" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1104" y="2100" width="240" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_mid" value="⋮ 张1 … 张14（14 张同构：各自零拷贝切成 4,096 页）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2122" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_tl15" value="张15" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2142" width="42" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_u15_0" value="p0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="960" y="2142" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_u15_1" value="p1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="994" y="2142" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_u15_2" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1028" y="2142" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_u15_3" value="p4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1062" y="2142" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_nt15" value="×4,096 页 · 每页 (4,16,256) · 32KiB" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1104" y="2144" width="240" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_f1" value="同一存储零拷贝：int8 → view(bf16) → view(4096,4,16,256) → permute" style="text;html=1;fontSize=8;fontColor=#555555;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2168" width="432" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w1_f2" value="dim0 行号 = block_id · :7346 / attn_utils:212 普通路径" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2184" width="432" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2" value="W2 · PP1·TP0 · 16 池 reshape（full.16–31 · KV 头 0–3）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f9f0;strokeColor=#82b366;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="2216" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_tl00" value="张 0" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2240" width="42" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_u00_0" value="p0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="2240" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_u00_1" value="p1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="494" y="2240" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_u00_2" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="528" y="2240" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_u00_3" value="p4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="562" y="2240" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_nt00" value="×4,096 页 · 每页 (4,16,256) · 32KiB" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="604" y="2242" width="240" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_mid" value="⋮ 张1 … 张14（14 张同构：各自零拷贝切成 4,096 页）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2264" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_tl15" value="张15" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2284" width="42" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_u15_0" value="p0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="2284" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_u15_1" value="p1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="494" y="2284" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_u15_2" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="528" y="2284" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_u15_3" value="p4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="562" y="2284" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_nt15" value="×4,096 页 · 每页 (4,16,256) · 32KiB" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="604" y="2286" width="240" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_f1" value="同一存储零拷贝：int8 → view(bf16) → view(4096,4,16,256) → permute" style="text;html=1;fontSize=8;fontColor=#555555;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2310" width="432" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w2_f2" value="dim0 行号 = block_id · :7346 / attn_utils:212 普通路径" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2326" width="432" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3" value="W3 · PP1·TP1 · 镜像 16 池（full.16–31 · KV 头 4–7）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f7ec;strokeColor=#82b366;strokeWidth=1;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="2216" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_tl00" value="张 0" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2240" width="42" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_u00_0" value="p0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="960" y="2240" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_u00_1" value="p1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="994" y="2240" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_u00_2" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1028" y="2240" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_u00_3" value="p4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1062" y="2240" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_nt00" value="×4,096 页 · 每页 (4,16,256) · 32KiB" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1104" y="2242" width="240" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_mid" value="⋮ 张1 … 张14（14 张同构：各自零拷贝切成 4,096 页）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2264" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_tl15" value="张15" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2284" width="42" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_u15_0" value="p0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="960" y="2284" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_u15_1" value="p1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="994" y="2284" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_u15_2" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1028" y="2284" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_u15_3" value="p4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1062" y="2284" width="32" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_nt15" value="×4,096 页 · 每页 (4,16,256) · 32KiB" style="text;html=1;fontSize=9;fontColor=#444444;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1104" y="2286" width="240" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_f1" value="同一存储零拷贝：int8 → view(bf16) → view(4096,4,16,256) → permute" style="text;html=1;fontSize=8;fontColor=#555555;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2310" width="432" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4b_w3_f2" value="dim0 行号 = block_id · :7346 / attn_utils:212 普通路径" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2326" width="432" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4_lab_c" value="④-3 4c bind_kv_cache（utils.py:450）—— 四卡：每卡 16 层升序绑入本卡 kv_caches[0..15]（槽位=本卡本地序）" style="text;html=1;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="2358" width="1340" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_n1" value="&lt;b&gt;bind_kv_cache&lt;/b&gt;（utils.py:450）&lt;br&gt;&lt;br&gt;每卡各持一份 runner.kv_caches（list，非全局共享）：&lt;br&gt;层名提取序号升序 append → 槽位=本卡本地序 0..15&lt;br&gt;· PP0：model.layers.0–15（full.0–15）→ 槽0..15&lt;br&gt;· PP1：层名保留全局 model.layers.16–31，升序&lt;br&gt;　append 后同样占本地槽 0..15（槽0=full.16）&lt;br&gt;· 同 stage 的 TP rank：层名/槽位相同，张量各持&lt;br&gt;　本卡 KV 头切片（头0–3 / 头4–7），非同一份&lt;br&gt;另绑 forward_context[层名]，forward 按层名自取，零拷贝" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="2386" width="300" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_n2" value="&lt;b&gt;两个 RPC · ④ 的边界&lt;/b&gt;&lt;br&gt;RPC① initialize_from_config = 4a→4b→4c&lt;br&gt;RPC② compile_or_warm_up_model = 4d（不图示）&lt;br&gt;&lt;br&gt;4d（gpu_worker.py:678）：&lt;br&gt;_dummy_run 逐 bs=1,2,4,8…（:5817）&lt;br&gt;→ kernel_warmup → capture_model&lt;br&gt;（enforce_eager 时跳过）&lt;br&gt;&lt;br&gt;两 RPC 都返回，④ 才结束 → ⑤" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="2528" width="300" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w0" value="W0 · PP0·TP0 · full.0–15 · 头0–3 → kv_caches[0..15]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ef;strokeColor=#d79b00;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="2386" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w0_l00" value="full.0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="530" y="2412" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w0_a00" value="→" style="text;html=1;fontSize=10;fontStyle=1;fontColor=#9673a6;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="622" y="2412" width="16" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w0_t00" value="张量 0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="640" y="2412" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w0_mid" value="⋮ full.1–14 → 张量1–14（14 组同构：层名升序各占一槽）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2430" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w0_l15" value="full.15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="530" y="2450" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w0_a15" value="→" style="text;html=1;fontSize=10;fontStyle=1;fontColor=#9673a6;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="622" y="2450" width="16" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w0_t15" value="张量15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="640" y="2450" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w0_sum" value="按层号 sorted 填入 ModelRunner.kv_caches[0..15]&lt;br&gt;forward_context[层].bind_kv_cache(张量) · 仅引用无拷贝（utils.py:450）" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2472" width="432" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w1" value="W1 · PP0·TP1 · full.0–15 · 头4–7 → kv_caches[0..15]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=1;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="2386" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w1_l00" value="full.0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1030" y="2412" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w1_a00" value="→" style="text;html=1;fontSize=10;fontStyle=1;fontColor=#9673a6;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1122" y="2412" width="16" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w1_t00" value="张量 0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3edf7;strokeColor=#9673a6;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1140" y="2412" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w1_mid" value="⋮ full.1–14 → 张量1–14（14 组同构：层名升序各占一槽）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2430" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w1_l15" value="full.15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1030" y="2450" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w1_a15" value="→" style="text;html=1;fontSize=10;fontStyle=1;fontColor=#9673a6;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1122" y="2450" width="16" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w1_t15" value="张量15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3edf7;strokeColor=#9673a6;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1140" y="2450" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w1_sum" value="按层号 sorted 填入 ModelRunner.kv_caches[0..15]&lt;br&gt;forward_context[层].bind_kv_cache(张量) · 仅引用无拷贝（utils.py:450）" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2472" width="432" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w2" value="W2 · PP1·TP0 · full.16–31 · 头0–3 → kv_caches[0..15]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f9f0;strokeColor=#82b366;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="2528" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w2_l00" value="full.16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="530" y="2554" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w2_a00" value="→" style="text;html=1;fontSize=10;fontStyle=1;fontColor=#9673a6;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="622" y="2554" width="16" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w2_t00" value="张量 0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="640" y="2554" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w2_mid" value="⋮ full.17–30 → 张量1–14（14 组同构：层名升序各占一槽）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2572" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w2_l15" value="full.31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="530" y="2592" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w2_a15" value="→" style="text;html=1;fontSize=10;fontStyle=1;fontColor=#9673a6;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="622" y="2592" width="16" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w2_t15" value="张量15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=8;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="640" y="2592" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w2_sum" value="按层号 sorted 填入 ModelRunner.kv_caches[0..15]&lt;br&gt;forward_context[层].bind_kv_cache(张量) · 仅引用无拷贝（utils.py:450）" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="412" y="2614" width="432" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w3" value="W3 · PP1·TP1 · full.16–31 · 头4–7 → kv_caches[0..15]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f7ec;strokeColor=#82b366;strokeWidth=1;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="2528" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w3_l00" value="full.16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1030" y="2554" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w3_a00" value="→" style="text;html=1;fontSize=10;fontStyle=1;fontColor=#9673a6;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1122" y="2554" width="16" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w3_t00" value="张量 0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3edf7;strokeColor=#9673a6;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1140" y="2554" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w3_mid" value="⋮ full.17–30 → 张量1–14（14 组同构：层名升序各占一槽）" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2572" width="432" height="16" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w3_l15" value="full.31" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef4fe;strokeColor=#6c8ebf;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1030" y="2592" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w3_a15" value="→" style="text;html=1;fontSize=10;fontStyle=1;fontColor=#9673a6;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1122" y="2592" width="16" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w3_t15" value="张量15" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3edf7;strokeColor=#9673a6;fontSize=8;dashed=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1140" y="2592" width="90" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4c_w3_sum" value="按层号 sorted 填入 ModelRunner.kv_caches[0..15]&lt;br&gt;forward_context[层].bind_kv_cache(张量) · 仅引用无拷贝（utils.py:450）" style="text;html=1;fontSize=8;fontColor=#888888;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="912" y="2614" width="432" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s4_4d" value="④-4 4d 编译与预热 compile_or_warm_up_model（gpu_worker.py:678，第二个 RPC）：_dummy_run 逐 batch size（:5817）→ kernel_warmup 调优内核 → capture_model（enforce_eager 时跳过）——按要求本节不展开图示；两个 RPC 都返回后 ④ 结束，进入 ⑤" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f0f8;strokeColor=#9673a6;strokeWidth=1.5;fontSize=10;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="2670" width="1300" height="34" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_label" value="⑤ 建逻辑层（引擎进程，④ RPC 返回后）——代码自上而下构造，持有自下而上" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="2736" width="1340" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_desc" value="Scheduler（core.py:158）只 new L5，下层级联创建（scheduler.py:271）｜ 代码自上而下 new（①→④，右栏时序），对象持有自下而上；⑤ 全程在引擎进程纯 CPU 完成，不碰显存" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="2760" width="1340" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_l5" value="&lt;b&gt;KVCacheManager（L5 · 顶层门面）&lt;/b&gt;&lt;br&gt;Scheduler 只 new 这一层&lt;br&gt;（scheduler.py:271）&lt;br&gt;逻辑层唯一入口" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=10;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="2802" width="300" height="64" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_l4" value="&lt;b&gt;UnitaryKVCacheCoordinator（L4 · 协调器）&lt;/b&gt;&lt;br&gt;持有 ×1 个 L3 ＋ 1 个 L2&lt;br&gt;单 group → Unitary 选型（无跨组编排）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=10;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="462" y="2802" width="480" height="64" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_l5l4" value="工厂选型" style="edgeStyle=none;strokeColor=#595959;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="s5_l5" target="s5_l4" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_l2" value="&lt;b&gt;BlockPool（L2 · 逻辑块池）&lt;/b&gt;&lt;br&gt;L4 构造函数内「先」建" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=11;verticalAlign=top;spacingTop=4;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="2916" width="400" height="94" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_l2_c0" value="0 = null 占位" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="116" y="2950" width="100" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_l2_c1" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="222" y="2950" width="46" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_l2_c2" value="2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="274" y="2950" width="46" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_l2_c3" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="326" y="2950" width="46" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_l2_c4" value="4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="378" y="2950" width="106" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_l2_t" value="block_pool.py:175-177 建 4,096 个 KVCacheBlock（id 0..4095）· 可分配 4,095&lt;br&gt;内件：FreeKVCacheBlockQueue（LRU）＋ BlockHashToBlockMap" style="text;html=1;fontSize=8;fontColor=#555555;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="116" y="2976" width="370" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_l3" value="&lt;b&gt;FullAttentionManager（L3 · 单类型管理）&lt;/b&gt;&lt;br&gt;L4「再」为每组建 1 个（主线 ×1）&lt;br&gt;持 req_to_blocks 块表（请求→块列表）&lt;br&gt;各 manager 引用同一个 BlockPool&lt;br&gt;（衔接点 2：先 L2 后 L3）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=10;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="544" y="2916" width="400" height="94" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_l4l2" value="1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.81;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="1" source="s5_l4" target="s5_l2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_l4l3" value="×1（主线）" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.685;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="1" source="s5_l4" target="s5_l3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="s5_seq" value="&lt;b&gt;构造时序（代码自上而下 new；箭头为构造返回后的持有方向）&lt;/b&gt;&lt;br&gt;① Scheduler 初始化（scheduler.py:271）：只 new KVCacheManager(L5) —— 逻辑层唯一入口&lt;br&gt;② L5.from_config 工厂选型：仅 1 个 group → new UnitaryKVCacheCoordinator(L4)（Hybrid 仅多组时才用）&lt;br&gt;③ L4 构造函数内「先」new BlockPool(L2)：block_pool.py:175-177 建 4,096 个 KVCacheBlock（0 号 null 占位 → 可分配 4,095）＋ FreeKVCacheBlockQueue（LRU）＋ BlockHashToBlockMap&lt;br&gt;④ 再为该 group new FullAttentionManager(L3)：持 req_to_blocks 块表（请求→块列表），引用同一个 L2（衔接点 2：先 L2 后 L3）&lt;br&gt;&lt;br&gt;返回后持有链：L5 ─1×→ L4 ─1×→ L3 ＋ 1× L2（构造自上而下，持有自下而上）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f9ff;strokeColor=#5b6fc4;strokeWidth=1.5;fontSize=9;verticalAlign=top;spacingTop=6;spacingLeft=10;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="970" y="2802" width="400" height="182" as="geometry"/>
+                </mxCell>
+                <mxCell id="fin_label" value="终态 · 五层就绪（左：引擎进程持有逻辑三层；右：四个 worker 进程物理张量就绪；桥接只存在于 L2 ↔ L1 之间）" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="3072" width="1340" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="fin_desc" value="左：L5→L4→L2/L3 持有边竖直无交叉（对象/元数据，不碰显存）｜ 右：田字四进程各持 16 张就绪张量 ｜ 仅靠同一份 KVCacheConfig 定容量 ＋ block_id 行号桥接，无对象引用 ｜ 层色 L5橙/L4黄/L3绿/L2蓝/L1紫" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="3096" width="1340" height="14" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_hd_l" value="逻辑侧 · 引擎进程（L2–L5：对象/元数据，进程内持有自下而上）" style="text;html=1;fontSize=10;fontStyle=1;align=center;fontColor=#1f4e79;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="3120" width="760" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_hd_p" value="物理侧 · worker 进程 ×4（L1：每卡 16 张显存张量就绪）" style="text;html=1;fontSize=10;fontStyle=1;align=center;fontColor=#6a1b9a;" parent="1" vertex="1">
+                    <mxGeometry x="940" y="3120" width="460" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_eng" value="引擎进程（EngineCore · Scheduler 所在）—— 逻辑侧 L2–L5 均为 CPU 对象，不碰显存" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#5b6fc4;strokeWidth=2;dashed=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontSize=12;fontStyle=1;fontColor=#2a3d91;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="3146" width="860" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_l5" value="&lt;b&gt;第 5 层 · KVCacheManager&lt;/b&gt;&lt;br&gt;顶层门面 · 逻辑层唯一入口&lt;br&gt;持有 1 个 L4&lt;br&gt;引擎进程 · 仅元数据" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=10;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="3180" width="260" height="64" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_l4" value="&lt;b&gt;第 4 层 · UnitaryKVCacheCoordinator&lt;/b&gt;&lt;br&gt;协调器 · 持有 ×1 个 L3&lt;br&gt;＋ 1 个 L2&lt;br&gt;引擎进程 · 仅元数据" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=10;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="3180" width="300" height="64" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_l2" value="&lt;b&gt;第 2 层 · BlockPool（逻辑块池）&lt;/b&gt;　4,096 个 KVCacheBlock（null 占位后可分配 4,095）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=11;verticalAlign=top;spacingTop=4;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="3266" width="400" height="94" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_l3" value="&lt;b&gt;第 3 层 · FullAttentionManager ×1&lt;/b&gt;&lt;br&gt;持 req_to_blocks 块表（请求→块列表）&lt;br&gt;各 manager 引用同一个 BlockPool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=10;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="486" y="3266" width="400" height="94" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_l2_c0" value="0 = null 占位" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="92" y="3298" width="100" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_l2_c1" value="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="198" y="3298" width="46" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_l2_c2" value="2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="250" y="3298" width="46" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_l2_c3" value="…" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="302" y="3298" width="46" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_l2_c4" value="4095" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="354" y="3298" width="106" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_l2_t" value="block_pool.py:175-177 建 4,096 个 KVCacheBlock（id 0..4095）· 可分配 4,095&lt;br&gt;内件：FreeKVCacheBlockQueue（LRU）＋ BlockHashToBlockMap" style="text;html=1;fontSize=8;fontColor=#555555;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="92" y="3324" width="370" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_s54" value="持有 1" style="edgeStyle=none;strokeColor=#595959;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="st_l5" target="st_l4" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_s42" value="1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.81;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="1" source="st_l4" target="st_l2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_s43" value="×1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#595959;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=1;exitDx=0;exitDy=0;entryX=0.535;entryY=0;entryDx=0;entryDy=0;fontSize=10;labelBackgroundColor=#ffffff;" parent="1" source="st_l4" target="st_l3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_wbox" value="worker 进程 ×4（L1 物理层 · 四卡显存张量）—— 同一 block_id 在每卡张量 dim0 均有对应行" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9673a6;strokeWidth=2;dashed=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontSize=12;fontStyle=1;fontColor=#6a1b9a;" parent="1" vertex="1">
+                    <mxGeometry x="940" y="3146" width="460" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_w0" value="&lt;b&gt;worker · W0 · PP0·TP0（L1）&lt;/b&gt;&lt;br&gt;full.0–15 · KV 头 0–3&lt;br&gt;runner.kv_caches[0..15]&lt;br&gt;16 张量 × 4,096 页 · 2GiB&lt;br&gt;已 bind ✓ · block_id 同号索引" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbf7ff;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;verticalAlign=top;spacingTop=5;spacingLeft=8;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="952" y="3178" width="212" height="88" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_w1" value="&lt;b&gt;worker · W1 · PP0·TP1（L1）&lt;/b&gt;&lt;br&gt;full.0–15 · KV 头 4–7（镜像）&lt;br&gt;runner.kv_caches[0..15]&lt;br&gt;16 张量 × 4,096 页 · 2GiB&lt;br&gt;已 bind ✓ · block_id 同号索引" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbf7ff;strokeColor=#9673a6;strokeWidth=1.5;dashed=1;fontSize=9;verticalAlign=top;spacingTop=5;spacingLeft=8;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="1176" y="3178" width="212" height="88" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_w2" value="&lt;b&gt;worker · W2 · PP1·TP0（L1）&lt;/b&gt;&lt;br&gt;full.16–31（槽0=full.16）&lt;br&gt;KV 头 0–3 · kv_caches[0..15]&lt;br&gt;16 张量 × 4,096 页 · 2GiB&lt;br&gt;已 bind ✓ · block_id 同号索引" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbf7ff;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;verticalAlign=top;spacingTop=5;spacingLeft=8;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="952" y="3274" width="212" height="88" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_w3" value="&lt;b&gt;worker · W3 · PP1·TP1（L1）&lt;/b&gt;&lt;br&gt;full.16–31（槽0=full.16）&lt;br&gt;KV 头 4–7（镜像）· kv_caches[0..15]&lt;br&gt;16 张量 × 4,096 页 · 2GiB&lt;br&gt;已 bind ✓ · block_id 同号索引" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbf7ff;strokeColor=#9673a6;strokeWidth=1.5;dashed=1;fontSize=9;verticalAlign=top;spacingTop=5;spacingLeft=8;align=left;" parent="1" vertex="1">
+                    <mxGeometry x="1176" y="3274" width="212" height="88" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_l2wb" value="block_id 0..4095 · 四卡同号" style="edgeStyle=none;strokeColor=#9673a6;strokeWidth=2;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;exitX=0.85;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=1;entryDx=0;entryDy=0;fontSize=10;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="st_l2" target="st_wbox" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="416" y="3388"/>
+                            <mxPoint x="1009" y="3388"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="st_bridge" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9673a6;strokeWidth=1.5;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="3408" width="1340" height="62" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_brh" value="&lt;b&gt;桥接&lt;/b&gt;&lt;br&gt;（非持有）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9673a6;strokeColor=#9673a6;fontColor=#ffffff;fontSize=11;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="76" y="3418" width="140" height="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_br1" value="&lt;b&gt;① 无对象引用&lt;/b&gt;&lt;br&gt;L2 在引擎进程、L1 张量在四个 worker 进程；跨进程只有配置与行号约定" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf7fc;strokeColor=#9673a6;fontSize=9;verticalAlign=middle;align=center;spacingLeft=6;spacingRight=6;" parent="1" vertex="1">
+                    <mxGeometry x="228" y="3418" width="380" height="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_br2" value="&lt;b&gt;② 同一份 KVCacheConfig 定容量&lt;/b&gt;&lt;br&gt;③ 的配置广播四卡，逻辑块池与物理张量同为 4,096" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf7fc;strokeColor=#9673a6;fontSize=9;verticalAlign=middle;align=center;spacingLeft=6;spacingRight=6;" parent="1" vertex="1">
+                    <mxGeometry x="620" y="3418" width="380" height="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="st_br3" value="&lt;b&gt;③ block_id 即物理行号&lt;/b&gt;&lt;br&gt;从 0 编号 = 张量 dim0；min 对齐后任一块号在四卡均有效" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf7fc;strokeColor=#9673a6;fontSize=9;verticalAlign=middle;align=center;spacingLeft=6;spacingRight=6;" parent="1" vertex="1">
+                    <mxGeometry x="1012" y="3418" width="372" height="42" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_b2" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.162;entryY=0;entryDx=0;entryDy=0;dashed=1;dashPattern=8 4;" parent="1" source="st_l2" target="st_bridge" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_bw" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.828;entryY=0;entryDx=0;entryDy=0;dashed=1;dashPattern=8 4;" parent="1" source="st_wbox" target="st_bridge" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="fin_ready" value="✓ 初始化完成：物理侧 4 卡 × 16 张量 × 4,096 页 与 逻辑侧 4,095 个可分配块全部对齐 —— 物理张量、桥接约定、逻辑三层对象均就绪" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="3480" width="1340" height="44" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb1" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f8e9;strokeColor=#558b2f;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="1500" y="108" width="440" height="430" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb1_t" value="源码调用链（启动期全流程）" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#33691e;" parent="1" vertex="1">
+                    <mxGeometry x="1500" y="114" width="440" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb1_c" value="EngineCore._initialize_kv_caches :248&lt;br&gt;├ ※ register_all_kvcache_specs :1881&lt;br&gt;├ ① get_kv_cache_specs :255&lt;br&gt;│　└ RPC → get_kv_cache_spec :7782&lt;br&gt;│　　　每卡 16 × FullAttentionSpec&lt;br&gt;├ ※ non_causal 扫描 :263（不触发）&lt;br&gt;├ ② determine_available_memory :291&lt;br&gt;│　└ profile_run → available :542 = 2GiB&lt;br&gt;├ ③ get_kv_cache_configs :2073&lt;br&gt;│　├ 合并 specs :2111（同层断言相等）&lt;br&gt;│　├ get_kv_cache_groups :1760&lt;br&gt;│　│　├ uniform :1022 → 本例单 G0&lt;br&gt;│　│　└ hybrid: unify page :1070 / 切组 :1140&lt;br&gt;│　├ 投影 _project_to_worker :2031&lt;br&gt;│　├ config_from_groups :1340&lt;br&gt;│　│　　（按列切张量 ＋ shared_by）&lt;br&gt;│　├ num_blocks get_num_blocks :993&lt;br&gt;│　├ 预算校验 :751&lt;br&gt;│　└ min 对齐 :2191-2192（本例 no-op）&lt;br&gt;├ ④ initialize_from_config :329/:118&lt;br&gt;│　├ WorkerWrapper 按 rank :321-325&lt;br&gt;│　├ GPUWorker :649 → num_gpu_blocks&lt;br&gt;│　├ initialize_kv_cache :7606&lt;br&gt;│　│　├ 4a int8 池 :7286&lt;br&gt;│　│　├ 4b reshape :7346（attn_utils:212）&lt;br&gt;│　│　└ 4c bind :450&lt;br&gt;│　└ compile_or_warm_up :678（4d）&lt;br&gt;└ ⑤ Scheduler :158 → KVCacheManager :271&lt;br&gt;　　→ Coordinator(L4) → BlockPool(L2)&lt;br&gt;　　　+ FullAttentionManager(L3)" style="text;html=1;fontSize=10;fontColor=#333333;align=left;spacingLeft=12;fontFamily=Courier New;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="1512" y="142" width="416" height="386" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb2" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#0288d1;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="1500" y="568" width="440" height="228" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb2_t" value="关键数字 · 公式（真实例口径）" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#01579b;" parent="1" vertex="1">
+                    <mxGeometry x="1500" y="574" width="440" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb2_c" value="page_size = 2(K/V) × 16 × 4 × 128 × 2B&lt;br&gt;　= 32,768B = 32KiB（TP 切头 8→4）&lt;br&gt;num_blocks = 2GiB ÷ 32KiB ÷ 16&lt;br&gt;　= 4,096（get_num_blocks :993）&lt;br&gt;张量 16 张/卡 · 每张 4,096 页 × 32KiB&lt;br&gt;　= 128MiB&lt;br&gt;可分配块 = 4,095（block 0 = null 占位）&lt;br&gt;每 block_id 本卡：16 × 32KiB = 512KiB&lt;br&gt;每 block_id 全模型：32 层 × 2TP × 32KiB = 2MiB&lt;br&gt;全模型物理容量：4 卡 × 2GiB = 8GiB ✓&lt;br&gt;PP 均分 16+16 → min 对齐 no-op" style="text;html=1;fontSize=12;fontColor=#333333;align=left;spacingLeft=12;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="1512" y="602" width="416" height="182" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="1500" y="826" width="440" height="228" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb3_t" value="两个进程 · 物理先于逻辑" style="text;html=1;fontSize=14;fontStyle=1;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1500" y="832" width="440" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb3_c" value="引擎进程：③⑤ 纯 CPU 推导与建逻辑层，&lt;br&gt;　并作为 ①②④ 的 RPC 发起端&lt;br&gt;worker 进程：①②④ 的执行端（唯一碰显存）&lt;br&gt;④ 是最后一个 RPC——全部返回后引擎才&lt;br&gt;　new Scheduler → 逻辑三层（衔接点 2）&lt;br&gt;同一份 KVCacheConfig 下发两侧：&lt;br&gt;　物理侧按 kv_cache_tensors 落张量&lt;br&gt;　逻辑侧按 num_blocks 建 KVCacheBlock&lt;br&gt;①② 每卡 profile 后收集；③ 合并分组&lt;br&gt;　在控制器；投影只算物理账，不回流&lt;br&gt;④ 建出的 16 张量/卡 bind 到 attention 层&lt;br&gt;4 卡物理张量按同一张全局块表对号入座" style="text;html=1;fontSize=12;fontColor=#555555;align=left;spacingLeft=12;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="1512" y="860" width="416" height="184" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb4" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#7b1fa2;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="1500" y="1084" width="440" height="168" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb4_t" value="桥接：block_id 即物理行号" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#4a148c;" parent="1" vertex="1">
+                    <mxGeometry x="1500" y="1090" width="440" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="sb4_c" value="block_id == 张量行号：两侧无对象引用&lt;br&gt;逻辑侧 BlockPool：block_id 0..4095&lt;br&gt;　（0 = null 占位，可分配 4,095）&lt;br&gt;物理侧 block_dim 轴大小 = 同一 num_blocks&lt;br&gt;主线 block_dim=0：kv_caches[layer][block_ids]&lt;br&gt;同一份 KVCacheConfig 同时下发两侧&lt;br&gt;min 对齐保证任一 ID 在四卡上均有效" style="text;html=1;fontSize=12;fontColor=#555555;align=left;spacingLeft=12;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="1512" y="1118" width="416" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mm_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="1500" y="1282" width="440" height="208" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mm_title" value="三个易混量（真实例口径）" style="text;html=1;fontSize=14;fontStyle=1;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="1500" y="1288" width="440" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_mm_content" value="group_size（张量数）= max(投影后各组层数) = 16&lt;br&gt;（四卡均 max(16)=16：每层独享 1 张量）&lt;br&gt;num_groups（manager 数）= 1（全局定）&lt;br&gt;　→ 全模型唯一 1 个组块表&lt;br&gt;page_size（每页字节）= 32KiB（bs=16）&lt;br&gt;&lt;br&gt;两处 group_size 口径：&lt;br&gt;:1224 合并后全模型层上算 → 全局 1 组含 32 层&lt;br&gt;:1399 投影到本 worker 的组上算 → 16 张量" style="text;html=1;fontSize=12;fontColor=#555555;align=left;spacingLeft=12;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="1512" y="1316" width="416" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="lg1" value="PP0 卡（橙）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="3606" width="130" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="lg2" value="PP1 卡（绿）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="200" y="3606" width="130" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_leg1" value="FullAttention 层（32 层 spec 全等）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="340" y="3606" width="220" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_leg2" value="TP 镜像卡（KV 头 4–7，虚线）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="570" y="3606" width="220" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2_leg3" value="未高亮 block 槽位" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="800" y="3606" width="170" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="lg4" value="null 占位块（红）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="980" y="3606" width="150" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="lg5" value="RPC / 落张量（紫）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="1140" y="3606" width="160" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="lg6" value="口径：page 32KiB 随 TP 切头（KV 头 8→4，head_dim=128，bf16）· 可用显存为每卡教学值 2GiB · 单组 → 全模型唯一 1 个组块表 · block_size=16 为 vLLM 通用默认 · 行号对应当前源码 · 通用张量布局另见本文件第 1 页，NPU 对照见第 3 页" style="text;html=1;fontSize=10;fontColor=#888888;align=left;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="3632" width="1860" height="16" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
