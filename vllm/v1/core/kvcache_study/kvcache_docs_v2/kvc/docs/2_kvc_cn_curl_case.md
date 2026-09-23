@@ -1,8 +1,8 @@
 # 中文 curl 用例：P 缓冲 2 块 → R 五块生命周期（复用 2 + prefill 补 1 满 1 尾 + decode 填满尾块并跨界申请第 5 块）
 
-> 环境：gggtest（PP2TP2 4 卡）、vllm 0.23.0 + vllm-ascend（40 处 `[KVC]` 打印，补丁见 `../patch/`）、`--enforce-eager`、block_size=128、KV bfloat16——启动期环境快照与端到端取证见同目录 `1_kvc_patch_apply_e2e_record.md`。实测时间 2026-09-23 09:15（容器时钟）。
+> 环境：gggtest（PP2TP2 4 卡）、vllm 0.23.0 + vllm-ascend（40 处 `[KVC]` 打印，补丁见 `../patch/`）、`--enforce-eager`、block_size=128、KV bfloat16——启动期环境快照与端到端取证见同目录 `1_kvc_patch_apply_e2e_record.md`。实测时间 2026-09-23 10:39（容器时钟）。
 >
-> R 的 prompt 设计为 **486 tokens（3 个满块 + 第 4 块 102/128，非恰好边界）**：prefill 复用 2 块后新申请 **2 块（1 满 + 1 尾）**；decode **前 26 步填满尾块、第 27 步跨界申请第 5 块**；max_tokens=35（34 步落 KV + 1 步仅采样）。产物文件名 `req_cn_r5.json`。
+> R 的 prompt 设计为 **486 tokens（3 个满块 + 第 4 块 102/128，非恰好边界）**：prefill 复用 2 块后新申请 **2 块（1 满 + 1 尾）**；decode **前 26 步填满尾块、第 27 步跨界申请第 5 块**；max_tokens=35（34 步落 KV + 1 步仅采样）。产物文件名 `log/req_r5.json`。
 
 ## 1. 用例总览
 
@@ -46,7 +46,7 @@ curl -s http://localhost:8000/v1/completions \
   "model": "/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model",
   "prompt": "大语言模型的推理服务需要同时处理许多并发请求。每个请求都会带来一段中文提示词，引擎首先执行预填充计算，把输入文本的全部令牌一次性算完，随后进入解码阶段，逐个生成后续的文字。预填充产生的键值会写入显存中的缓存块，之后每生成一个新令牌，注意力计算都要读取这些已缓存的键值。为了减少碎片，系统把每相邻的一百二十八个令牌放进同一个块，块由调度器统一编号、分配和回收。请求结束时，写满的块连同内容哈希一起留在缓存池中，后续请求只要前缀相同，就可以直接复用这些块，省去重复计算，这正是前缀缓存机制的核心。调度器的每一次操作都可以在日志里观察到，块的编号、引用计数、内容哈希以及命中与否，都会逐行打印，方便对照理论逐条验证。当第二条请求到达时，前缀查找会沿着第一条请求留下的哈希链逐块比对，命中即标记复用，未命中则立即中断查找，剩余部分重新计算并写入新的块。本文用于缓存实验，后面的每个字都会参与哈希。",
   "max_tokens": 1, "temperature": 0, "ignore_eos": true
-}' > resp_cn_p.json
+}' > log/resp_p.json
 ```
 
 ### 请求 2（R：五块生命周期）
@@ -59,22 +59,22 @@ curl -s http://localhost:8000/v1/completions \
   "model": "/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model",
   "prompt": "大语言模型的推理服务需要同时处理许多并发请求。每个请求都会带来一段中文提示词，引擎首先执行预填充计算，把输入文本的全部令牌一次性算完，随后进入解码阶段，逐个生成后续的文字。预填充产生的键值会写入显存中的缓存块，之后每生成一个新令牌，注意力计算都要读取这些已缓存的键值。为了减少碎片，系统把每相邻的一百二十八个令牌放进同一个块，块由调度器统一编号、分配和回收。请求结束时，写满的块连同内容哈希一起留在缓存池中，后续请求只要前缀相同，就可以直接复用这些块，省去重复计算，这正是前缀缓存机制的核心。调度器的每一次操作都可以在日志里观察到，块的编号、引用计数、内容哈希以及命中与否，都会逐行打印，方便对照理论逐条验证。当第二条请求到达时，前缀查找会沿着第一条请求留下的哈希链逐块比对，命中即标记复用，未命中则立即中断查找，剩余部分重新计算并写入新的块。本文用于缓存实验，后面的每个字都会参与哈希。现在请结合上面介绍，逐条详细回答后面的每个问题：第一，本次推理的前缀查找到底复用了缓存池中的哪两个块，这算不算零拷贝共享？第二，预填充阶段新申请了几个块，哪一个恰好被追问句写满并且连同内容哈希记入映射表，哪一个尚未写满？第三，解码阶段的生成需要多少步才能把未满块填到一百二十八，又是从哪一步开始申请第五个块？第四，请求结束后这些块按什么顺序归还，归还之后哪些块还能被下一个请求命中？请认真作答。",
   "max_tokens": 35, "temperature": 0, "ignore_eos": true
-}' > resp_cn_r5.json
+}' > log/resp_r5.json
 ```
 
-文件方式（实测所用，在 `kvc/` 根目录由 `scripts/gen_cn_requests.py --gen` 生成，max_tokens 由脚本按实测 X 自动写入）：
+文件方式（实测所用，在 `kvc/` 根目录执行；请求体由 `scripts/gen_cn_requests.py --gen` 生成、max_tokens 由脚本按实测 X 自动写入）：
 
 ```bash
-curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json" -d @p/req_cn_p.json   > p/resp_cn_p.json
-curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json" -d @r5/req_cn_r5.json > r5/resp_cn_r5.json
+python3 scripts/gen_cn_requests.py --gen   # -> log/req_p.json, log/req_r5.json
+bash scripts/curl_p_r.sh                    # 依次发 P、R; 落盘打屏/响应/起始行并提取三条 [KVC] 轨迹
 ```
 
-## 4. 实测轨迹验证（`grep '\[KVC\]' llama.log` 原文摘录）
+## 4. 实测轨迹验证（`grep '\[KVC\]' log/llama.log` 原文摘录）
 
-### 4.1 P：缓冲 2 个 block（kvc_cn_p.log）
+### 4.1 P：缓冲 2 个 block（log/kvc_p.log）
 
 ```
-INFO [request.py:185] [KVC][ENQ] Request(...) 入队: num_prompt_tokens=324, max_tokens=1, 满块链式哈希 BlockHash × 2: ['dcaeded48257', '8c4d2a2ea88b']
+INFO [request.py:185] [KVC][ENQ] Request(...) 入队: num_prompt_tokens=324, max_tokens=1, 满块链式哈希 BlockHash × 2: ['db0caac46067', '9e0e5bc08064']
 INFO [block_pool.py:411] [KVC][L2] BlockPool.get_new_blocks(3): popleft_n -> block_ids=[1, 2, 3]        # 2 满块 + 1 尾块
 INFO [block_pool.py:340] [KVC][L2] BlockPool.cache_full_blocks: 新满块 2 块 block_ids=[1, 2] 入 BlockHashToBlockMap (0 -> 2)   # 缓冲 2 块!
 INFO [block_pool.py:516] [KVC][L2] BlockPool.free_blocks: [(3,0),(2,0),(1,0)] 归零回收 3 块 [3, 2, 1], append_n -> 队尾
@@ -82,29 +82,29 @@ INFO [block_pool.py:516] [KVC][L2] BlockPool.free_blocks: [(3,0),(2,0),(1,0)] �
 
 尾块（68/128）未满不入表；释放后块 1/2/3 挂队尾带哈希、缓存表留存 2 个 hash 供 R 命中。
 
-### 4.2 R：五块生命周期一气呵成（kvc_cn_r5.log，355 行）
+### 4.2 R：五块生命周期一气呵成（log/kvc_r5.log，355 行）
 
 ```
 ① 复用 2 块 (含第 3 hash MISS 断链):
-INFO [request.py:185] [KVC][ENQ] Request(...) 入队: num_prompt_tokens=486, max_tokens=35, 满块链式哈希 BlockHash × 3: ['dcaeded48257', '8c4d2a2ea88b', '2807a32a7a28']
+INFO [request.py:185] [KVC][ENQ] Request(...) 入队: num_prompt_tokens=486, max_tokens=35, 满块链式哈希 BlockHash × 3: ['db0caac46067', '9e0e5bc08064', 'c2ea7819f805']
 INFO [kv_cache_coordinator.py:476] [KVC][L4] find_longest_cache_hit: 满块hash数=3, max_cache_hit_length=485          # (486-1)//128=3, 查满 3 个
-INFO [single_type_kv_cache_manager.py:590] [KVC][L3]   第 1 块 HIT: BlockHash=dcaeded48257 -> cached blocks=[1]
-INFO [single_type_kv_cache_manager.py:590] [KVC][L3]   第 2 块 HIT: BlockHash=8c4d2a2ea88b -> cached blocks=[2]
-INFO [single_type_kv_cache_manager.py:598] [KVC][L3]   第 3 块 MISS: BlockHash=2807a32a7a28 -> break                        # P 只种了前 2 块, 中间断链
+INFO [single_type_kv_cache_manager.py:590] [KVC][L3]   第 1 块 HIT: BlockHash=db0caac46067 -> cached blocks=[1]
+INFO [single_type_kv_cache_manager.py:590] [KVC][L3]   第 2 块 HIT: BlockHash=9e0e5bc08064 -> cached blocks=[2]
+INFO [single_type_kv_cache_manager.py:598] [KVC][L3]   第 3 块 MISS: BlockHash=c2ea7819f805 -> break                        # P 只种了前 2 块, 中间断链
 INFO [kv_cache_coordinator.py:494] [KVC][L4] find_longest_cache_hit 返回: hit_blocks=[[1, 2]], hit_length=256
 INFO [block_pool.py:491] [KVC][L2] BlockPool.touch: blocks=[(1, 1), (2, 1)] (ref_cnt 已 +1)               # 复用即零拷贝共享
 ② prefill 新申请 2 块 (1 满 + 1 尾):
-INFO [kv_cache_manager.py:431] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 4 块 vs 可用 13294 块            # S1 报总需求 cdiv(486,128)=4 (含待 touch 的命中 2 块)
-INFO [block_pool.py:411] [KVC][L2] BlockPool.get_new_blocks(2): popleft_n -> block_ids=[4, 5], 剩余 num_free_blocks=13290   # 总需求扣掉命中, 实际只新弹 2 块
-INFO [block_pool.py:108] [KVC][L2] insert: key=(hash=2807a32a7a28, group_id=0) <- KVCacheBlock(block_id=4), map size=3   # 块4 被追问句恰填满入表
+INFO [kv_cache_manager.py:431] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 4 块 vs 可用 13295 块            # S1 报总需求 cdiv(486,128)=4 (含待 touch 的命中 2 块)
+INFO [block_pool.py:411] [KVC][L2] BlockPool.get_new_blocks(2): popleft_n -> block_ids=[4, 5], 剩余 num_free_blocks=13291   # 总需求扣掉命中, 实际只新弹 2 块
+INFO [block_pool.py:108] [KVC][L2] insert: key=(hash=c2ea7819f805, group_id=0) <- KVCacheBlock(block_id=4), map size=3   # 块4 被追问句恰填满入表
 INFO [block_pool.py:340] [KVC][L2] cache_full_blocks: 新满块 1 块 block_ids=[4] 入表 (num_cached_blocks 2 -> 3)   # 块5 (102/128) 未满不入表
 INFO [kv_cache_manager.py:495] [KVC][L5] allocate_slots 返回: KVCacheBlocks(blocks=([4, 5],)), block_table=([1, 2, 4, 5],)
 decode 步 1~26: S1 恒 "需分配 0 块", 尾块 102 → 128
 ③ decode 填满尾块 + 步 27 跨界申请第 5 块:
 INFO [kv_cache_coordinator.py:188] [KVC][L4] get_num_blocks_to_allocate: num_tokens=513 -> 需分配 1 块              # cdiv(513,128)=5 - 持有4 = 1
-INFO [kv_cache_manager.py:431] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 1 块 vs 可用 13290 块
-INFO [block_pool.py:411] [KVC][L2] BlockPool.get_new_blocks(1): popleft_n -> block_ids=[6], 剩余 num_free_blocks=13289   # 第 5 块!
-INFO [block_pool.py:108] [KVC][L2] insert: key=(hash=4324a28794de, group_id=0) <- KVCacheBlock(block_id=5), map size=4   # 刚满的块5 与跨界申请合并入表发生在步 27
+INFO [kv_cache_manager.py:431] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 1 块 vs 可用 13291 块
+INFO [block_pool.py:411] [KVC][L2] BlockPool.get_new_blocks(1): popleft_n -> block_ids=[6], 剩余 num_free_blocks=13290   # 第 5 块!
+INFO [block_pool.py:108] [KVC][L2] insert: key=(hash=2e6bd855659a, group_id=0) <- KVCacheBlock(block_id=5), map size=4   # 刚满的块5 与跨界申请合并入表发生在步 27
 decode 步 28~34: 块 6 装 8/128 未满不入表 (第 35 个输出仅采样)
 结束释放 (五块逆序):
 INFO [kv_cache_manager.py:511] [KVC][L5] free: 释放前持有 block_table=([1, 2, 4, 5, 6],)                         # 2 复用 + prefill 2 + decode 1
@@ -124,14 +124,15 @@ R prefill 命中后只前向 230 个新 token（486−256）；decode 34 步：2
 
 ## 6. 产物清单（容器 `/a3_inference/itask/workdir/gch02599191/kvc/` 与本地 `kvc/` 同步；目录结构见根 `../README.md`）
 
-| 产物 | 说明 |
+| 产物（`log/`） | 说明 |
 |---|---|
-| `../scripts/gen_cn_requests.py` | P/R 文本设计 + tokenizer 实测 + `max_tokens=FILL+9` 自动推算；`--gen` 在 kvc/ 根执行，产物直接落位 `p/`、`r5/` |
-| `../p/`：`req_cn_p.json`、`resp_cn_p.json`、`kvc_cn_p.log`（33 行）、`p_run_start.txt` | P 全套：缓冲 2 块的请求/响应/轨迹/起始行 |
-| `../r5/`：`req_cn_r5.json`（max_tokens=35）、`resp_cn_r5.json`、`kvc_cn_r5.log`（355 行）、`r_run_start.txt` | R 全套：五块生命周期的请求/响应/轨迹/起始行 |
-| `../startup/kvc_startup.log`（155 行） | 启动期 KVCache 初始化全流程（155 行纯 [KVC] 口径） |
-| `../llama.log`（774 行） | 端到端轮全量日志（启动 + P + R）；请求与启动的分界见 `p_run_start.txt` / `r_run_start.txt` |
-| 同目录 `1_kvc_patch_apply_e2e_record.md` | 端到端取证（还原能力、patch 应用、启动/运行逐段解读） |
+| `../scripts/gen_cn_requests.py` | P/R 文本设计 + tokenizer 实测 + `max_tokens=FILL+9` 自动推算；`--gen` 在 kvc/ 根执行，产物落位 `log/` |
+| `../scripts/curl_p_r.sh` | 发送 P、R 双请求；自动记录起始行/打屏/响应并提取三条 [KVC] 轨迹 |
+| `../log/req_p.json`（max_tokens=1）/ `req_r5.json`（max_tokens=35） | 请求体 |
+| `../log/resp_p.json` / `resp_r5.json`、`curl_p_screen.txt` / `curl_r5_screen.txt` | 响应体与 curl 命令打屏实录 |
+| `../log/kvc_p.log`（33 行）/ `kvc_r5.log`（355 行）/ `kvc_startup.log`（155 行） | P / R / 启动期 [KVC] 拆解轨迹 |
+| `../log/llama.log`（772 行） | 端到端轮全量日志（启动 + P + R）；分界见 `log/p_run_start.txt` / `log/r_run_start.txt` |
+| 同目录 `1_kvc_patch_apply_e2e_record.md` | 端到端取证（patch 应用、启动/运行逐段解读） |
 
 ## 7. 复现注意事项
 

@@ -51,12 +51,11 @@ print("DESIGN_OK" if ok else "NEED_ADJUST")
 
 if "--gen" in sys.argv:
     import os
-    os.makedirs("p", exist_ok=True)    # 在 kvc/ 根目录执行: 产物直接归位
-    os.makedirs("r5", exist_ok=True)
-    with open("p/req_cn_p.json", "w", encoding="utf-8") as f:
+    os.makedirs("log", exist_ok=True)  # 在 kvc/ 根目录执行, 产物直接落位 log/
+    with open("log/req_p.json", "w", encoding="utf-8") as f:
         json.dump({"model": MODEL, "prompt": P_TEXT,
                    "max_tokens": 1, "temperature": 0, "ignore_eos": True}, f, ensure_ascii=False)
-    with open("r5/req_cn_r5.json", "w", encoding="utf-8") as f:
+    with open("log/req_r5.json", "w", encoding="utf-8") as f:
         json.dump({"model": MODEL, "prompt": R_TEXT,
                    "max_tokens": MAX_TOKENS, "temperature": 0, "ignore_eos": True}, f, ensure_ascii=False)
-    print(f"WROTE p/req_cn_p.json / r5/req_cn_r5.json(max_tokens={MAX_TOKENS})")
+    print(f"WROTE log/req_p.json / log/req_r5.json (max_tokens={MAX_TOKENS})")

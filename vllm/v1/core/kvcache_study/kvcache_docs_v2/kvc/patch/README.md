@@ -17,7 +17,7 @@ cd /vllm-workspace/vllm        && patch -p1 < 01_vllm_v1_request.py.patch   # 01
 cd /vllm-workspace/vllm-ascend && patch -p1 < 09_vllm_ascend_worker_model_runner_v1.py.patch
 
 # 看打印（每行自动带: INFO 时间戳 [文件名:行号] [KVC][层] 消息）
-grep '\[KVC\]' llama.log
+grep '\[KVC\]' log/llama.log
 ```
 
 | patch | 文件 | 层 | 行号（补丁后） |
@@ -75,9 +75,9 @@ grep '\[KVC\]' llama.log
 
 **实测样例**（P 请求，block_size=128）：
 ```
-[KVC][ENQ] hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=dcaeded48257
-[KVC][ENQ] hash_block_tokens: parent=dcaeded48257, tokens=128 -> BlockHash=8c4d2a2ea88b
-[KVC][ENQ] Request(...) 入队: num_prompt_tokens=324, max_tokens=1, 满块链式哈希 BlockHash × 2: ['dcaeded48257', '8c4d2a2ea88b']
+[KVC][ENQ] hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=db0caac46067
+[KVC][ENQ] hash_block_tokens: parent=db0caac46067, tokens=128 -> BlockHash=9e0e5bc08064
+[KVC][ENQ] Request(...) 入队: num_prompt_tokens=324, max_tokens=1, 满块链式哈希 BlockHash × 2: ['db0caac46067', '9e0e5bc08064']
 ```
 → 324 token 只产生 2 个满块哈希（尾 68 token 无哈希）；第 2 块父哈希=第 1 块结果，链式结构肉眼可见。
 
@@ -155,7 +155,7 @@ BlockPool 是唯一能回答"**此刻每个块归谁**"的组件，13 处打印�
 
 1. `determine_available_memory` 之后（:264）：各 worker profile 实测可用 KV 显存——"实际可用显存以实际跑为准"的数据源（51.98/51.99/51.94/51.95 GiB）
 2. `get_kv_cache_configs` 之后（:276）：逐 worker 打 **KVCacheConfig → KVCacheGroupSpec → KVCacheSpec(repr 全字段) → page_size_bytes → KVCacheTensor(size/shared_by)**——配置侧 4 个类型一屏打完，PP2TP2 切分（每 worker 16 层、num_kv_heads=4）也在 group 的 layer_names 里现形
-3. `generate_scheduler_kv_cache_config` 之后（:314）：**min 对齐后的最终 num_blocks**（13295）——这正是下发给逻辑侧 BlockPool 建池的数字，与 03 的 `BlockPool.__init__` 打印首尾呼应
+3. `generate_scheduler_kv_cache_config` 之后（:314）：**min 对齐后的最终 num_blocks**（13296）——这正是下发给逻辑侧 BlockPool 建池的数字，与 03 的 `BlockPool.__init__` 打印首尾呼应
 
 > 踩坑注记：此处曾用 `_t.offset` 打印 KVCacheTensor 的 packed 偏移字段，0.23.0 该类只有 `size/shared_by`（理论文档基于更新版本），AttributeError 直接把 EngineCore 打崩——所以 patch 里 KVCacheTensor 只打 size/shared_by，这正是"以容器实际代码为准"的教训。
 
@@ -171,8 +171,8 @@ BlockPool 是唯一能回答"**此刻每个块归谁**"的组件，13 处打印�
 
 vllm-ascend 的 `NPUModelRunner` 重写了 `_allocate_kv_cache_tensors` / `_reshape_kv_cache_tensors`（**为支持 PD 分离，K、V 拆成两张独立的 int8 字节池，2M 对齐**）。1/2 两点都打在 dense attention 分支（llama3-8b 走的路径）：
 
-1. K/V 分配后（:4256）：`KVCacheTensor(size=3323.75MiB) -> K int8 1661.88MiB + V int8 1661.88MiB (alignment=2M)`——每层两池各半
-2. reshape 装配点（:4693，仅首层，16 层同形）：`K_cache shape=(13295,128,4,128) / V_cache shape=(13295,128,4,128) bf16`
+1. K/V 分配后（:4256）：`KVCacheTensor(size=3324.00MiB) -> K int8 1662.00MiB + V int8 1662.00MiB (alignment=2M)`——每层两池各半
+2. reshape 装配点（:4693，仅首层，16 层同形）：`K_cache shape=(13296,128,4,128) / V_cache shape=(13296,128,4,128) bf16`
 
 **为什么值得单独成 patch**：这组打印揭示了与理论文档最大的一处布局差异——**K/V 分离、维序 (num_blocks, block_size, num_kv_heads, head_dim)**（理论上文档是单张 `(num_blocks, num_kv_heads, block_size, 2*head_dim)`）；同一 block_id 在 K/V 两张张量中索引同一行，"`block_id == 张量行号`"的桥接约定在 NPU 上依然成立。
 
@@ -196,37 +196,37 @@ vllm-ascend 的 `NPUModelRunner` 重写了 `_allocate_kv_cache_tensors` / `_resh
 | 当步填满的块入缓存（时序 4.4） | L2 块 5 insert（decode 步 27） | map size 3→4 ✓ |
 | 逆序释放、归零才回收（时序 4.5） | L2 free_blocks | [6,5,4,2,1] 全归零 ✓ |
 | 无哈希块 prepend 队首优先复用（时序 4.5） | L2 append_n vs prepend_n | **实测全部 append_n，论断不成立于 0.23.0** ✗ |
-| 物理侧单张 (num_blocks, kv_heads, block, 2*head)（类型篇 1.4） | L1 reshape | **NPU 为 K/V 分离两张 (13295,128,4,128)** ✗ |
-| block_id == 张量行号（架构 3.2） | L1 shape 第 0 维 | 13295 行 = num_blocks ✓ |
+| 物理侧单张 (num_blocks, kv_heads, block, 2*head)（类型篇 1.4） | L1 reshape | **NPU 为 K/V 分离两张 (13296,128,4,128)** ✗ |
+| block_id == 张量行号（架构 3.2） | L1 shape 第 0 维 | 13296 行 = num_blocks ✓ |
 
 ## 4. 一次 P→R 用例的打印时序速查（对照找行）
 
 以实操用例（P=324 token / R=486 in + 35 out，block_size=128，2026-09-23 实测）按出现顺序：
 
 ```
-P:  [ENQ] hash_block_tokens ×2 (NONE_HASH→dcaeded48257→8c4d2a2ea88b)                       ← 链式哈希生成
+P:  [ENQ] hash_block_tokens ×2 (NONE_HASH→db0caac46067→9e0e5bc08064)                       ← 链式哈希生成
     [ENQ] Request 入队: BlockHash × 2
     [L4][L3] find_longest_cache_hit 进入 → [L2] MISS → [L3] 第 1 块 MISS break
     [L4][L5] 返回 hit_length=0
-    [L5] allocate_slots 进入 → [L4] 需 3 块 ×2 → [L5] S1 3 vs 可用 13294
+    [L5] allocate_slots 进入 → [L4] 需 3 块 ×2 → [L5] S1 3 vs 可用 13295
     [L2] get_new_blocks(3) -> [1,2,3]                 ← ref_cnt 0→1
     [L3] 新分配 3 块 → [L5] S3
-    [L3] cache_blocks 0→2 → [L2] insert 块1(dcaeded48257)、块2(8c4d2a2ea88b) → [L2] 满块入表
+    [L3] cache_blocks 0→2 → [L2] insert 块1(db0caac46067)、块2(9e0e5bc08064) → [L2] 满块入表
     [L5] S4 + 返回 block_table=([1,2,3],)
     [L5] free → [L3] 持有 [1,2,3] → [L2] free_blocks [(3,0),(2,0),(1,0)] → append_n [3,2,1]
-R:  [ENQ] hash ×3（前 2 与 P 同链，第 3 = 2807a32a7a28）
+R:  [ENQ] hash ×3（前 2 与 P 同链，第 3 = c2ea7819f805）
     [L2] get_one_block HIT 块1 → [L3] 第 1 块 HIT
     [L2] get_one_block HIT 块2 → [L3] 第 2 块 HIT
     [L4] 返回 hit_length=256 → [L5] get_computed_blocks (486, [1,2], 256)
     [L5] allocate_slots 进入 (num_new_tokens=230)
-    [L4] 需 4 块 → [L5] S1 4 vs 可用 13294 → [L5] S2 [[1,2]]
+    [L4] 需 4 块 → [L5] S1 4 vs 可用 13295 → [L5] S2 [[1,2]]
     [L3] touch 命中块 [1,2] → [L2] touch [(1,1),(2,1)]
     [L2] get_new_blocks(2) -> [4,5] → [L3] 需4−已有2=新2 [4,5] → req_blocks=[1,2,4,5]
     [L4][L5] S3 → S4 → block_table=([1,2,4,5],)
-    [L2] insert 块4(2807a32a7a28, map 2→3)
+    [L2] insert 块4(c2ea7819f805, map 2→3)
     decode 步1~26: [L5] allocate_slots (num_new_tokens=1) → S1 需 0 → S3 新块 []（尾块 102→128）
     decode 步27:  [L4] 需 1 块 (num_tokens=513) → [L2] get_new_blocks(1) -> [6]
-                  [L2] insert 块5 hash=4324a28794de (map size=4)   ← 步26填满 步27入表+跨界
+                  [L2] insert 块5 hash=2e6bd855659a (map size=4)   ← 步26填满 步27入表+跨界
     decode 步28~34: S1 需 0（块6 占 8/128 不满）
     [L5] free 释放前 block_table=([1,2,4,5,6],) → [L2] free_blocks [(6,0),(5,0),(4,0),(2,0),(1,0)] → append_n [6,5,4,2,1]
 ```
