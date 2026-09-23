@@ -7,29 +7,18 @@
 ## 1. 还原源码至原始状态
 
 ```bash
-cd /vllm-workspace/vllm/vllm/v1
-cp request.py.orig request.py  && cp core/kv_cache_utils.py.orig core/kv_cache_utils.py \
-  && cp core/block_pool.py.orig core/block_pool.py && cp core/kv_cache_manager.py.orig core/kv_cache_manager.py \
-  && cp core/kv_cache_coordinator.py.orig core/kv_cache_coordinator.py \
-  && cp core/single_type_kv_cache_manager.py.orig core/single_type_kv_cache_manager.py \
-  && cp engine/core.py.orig engine/core.py && cp worker/gpu_model_runner.py.orig worker/gpu_model_runner.py
-cd /vllm-workspace/vllm-ascend/vllm_ascend/worker && cp model_runner_v1.py.orig.bak model_runner_v1.py
+cd /vllm-workspace/vllm && git checkout -- vllm/v1/request.py vllm/v1/core/kv_cache_utils.py vllm/v1/core/block_pool.py vllm/v1/core/kv_cache_manager.py vllm/v1/core/kv_cache_coordinator.py vllm/v1/core/single_type_kv_cache_manager.py vllm/v1/engine/core.py vllm/v1/worker/gpu_model_runner.py
+cd /vllm-workspace/vllm-ascend && git checkout -- vllm_ascend/worker/model_runner_v1.py
 ```
 
 验证：9 个文件 `grep -c "\[KVC\]"` 全部为 **0**（干净基线）。
 
-> 09-23 复验轮起改用 `git checkout -- <9 文件>` 一步还原（不再依赖 .orig 备份），复验实录见 §7。
-
 ## 2. 以 patch 方式应用打印代码（验证 patch 文件正确可用）
 
 ```bash
-P=/a3_inference/itask/workdir/gch02599191/kvc/patch
-# dry-run 先行: 9 个全部输出 "checking file <path>" 且无 rejected/failing hunk
-cd /vllm-workspace/vllm        && for f in $P/0[1-8]_*.patch;   do patch -p1 --dry-run < "$f"; done
-cd /vllm-workspace/vllm-ascend && patch -p1 --dry-run < "$P"/09_*.patch
-# 真实应用: 9 个全部输出 "patching file <path>"
-cd /vllm-workspace/vllm        && for f in $P/0[1-8]_*.patch;   do patch -p1 < "$f"; done
-cd /vllm-workspace/vllm-ascend && patch -p1 < "$P"/09_*.patch
+cd /a3_inference/itask/workdir/gch02599191/kvc/patch && ./apply_patches.sh
+# 一键完成: Phase0 状态检查 -> Phase1 dry-run 9/9 预检 -> Phase2 9/9 应用 -> Phase3 逐文件计数(合计 113 行) + py_compile
+# 回滚: ./revert_patches.sh（patch -R 反向应用, 不依赖备份）
 ```
 
 应用后逐文件 `[KVC]` 行数（与设计清单一致，合计 40 个打印调用点）：
@@ -42,9 +31,7 @@ cd /vllm-workspace/vllm-ascend && patch -p1 < "$P"/09_*.patch
 | `v1/engine/core.py` / `v1/worker/gpu_model_runner.py` | 10 / 4 |
 | `vllm_ascend/worker/model_runner_v1.py` | 4 |
 
-`python3 -m py_compile`（9 文件）→ **COMPILE_OK**。结论：patch 文件在"原始代码"上一发命中、无 fuzz、无 reject。
-
-> 09-23 复验轮起推荐一键脚本：`patch/apply_patches.sh`（dry-run/应用/计数/编译四合一；回滚 `revert_patches.sh`），本节手工流程仍成立。
+`python3 -m py_compile`（9 文件）→ **COMPILE_OK**。结论：patch 文件在"原始代码"上一发命中、无 fuzz、无 reject。9 个 patch 仅含 logger 打印插入 + logger 导入 + 7 处值捕获重写（清单见 `../patch/README.md` §5 第 5 条），无任何其他源码改动；手工逐个 patch 的等价命令见 `../patch/README.md` §0 快速使用。
 
 ## 3. 启动期 KVCache 初始化全流程（kvc_startup.log，155 行）
 
@@ -70,7 +57,7 @@ INFO [core.py:298] [KVC][CFG]   [0] KVCacheTensor: size=3485204480 bytes (3323.7
 INFO [core.py:315] [KVC][CFG] 最终 scheduler KVCacheConfig: num_blocks=13295 (跨 worker min 对齐), cache_config.num_gpu_blocks=13295, block_size=128
 ```
 
-主线：① 算规格 → ② 测预算 → ③ `KVCacheSpec → KVCacheGroupSpec → KVCacheTensor → KVCacheConfig` → min 对齐下发。本轮 profile 实测 13295 块（较 09-22 正式轮少 1 块，属跨次启动测量噪声，见 §7 注 2；轮间波动 13295~13297）。
+主线：① 算规格 → ② 测预算 → ③ `KVCacheSpec → KVCacheGroupSpec → KVCacheTensor → KVCacheConfig` → min 对齐下发。本轮 profile 实测 13295 块（`determine_available_memory` 跨次启动存在 ±1~2 块的测量波动）。
 
 ### 3.2 物理侧（4 个 worker 进程，68 行 L1，vllm-ascend 路径）
 
@@ -186,23 +173,4 @@ INFO [block_pool.py:516] [KVC][L2] free_blocks: [(6,0),(5,0),(4,0),(2,0),(1,0)] 
 | `p/resp_cn_p.json`、`r5/resp_cn_r5.json` | 响应体 |
 | `p/p_run_start.txt` / `r5/r_run_start.txt` | 双请求在 llama.log 中的起始行 |
 
-> 容器可读化命令：`grep '\[KVC\]' llama.log`；本文摘录值全部为 09-23 复验轮实测，权威数据以本文档与上表文件为准（单轮内同一 token 序列的哈希链完全一致，跨轮因进程种子随机而不同——见 `2_kvc_cn_curl_case.md` §7 注 4；历史轮原始日志归档 `llama_prev.log` / `llama_prev_0923.log`）。
-
-## 7. 纯净重建复验（2026-09-23）
-
-上一轮 patch 由 print 批量转 logger 的脚本正则误伤（全文件尾逗号被删，数百行纯格式改动混入补丁），2026-09-23 以 `git show HEAD:` 干净基线重建 9 个 patch——现仅含 logger 打印插入 + logger 导入 + 7 处值捕获重写（清单见 `../patch/README.md` §5.5），无任何其他源码改动。全流程复验通过：
-
-| 步骤 | 结果 |
-|---|---|
-| 容器还原 | `git checkout` 9 文件（vllm 8 + vllm-ascend 1）→ `[KVC]` 全归零 |
-| 应用 | `apply_patches.sh`：dry-run 9/9 → 应用 9/9 → 113 行 `[KVC]` + py_compile OK（与 09-22 轮一致） |
-| 启动期 | 155 行 `[KVC]`（CFG/物理侧/逻辑侧装配分布与上轮一致） |
-| P 请求 | 33 行轨迹、completion_tokens=1 / finish=length——"断链种块"行为与上轮一致 |
-| R 请求 | 355 行轨迹、completion_tokens=35 / finish=length——五块生命周期（复用 1,2 + prefill 补 4,5 + decode 填满块5 并跨界申请块6）完整复现 |
-
-两点说明：
-
-1. **manager 行号 +1**：重建时恢复了一处被上轮重写误删的源码空行（`allocate_slots` S4 步前分隔空行），其 S4/返回/free 打印行号较上版 +1——日志实际为 `[kv_cache_manager.py:491/495/511]`；其余 8 文件行号不变（如 `[request.py:185]`、`[kv_cache_utils.py:617]`）。本文所有日志摘录行号已按新体系补齐。
-2. **num_blocks 实测噪声**：本轮 profile 各 worker 实测折算 13295 块，较 09-22 轮（13296）少 1 块（约 0.05%，4 worker 一致），属跨次启动的显存测量波动，不影响任何行为；本文 §3/§5 已全部采用本轮实测值。
-
-本轮产物已按上述口径覆盖 `startup/kvc_startup.log`（155 行纯 `[KVC]`）、`p/kvc_cn_p.log`、`r5/kvc_cn_r5.log`、双请求响应体与 `p/r_run_start.txt`；上轮（09-23 08:20 logger 版服务）全量日志备份为 `llama_prev_0923.log`；09-22 正式轮（print 版）原始日志归档 `llama_prev.log`（773 行），本文 §1~§5 摘录值已与本轮轨迹逐一对齐。重建方法论与 hunk 级审计见 `../patch/README.md` §7。
+> 容器可读化命令：`grep '\[KVC\]' llama.log`；权威数据以本文档与上表文件为准（同一 token 序列的哈希链在单次服务进程内完全一致，服务重启后因 NONE_HASH 种子随机而变化——见 `2_kvc_cn_curl_case.md` §7 注 4）。

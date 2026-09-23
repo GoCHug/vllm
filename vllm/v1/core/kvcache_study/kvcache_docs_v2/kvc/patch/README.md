@@ -57,7 +57,7 @@ grep '\[KVC\]' llama.log
 
 ### 1.3 打印风格约定（为什么这么写）
 
-1. **40 处全部统一 `logger.info(...)`**（2026-09-23 纯净重建后）：vllm logger 每行自动携带 `INFO 时间戳 [文件名:行号] [KVC][层] 消息`，日志免 grep 即可精确回溯源码行。第一版全用 `print(..., flush=True)`（引擎进程 stdout 能进 `llama.log` 且逐行落盘），后因 worker 进程踩坑（见 2）+ 需要行号定位，统一升级为 logger.info。
+1. **40 处全部统一 `logger.info(...)`**：vllm logger 每行自动携带 `INFO 时间戳 [文件名:行号] [KVC][层] 消息`，日志免 grep 即可精确回溯源码行；worker 进程必须走 vllm logger（见 2），引擎进程亦统一走 logger 以获得稳定转发与行号定位。
 2. **worker 进程必须走 vllm logger**（L1，model_runner_v1.py）：worker 的裸 `print` **不会**进主日志（软硬件栈对子进程 stdout 的捕获差异），必须走 vllm logger 才带 `(Worker_PP0_TP0 pid=...)` 前缀转发。这是实操踩坑后改的——第一版 L1 用 print，一条都没打出来；第二版改 logger 才可见。
 3. **只打元数据，绝不碰显存/张量**：块列表打 `[block_id, ...]` 或 `[(block_id, ref_cnt), ...]`；哈希只打前 12 个 hex 字符（完整是 32 字节 bytes，比对足够且日志可读）；shape 打 `tuple(tensor.shape)` + dtype + device。打印本身零拷贝、零开销（相对推理）。
 
@@ -201,7 +201,7 @@ vllm-ascend 的 `NPUModelRunner` 重写了 `_allocate_kv_cache_tensors` / `_resh
 
 ## 4. 一次 P→R 用例的打印时序速查（对照找行）
 
-以实操用例（P=324 token / R=486 in + 35 out，block_size=128；09-23 复验轮实测值）按出现顺序：
+以实操用例（P=324 token / R=486 in + 35 out，block_size=128，2026-09-23 实测）按出现顺序：
 
 ```
 P:  [ENQ] hash_block_tokens ×2 (NONE_HASH→dcaeded48257→8c4d2a2ea88b)                       ← 链式哈希生成
@@ -239,31 +239,17 @@ R:  [ENQ] hash ×3（前 2 与 P 同链，第 3 = 2807a32a7a28）
 4. **等价重写的 return**：`return create_kv_cache_blocks(x)` → 先赋值、打印、再 return——本目录所有此类改动均语义等价，可放心用于生产观察。
 5. **批量 print→logger 转换正则误伤**（2026-09-23 修复）：转换脚本对整个文件执行 `re.sub(r',(\s*\n\s*\))', r'\1')`（本意只清理 flush=True 删除后的尾逗号），把全文件所有函数调用/参数列表的**尾逗号**全部误删——数百行纯格式改动混进 patch（如 `-    UniformTypeKVCacheSpecs,` → `+    UniformTypeKVCacheSpecs`）。修复：以 `git show HEAD:` 干净源码为底做 diff 对齐重建，非 [KVC] 区域 100% 还原——发现并保住了两处正则额外咬伤的值捕获行（`hash_block_tokens` 的 `return BlockHash(` 与 coordinator 的 `return tuple(`）。现 9 个 patch = logger.info 打印插入 + logger 导入 + 全部 7 处值捕获重写（`02 _block_hash`、`03 _b`、`04 _computed_kv_blocks`/`_res_kv_blocks`、`05 _res_blocks`/`_hit_len`、`08 _kv_cache`），无任何其他源码改动。
 
-## 6. 端到端应用实测记录（2026-09-22）
+## 6. 端到端应用实测记录（2026-09-23）
 
-patch 目录 9 个文件在 gggtest 容器（vllm 0.23.0 原始源码）上完成一次完整"还原→应用→运行"验证，结果全部通过：
-
-| 步骤 | 命令 | 结果 |
-|---|---|---|
-| 还原 | `cp <file>.orig <file>`（9 个） | `grep -c "[KVC]"` 全部归 0 |
-| 预检 | `patch -p1 --dry-run < 0x.patch`（9 个） | 全部 `checking file <path>`，无 rejected/failing hunk、无 fuzz |
-| 应用 | `patch -p1 < 0x.patch`（9 个） | 全部 `patching file <path>`，一行未 fuzz |
-| 计数 | `grep -c "[KVC]"` | request 2 / utils 12 / block_pool 27 / manager 22 / coordinator 16 / single_type 16 / core 10 / gpu_model_runner 4 / model_runner_v1 4（=40 个打印调用点） |
-| 编译 | `python3 -m py_compile`（9 文件） | COMPILE_OK |
-| 运行 | `start.sh` 启动 + P/R 双请求 | 启动期 155 行 [KVC]（CFG82/L1 68/L2 3/L4 1/L5 1）；P 轨迹 33 行、R 轨迹 355 行，全部断言与理论一致 |
-
-完整日志与逐段解读见 `../docs/1_kvc_patch_apply_e2e_record.md`。本节可作为 patch 文件正确性的直接证据。
-
-## 7. 纯净重建与复验（2026-09-23）
-
-上一版 patch 被批量 print→logger 转换脚本的正则误伤（`re.sub(r',(\s*\n\s*\))', r'\1')` 作用于全文件），数百行尾逗号纯格式改动混入（详见 §5 第 5 条）。2026-09-23 以 `git show HEAD:` 干净源码为底 diff 对齐重建，双环境复验全部通过：
+9 个 patch 在 gggtest 容器（vllm 0.23.0 干净基线，`git checkout` 还原）上完成完整"还原 → 应用 → 启动 → P/R 运行"验证，全部通过：
 
 | 验证点 | 结果 |
 |---|---|
-| 本地往返 | git 还原 → `apply_patches.sh` 9/9 → 113 行 `[KVC]` + py_compile OK → apply 产物与重建基线**逐字节一致** → `revert_patches.sh` 全归零 → 重新 apply（本地常驻可学习态） |
-| hunk 纯净性 | 9 patch 共 52 hunk 全部含打印行；删除行恰好 **7 处值捕获重写**（§5.5 清单），零其他源码改动 |
-| manager 行号 | 恢复上轮被误删的 S4 前空行 → S4/返回/free 打印 +1（日志 491/495/511），其余 8 文件行号不变；两份 docs 的全部日志摘录行号已按新体系补齐 |
-| 容器复验 | git 还原 → 9/9 应用 → 启动 155 行 + P 33 行 + R 355 行，与 09-22 轮计数全同；R 五块生命周期完整复现，completion_tokens=35 |
-| 实测噪声 | 本轮 profile 各 worker 实测少 1 块（num_blocks 13295 vs 13296，约 0.05%），属跨次启动显存测量波动，不影响行为 |
+| 应用 | `apply_patches.sh`：dry-run 9/9 预检 → 9/9 应用 → 逐文件计数合计 113 行 `[KVC]`（request 2 / utils 12 / block_pool 27 / manager 22 / coordinator 16 / single_type 16 / core 10 / gpu_model_runner 4 / model_runner_v1 4）+ py_compile OK |
+| hunk 纯净性 | 9 patch 共 52 hunk 全部含打印行；删除行恰好 **7 处值捕获重写**（§5 第 5 条清单），零其他源码改动 |
+| 本地往返 | git 还原 → `apply_patches.sh` 9/9 → 113 行 + py_compile OK → `revert_patches.sh` 反向应用后 `[KVC]` 全归零 → 再 apply |
+| 启动运行 | 启动期 155 行 `[KVC]`（CFG82 / L1 68 / L2 3 / L4 1 / L5 1）；P 轨迹 33 行、R 轨迹 355 行，R 五块生命周期（复用 1,2 + prefill 4,5 + decode 填满块5 并跨界申请块6）完整走通，completion_tokens=35 / finish=length |
 
-复验轮日志行号实证（全部为本轮实测出现过的打印点）：`[request.py:185]`、`[kv_cache_utils.py:217/258/396/617]`、`[block_pool.py:70/84/108/209/242/249/340/411/491/516]`、`[single_type_kv_cache_manager.py:234/294/348/396/577/590/598/614]`、`[kv_cache_coordinator.py:188/220/261/284/299/461/476/494]`、`[kv_cache_manager.py:175/243/259/360/431/450/468/491/495/511]`。端到端取证详见 `../docs/1_kvc_patch_apply_e2e_record.md` §7。
+日志行号实证（本轮实测出现过的全部打印点）：`[request.py:185]`、`[kv_cache_utils.py:217/258/396/617]`、`[block_pool.py:70/84/108/209/242/249/340/411/491/516]`、`[single_type_kv_cache_manager.py:234/294/348/396/577/590/598/614]`、`[kv_cache_coordinator.py:188/220/261/284/299/461/476/494]`、`[kv_cache_manager.py:175/243/259/360/431/450/468/491/495/511]`。
+
+完整日志与逐段解读见 `../docs/1_kvc_patch_apply_e2e_record.md`。本节可作为 patch 文件正确性的直接证据。

@@ -1,6 +1,6 @@
 # 中文 curl 用例：P 缓冲 2 块 → R 五块生命周期（复用 2 + prefill 补 1 满 1 尾 + decode 填满尾块并跨界申请第 5 块）
 
-> 环境：gggtest（PP2TP2 4 卡）、vllm 0.23.0 + vllm-ascend（40 处 `[KVC]` 打印，补丁见 `../patch/`）、`--enforce-eager`、block_size=128、KV bfloat16——启动期环境快照与端到端取证见同目录 `1_kvc_patch_apply_e2e_record.md`。实测时间 2026-09-23 09:15（复验轮，容器时钟）。
+> 环境：gggtest（PP2TP2 4 卡）、vllm 0.23.0 + vllm-ascend（40 处 `[KVC]` 打印，补丁见 `../patch/`）、`--enforce-eager`、block_size=128、KV bfloat16——启动期环境快照与端到端取证见同目录 `1_kvc_patch_apply_e2e_record.md`。实测时间 2026-09-23 09:15（容器时钟）。
 >
 > R 的 prompt 设计为 **486 tokens（3 个满块 + 第 4 块 102/128，非恰好边界）**：prefill 复用 2 块后新申请 **2 块（1 满 + 1 尾）**；decode **前 26 步填满尾块、第 27 步跨界申请第 5 块**；max_tokens=35（34 步落 KV + 1 步仅采样）。产物文件名 `req_cn_r5.json`。
 
