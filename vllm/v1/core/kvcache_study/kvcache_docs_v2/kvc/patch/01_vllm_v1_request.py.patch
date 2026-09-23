@@ -1,17 +1,88 @@
+diff --git a/vllm/v1/request.py b/vllm/v1/request.py
+index 44246e70a8..839855170d 100644
 --- a/vllm/v1/request.py
 +++ b/vllm/v1/request.py
-@@ -178,6 +178,14 @@
+@@ -18,7 +18,7 @@ from vllm.v1.engine import (
+     EngineCoreEvent,
+     EngineCoreEventType,
+     EngineCoreRequest,
+-    FinishReason,
++    FinishReason
+ )
+ from vllm.v1.metrics.stats import PrefillStats
+ from vllm.v1.structured_output.request import StructuredOutputRequest
+@@ -27,6 +27,9 @@ from vllm.v1.utils import ConstantList
+ if TYPE_CHECKING:
+     from vllm.lora.request import LoRARequest
+     from vllm.v1.core.kv_cache_utils import BlockHash
++# KVCache 调试 logger
++from vllm.logger import init_logger
++logger = init_logger(__name__)
+ 
+ 
+ @dataclass
+@@ -52,7 +55,7 @@ class StreamingUpdate:
+             prompt_token_ids=request.prompt_token_ids,
+             max_tokens=request.max_tokens,
+             arrival_time=request.arrival_time,
+-            sampling_params=request.sampling_params,
++            sampling_params=request.sampling_params
+         )
+ 
+ 
+@@ -76,7 +79,7 @@ class Request:
+         resumable: bool = False,
+         reasoning_ended: bool | None = None,
+         reasoning_parser_kwargs: dict[str, Any] | None = None,
+-        abort_immediately: bool = False,
++        abort_immediately: bool = False
+     ) -> None:
+         self.request_id = request_id
+         self.client_index = client_index
+@@ -178,6 +181,13 @@ class Request:
          # immediate garbage collection via reference counting.
          self._block_hasher: Callable[[Request], list[BlockHash]] | None = block_hasher
          self.update_block_hashes()
 +        # [KVC][ENQ] 入队阶段: 预计算满块链式哈希 (BlockHash, 纯哈希不含 group_id)
-+        print(
++        logger.info(
 +            f"[KVC][ENQ] Request(request_id={self.request_id}) 入队: "
 +            f"num_prompt_tokens={self.num_prompt_tokens}, max_tokens={self.max_tokens}, "
 +            f"满块链式哈希 BlockHash × {len(self.block_hashes)}: "
-+            f"{[h.hex()[:12] for h in self.block_hashes]}",
-+            flush=True,
++            f"{[h.hex()[:12] for h in self.block_hashes]}"
 +        )
  
          self.skip_reading_prefix_cache = self.get_skip_reading_prefix_cache()
+ 
+@@ -194,7 +204,7 @@ class Request:
+     def from_engine_core_request(
+         cls,
+         request: EngineCoreRequest,
+-        block_hasher: Callable[["Request"], list["BlockHash"]] | None,
++        block_hasher: Callable[["Request"], list["BlockHash"]] | None
+     ) -> "Request":
+         return cls(
+             request_id=request.request_id,
+@@ -214,12 +224,12 @@ class Request:
+             resumable=request.resumable,
+             reasoning_ended=request.reasoning_ended,
+             reasoning_parser_kwargs=request.reasoning_parser_kwargs,
+-            abort_immediately=request.abort_immediately,
++            abort_immediately=request.abort_immediately
+         )
+ 
+     def append_output_token_ids(
+         self,
+-        token_ids: int | list[int],
++        token_ids: int | list[int]
+     ) -> None:
+         if isinstance(token_ids, int):
+             self._output_token_ids.append(token_ids)
+@@ -285,7 +295,7 @@ class Request:
+     def record_event(
+         self,
+         event_type: EngineCoreEventType,
+-        timestamp: float | None = None,
++        timestamp: float | None = None
+     ) -> None:
+         self.events.append(EngineCoreEvent.new_event(event_type, timestamp))
  

@@ -1,6 +1,8 @@
+diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
+index 801a8574ac..78ca959306 100644
 --- a/vllm/v1/worker/gpu_model_runner.py
 +++ b/vllm/v1/worker/gpu_model_runner.py
-@@ -7014,6 +7014,18 @@
+@@ -7014,6 +7014,18 @@ class GPUModelRunner(
              tensor = torch.zeros(
                  kv_cache_tensor.size, dtype=torch.int8, device=self.device
              )
@@ -19,7 +21,7 @@
              for layer_name in kv_cache_tensor.shared_by:
                  kv_cache_raw_tensors[layer_name] = tensor
  
-@@ -7130,7 +7142,19 @@
+@@ -7130,7 +7142,19 @@ class GPUModelRunner(
                      else:
                          # No padding — safe to use a contiguous view.
                          kv_cache = raw_tensor.view(kv_cache_shape)

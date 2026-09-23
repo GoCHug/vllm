@@ -19,11 +19,11 @@
 set -euo pipefail
 
 PATCH_DIR="$(cd "$(dirname "$0")" && pwd)"
-VLLM_DIR="${VLLM_DIR:-/vllm-workspace/vllm}"
-VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/vllm-workspace/vllm-ascend}"
+# VLLM_DIR="${VLLM_DIR:-/vllm-workspace/vllm}"
+# VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/vllm-workspace/vllm-ascend}"
 # 本地跑(需注释掉上面两行, releases/v0.23.0 基线 9/9 实测通过):
-# VLLM_DIR="${VLLM_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm}"
-# VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm-ascend}"
+VLLM_DIR="${VLLM_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm}"
+VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm-ascend}"
 
 VLLM_FILES=(
   vllm/v1/request.py

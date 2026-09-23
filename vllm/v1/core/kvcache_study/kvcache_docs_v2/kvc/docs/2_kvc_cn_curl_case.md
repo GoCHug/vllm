@@ -74,10 +74,10 @@ curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json"
 ### 4.1 P：缓冲 2 个 block（kvc_cn_p.log）
 
 ```
-[KVC][ENQ] Request(...) 入队: num_prompt_tokens=324, max_tokens=1, 满块链式哈希 BlockHash × 2: ['c50912b02cef', '2ded7cbb1366']
-[KVC][L2] BlockPool.get_new_blocks(3): popleft_n -> block_ids=[1, 2, 3]        # 2 满块 + 1 尾块
-[KVC][L2] BlockPool.cache_full_blocks: 新满块 2 块 block_ids=[1, 2] 入 BlockHashToBlockMap (0 -> 2)   # 缓冲 2 块!
-[KVC][L2] BlockPool.free_blocks: [(3,0),(2,0),(1,0)] 归零回收 3 块 [3, 2, 1], append_n -> 队尾
+INFO [request.py] [KVC][ENQ] Request(...) 入队: num_prompt_tokens=324, max_tokens=1, 满块链式哈希 BlockHash × 2: ['c50912b02cef', '2ded7cbb1366']
+INFO [block_pool.py:411] [KVC][L2] BlockPool.get_new_blocks(3): popleft_n -> block_ids=[1, 2, 3]        # 2 满块 + 1 尾块
+INFO [block_pool.py] [KVC][L2] BlockPool.cache_full_blocks: 新满块 2 块 block_ids=[1, 2] 入 BlockHashToBlockMap (0 -> 2)   # 缓冲 2 块!
+INFO [block_pool.py] [KVC][L2] BlockPool.free_blocks: [(3,0),(2,0),(1,0)] 归零回收 3 块 [3, 2, 1], append_n -> 队尾
 ```
 
 尾块（68/128）未满不入表；释放后块 1/2/3 挂队尾带哈希、缓存表留存 2 个 hash 供 R 命中。
@@ -86,29 +86,29 @@ curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json"
 
 ```
 ① 复用 2 块 (含第 3 hash MISS 断链):
-[KVC][ENQ] Request(...) 入队: num_prompt_tokens=486, max_tokens=35, 满块链式哈希 BlockHash × 3: ['c50912b02cef', '2ded7cbb1366', 'a7de2b0b6158']
-[KVC][L4] find_longest_cache_hit: 满块hash数=3, max_cache_hit_length=485          # (486-1)//128=3, 查满 3 个
-[KVC][L3]   第 1 块 HIT: BlockHash=c50912b02cef -> cached blocks=[1]
-[KVC][L3]   第 2 块 HIT: BlockHash=2ded7cbb1366 -> cached blocks=[2]
-[KVC][L3]   第 3 块 MISS: BlockHash=a7de2b0b6158 -> break                        # P 只种了前 2 块, 中间断链
-[KVC][L4] find_longest_cache_hit 返回: hit_blocks=[[1, 2]], hit_length=256
-[KVC][L2] BlockPool.touch: blocks=[(1, 1), (2, 1)] (ref_cnt 已 +1)               # 复用即零拷贝共享
+INFO [request.py] [KVC][ENQ] Request(...) 入队: num_prompt_tokens=486, max_tokens=35, 满块链式哈希 BlockHash × 3: ['c50912b02cef', '2ded7cbb1366', 'a7de2b0b6158']
+INFO [kv_cache_coordinator.py] [KVC][L4] find_longest_cache_hit: 满块hash数=3, max_cache_hit_length=485          # (486-1)//128=3, 查满 3 个
+INFO [single_type_kv_cache_manager.py] [KVC][L3]   第 1 块 HIT: BlockHash=c50912b02cef -> cached blocks=[1]
+INFO [single_type_kv_cache_manager.py] [KVC][L3]   第 2 块 HIT: BlockHash=2ded7cbb1366 -> cached blocks=[2]
+INFO [single_type_kv_cache_manager.py] [KVC][L3]   第 3 块 MISS: BlockHash=a7de2b0b6158 -> break                        # P 只种了前 2 块, 中间断链
+INFO [kv_cache_coordinator.py] [KVC][L4] find_longest_cache_hit 返回: hit_blocks=[[1, 2]], hit_length=256
+INFO [block_pool.py:491] [KVC][L2] BlockPool.touch: blocks=[(1, 1), (2, 1)] (ref_cnt 已 +1)               # 复用即零拷贝共享
 ② prefill 新申请 2 块 (1 满 + 1 尾):
-[KVC][L5] S1 get_num_blocks_to_allocate: 需分配 4 块 vs 可用 13295 块            # S1 报总需求 cdiv(486,128)=4 (含待 touch 的命中 2 块)
-[KVC][L2] BlockPool.get_new_blocks(2): popleft_n -> block_ids=[4, 5], 剩余 num_free_blocks=13291   # 总需求扣掉命中, 实际只新弹 2 块
-[KVC][L2] insert: key=(hash=a7de2b0b6158, group_id=0) <- KVCacheBlock(block_id=4), map size=3   # 块4 被追问句恰填满入表
-[KVC][L2] cache_full_blocks: 新满块 1 块 block_ids=[4] 入表 (num_cached_blocks 2 -> 3)   # 块5 (102/128) 未满不入表
-[KVC][L5] allocate_slots 返回: KVCacheBlocks(blocks=([4, 5],)), block_table=([1, 2, 4, 5],)
+INFO [kv_cache_manager.py] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 4 块 vs 可用 13295 块            # S1 报总需求 cdiv(486,128)=4 (含待 touch 的命中 2 块)
+INFO [block_pool.py:411] [KVC][L2] BlockPool.get_new_blocks(2): popleft_n -> block_ids=[4, 5], 剩余 num_free_blocks=13291   # 总需求扣掉命中, 实际只新弹 2 块
+INFO [block_pool.py] [KVC][L2] insert: key=(hash=a7de2b0b6158, group_id=0) <- KVCacheBlock(block_id=4), map size=3   # 块4 被追问句恰填满入表
+INFO [block_pool.py] [KVC][L2] cache_full_blocks: 新满块 1 块 block_ids=[4] 入表 (num_cached_blocks 2 -> 3)   # 块5 (102/128) 未满不入表
+INFO [kv_cache_manager.py] [KVC][L5] allocate_slots 返回: KVCacheBlocks(blocks=([4, 5],)), block_table=([1, 2, 4, 5],)
 decode 步 1~26: S1 恒 "需分配 0 块", 尾块 102 → 128
 ③ decode 填满尾块 + 步 27 跨界申请第 5 块:
-[KVC][L4] get_num_blocks_to_allocate: num_tokens=513 -> 需分配 1 块              # cdiv(513,128)=5 - 持有4 = 1
-[KVC][L5] S1 get_num_blocks_to_allocate: 需分配 1 块 vs 可用 13291 块
-[KVC][L2] BlockPool.get_new_blocks(1): popleft_n -> block_ids=[6], 剩余 num_free_blocks=13290   # 第 5 块!
-[KVC][L2] insert: key=(hash=e80e4296c25c, group_id=0) <- KVCacheBlock(block_id=5), map size=4   # 刚满的块5 与跨界申请合并入表发生在步 27
+INFO [kv_cache_coordinator.py] [KVC][L4] get_num_blocks_to_allocate: num_tokens=513 -> 需分配 1 块              # cdiv(513,128)=5 - 持有4 = 1
+INFO [kv_cache_manager.py] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 1 块 vs 可用 13291 块
+INFO [block_pool.py:411] [KVC][L2] BlockPool.get_new_blocks(1): popleft_n -> block_ids=[6], 剩余 num_free_blocks=13290   # 第 5 块!
+INFO [block_pool.py] [KVC][L2] insert: key=(hash=e80e4296c25c, group_id=0) <- KVCacheBlock(block_id=5), map size=4   # 刚满的块5 与跨界申请合并入表发生在步 27
 decode 步 28~34: 块 6 装 8/128 未满不入表 (第 35 个输出仅采样)
 结束释放 (五块逆序):
-[KVC][L5] free: 释放前持有 block_table=([1, 2, 4, 5, 6],)                         # 2 复用 + prefill 2 + decode 1
-[KVC][L2] free_blocks: [(6,0),(5,0),(4,0),(2,0),(1,0)] 归零回收 5 块 [6,5,4,2,1], append_n -> 队尾
+INFO [kv_cache_manager.py] [KVC][L5] free: 释放前持有 block_table=([1, 2, 4, 5, 6],)                         # 2 复用 + prefill 2 + decode 1
+INFO [block_pool.py] [KVC][L2] free_blocks: [(6,0),(5,0),(4,0),(2,0),(1,0)] 归零回收 5 块 [6,5,4,2,1], append_n -> 队尾
 ```
 
 三个梯队一眼可辨：**touch 一节=复用（含断链）；`get_new_blocks(2)`+块 4 入表=prefill 双块；`num_tokens=513` 一行=decode 跨界（同步把块 5 满块入表）**。

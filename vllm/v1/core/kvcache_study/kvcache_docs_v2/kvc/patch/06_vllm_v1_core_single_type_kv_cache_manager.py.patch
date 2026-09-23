@@ -1,108 +1,433 @@
+diff --git a/vllm/v1/core/single_type_kv_cache_manager.py b/vllm/v1/core/single_type_kv_cache_manager.py
+index 478effcd74..c64468fcb4 100644
 --- a/vllm/v1/core/single_type_kv_cache_manager.py
 +++ b/vllm/v1/core/single_type_kv_cache_manager.py
-@@ -227,6 +227,13 @@
+@@ -10,7 +10,7 @@ from vllm.v1.core.block_pool import BlockPool
+ from vllm.v1.core.kv_cache_utils import (
+     BlockHashList,
+     BlockHashWithGroupId,
+-    KVCacheBlock,
++    KVCacheBlock
+ )
+ from vllm.v1.kv_cache_interface import (
+     ChunkedLocalAttentionSpec,
+@@ -23,11 +23,14 @@ from vllm.v1.kv_cache_interface import (
+     SinkFullAttentionSpec,
+     SlidingWindowMLASpec,
+     SlidingWindowSpec,
+-    TQFullAttentionSpec,
++    TQFullAttentionSpec
+ )
+ from vllm.v1.kv_cache_spec_registry import KVCacheSpecRegistry
+ from vllm.v1.request import Request
+ 
++from vllm.logger import init_logger
++logger = init_logger(__name__)
++
+ 
+ class SingleTypeKVCacheManager(ABC):
+     """
+@@ -44,7 +47,7 @@ class SingleTypeKVCacheManager(ABC):
+         scheduler_block_size: int,
+         dcp_world_size: int = 1,
+         pcp_world_size: int = 1,
+-        max_admission_blocks_per_request: int | None = None,
++        max_admission_blocks_per_request: int | None = None
+     ) -> None:
+         """
+         Initializes the SingleTypeKVCacheManager.
+@@ -105,7 +108,7 @@ class SingleTypeKVCacheManager(ABC):
+         new_computed_blocks: Sequence[KVCacheBlock],
+         total_computed_tokens: int,
+         num_tokens_main_model: int,
+-        apply_admission_cap: bool = False,
++        apply_admission_cap: bool = False
+     ) -> int:
+         """
+         Get the number of blocks needed to be allocated for the request.
+@@ -163,7 +166,7 @@ class SingleTypeKVCacheManager(ABC):
+         # required capacity; otherwise, skipped blocks dominate.
+         num_new_blocks = max(
+             num_required_blocks - max(num_skipped_blocks, num_local_computed_blocks),
+-            0,
++            0
+         )
+ 
+         # Among the `new_computed_blocks`, the first `num_skipped_blocks` worth
+@@ -184,7 +187,7 @@ class SingleTypeKVCacheManager(ABC):
+         request_id: str,
+         new_computed_blocks: Sequence[KVCacheBlock],
+         num_local_computed_tokens: int,
+-        num_external_computed_tokens: int,
++        num_external_computed_tokens: int
+     ) -> None:
+         """
+         Add the new computed blocks to the request. This involves three steps:
+@@ -223,10 +226,16 @@ class SingleTypeKVCacheManager(ABC):
+             # Some external computed tokens may be skipped too.
+             num_external_computed_tokens = min(
+                 num_total_computed_tokens - num_skipped_tokens,
+-                num_external_computed_tokens,
++                num_external_computed_tokens
              )
  
          # Touch the computed blocks to make sure they won't be evicted.
 +        # [KVC][L3] S2 后半: touch 命中块, ref_cnt++ 并摘出空闲队列
-+        print(
++        logger.info(
 +            f"[KVC][L3] SingleTypeKVCacheManager.allocate_new_computed_blocks: "
 +            f"req={request_id}, touch 命中块 {[b.block_id for b in new_computed_blocks]}, "
-+            f"此前请求持有块数={len(req_blocks)}",
-+            flush=True,
++            f"此前请求持有块数={len(req_blocks)}"
 +        )
          if self.enable_caching:
              self.block_pool.touch(new_computed_blocks)
          else:
-@@ -281,6 +288,14 @@
+@@ -252,7 +261,7 @@ class SingleTypeKVCacheManager(ABC):
+             if type(self.kv_cache_spec) in (
+                 FullAttentionSpec,
+                 TQFullAttentionSpec,
+-                MLAAttentionSpec,
++                MLAAttentionSpec
+             ):
+                 self.new_block_ids.extend(b.block_id for b in allocated_blocks)
+ 
+@@ -281,10 +290,17 @@ class SingleTypeKVCacheManager(ABC):
          else:
              new_blocks = self.block_pool.get_new_blocks(num_new_blocks)
              req_blocks.extend(new_blocks)
 +            # [KVC][L3] S3 下放: num_new = cdiv(num_tokens, block_size) - 已有块数
-+            print(
++            logger.info(
 +                f"[KVC][L3] SingleTypeKVCacheManager.allocate_new_blocks: req={request_id}, "
 +                f"num_tokens={num_tokens}, block_size={self.block_size}, 需 {num_required_blocks} 块 "
 +                f"- 已有 {num_required_blocks - num_new_blocks} = 新分配 {num_new_blocks} 块 "
-+                f"{[b.block_id for b in new_blocks]}, 持有 req_blocks={[b.block_id for b in req_blocks]}",
-+                flush=True,
++                f"{[b.block_id for b in new_blocks]}, 持有 req_blocks={[b.block_id for b in req_blocks]}"
 +            )
              if type(self.kv_cache_spec) in (
                  FullAttentionSpec,
                  TQFullAttentionSpec,
-@@ -328,6 +343,13 @@
+-                MLAAttentionSpec,
++                MLAAttentionSpec
+             ):
+                 self.new_block_ids.extend(b.block_id for b in new_blocks)
+             return new_blocks
+@@ -299,7 +315,7 @@ class SingleTypeKVCacheManager(ABC):
+         self,
+         request: Request,
+         num_tokens: int,
+-        retention_interval: int | None = None,
++        retention_interval: int | None = None
+     ) -> None:
+         """
+         Cache the blocks for the request.
+@@ -326,7 +342,13 @@ class SingleTypeKVCacheManager(ABC):
+             kv_cache_spec=self.kv_cache_spec,
+             use_eagle=self.use_eagle,
              retention_interval=retention_interval,
-             num_prompt_tokens=request.num_prompt_tokens,
-         )
+-            num_prompt_tokens=request.num_prompt_tokens,
++            num_prompt_tokens=request.num_prompt_tokens
++        )
 +        # [KVC][L3] S4 下放: 满块哈希入表 (num_full_blocks = num_tokens // block_size)
-+        print(
++        logger.info(
 +            f"[KVC][L3] SingleTypeKVCacheManager.cache_blocks: req={request.request_id}, "
 +            f"num_tokens={num_tokens}, block_size={self.block_size}, "
-+            f"已缓存 {num_cached_blocks} 块 -> 满块数 {num_full_blocks}",
-+            flush=True,
-+        )
++            f"已缓存 {num_cached_blocks} 块 -> 满块数 {num_full_blocks}"
+         )
          self.block_pool.cache_full_blocks(
              request=request,
-             blocks=self.req_to_blocks[request.request_id],
-@@ -370,6 +392,13 @@
+@@ -335,7 +357,7 @@ class SingleTypeKVCacheManager(ABC):
+             num_full_blocks=num_full_blocks,
+             block_size=self.block_size,
+             kv_cache_group_id=self.kv_cache_group_id,
+-            block_mask=block_mask,
++            block_mask=block_mask
+         )
+ 
+         self.num_cached_block[request.request_id] = num_full_blocks
+@@ -349,7 +371,7 @@ class SingleTypeKVCacheManager(ABC):
+         kv_cache_spec: KVCacheSpec,
+         use_eagle: bool,
+         retention_interval: int | None = None,
+-        num_prompt_tokens: int | None = None,
++        num_prompt_tokens: int | None = None
+     ) -> list[bool] | None:
+         """Per-block mask for ``cache_full_blocks``. ``None`` means cache
+         every (non-null) block — the default for full attention.
+@@ -370,6 +392,12 @@ class SingleTypeKVCacheManager(ABC):
          # Default to [] in case a request is freed (aborted) before alloc.
          req_blocks = self.req_to_blocks.pop(request_id, [])
  
 +        # [KVC][L3] 释放: 持有块逆序归还第2层 BlockPool
-+        print(
++        logger.info(
 +            f"[KVC][L3] SingleTypeKVCacheManager.free: req={request_id}, "
-+            f"持有 blocks={[b.block_id for b in req_blocks]} (reversed 后释放)",
-+            flush=True,
++            f"持有 blocks={[b.block_id for b in req_blocks]} (reversed 后释放)"
 +        )
 +
          # Free blocks in reverse order so that the tail blocks are
          # freed first.
          ordered_blocks = reversed(req_blocks)
-@@ -545,6 +574,13 @@
+@@ -405,7 +433,7 @@ class SingleTypeKVCacheManager(ABC):
+         drop_eagle_block: bool,
+         alignment_tokens: int,
+         dcp_world_size: int = 1,
+-        pcp_world_size: int = 1,
++        pcp_world_size: int = 1
+     ) -> tuple[list[KVCacheBlock], ...]:
+         """
+         Get the longest cache hit prefix of the blocks that is not longer than
+@@ -530,7 +558,7 @@ class FullAttentionManager(SingleTypeKVCacheManager):
+         drop_eagle_block: bool,
+         alignment_tokens: int,
+         dcp_world_size: int = 1,
+-        pcp_world_size: int = 1,
++        pcp_world_size: int = 1
+     ) -> tuple[list[KVCacheBlock], ...]:
+         assert isinstance(
+             kv_cache_spec, FullAttentionSpec | ChunkedLocalAttentionSpec
+@@ -545,6 +573,12 @@ class FullAttentionManager(SingleTypeKVCacheManager):
          if dcp_world_size * pcp_world_size > 1:
              block_size *= dcp_world_size * pcp_world_size
          max_num_blocks = max_length // block_size
 +        # [KVC][L3] 前缀查找(第3层): 逐块查链式哈希, 遇 miss 即 break
-+        print(
++        logger.info(
 +            f"[KVC][L3] FullAttentionManager.find_longest_cache_hit: block_size={block_size}, "
 +            f"max_length={max_length}, 最多查 {max_num_blocks} 个hash, groups={kv_cache_group_ids}, "
-+            f"spec={type(kv_cache_spec).__name__}",
-+            flush=True,
++            f"spec={type(kv_cache_spec).__name__}"
 +        )
          for block_hash in itertools.islice(block_hashes, max_num_blocks):
              # block_hashes is a chain of block hashes. If a block hash is not
              # in the cached_block_hash_to_id, the following block hashes are
-@@ -552,9 +588,21 @@
+@@ -552,9 +586,19 @@ class FullAttentionManager(SingleTypeKVCacheManager):
              if cached_block := block_pool.get_cached_block(
                  block_hash, kv_cache_group_ids
              ):
 +                # [KVC][L3] 逐块查表: HIT
-+                print(
++                logger.info(
 +                    f"[KVC][L3]   第 {len(computed_blocks[0]) + 1} 块 HIT: "
-+                    f"BlockHash={block_hash.hex()[:12]} -> cached blocks={[b.block_id for b in cached_block]}",
-+                    flush=True,
++                    f"BlockHash={block_hash.hex()[:12]} -> cached blocks={[b.block_id for b in cached_block]}"
 +                )
                  for computed, cached in zip(computed_blocks, cached_block):
                      computed.append(cached)
              else:
 +                # [KVC][L3] 逐块查表: MISS -> 链式哈希断, 之后的块必 miss
-+                print(
++                logger.info(
 +                    f"[KVC][L3]   第 {len(computed_blocks[0]) + 1} 块 MISS: "
-+                    f"BlockHash={block_hash.hex()[:12]} -> break",
-+                    flush=True,
++                    f"BlockHash={block_hash.hex()[:12]} -> break"
 +                )
                  break
          if drop_eagle_block and computed_blocks[0]:
              # Need to drop the last matched block if eagle is enabled.
-@@ -566,6 +614,12 @@
+@@ -566,6 +610,11 @@ class FullAttentionManager(SingleTypeKVCacheManager):
          ):
              for computed in computed_blocks:
                  computed.pop()
 +        # [KVC][L3] 前缀查找(第3层)返回
-+        print(
++        logger.info(
 +            f"[KVC][L3] FullAttentionManager.find_longest_cache_hit 返回: "
-+            f"computed_blocks={[[b.block_id for b in g] for g in computed_blocks]}",
-+            flush=True,
++            f"computed_blocks={[[b.block_id for b in g] for g in computed_blocks]}"
 +        )
          return computed_blocks
  
      def get_num_common_prefix_blocks(self, running_request_id: str) -> int:
+@@ -608,7 +657,7 @@ class SlidingWindowManager(SingleTypeKVCacheManager):
+         drop_eagle_block: bool,
+         alignment_tokens: int,
+         dcp_world_size: int = 1,
+-        pcp_world_size: int = 1,
++        pcp_world_size: int = 1
+     ) -> tuple[list[KVCacheBlock], ...]:
+         assert isinstance(kv_cache_spec, SlidingWindowSpec), (
+             "SlidingWindowManager can only be used for sliding window groups"
+@@ -693,7 +742,7 @@ class SlidingWindowManager(SingleTypeKVCacheManager):
+         kv_cache_spec: KVCacheSpec,
+         use_eagle: bool,
+         retention_interval: int | None = None,
+-        num_prompt_tokens: int | None = None,
++        num_prompt_tokens: int | None = None
+     ) -> list[bool] | None:
+         assert isinstance(kv_cache_spec, SlidingWindowSpec)
+         if alignment_tokens is None:
+@@ -706,7 +755,7 @@ class SlidingWindowManager(SingleTypeKVCacheManager):
+         need = cls._contiguous_blocks_for_hit(
+             window_size=kv_cache_spec.sliding_window,
+             block_size=block_size,
+-            use_eagle=use_eagle,
++            use_eagle=use_eagle
+         )
+         # The matched run's right edge sits on the aligned boundary block when
+         # EAGLE peeks one block past it (shift=1), otherwise on the last block
+@@ -742,7 +791,7 @@ class SlidingWindowManager(SingleTypeKVCacheManager):
+             prompt_end_block = latest // block_size + shift
+             for i in range(
+                 max(start_block, prompt_end_block - need),
+-                min(end_block, prompt_end_block),
++                min(end_block, prompt_end_block)
+             ):
+                 mask[i - start_block] = True
+ 
+@@ -818,7 +867,7 @@ class ChunkedLocalAttentionManager(SingleTypeKVCacheManager):
+         drop_eagle_block: bool,
+         alignment_tokens: int,
+         dcp_world_size: int = 1,
+-        pcp_world_size: int = 1,
++        pcp_world_size: int = 1
+     ) -> tuple[list[KVCacheBlock], ...]:
+         """
+         For chunked local attention, we need to find the longest cache hit
+@@ -978,7 +1027,7 @@ class MambaManager(SingleTypeKVCacheManager):
+         drop_eagle_block: bool,
+         alignment_tokens: int,
+         dcp_world_size: int = 1,
+-        pcp_world_size: int = 1,
++        pcp_world_size: int = 1
+     ) -> tuple[list[KVCacheBlock], ...]:
+         assert isinstance(kv_cache_spec, MambaSpec), (
+             "MambaManager can only be used for mamba groups"
+@@ -1058,7 +1107,7 @@ class MambaManager(SingleTypeKVCacheManager):
+         new_computed_blocks: Sequence[KVCacheBlock],
+         total_computed_tokens: int,
+         num_tokens_main_model: int,
+-        apply_admission_cap: bool = False,
++        apply_admission_cap: bool = False
+     ) -> int:
+         assert isinstance(self.kv_cache_spec, MambaSpec)
+         if (
+@@ -1083,7 +1132,7 @@ class MambaManager(SingleTypeKVCacheManager):
+                 new_computed_blocks,
+                 total_computed_tokens,
+                 num_tokens_main_model,
+-                apply_admission_cap=apply_admission_cap,
++                apply_admission_cap=apply_admission_cap
+             )
+         else:
+             # We don't allocate blocks for lookahead tokens in align mode, because if
+@@ -1212,7 +1261,7 @@ class MambaManager(SingleTypeKVCacheManager):
+         self,
+         request: Request,
+         num_tokens: int,
+-        retention_interval: int | None = None,
++        retention_interval: int | None = None
+     ) -> None:
+         num_cached_blocks_before = self.num_cached_block.get(request.request_id, 0)
+         super().cache_blocks(request, num_tokens, retention_interval=retention_interval)
+@@ -1238,7 +1287,7 @@ class CrossAttentionManager(SingleTypeKVCacheManager):
+         request_id: str,
+         new_computed_blocks: Sequence[KVCacheBlock],
+         num_local_computed_tokens: int,
+-        num_external_computed_tokens: int,
++        num_external_computed_tokens: int
+     ) -> None:
+         # We do not cache blocks for cross-attention to be shared between
+         # requests, so  `new_computed_blocks` should always be empty.
+@@ -1248,7 +1297,7 @@ class CrossAttentionManager(SingleTypeKVCacheManager):
+         self,
+         request: Request,
+         num_tokens: int,
+-        retention_interval: int | None = None,
++        retention_interval: int | None = None
+     ) -> None:
+         # We do not cache blocks for cross-attention to be shared between
+         # requests, so this method is not relevant.
+@@ -1270,7 +1319,7 @@ class CrossAttentionManager(SingleTypeKVCacheManager):
+         drop_eagle_block: bool,
+         alignment_tokens: int,
+         dcp_world_size: int = 1,
+-        pcp_world_size: int = 1,
++        pcp_world_size: int = 1
+     ) -> tuple[list[KVCacheBlock], ...]:
+         assert isinstance(kv_cache_spec, CrossAttentionSpec), (
+             "CrossAttentionManager can only be used for cross-attention groups"
+@@ -1292,7 +1341,7 @@ class SinkFullAttentionManager(FullAttentionManager):
+         enable_caching: bool,
+         kv_cache_group_id: int,
+         dcp_world_size: int = 1,
+-        pcp_world_size: int = 1,
++        pcp_world_size: int = 1
+     ):
+         super().__init__(
+             kv_cache_spec,
+@@ -1300,7 +1349,7 @@ class SinkFullAttentionManager(FullAttentionManager):
+             enable_caching,
+             kv_cache_group_id,
+             dcp_world_size,
+-            pcp_world_size,
++            pcp_world_size
+         )
+         sink_len = kv_cache_spec.sink_len
+         assert sink_len is not None and sink_len > 0 and sink_len % self.block_size == 0
+@@ -1312,7 +1361,7 @@ def get_manager_for_kv_cache_spec(
+     kv_cache_spec: KVCacheSpec,
+     max_num_batched_tokens: int,
+     max_model_len: int,
+-    **kwargs,
++    **kwargs
+ ) -> SingleTypeKVCacheManager:
+     """
+     Get the appropriate manager for a given KVCacheSpec.
+@@ -1339,7 +1388,7 @@ def get_manager_for_kv_cache_spec(
+         kwargs["max_admission_blocks_per_request"] = (
+             kv_cache_spec.max_admission_blocks_per_request(
+                 max_num_batched_tokens=max_num_batched_tokens,
+-                max_model_len=max_model_len,
++                max_model_len=max_model_len
+             )
+         )
+     manager = manager_class(kv_cache_spec, **kwargs)
+@@ -1351,18 +1400,18 @@ def register_all_kvcache_specs(vllm_config):
+     KVCacheSpecRegistry.register(
+         FullAttentionSpec,
+         FullAttentionManager,
+-        uniform_type_base_spec=FullAttentionSpec,
++        uniform_type_base_spec=FullAttentionSpec
+     )
+ 
+     KVCacheSpecRegistry.register(
+         SlidingWindowSpec,
+         SlidingWindowManager,
+-        uniform_type_base_spec=SlidingWindowSpec,
++        uniform_type_base_spec=SlidingWindowSpec
+     )
+     KVCacheSpecRegistry.register(
+         SlidingWindowMLASpec,
+         SlidingWindowManager,
+-        uniform_type_base_spec=SlidingWindowMLASpec,
++        uniform_type_base_spec=SlidingWindowMLASpec
+     )
+ 
+     KVCacheSpecRegistry.register(
+@@ -1371,19 +1420,19 @@ def register_all_kvcache_specs(vllm_config):
+     KVCacheSpecRegistry.register(
+         ChunkedLocalAttentionSpec,
+         ChunkedLocalAttentionManager,
+-        uniform_type_base_spec=ChunkedLocalAttentionSpec,
++        uniform_type_base_spec=ChunkedLocalAttentionSpec
+     )
+     KVCacheSpecRegistry.register(
+         CrossAttentionSpec,
+         CrossAttentionManager,
+-        uniform_type_base_spec=CrossAttentionSpec,
++        uniform_type_base_spec=CrossAttentionSpec
+     )
+ 
+     # FullAttentionSpec subclasses — grouped with FullAttentionSpec
+     KVCacheSpecRegistry.register(
+         TQFullAttentionSpec,
+         FullAttentionManager,
+-        uniform_type_base_spec=FullAttentionSpec,
++        uniform_type_base_spec=FullAttentionSpec
+     )
+     KVCacheSpecRegistry.register(
+         MLAAttentionSpec, FullAttentionManager, uniform_type_base_spec=FullAttentionSpec
+@@ -1394,12 +1443,12 @@ def register_all_kvcache_specs(vllm_config):
+     KVCacheSpecRegistry.register(
+         HiddenStateCacheSpec,
+         FullAttentionManager,
+-        uniform_type_base_spec=FullAttentionSpec,
++        uniform_type_base_spec=FullAttentionSpec
+     )
+     KVCacheSpecRegistry.register(
+         SinkFullAttentionSpec,
+         SinkFullAttentionManager,
+-        uniform_type_base_spec=FullAttentionSpec,
++        uniform_type_base_spec=FullAttentionSpec
+     )
+ 
+     from vllm.platforms import current_platform

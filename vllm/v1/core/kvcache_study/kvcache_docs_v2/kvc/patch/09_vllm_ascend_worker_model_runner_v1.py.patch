@@ -1,8 +1,8 @@
 diff --git a/vllm_ascend/worker/model_runner_v1.py b/vllm_ascend/worker/model_runner_v1.py
-index 70ef1d79a..5a472e1d3 100644
+index 4c8e11e9d..578265b50 100644
 --- a/vllm_ascend/worker/model_runner_v1.py
 +++ b/vllm_ascend/worker/model_runner_v1.py
-@@ -4253,6 +4253,19 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4255,6 +4255,19 @@ class NPUModelRunner(GPUModelRunner):
                              v_tensor_size,
                              alignment,
                          )
@@ -22,7 +22,7 @@ index 70ef1d79a..5a472e1d3 100644
  
                      if self.use_sparse and dsa_k_tensor_size is not None:
                          if current_sparse_li_c8:
-@@ -4677,6 +4690,20 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4679,6 +4692,20 @@ class NPUModelRunner(GPUModelRunner):
                      elif self.use_sparse and current_sparse_sfa_c8:
                          kv_caches[layer_name] = (k_cache,)
                      else:

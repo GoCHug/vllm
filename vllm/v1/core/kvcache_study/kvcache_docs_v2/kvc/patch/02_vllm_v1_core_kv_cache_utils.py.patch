@@ -1,71 +1,86 @@
+diff --git a/vllm/v1/core/kv_cache_utils.py b/vllm/v1/core/kv_cache_utils.py
+index 107a89cc6b..5d4a11f242 100644
 --- a/vllm/v1/core/kv_cache_utils.py
 +++ b/vllm/v1/core/kv_cache_utils.py
-@@ -213,6 +213,12 @@
+@@ -31,7 +31,7 @@ from vllm.v1.kv_cache_interface import (
+     MLAAttentionSpec,
+     SlidingWindowMLASpec,
+     SlidingWindowSpec,
+-    UniformTypeKVCacheSpecs,
++    UniformTypeKVCacheSpecs
+ )
+ from vllm.v1.kv_cache_spec_registry import KVCacheSpecRegistry
+ from vllm.v1.request import Request
+@@ -213,6 +213,11 @@ class FreeKVCacheBlockQueue:
              # For empty list, simply connect the fake head and tail.
              self.fake_free_list_head.next_free_block = self.fake_free_list_tail
              self.fake_free_list_tail.prev_free_block = self.fake_free_list_head
 +        # [KVC][L2] FreeKVCacheBlockQueue 初始化: 双向链表 + 伪头尾哨兵
-+        print(
++        logger.info(
 +            f"[KVC][L2] FreeKVCacheBlockQueue.__init__: num_free_blocks={self.num_free_blocks}, "
-+            f"伪头尾哨兵 fake_free_list_head/tail(block_id=-1), 类型={type(self).__name__}",
-+            flush=True,
++            f"伪头尾哨兵 fake_free_list_head/tail(block_id=-1), 类型={type(self).__name__}"
 +        )
  
      def popleft(self) -> KVCacheBlock:
          """Pop the first free block and reduce num_free_blocks by 1.
-@@ -249,6 +255,12 @@
+@@ -249,6 +254,11 @@ class FreeKVCacheBlockQueue:
          first_block.prev_free_block = first_block.next_free_block = None
  
          self.num_free_blocks -= 1
 +        # [KVC][L2] 队头弹出(分配/null块摘取)
-+        print(
++        logger.info(
 +            f"[KVC][L2] FreeKVCacheBlockQueue.popleft -> KVCacheBlock(block_id={first_block.block_id}), "
-+            f"num_free_blocks={self.num_free_blocks}",
-+            flush=True,
++            f"num_free_blocks={self.num_free_blocks}"
 +        )
          return first_block
  
      def popleft_n(self, n: int) -> list[KVCacheBlock]:
-@@ -326,6 +338,12 @@
+@@ -326,6 +336,11 @@ class FreeKVCacheBlockQueue:
          self.fake_free_list_tail.prev_free_block = block
  
          self.num_free_blocks += 1
 +        # [KVC][L2] 单块归还队尾
-+        print(
++        logger.info(
 +            f"[KVC][L2] FreeKVCacheBlockQueue.append(block_id={block.block_id}), "
-+            f"num_free_blocks={self.num_free_blocks}",
-+            flush=True,
++            f"num_free_blocks={self.num_free_blocks}"
 +        )
  
      def prepend_n(self, blocks: list[KVCacheBlock]) -> None:
          """Put a list of blocks at the front of the free list."""
-@@ -347,6 +365,12 @@
+@@ -347,6 +362,11 @@ class FreeKVCacheBlockQueue:
          first_block.prev_free_block = prev_block
  
          self.num_free_blocks += len(blocks)
 +        # [KVC][L2] 批量插队头(无哈希块优先复用)
-+        print(
++        logger.info(
 +            f"[KVC][L2] FreeKVCacheBlockQueue.prepend_n(blocks={[b.block_id for b in blocks]}), "
-+            f"num_free_blocks={self.num_free_blocks}",
-+            flush=True,
++            f"num_free_blocks={self.num_free_blocks}"
 +        )
  
      def append_n(self, blocks: list[KVCacheBlock]) -> None:
          """Put a list of blocks back into the free list
-@@ -372,6 +396,12 @@
+@@ -372,6 +392,11 @@ class FreeKVCacheBlockQueue:
          self.fake_free_list_tail.prev_free_block = last_block
  
          self.num_free_blocks += len(blocks)
 +        # [KVC][L2] 批量归还队尾(带哈希块LRU保护)
-+        print(
++        logger.info(
 +            f"[KVC][L2] FreeKVCacheBlockQueue.append_n(blocks={[b.block_id for b in blocks]}), "
-+            f"num_free_blocks={self.num_free_blocks}",
-+            flush=True,
++            f"num_free_blocks={self.num_free_blocks}"
 +        )
  
      def get_all_free_blocks(self) -> list[KVCacheBlock]:
          """Get all free blocks in the free list. Mainly used for testing.
-@@ -585,9 +615,17 @@
+@@ -564,7 +589,7 @@ def hash_block_tokens(
+     hash_function: Callable[[Any], bytes],
+     parent_block_hash: BlockHash | None,
+     curr_block_token_ids: Sequence[int],
+-    extra_keys: tuple[Any, ...] | None = None,
++    extra_keys: tuple[Any, ...] | None = None
+ ) -> BlockHash:
+     """Computes a hash value corresponding to the contents of a block and
+     the contents of the preceding block(s). The hash value is used for
+@@ -585,14 +610,21 @@ def hash_block_tokens(
          parent_block_hash = NONE_HASH
  
      curr_block_token_ids_tuple = tuple(curr_block_token_ids)
@@ -74,13 +89,372 @@
          hash_function((parent_block_hash, curr_block_token_ids_tuple, extra_keys))
      )
 +    # [KVC][ENQ] 链式哈希: H(bn) = fn(H(bn-1), tokens(bn)); 首块 parent=NONE_HASH
-+    print(
++    logger.info(
 +        f"[KVC][ENQ] hash_block_tokens: parent="
 +        f"{'NONE_HASH' if parent_block_hash == NONE_HASH else parent_block_hash.hex()[:12]}, "
-+        f"tokens={len(curr_block_token_ids_tuple)} -> BlockHash={_block_hash.hex()[:12]}",
-+        flush=True,
++        f"tokens={len(curr_block_token_ids_tuple)} -> BlockHash={_block_hash.hex()[:12]}"
 +    )
 +    return _block_hash
  
  
  def resolve_kv_cache_block_sizes(
+     kv_cache_config: KVCacheConfig,
+-    vllm_config: VllmConfig,
++    vllm_config: VllmConfig
+ ) -> tuple[int, int]:
+     """Resolve (scheduler_block_size, hash_block_size).
+ 
+@@ -658,7 +690,7 @@ def resolve_kv_cache_block_sizes(
+ 
+ def get_request_block_hasher(
+     block_size: int,
+-    caching_hash_fn: Callable[[Any], bytes],
++    caching_hash_fn: Callable[[Any], bytes]
+ ) -> Callable[[Request], list[BlockHash]]:
+     """
+     Returns a function which computes the list of un-computed block hashes
+@@ -714,7 +746,7 @@ def _check_enough_kv_cache_memory(
+     available_memory: int,
+     get_needed_memory: Callable[[], int],
+     max_model_len: int,
+-    estimate_max_model_len: Callable[[int], int],
++    estimate_max_model_len: Callable[[int], int]
+ ):
+     if available_memory <= 0:
+         raise ValueError(
+@@ -762,7 +794,7 @@ def max_memory_usage_bytes(
+ def estimate_max_model_len(
+     vllm_config: VllmConfig,
+     kv_cache_spec: dict[str, KVCacheSpec],
+-    available_memory: int,
++    available_memory: int
+ ) -> int:
+     """
+     Estimates the maximum model length that can fit in the available memory
+@@ -816,7 +848,7 @@ def estimate_max_model_len(
+ def check_enough_kv_cache_memory(
+     vllm_config: VllmConfig,
+     kv_cache_spec: dict[str, KVCacheSpec],
+-    available_memory: int,
++    available_memory: int
+ ):
+     """
+     Checks whether `available_memory` is enough for the KV cache to hold at
+@@ -837,7 +869,7 @@ def check_enough_kv_cache_memory(
+             available_memory,
+             lambda: max_memory_usage_bytes(vllm_config, kv_cache_spec.values()),
+             vllm_config.model_config.max_model_len,
+-            lambda am: estimate_max_model_len(vllm_config, kv_cache_spec, am),
++            lambda am: estimate_max_model_len(vllm_config, kv_cache_spec, am)
+         )
+ 
+ 
+@@ -953,7 +985,7 @@ def get_num_blocks(
+     vllm_config: VllmConfig,
+     num_layers: int,
+     available_memory: int,
+-    page_size: int,
++    page_size: int
+ ) -> int:
+     """
+     Get the number of kv cache blocks.
+@@ -979,7 +1011,7 @@ def get_uniform_page_size(kv_cache_specs: Iterable[KVCacheSpec]) -> int:
+ 
+ 
+ def _get_kv_cache_groups_uniform_spec(
+-    kv_cache_specs: dict[str, KVCacheSpec],
++    kv_cache_specs: dict[str, KVCacheSpec]
+ ) -> list[KVCacheGroupSpec]:
+     """
+     Generates the KV cache configuration for a model with the same KV cache
+@@ -996,7 +1028,7 @@ def _get_kv_cache_groups_uniform_spec(
+ 
+ 
+ def _get_kv_cache_groups_uniform_type(
+-    spec: UniformTypeKVCacheSpecs,
++    spec: UniformTypeKVCacheSpecs
+ ) -> list[KVCacheGroupSpec]:
+     """
+     Generates the KV cache configuration for a model with one type of KV cache
+@@ -1027,7 +1059,7 @@ def is_kv_cache_page_size_uniform(kv_cache_spec: dict[str, KVCacheSpec]) -> bool
+ 
+ 
+ def unify_kv_cache_spec_page_size(
+-    kv_cache_spec: dict[str, KVCacheSpec],
++    kv_cache_spec: dict[str, KVCacheSpec]
+ ) -> dict[str, KVCacheSpec]:
+     """
+     Unify the page size of the given KVCacheSpec. If the page size of all layers
+@@ -1072,7 +1104,7 @@ def is_kv_cache_type_attention_free(kv_cache_spec: dict[str, KVCacheSpec]) -> bo
+ 
+ 
+ def _get_kv_cache_groups_uniform_page_size(
+-    kv_cache_spec: dict[str, KVCacheSpec],
++    kv_cache_spec: dict[str, KVCacheSpec]
+ ) -> list[KVCacheGroupSpec]:
+     """
+     Generates the KV cache groups for hybrid models with multiple
+@@ -1174,7 +1206,7 @@ def _get_kv_cache_groups_uniform_page_size(
+             logger.warning(
+                 "Add %d padding layers, may waste at most %.2f%% KV cache memory",  # noqa
+                 num_padding_layers,
+-                num_padding_layers / len(layers) * 100,
++                num_padding_layers / len(layers) * 100
+             )
+         num_groups = cdiv(len(layers), group_size)
+         # In PP case, say if we have
+@@ -1194,7 +1226,7 @@ def _get_kv_cache_groups_uniform_page_size(
+ 
+ 
+ def _bucket_layers_by_page_size(
+-    kv_cache_groups: list[KVCacheGroupSpec],
++    kv_cache_groups: list[KVCacheGroupSpec]
+ ) -> dict[int, list[list[str]]]:
+     """Bucket layers by page size: ``result[ps][slot_idx] = [layer_names]``.
+ 
+@@ -1221,7 +1253,7 @@ def _bucket_layers_by_page_size(
+ def _get_kv_cache_config_deepseek_v4(
+     vllm_config: VllmConfig,
+     kv_cache_groups: list[KVCacheGroupSpec],
+-    available_memory: int,
++    available_memory: int
+ ) -> tuple[int, list[KVCacheTensor]]:
+     """DeepseekV4 KV cache tensor layout planning.
+ 
+@@ -1247,7 +1279,7 @@ def _get_kv_cache_config_deepseek_v4(
+ def get_kv_cache_config_from_groups(
+     vllm_config: VllmConfig,
+     kv_cache_groups: list[KVCacheGroupSpec],
+-    available_memory: int,
++    available_memory: int
+ ) -> KVCacheConfig:
+     """
+     Generate the KV cache configuration from the KV cache groups and spec
+@@ -1266,7 +1298,7 @@ def get_kv_cache_config_from_groups(
+         return KVCacheConfig(
+             num_blocks=1,
+             kv_cache_tensors=[],
+-            kv_cache_groups=kv_cache_groups,
++            kv_cache_groups=kv_cache_groups
+         )
+ 
+     # Determine how model runners should initialize the KV cache tensors.
+@@ -1284,7 +1316,7 @@ def get_kv_cache_config_from_groups(
+         kv_cache_tensors = [
+             KVCacheTensor(
+                 size=per_layer_specs[layer_name].page_size_bytes * num_blocks,
+-                shared_by=[layer_name],
++                shared_by=[layer_name]
+             )
+             for layer_name in kv_cache_groups[0].layer_names
+         ]
+@@ -1328,7 +1360,7 @@ def get_kv_cache_config_from_groups(
+     return KVCacheConfig(
+         num_blocks=num_blocks,
+         kv_cache_tensors=kv_cache_tensors,
+-        kv_cache_groups=kv_cache_groups,
++        kv_cache_groups=kv_cache_groups
+     )
+ 
+ 
+@@ -1395,7 +1427,7 @@ def unify_hybrid_kv_cache_specs(kv_cache_spec: dict[str, KVCacheSpec]):
+                     cache_dtype_str=spec.cache_dtype_str,
+                     alignment=spec.alignment,
+                     compress_ratio=spec.compress_ratio,
+-                    model_version=spec.model_version,
++                    model_version=spec.model_version
+                 )
+             elif isinstance(spec, SlidingWindowSpec):
+                 kv_cache_spec[layer_name] = FullAttentionSpec(
+@@ -1406,7 +1438,7 @@ def unify_hybrid_kv_cache_specs(kv_cache_spec: dict[str, KVCacheSpec]):
+                     dtype=spec.dtype,
+                     kv_quant_mode=spec.kv_quant_mode,
+                     sliding_window=spec.sliding_window,
+-                    page_size_padded=spec.page_size_padded,
++                    page_size_padded=spec.page_size_padded
+                 )
+             elif isinstance(spec, ChunkedLocalAttentionSpec):
+                 kv_cache_spec[layer_name] = FullAttentionSpec(
+@@ -1415,7 +1447,7 @@ def unify_hybrid_kv_cache_specs(kv_cache_spec: dict[str, KVCacheSpec]):
+                     head_size=spec.head_size,
+                     dtype=spec.dtype,
+                     attention_chunk_size=spec.attention_chunk_size,
+-                    page_size_padded=spec.page_size_padded,
++                    page_size_padded=spec.page_size_padded
+                 )
+ 
+     if not (
+@@ -1429,7 +1461,7 @@ def unify_hybrid_kv_cache_specs(kv_cache_spec: dict[str, KVCacheSpec]):
+ 
+ 
+ def group_and_unify_kv_cache_specs(
+-    kv_cache_spec: dict[str, KVCacheSpec],
++    kv_cache_spec: dict[str, KVCacheSpec]
+ ) -> list[UniformTypeKVCacheSpecs] | None:
+     """
+     Group the KV cache specs and unify each group into one UniformTypeKVCacheSpecs.
+@@ -1502,7 +1534,7 @@ def _approximate_gcd(values: Sequence[int], *, lower_bound: int | None = None) -
+ 
+ 
+ def _get_kv_cache_groups_uniform_groups(
+-    grouped_specs: list[UniformTypeKVCacheSpecs],
++    grouped_specs: list[UniformTypeKVCacheSpecs]
+ ) -> list[KVCacheGroupSpec]:
+     """
+     Generate the KV cache groups from the grouped specs.
+@@ -1519,7 +1551,7 @@ def _get_kv_cache_groups_uniform_groups(
+     )
+     full_mla_group = KVCacheGroupSpec(
+         layer_names=list(full_mla_spec.kv_cache_specs.keys()),
+-        kv_cache_spec=full_mla_spec,
++        kv_cache_spec=full_mla_spec
+     )
+ 
+     # We define a layer tuple as a group of layers with different page sizes, and
+@@ -1595,7 +1627,7 @@ def _get_kv_cache_groups_uniform_groups(
+             swa_mla_groups.append(
+                 KVCacheGroupSpec(
+                     layer_names=group_layer_names,
+-                    kv_cache_spec=sub_sm_spec,
++                    kv_cache_spec=sub_sm_spec
+                 )
+             )
+ 
+@@ -1605,7 +1637,7 @@ def _get_kv_cache_groups_uniform_groups(
+ def _annotate_eagle_groups_deepseek_v4(
+     vllm_config: VllmConfig,
+     kv_cache_spec: dict[str, KVCacheSpec],
+-    kv_cache_groups: list[KVCacheGroupSpec],
++    kv_cache_groups: list[KVCacheGroupSpec]
+ ) -> None:
+     spec_config = vllm_config.speculative_config
+     if spec_config is None or not spec_config.use_eagle():
+@@ -1696,7 +1728,7 @@ def get_kv_cache_groups(
+ 
+ 
+ def generate_scheduler_kv_cache_config(
+-    kv_cache_configs: list[KVCacheConfig],
++    kv_cache_configs: list[KVCacheConfig]
+ ) -> KVCacheConfig:
+     """
+     Generate the KV cache configuration for the scheduler.
+@@ -1745,13 +1777,13 @@ def _report_kv_cache_config(
+     logger.info_once(
+         "Maximum concurrency for %s tokens per request: %.2fx",
+         f"{max_model_len:,}",
+-        max_concurrency,
++        max_concurrency
+     )
+ 
+ 
+ def _max_memory_usage_bytes_from_groups(
+     vllm_config: VllmConfig,
+-    kv_cache_groups: list[KVCacheGroupSpec],
++    kv_cache_groups: list[KVCacheGroupSpec]
+ ) -> int:
+     """
+     Calculate maximum memory usage in bytes from KV cache groups.
+@@ -1815,7 +1847,7 @@ def _max_memory_usage_bytes_from_groups(
+ def _estimate_max_model_len_from_groups(
+     vllm_config: VllmConfig,
+     kv_cache_groups: list[KVCacheGroupSpec],
+-    available_memory: int,
++    available_memory: int
+ ) -> int:
+     """
+     Binary search for the maximum model length that fits in available memory.
+@@ -1850,7 +1882,7 @@ def _estimate_max_model_len_from_groups(
+ def _auto_fit_max_model_len(
+     vllm_config: VllmConfig,
+     projected_groups_per_worker: list[list[KVCacheGroupSpec]],
+-    available_memory: list[int],
++    available_memory: list[int]
+ ) -> None:
+     """
+     When max_model_len is set to -1, this function estimates the largest
+@@ -1871,7 +1903,7 @@ def _auto_fit_max_model_len(
+         logger.info_once(
+             "Auto-fit max_model_len: attention-free model, "
+             "using derived max_model_len=%d",
+-            original_max,
++            original_max
+         )
+         return
+ 
+@@ -1897,7 +1929,7 @@ def _auto_fit_max_model_len(
+         logger.info_once(
+             "Auto-fit max_model_len: full model context length %d fits in "
+             "available GPU memory",
+-            original_max,
++            original_max
+         )
+     else:
+         # Need to reduce max_model_len to fit in memory
+@@ -1907,13 +1939,13 @@ def _auto_fit_max_model_len(
+             "available GPU memory (%s GiB available for KV cache)",
+             original_max,
+             auto_fit_max,
+-            format_gib(limiting_worker_mem),
++            format_gib(limiting_worker_mem)
+         )
+ 
+ 
+ def _project_kv_cache_groups_to_worker(
+     global_kv_cache_groups: list[KVCacheGroupSpec],
+-    worker_spec: dict[str, KVCacheSpec],
++    worker_spec: dict[str, KVCacheSpec]
+ ) -> list[KVCacheGroupSpec]:
+     """
+     Projects global KV cache groups onto a single worker's assigned layers.
+@@ -1941,13 +1973,13 @@ def _project_kv_cache_groups_to_worker(
+                 kv_cache_specs={
+                     layer_name: group_spec.kv_cache_specs[layer_name]
+                     for layer_name in worker_layer_names
+-                },
++                }
+             )
+         projected_groups.append(
+             KVCacheGroupSpec(
+                 worker_layer_names,
+                 group_spec,
+-                is_eagle_group=group.is_eagle_group and bool(worker_layer_names),
++                is_eagle_group=group.is_eagle_group and bool(worker_layer_names)
+             )
+         )
+     return projected_groups
+@@ -1956,7 +1988,7 @@ def _project_kv_cache_groups_to_worker(
+ def get_kv_cache_configs(
+     vllm_config: VllmConfig,
+     kv_cache_specs: list[dict[str, KVCacheSpec]],
+-    available_memory: list[int],
++    available_memory: list[int]
+ ) -> list[KVCacheConfig]:
+     """
+     Generates the KV cache configurations for a model.
+@@ -2035,7 +2067,7 @@ def get_kv_cache_configs(
+             logger.info(
+                 "Overriding num_gpu_blocks=%d with num_gpu_blocks_override=%d",
+                 avail_mem // bytes_per_block,
+-                override,
++                override
+             )
+             adjusted_memory.append(override * bytes_per_block)
+         available_memory = adjusted_memory
+@@ -2053,7 +2085,7 @@ def get_kv_cache_configs(
+             avail_mem,
+             partial(_max_memory_usage_bytes_from_groups, vllm_config, groups),
+             vllm_config.model_config.max_model_len,
+-            partial(_estimate_max_model_len_from_groups, vllm_config, groups),
++            partial(_estimate_max_model_len_from_groups, vllm_config, groups)
+         )
+ 
+     kv_cache_configs: list[KVCacheConfig] = []
+@@ -2125,7 +2157,7 @@ class BlockHashListWithBlockSize:
+         self,
+         block_hashes: list[BlockHash],
+         hash_block_size: int,
+-        target_block_size: int,
++        target_block_size: int
+     ):
+         self.block_hashes = block_hashes
+         assert target_block_size % hash_block_size == 0
