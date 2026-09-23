@@ -1,26 +1,9 @@
 diff --git a/vllm/v1/core/kv_cache_coordinator.py b/vllm/v1/core/kv_cache_coordinator.py
-index 89b1e84a44..4d6b12922a 100644
+index 89b1e84a44..153f554bfa 100644
 --- a/vllm/v1/core/kv_cache_coordinator.py
 +++ b/vllm/v1/core/kv_cache_coordinator.py
-@@ -11,26 +11,29 @@ from vllm.v1.core.kv_cache_utils import (
-     BlockHash,
-     BlockHashList,
-     BlockHashListWithBlockSize,
--    KVCacheBlock,
-+    KVCacheBlock
- )
- from vllm.v1.core.single_type_kv_cache_manager import (
-     CrossAttentionManager,
-     SingleTypeKVCacheManager,
--    get_manager_for_kv_cache_spec,
-+    get_manager_for_kv_cache_spec
- )
- from vllm.v1.kv_cache_interface import (
-     FullAttentionSpec,
-     KVCacheConfig,
-     KVCacheSpec,
--    SlidingWindowSpec,
-+    SlidingWindowSpec
+@@ -25,6 +25,9 @@ from vllm.v1.kv_cache_interface import (
+     SlidingWindowSpec,
  )
  from vllm.v1.request import Request
 +# KVCache 调试 logger
@@ -29,64 +12,9 @@ index 89b1e84a44..4d6b12922a 100644
  
  
  def _validate_prefix_cache_retention_interval(
-     retention_interval: int | None,
-     scheduler_block_size: int,
--    kv_cache_config: KVCacheConfig,
-+    kv_cache_config: KVCacheConfig
- ) -> None:
-     if retention_interval is None:
-         return
-@@ -74,7 +77,7 @@ class KVCacheCoordinator(ABC):
-         pcp_world_size: int,
-         scheduler_block_size: int,
-         hash_block_size: int,
--        metrics_collector: KVCacheMetricsCollector | None = None,
-+        metrics_collector: KVCacheMetricsCollector | None = None
-     ):
-         self.kv_cache_config = kv_cache_config
-         self.max_model_len = max_model_len
-@@ -92,7 +95,7 @@ class KVCacheCoordinator(ABC):
-             enable_caching=enable_caching,
-             hash_block_size=hash_block_size,
-             enable_kv_cache_events=enable_kv_cache_events,
--            metrics_collector=metrics_collector,
-+            metrics_collector=metrics_collector
-         )
- 
-         # KV cache group indices that get the EAGLE last-block drop.
-@@ -113,7 +116,7 @@ class KVCacheCoordinator(ABC):
-                 kv_cache_group_id=i,
-                 dcp_world_size=dcp_world_size,
-                 pcp_world_size=pcp_world_size,
--                scheduler_block_size=self.scheduler_block_size,
-+                scheduler_block_size=self.scheduler_block_size
-             )
-             for i, kv_cache_group in enumerate(self.kv_cache_config.kv_cache_groups)
-         )
-@@ -134,7 +137,7 @@ class KVCacheCoordinator(ABC):
-         num_encoder_tokens: int,
-         total_computed_tokens: int,
-         num_tokens_main_model: int,
--        apply_admission_cap: bool = False,
-+        apply_admission_cap: bool = False
-     ) -> int:
-         """
-         Get the number of blocks needed to be allocated for the request.
-@@ -170,7 +173,7 @@ class KVCacheCoordinator(ABC):
-                     [],
-                     0,
-                     num_encoder_tokens,
--                    apply_admission_cap=apply_admission_cap,
-+                    apply_admission_cap=apply_admission_cap
-                 )
-             else:
-                 num_blocks_to_allocate += manager.get_num_blocks_to_allocate(
-@@ -179,8 +182,13 @@ class KVCacheCoordinator(ABC):
-                     new_computed_blocks[i],
-                     total_computed_tokens,
+@@ -181,6 +184,11 @@ class KVCacheCoordinator(ABC):
                      num_tokens_main_model,
--                    apply_admission_cap=apply_admission_cap,
-+                    apply_admission_cap=apply_admission_cap
+                     apply_admission_cap=apply_admission_cap,
                  )
 +        # [KVC][L4] S1 各组所需新块数求和
 +        logger.info(
@@ -96,40 +24,20 @@ index 89b1e84a44..4d6b12922a 100644
          return num_blocks_to_allocate
  
      def allocate_new_computed_blocks(
-@@ -188,7 +196,7 @@ class KVCacheCoordinator(ABC):
-         request_id: str,
-         new_computed_blocks: tuple[Sequence[KVCacheBlock], ...],
-         num_local_computed_tokens: int,
--        num_external_computed_tokens: int,
-+        num_external_computed_tokens: int
-     ) -> None:
-         """
-         Add the new computed blocks to the request. Optionally allocate new
-@@ -206,7 +214,13 @@ class KVCacheCoordinator(ABC):
-                 request_id,
-                 new_computed_blocks[i],
+@@ -208,6 +216,12 @@ class KVCacheCoordinator(ABC):
                  num_local_computed_tokens,
--                num_external_computed_tokens,
-+                num_external_computed_tokens
-+            )
+                 num_external_computed_tokens,
+             )
 +            # [KVC][L4] S2 逐组下放: touch 命中块
 +            logger.info(
 +                f"[KVC][L4] KVCacheCoordinator.allocate_new_computed_blocks: req={request_id}, "
 +                f"group={i}, new_computed_blocks={[b.block_id for b in new_computed_blocks[i]]}, "
 +                f"num_local_computed_tokens={num_local_computed_tokens}"
-             )
++            )
  
      def allocate_new_blocks(
-@@ -214,7 +228,7 @@ class KVCacheCoordinator(ABC):
-         request_id: str,
-         num_tokens: int,
-         num_tokens_main_model: int,
--        num_encoder_tokens: int = 0,
-+        num_encoder_tokens: int = 0
-     ) -> tuple[list[KVCacheBlock], ...]:
-         """
-         Allocate new blocks for the request to give it at least `num_tokens`
-@@ -233,16 +247,22 @@ class KVCacheCoordinator(ABC):
+         self,
+@@ -233,7 +247,7 @@ class KVCacheCoordinator(ABC):
          Returns:
              The new allocated blocks.
          """
@@ -138,10 +46,7 @@ index 89b1e84a44..4d6b12922a 100644
              manager.allocate_new_blocks(
                  request_id,
                  num_encoder_tokens
-                 if isinstance(manager, CrossAttentionManager)
-                 else num_tokens,
--                num_tokens_main_model,
-+                num_tokens_main_model
+@@ -243,6 +257,12 @@ class KVCacheCoordinator(ABC):
              )
              for manager in self.single_type_managers
          )
@@ -154,12 +59,9 @@ index 89b1e84a44..4d6b12922a 100644
  
      def cache_blocks(self, request: Request, num_computed_tokens: int) -> None:
          """
-@@ -258,8 +278,13 @@ class KVCacheCoordinator(ABC):
-             manager.cache_blocks(
-                 request,
+@@ -260,6 +280,11 @@ class KVCacheCoordinator(ABC):
                  num_computed_tokens,
--                retention_interval=self.retention_interval,
-+                retention_interval=self.retention_interval
+                 retention_interval=self.retention_interval,
              )
 +        # [KVC][L4] S4 缓存满块: 逐组下放 cache_blocks
 +        logger.info(
@@ -180,60 +82,6 @@ index 89b1e84a44..4d6b12922a 100644
  
      def get_num_common_prefix_blocks(self, running_request_id: str) -> list[int]:
          """
-@@ -316,7 +345,7 @@ class KVCacheCoordinator(ABC):
-     def find_longest_cache_hit(
-         self,
-         block_hashes: list[BlockHash],
--        max_cache_hit_length: int,
-+        max_cache_hit_length: int
-     ) -> tuple[tuple[list[KVCacheBlock], ...], int]:
-         pass
- 
-@@ -345,7 +374,7 @@ class KVCacheCoordinatorNoPrefixCache(KVCacheCoordinator):
-         pcp_world_size: int,
-         scheduler_block_size: int,
-         hash_block_size: int,
--        metrics_collector: KVCacheMetricsCollector | None = None,
-+        metrics_collector: KVCacheMetricsCollector | None = None
-     ):
-         super().__init__(
-             kv_cache_config,
-@@ -358,7 +387,7 @@ class KVCacheCoordinatorNoPrefixCache(KVCacheCoordinator):
-             pcp_world_size=pcp_world_size,
-             scheduler_block_size=scheduler_block_size,
-             hash_block_size=hash_block_size,
--            metrics_collector=metrics_collector,
-+            metrics_collector=metrics_collector
-         )
-         self.num_single_type_manager = len(self.single_type_managers)
- 
-@@ -368,7 +397,7 @@ class KVCacheCoordinatorNoPrefixCache(KVCacheCoordinator):
-     def find_longest_cache_hit(
-         self,
-         block_hashes: list[BlockHash],
--        max_cache_hit_length: int,
-+        max_cache_hit_length: int
-     ) -> tuple[tuple[list[KVCacheBlock], ...], int]:
-         blocks: tuple[list[KVCacheBlock], ...] = tuple(
-             [] for _ in range(self.num_single_type_manager)
-@@ -395,7 +424,7 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
-         pcp_world_size: int,
-         scheduler_block_size: int,
-         hash_block_size: int,
--        metrics_collector: KVCacheMetricsCollector | None = None,
-+        metrics_collector: KVCacheMetricsCollector | None = None
-     ):
-         super().__init__(
-             kv_cache_config,
-@@ -408,7 +437,7 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
-             pcp_world_size=pcp_world_size,
-             scheduler_block_size=scheduler_block_size,
-             hash_block_size=hash_block_size,
--            metrics_collector=metrics_collector,
-+            metrics_collector=metrics_collector
-         )
-         self.kv_cache_spec = self.kv_cache_config.kv_cache_groups[0].kv_cache_spec
-         self.block_size = self.kv_cache_spec.block_size
 @@ -428,12 +457,27 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
          )
          # Single group; useless but just set ``use_eagle`` for consistency regardless.
@@ -251,8 +99,7 @@ index 89b1e84a44..4d6b12922a 100644
      def find_longest_cache_hit(
          self,
          block_hashes: list[BlockHash],
--        max_cache_hit_length: int,
-+        max_cache_hit_length: int
+         max_cache_hit_length: int,
      ) -> tuple[tuple[list[KVCacheBlock], ...], int]:
 +        # [KVC][L4] 前缀查找: 单组直通 single_type_managers[0] (纯 Full Attention 只有 1 组)
 +        logger.info(
@@ -263,107 +110,18 @@ index 89b1e84a44..4d6b12922a 100644
          hit_blocks = self.single_type_managers[0].find_longest_cache_hit(
              block_hashes=block_hashes,
              max_length=max_cache_hit_length,
-@@ -443,9 +487,15 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
-             drop_eagle_block=0 in self.eagle_group_ids,
-             alignment_tokens=self.block_size,
+@@ -445,7 +489,13 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
              dcp_world_size=self.dcp_world_size,
--            pcp_world_size=self.pcp_world_size,
-+            pcp_world_size=self.pcp_world_size
-+        )
+             pcp_world_size=self.pcp_world_size,
+         )
+-        return hit_blocks, len(hit_blocks[0]) * self.block_size
 +        _hit_len = len(hit_blocks[0]) * self.block_size
 +        # [KVC][L4] 前缀查找返回: hit_length = 命中块数 × block_size
 +        logger.info(
 +            f"[KVC][L4] UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: "
 +            f"hit_blocks={[[b.block_id for b in g] for g in hit_blocks]}, hit_length={_hit_len}"
-         )
--        return hit_blocks, len(hit_blocks[0]) * self.block_size
++        )
 +        return hit_blocks, _hit_len
  
  
  class SpecGroup(NamedTuple):
-@@ -481,7 +531,7 @@ class HybridKVCacheCoordinator(KVCacheCoordinator):
-         pcp_world_size: int,
-         scheduler_block_size: int,
-         hash_block_size: int,
--        metrics_collector: KVCacheMetricsCollector | None = None,
-+        metrics_collector: KVCacheMetricsCollector | None = None
-     ):
-         super().__init__(
-             kv_cache_config,
-@@ -494,7 +544,7 @@ class HybridKVCacheCoordinator(KVCacheCoordinator):
-             pcp_world_size=pcp_world_size,
-             scheduler_block_size=scheduler_block_size,
-             hash_block_size=hash_block_size,
--            metrics_collector=metrics_collector,
-+            metrics_collector=metrics_collector
-         )
-         # hash_block_size: the block size used to compute block hashes.
-         # The actual block size usually equals hash_block_size, but in cases where
-@@ -567,7 +617,7 @@ class HybridKVCacheCoordinator(KVCacheCoordinator):
-             if manager.use_eagle and aligned_num_computed_tokens > 0:
-                 num_tokens_to_cache = min(
-                     num_computed_tokens,
--                    aligned_num_computed_tokens + manager.block_size,
-+                    aligned_num_computed_tokens + manager.block_size
-                 )
-             # The manager already knows the fine hit granularity
-             # (``scheduler_block_size``); retention is passed separately so it
-@@ -576,13 +626,13 @@ class HybridKVCacheCoordinator(KVCacheCoordinator):
-             manager.cache_blocks(
-                 request,
-                 num_tokens_to_cache,
--                retention_interval=self.retention_interval,
-+                retention_interval=self.retention_interval
-             )
- 
-     def find_longest_cache_hit(
-         self,
-         block_hashes: list[BlockHash],
--        max_cache_hit_length: int,
-+        max_cache_hit_length: int
-     ) -> tuple[tuple[list[KVCacheBlock], ...], int]:
-         """
-         Find the longest cache hit using an iterative fixed-point algorithm.
-@@ -655,7 +705,7 @@ class HybridKVCacheCoordinator(KVCacheCoordinator):
-                     block_pool=self.block_pool,
-                     kv_cache_spec=spec,
-                     drop_eagle_block=drop_eagle_block,
--                    alignment_tokens=self.scheduler_block_size,
-+                    alignment_tokens=self.scheduler_block_size
-                 )
-                 _new_hit_length = len(hit_blocks[0]) * spec.block_size
-                 if drop_eagle_block:
-@@ -697,7 +747,7 @@ def get_kv_cache_coordinator(
-     pcp_world_size: int,
-     scheduler_block_size: int,
-     hash_block_size: int,
--    metrics_collector: KVCacheMetricsCollector | None = None,
-+    metrics_collector: KVCacheMetricsCollector | None = None
- ) -> KVCacheCoordinator:
-     if not enable_caching:
-         return KVCacheCoordinatorNoPrefixCache(
-@@ -710,7 +760,7 @@ def get_kv_cache_coordinator(
-             pcp_world_size=pcp_world_size,
-             scheduler_block_size=scheduler_block_size,
-             hash_block_size=hash_block_size,
--            metrics_collector=metrics_collector,
-+            metrics_collector=metrics_collector
-         )
-     if len(kv_cache_config.kv_cache_groups) == 1:
-         return UnitaryKVCacheCoordinator(
-@@ -724,7 +774,7 @@ def get_kv_cache_coordinator(
-             pcp_world_size=pcp_world_size,
-             scheduler_block_size=scheduler_block_size,
-             hash_block_size=hash_block_size,
--            metrics_collector=metrics_collector,
-+            metrics_collector=metrics_collector
-         )
-     return HybridKVCacheCoordinator(
-         kv_cache_config,
-@@ -737,5 +787,5 @@ def get_kv_cache_coordinator(
-         pcp_world_size=pcp_world_size,
-         scheduler_block_size=scheduler_block_size,
-         hash_block_size=hash_block_size,
--        metrics_collector=metrics_collector,
-+        metrics_collector=metrics_collector
-     )

@@ -11,7 +11,9 @@
 ```
 kvc/
 ├── README.md                          <- 本文件（目录总览）
-├── llama.log                           端到端轮全量日志（773 行 = 启动 + P + R）
+├── llama.log                           复验轮全量日志（774 行 = 启动 + P + R，2026-09-23 纯净重建版补丁）
+├── llama_prev_0923.log                  上轮(09-23 08:20 logger 版服务)全量日志备份（796 行）
+├── llama_prev.log                        09-22 正式轮 print 版全量日志（773 行，正文 §1-§5 历史哈希值的溯源归档）
 │
 ├── docs/                               【文档】
 │   ├── 2_kvc_cn_curl_case.md           中文 curl 用例：P 缓冲 2 块 -> R 五块生命周期，两条命令可直接复制
@@ -20,7 +22,7 @@ kvc/
 ├── patch/                             【补丁】
 │   ├── 01~08_vllm_*.patch             vllm 包 8 个文件（ENQ/L1~L5/CFG 各层打印）
 │   ├── 09_vllm_ascend_*.patch         vllm-ascend model_runner_v1.py（NPU 物理侧实际执行路径，K/V 分离）
-│   ├── README.md                       补丁讲解：为什么这么加、逐 patch 详解、应用/回滚、端到端实测记录
+│   ├── README.md                       补丁讲解：为什么这么加、逐 patch 详解、应用/回滚、端到端实测；§7 纯净重建与复验（2026-09-23）
 │   └── kvc_patch_locations.txt         40 处打印位置清单（容器内文件 + 行号）
 │
 ├── scripts/                            【脚本】
@@ -29,7 +31,7 @@ kvc/
 │   └── gen_cn_requests.py              P/R 请求生成器（tokenizer 实测校验 + max_tokens=FILL+9 自动推算）
 │
 ├── startup/                            【启动期产物】
-│   └── kvc_startup.log                 KVCache 初始化全流程（158 行 = CFG82 + L1 68 + L2/L4/L5 5 + 3 原生行）
+│   └── kvc_startup.log                 KVCache 初始化全流程（155 行纯 [KVC] 口径 = CFG82 + L1 68 + L2/L4/L5 5）
 │
 ├── p/                                   【P 全套：缓冲 2 块】
 │   ├── req_cn_p.json                    请求体（394 字中文 -> 324 tokens = 2 满 + 尾 68，max_tokens=1）
@@ -55,6 +57,11 @@ kvc/
 
 （1）应用补丁并起服务（补丁沿用 `patch/`，首次约 100 秒就绪）：
 
+```bash
+cd patch && ./apply_patches.sh && cd ..   # 9/9 应用（回滚: ./revert_patches.sh）
+bash scripts/start.sh                    # 起服务
+```
+
 （2）生成与发送请求（生成器自动落位 `p/`、`r5/`）：
 
 ```bash
@@ -63,19 +70,19 @@ sleep 6   # 等 P 结束：满块带哈希留在缓存池
 curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json" -d @r5/req_cn_r5.json > r5/resp_cn_r5.json
 ```
 
-（3）读轨迹：`grep '\[KVC\]' llama.log`（素引行见 `p/p_run_start.txt`、`r5/r_run_start.txt`）
+（3）读轨迹：`grep '\[KVC\]' llama.log`（起始行见 `p/p_run_start.txt`、`r5/r_run_start.txt`）
 
-完整命令、验证点与注意事项见 `docs/2` 与 `docs/3`。
+完整命令、验证点与注意事项见 `docs/2` 与 `docs/1`（§7 为 2026-09-23 复验轮记录）。
 
 ## 4. 环境快照与关键实测数字
 
 | 项 | 值 |
 |---|---|
-| Pod / 镜像 | gggtest (a3，4={"Ascend910"})；`antsys/vllm:v0.23.0-a3-openeuler-20260818163431_aarch64` |
+| Pod / 镜像 | gggtest (a3，4 卡 Ascend910)；`antsys/vllm:v0.23.0-a3-openeuler-20260818163431_aarch64` |
 | 服务 | `vllm serve ... --enforce-eager -tp2 -pp2`（`scripts/start.sh`），模型 meta-llama-3-8b |
 | block_size / KV dtype | **128**（NPU 默认）/ bfloat16 |
-| 可用 KV 显存 / num_blocks | **51.98 GiB**（4 worker 实测）/ **13296**（max concurrency 207.75x @8192） |
-| 物理张量 | K/V 分离：K_cache=V_cache=(13296, 128, 4, 128) bf16（每层 2M 对齐 int8 双池 1661.88MiB × 2） |
+| 可用 KV 显存 / num_blocks | **51.98 GiB**（4 worker 实测）/ **13295**（09-23 复验轮实测，max concurrency 207.73x @8192；09-22 轮曾测 13296/207.75x，差 1 块属 profile 噪声，见 docs/1 §7） |
+| 物理张量 | K/V 分离：K_cache=V_cache=(13295, 128, 4, 128) bf16（每层 2M 对齐 int8 双池 1661.88MiB × 2） |
 
 ## 5. 整理记录
 
@@ -83,3 +90,5 @@ curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json"
 - **删除**：早期 token-id 英文实验全套（req_p/req_r/resp_p/resp_r/kvc_p/kvc_r/p·r_start_line + 1 号主文档）；R 的三代历史变体（mt32/tail92/384）请求-响应-轨迹-种子轮；P 热缓存轨迹；历轮全量日志（llama_run1~4、llama_Run3_id）；chat 接口实验三件（gen_chat_requests/start_chat/llama3_chat_template）；多代起始行文件——以上轮次的结论均已沉淀进保留文档。
 - **归组**：`docs/`（2 份说明）、`patch/`（9 patch + README + 位置清单）、`scripts/`（3 脚本）、`startup/`、`p/`、`r5/`；`llama.log` 为全局唯一产物留根。
 - 历史文档之间的引用已同步更新（2/3 号在 `docs/` 内，引用 patch 时为 `../patch/`）；生成器 `--gen` 输出直接落位 `p/`、`r5/`。
+
+**2026-09-23 纯净重建**：上一轮 patch 因 print→logger 批量转换脚本正则误伤混入大量尾逗号格式改动，本轮以 `git show HEAD:` 干净基线重建——9 个 patch 现仅含 logger 打印插入 + 7 处值捕获重写。本地与容器双重复验通过（启动 155 / P 33 / R 355 行，manager 因恢复一处源码空行其 S4/返回/free 打印行号 +1）。kvc 资产全景更新：`patch/` 全套重生成、两份 docs 行号补齐并追加复验记录（docs/1 §7、patch/README §7）、startup 口径改为 155 行纯 [KVC]、新增 `llama_prev_0923.log` 备份；两份 docs 正文值（哈希/块计数/时间戳）与 patch/README 案例样段进一步全部刷新为本轮实测口径（09-22 轮原始日志归档 `llama_prev.log`）。

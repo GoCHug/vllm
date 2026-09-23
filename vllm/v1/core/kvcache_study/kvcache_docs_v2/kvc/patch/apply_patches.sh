@@ -21,7 +21,7 @@ set -euo pipefail
 PATCH_DIR="$(cd "$(dirname "$0")" && pwd)"
 # VLLM_DIR="${VLLM_DIR:-/vllm-workspace/vllm}"
 # VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/vllm-workspace/vllm-ascend}"
-# 本地跑(需注释掉上面两行, releases/v0.23.0 基线 9/9 实测通过):
+# 本地跑(releases/v0.23.0 基线 9/9 实测通过): 直接用环境变量, 或注释上面两行改用下面两行:
 VLLM_DIR="${VLLM_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm}"
 VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm-ascend}"
 

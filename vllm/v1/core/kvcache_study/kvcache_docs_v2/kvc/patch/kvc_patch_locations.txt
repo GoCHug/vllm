@@ -1,4 +1,5 @@
-# [KVC] Print Locations (logger.info version, generated on Wed Sep 23 08:24:40 UTC 2026, 40 call points in 9 files)
+# [KVC] Print Locations (logger.info version, regenerated on Wed Sep 23 2026 after clean rebuild, 40 call points in 9 files)
+# 2026-09-23 纯净重建: 仅保留 logger 打印, 尾逗号误伤全部还原; manager 恢复一处空行后其 S4/free 区行号较上版 +1
 # 每条日志自动携带: INFO timestamp [filename:lineno] [KVC][layer] message
 
 ## /vllm-workspace/vllm/vllm/v1/request.py
@@ -110,12 +111,12 @@
   :467  # [KVC][L5] S3 为待计算 token 分配新块
   :469  f"[KVC][L5] S3 allocate_new_blocks: req={request.request_id}, "
   :487  # [KVC][L5] S4 缓存满块(新满块入哈希表) + 返回 KVCacheBlocks
-  :491  f"[KVC][L5] S4 cache_blocks: req={request.request_id}, "
-  :495  f"[KVC][L5] KVCacheManager.allocate_slots 返回: "
-  :509  # [KVC][L5] 请求结束释放: 逆序归还, ref_cnt 归零才回收
-  :511  f"[KVC][L5] KVCacheManager.free: req={request.request_id}, "
-  :587  def take_events(self) -> list[KVCacheEvent]:
-  :633  self, blocks: tuple[list[KVCacheBlock], ...]
+  :492  f"[KVC][L5] S4 cache_blocks: req={request.request_id}, "
+  :496  f"[KVC][L5] KVCacheManager.allocate_slots 返回: "
+  :510  # [KVC][L5] 请求结束释放: 逆序归还, ref_cnt 归零才回收
+  :512  f"[KVC][L5] KVCacheManager.free: req={request.request_id}, "
+  :588  def take_events(self) -> list[KVCacheEvent]:
+  :634  self, blocks: tuple[list[KVCacheBlock], ...]
 
 ## /vllm-workspace/vllm/vllm/v1/core/kv_cache_coordinator.py
   :136  new_computed_blocks: tuple[Sequence[KVCacheBlock], ...],

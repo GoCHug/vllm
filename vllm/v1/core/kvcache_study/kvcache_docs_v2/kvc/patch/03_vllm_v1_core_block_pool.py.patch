@@ -1,25 +1,7 @@
 diff --git a/vllm/v1/core/block_pool.py b/vllm/v1/core/block_pool.py
-index 4202f52708..b1570fb831 100644
+index 4202f52708..197b2fb0f4 100644
 --- a/vllm/v1/core/block_pool.py
 +++ b/vllm/v1/core/block_pool.py
-@@ -8,7 +8,7 @@ from vllm.distributed.kv_events import (
-     AllBlocksCleared,
-     BlockRemoved,
-     BlockStored,
--    KVCacheEvent,
-+    KVCacheEvent
- )
- from vllm.logger import init_logger
- from vllm.v1.core.kv_cache_metrics import KVCacheMetricsCollector
-@@ -24,7 +24,7 @@ from vllm.v1.core.kv_cache_utils import (
-     get_block_hash,
-     get_group_id,
-     make_block_hash_with_group_id,
--    maybe_convert_block_hash,
-+    maybe_convert_block_hash
- )
- from vllm.v1.request import Request
- 
 @@ -66,10 +66,25 @@ class BlockHashToBlockMap:
          blocks = self._cache.get(key)
          if blocks is not None:
@@ -69,15 +51,6 @@ index 4202f52708..b1570fb831 100644
          blocks = self._cache.pop(key, None)
          if blocks is None:
              # block_hash not found in the cache
-@@ -152,7 +177,7 @@ class BlockPool:
-         enable_caching: bool,
-         hash_block_size: int,
-         enable_kv_cache_events: bool = False,
--        metrics_collector: KVCacheMetricsCollector | None = None,
-+        metrics_collector: KVCacheMetricsCollector | None = None
-     ):
-         assert isinstance(num_gpu_blocks, int) and num_gpu_blocks > 0
-         self.num_gpu_blocks = num_gpu_blocks
 @@ -180,6 +205,15 @@ class BlockPool:
          self.kv_event_queue: list[KVCacheEvent] = []
  
@@ -113,15 +86,6 @@ index 4202f52708..b1570fb831 100644
          return cached_blocks
  
      def cache_full_blocks(
-@@ -216,7 +260,7 @@ class BlockPool:
-         num_full_blocks: int,
-         block_size: int,
-         kv_cache_group_id: int,
--        block_mask: list[bool] | None = None,
-+        block_mask: list[bool] | None = None
-     ) -> None:
-         """Cache a list of full blocks for prefix caching.
-         This function takes a list of blocks that will have their block hash
 @@ -243,6 +287,11 @@ class BlockPool:
                  map.
          """
@@ -154,15 +118,6 @@ index 4202f52708..b1570fb831 100644
          if self.enable_kv_cache_events:
              if num_cached_blocks == 0:
                  parent_block_hash: ExternalBlockHash | None = None
-@@ -326,7 +388,7 @@ class BlockPool:
-                     if request.lora_request
-                     else None,
-                     extra_keys=extra_keys_list if extra_keys_list else None,
--                    group_idx=kv_cache_group_id,
-+                    group_idx=kv_cache_group_id
-                 )
-             )
- 
 @@ -345,6 +407,11 @@ class BlockPool:
              raise ValueError(f"Cannot get {num_blocks} free blocks from the pool")
  
@@ -187,15 +142,6 @@ index 4202f52708..b1570fb831 100644
          block.reset_hash()
  
          if self.enable_kv_cache_events:
-@@ -394,7 +466,7 @@ class BlockPool:
-                 BlockRemoved(
-                     block_hashes=[maybe_convert_block_hash(get_block_hash(block_hash))],
-                     medium=MEDIUM_GPU,
--                    group_idx=get_group_id(block_hash),
-+                    group_idx=get_group_id(block_hash)
-                 )
-             )
-         return True
 @@ -415,6 +487,11 @@ class BlockPool:
              block.ref_cnt += 1
              if self.metrics_collector:
@@ -221,12 +167,3 @@ index 4202f52708..b1570fb831 100644
          if prepend:
              self.free_block_queue.prepend_n(freed_blocks)
          else:
-@@ -473,7 +556,7 @@ class BlockPool:
-             logger.warning(
-                 "Failed to reset prefix cache because some "
-                 "blocks (%d) are not freed yet",
--                num_used_blocks - 1,
-+                num_used_blocks - 1
-             )
-             return False
- 
