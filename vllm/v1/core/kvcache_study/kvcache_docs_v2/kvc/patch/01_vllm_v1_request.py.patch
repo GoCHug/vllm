@@ -1,5 +1,5 @@
 diff --git a/vllm/v1/request.py b/vllm/v1/request.py
-index 44246e70a8..dd4e608546 100644
+index 44246e70a8..87155a8e80 100644
 --- a/vllm/v1/request.py
 +++ b/vllm/v1/request.py
 @@ -27,6 +27,9 @@ from vllm.v1.utils import ConstantList
@@ -12,9 +12,12 @@ index 44246e70a8..dd4e608546 100644
  
  
  @dataclass
-@@ -178,6 +181,13 @@ class Request:
+@@ -177,7 +180,17 @@ class Request:
+         # reference cycle (Request -> partial -> Request) that prevents
          # immediate garbage collection via reference counting.
          self._block_hasher: Callable[[Request], list[BlockHash]] | None = block_hasher
++        # [KVC][ENQ] 入队阶段开始
++        logger.info("[KVC][ENQ] " + "=" * 8 + " 入队 " + "=" * 8)
          self.update_block_hashes()
 +        # [KVC][ENQ] 入队阶段: 预计算满块链式哈希 (BlockHash, 纯哈希不含 group_id)
 +        logger.info(
@@ -23,6 +26,7 @@ index 44246e70a8..dd4e608546 100644
 +            f"满块链式哈希 BlockHash × {len(self.block_hashes)}: "
 +            f"{[h.hex()[:12] for h in self.block_hashes]}"
 +        )
++        logger.info("[KVC][ENQ] " + "=" * 8 + " 入队完成 " + "=" * 8)
  
          self.skip_reading_prefix_cache = self.get_skip_reading_prefix_cache()
  

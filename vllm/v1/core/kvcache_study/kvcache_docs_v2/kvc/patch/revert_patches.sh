@@ -3,8 +3,8 @@
 # revert_patches.sh —— 一键撤销 9 个 [KVC] 调试打印补丁（还原为干净源码）
 #
 # 用法:
-#   容器内默认目录:      ./revert_patches.sh
-#   自定义仓库位置:      VLLM_DIR=/path/to/vllm VLLM_ASCEND_DIR=/path/to/vllm-ascend ./revert_patches.sh
+#   容器内执行:          VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./revert_patches.sh
+#   本地(默认路径已配):  ./revert_patches.sh        # 或用 VLLM_DIR=... VLLM_ASCEND_DIR=... 自定义仓库位置
 #
 # 行为:
 #   Phase 0  状态检查 —— 源码中无 [KVC] 时提示已干净并退出

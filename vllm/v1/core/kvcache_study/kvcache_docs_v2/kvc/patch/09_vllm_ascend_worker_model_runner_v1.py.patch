@@ -1,8 +1,17 @@
 diff --git a/vllm_ascend/worker/model_runner_v1.py b/vllm_ascend/worker/model_runner_v1.py
-index 4c8e11e9d..578265b50 100644
+index 4c8e11e9d..07cd1e887 100644
 --- a/vllm_ascend/worker/model_runner_v1.py
 +++ b/vllm_ascend/worker/model_runner_v1.py
-@@ -4255,6 +4255,19 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4095,6 +4095,8 @@ class NPUModelRunner(GPUModelRunner):
+             dict[str, tuple(torch.Tensor, torch.Tensor)] A map between layer names
+             to their corresponding memory buffer for K cache and V cache.
+         """
++        # [KVC][L1] 物理侧分配开始
++        logger.info("[KVC][L1] " + "=" * 16 + " 物理侧 KV Cache 分配开始 " + "=" * 16)
+         # init kv cache tensors
+         kv_cache_raw_tensors: dict[str, torch.Tensor | torch.Tensor | None | None] = {}
+         # prefill disaggregation need the addr of cache tensor be aligned with 2M
+@@ -4255,6 +4257,19 @@ class NPUModelRunner(GPUModelRunner):
                              v_tensor_size,
                              alignment,
                          )
@@ -22,7 +31,7 @@ index 4c8e11e9d..578265b50 100644
  
                      if self.use_sparse and dsa_k_tensor_size is not None:
                          if current_sparse_li_c8:
-@@ -4679,6 +4692,20 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4679,6 +4694,20 @@ class NPUModelRunner(GPUModelRunner):
                      elif self.use_sparse and current_sparse_sfa_c8:
                          kv_caches[layer_name] = (k_cache,)
                      else:
@@ -43,3 +52,12 @@ index 4c8e11e9d..578265b50 100644
                          kv_caches[layer_name] = (k_cache, v_cache)
                  elif isinstance(current_kv_cache_spec, MambaSpec):
                      raw_tensor = kv_cache_raw_tensors[layer_name]
+@@ -4717,6 +4746,8 @@ class NPUModelRunner(GPUModelRunner):
+                 else:
+                     raise ValueError("Unknown KV cache spec type.")
+ 
++        # [KVC][L1] 物理侧分配完成
++        logger.info("[KVC][L1] " + "=" * 16 + " 物理侧 KV Cache 分配完成 " + "=" * 16)
+         return kv_caches
+ 
+     def may_reinitialize_input_batch(self, kv_cache_config: KVCacheConfig) -> None:

@@ -1,5 +1,5 @@
 diff --git a/vllm/v1/core/kv_cache_coordinator.py b/vllm/v1/core/kv_cache_coordinator.py
-index 89b1e84a44..153f554bfa 100644
+index 89b1e84a44..ed6e31a80d 100644
 --- a/vllm/v1/core/kv_cache_coordinator.py
 +++ b/vllm/v1/core/kv_cache_coordinator.py
 @@ -25,6 +25,9 @@ from vllm.v1.kv_cache_interface import (
@@ -71,7 +71,7 @@ index 89b1e84a44..153f554bfa 100644
  
      def free(self, request_id: str) -> None:
          """
-@@ -270,6 +295,10 @@ class KVCacheCoordinator(ABC):
+@@ -270,6 +295,11 @@ class KVCacheCoordinator(ABC):
          """
          for manager in self.single_type_managers:
              manager.free(request_id)
@@ -79,10 +79,11 @@ index 89b1e84a44..153f554bfa 100644
 +        logger.info(
 +            f"[KVC][L4] KVCacheCoordinator.free: req={request_id} 已逐组下放第3层释放"
 +        )
++        logger.info("[KVC][L4] " + "=" * 8 + " 释放完成 " + "=" * 8)
  
      def get_num_common_prefix_blocks(self, running_request_id: str) -> list[int]:
          """
-@@ -428,12 +457,27 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
+@@ -428,12 +458,27 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
          )
          # Single group; useless but just set ``use_eagle`` for consistency regardless.
          self.single_type_managers[0].use_eagle = 0 in self.eagle_group_ids
@@ -110,7 +111,7 @@ index 89b1e84a44..153f554bfa 100644
          hit_blocks = self.single_type_managers[0].find_longest_cache_hit(
              block_hashes=block_hashes,
              max_length=max_cache_hit_length,
-@@ -445,7 +489,13 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
+@@ -445,7 +490,13 @@ class UnitaryKVCacheCoordinator(KVCacheCoordinator):
              dcp_world_size=self.dcp_world_size,
              pcp_world_size=self.pcp_world_size,
          )

@@ -3,13 +3,13 @@
 # apply_patches.sh —— 一键应用 9 个 [KVC] KVCache 调试打印补丁（vllm 0.23.0 基线）
 #
 # 用法:
-#   容器内默认目录:      ./apply_patches.sh
-#   自定义仓库位置:      VLLM_DIR=/path/to/vllm VLLM_ASCEND_DIR=/path/to/vllm-ascend ./apply_patches.sh
+#   容器内执行:          VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./apply_patches.sh
+#   本地(默认路径已配):  ./apply_patches.sh        # 或用 VLLM_DIR=... VLLM_ASCEND_DIR=... 自定义仓库位置
 #
 # 行为:
 #   Phase 1  dry-run 预检 —— 9 个 patch 全部通过才继续, 任一失败则中止(不落盘)
 #   Phase 2  patch -p1 应用 (01~08 -> vllm, 09 -> vllm-ascend)
-#   Phase 3  验证: 每文件 [KVC] 计数 + 总数(预期 113 行/40 打印点) + py_compile
+#   Phase 3  验证: 每文件 [KVC] 计数 + 总数(预期 141 行/79 打印调用点, 含横幅与 S1~S4 子步标记) + py_compile
 #
 # 注意:
 #   - vllm 0.23.0 + vllm-ascend 0.23.0 基线 9/9 干净命中(容器实测通过)
@@ -35,7 +35,7 @@ VLLM_FILES=(
   vllm/v1/worker/gpu_model_runner.py
 )
 ASCEND_FILES=(vllm_ascend/worker/model_runner_v1.py)
-EXPECT=(2 12 27 22 16 16 10 4)   # 每文件预期 [KVC] 匹配行数(注释+调用行)
+EXPECT=(5 12 27 37 17 18 13 4)   # 每文件预期 [KVC] 匹配行数(注释+调用行)
 
 [ -d "$VLLM_DIR" ]        || { echo "[ERROR] vllm 仓库不存在: $VLLM_DIR (用 VLLM_DIR=... 指定)"; exit 1; }
 [ -d "$VLLM_ASCEND_DIR" ] || { echo "[ERROR] vllm-ascend 仓库不存在: $VLLM_ASCEND_DIR (用 VLLM_ASCEND_DIR=... 指定)"; exit 1; }
@@ -87,7 +87,7 @@ for f in "${ASCEND_FILES[@]}"; do
   total=$((total + n))
   printf "  %-60s %s 行 %s\n" "$f" "$n" "[ok]"
 done
-echo "  [KVC] 总匹配行: $total (预期 113 行 = 40 个打印调用点)"
+echo "  [KVC] 总匹配行: $total (预期 141 行)"
 [ "$bad" = 0 ] || { echo "[WARN] 部分文件计数与预期不符, 请人工核对"; }
 
 cd "$VLLM_DIR"
