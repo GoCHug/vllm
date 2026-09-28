@@ -1,18 +1,18 @@
 #!/bin/bash
 # ==============================================================================
-# apply_patches.sh —— 一键应用 9 个 [KVC] KVCache 调试打印补丁（vllm 0.23.0 基线）
+# apply_patches.sh —— 一键应用 8 个 [KVC] KVCache 调试打印补丁（vllm 0.23.0 基线）
 #
 # 用法:
 #   容器内执行:          VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./apply_patches.sh
 #   本地(默认路径已配):  ./apply_patches.sh        # 或用 VLLM_DIR=... VLLM_ASCEND_DIR=... 自定义仓库位置
 #
 # 行为:
-#   Phase 1  dry-run 预检 —— 9 个 patch 全部通过才继续, 任一失败则中止(不落盘)
-#   Phase 2  patch -p1 应用 (01~08 -> vllm, 09 -> vllm-ascend)
-#   Phase 3  验证: 每文件 [KVC] 计数 + 总数(预期 167 行/94 打印调用点, 含 S1 子步横幅先行覆盖外层容量探问、调度提交包裹横幅、KVP 仅 TERM/LATE 且逐层按块展开) + py_compile
+#   Phase 1  dry-run 预检 —— 8 个 patch 全部通过才继续, 任一失败则中止(不落盘)
+#   Phase 2  patch -p1 应用 (01~07 -> vllm, 09 -> vllm-ascend)
+#   Phase 3  验证: 每文件 [KVC] 计数 + 总数(预期 163 行/92 打印调用点, 含 S1 子步横幅先行覆盖外层容量探问、调度提交包裹横幅、KVP 仅 TERM/LATE 且逐层按块展开) + py_compile
 #
 # 注意:
-#   - vllm 0.23.0 + vllm-ascend 0.23.0 基线 9/9 干净命中(容器实测通过)
+#   - vllm 0.23.0 + vllm-ascend 0.23.0 基线 8/8 干净命中(容器实测通过)
 #   - 容器重启会丢可写层改动, 需重新执行本脚本(见 patch/README.md §6)
 # ==============================================================================
 set -euo pipefail
@@ -20,7 +20,7 @@ set -euo pipefail
 PATCH_DIR="$(cd "$(dirname "$0")" && pwd)"
 # VLLM_DIR="${VLLM_DIR:-/vllm-workspace/vllm}"
 # VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/vllm-workspace/vllm-ascend}"
-# 本地跑(releases/v0.23.0 基线 9/9 实测通过): 直接用环境变量, 或注释上面两行改用下面两行:
+# 本地跑(releases/v0.23.0 基线 8/8 实测通过): 直接用环境变量, 或注释上面两行改用下面两行:
 VLLM_DIR="${VLLM_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm}"
 VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm-ascend}"
 
@@ -32,10 +32,9 @@ VLLM_FILES=(
   vllm/v1/core/kv_cache_coordinator.py
   vllm/v1/core/single_type_kv_cache_manager.py
   vllm/v1/engine/core.py
-  vllm/v1/worker/gpu_model_runner.py
 )
 ASCEND_FILES=(vllm_ascend/worker/model_runner_v1.py)
-EXPECT=(5 12 27 56 17 18 13 4)
+EXPECT=(5 12 27 56 17 18 13)
 ASCEND_EXPECT=15                  # 09 补丁预期 [KVC] 行(含 KVP 结束期逐层按块打印: 头横幅/概览/逐块行/尾横幅)
 
 [ -d "$VLLM_DIR" ]        || { echo "[ERROR] vllm 仓库不存在: $VLLM_DIR (用 VLLM_DIR=... 指定)"; exit 1; }
@@ -55,7 +54,7 @@ echo "  ok: 源码为干净状态"
 
 echo "== Phase 1: dry-run 预检 =="
 fail=0
-for f in "$PATCH_DIR"/0[1-8]_vllm_*.patch; do
+for f in "$PATCH_DIR"/0[1-7]_vllm_*.patch; do
   if (cd "$VLLM_DIR" && patch -p1 --dry-run < "$f" >/dev/null 2>&1); then
     echo "  ok: $(basename "$f")"
   else
@@ -67,10 +66,10 @@ if (cd "$VLLM_ASCEND_DIR" && patch -p1 --dry-run < "$PATCH_DIR"/09_*.patch >/dev
 else
   echo "  FAIL: $(basename "$PATCH_DIR"/09_*.patch)"; fail=1
 fi
-[ "$fail" = 0 ] || { echo "[ABORT] dry-run 未全部通过, 未做任何修改 (0.23.0 基线应 9/9 通过)"; exit 1; }
+[ "$fail" = 0 ] || { echo "[ABORT] dry-run 未全部通过, 未做任何修改 (0.23.0 基线应 8/8 通过)"; exit 1; }
 
 echo "== Phase 2: 应用 =="
-for f in "$PATCH_DIR"/0[1-8]_vllm_*.patch; do
+for f in "$PATCH_DIR"/0[1-7]_vllm_*.patch; do
   (cd "$VLLM_DIR" && patch -p1 < "$f" >/dev/null 2>&1) && echo "  applied: $(basename "$f")"
 done
 (cd "$VLLM_ASCEND_DIR" && patch -p1 < "$PATCH_DIR"/09_*.patch >/dev/null 2>&1) && echo "  applied: 09_vllm_ascend_*.patch"
@@ -85,13 +84,13 @@ for i in "${!VLLM_FILES[@]}"; do
 done
 for f in "${ASCEND_FILES[@]}"; do
   n=$(kvc_count "$VLLM_ASCEND_DIR/$f")
-  flag=ok; [ "$n" = "$ASCEND_EXPECT" ] || { flag="MISMATCH(expect ${ASCEND_EXPECT})"; bad=1; }
+  flag=ok; [ "$n" = "$ASCEND_EXPECT" ] || { flag="MISMATCH(expect $ASCEND_EXPECT)"; bad=1; }
   total=$((total + n))
   printf "  %-60s %s 行 %s\n" "$f" "$n" "[$flag]"
 done
-echo "  [KVC] 总匹配行: $total (预期 167 行)"
+echo "  [KVC] 总匹配行: $total (预期 163 行)"
 [ "$bad" = 0 ] || { echo "[WARN] 部分文件计数与预期不符, 请人工核对"; }
 
 cd "$VLLM_DIR"
-python3 -m py_compile "${VLLM_FILES[@]}" "$VLLM_ASCEND_DIR/${ASCEND_FILES[0]}" && echo "  py_compile OK (9 files)"
-echo "[DONE] 9 个补丁已应用并验证。打印位置索引: $PATCH_DIR/kvc_patch_locations.txt"
+python3 -m py_compile "${VLLM_FILES[@]}" "$VLLM_ASCEND_DIR/${ASCEND_FILES[0]}" && echo "  py_compile OK (8 files)"
+echo "[DONE] 8 个补丁已应用并验证。打印位置索引: $PATCH_DIR/kvc_patch_locations.txt"

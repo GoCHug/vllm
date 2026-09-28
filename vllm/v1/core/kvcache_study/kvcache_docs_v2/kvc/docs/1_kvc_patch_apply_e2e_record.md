@@ -1,6 +1,6 @@
 # 端到端实录：还原 → patch 应用验证 → 启动期 KVCache 初始化全流程 → P/R 运行期全流程
 
-> 本文是 `2_kvc_cn_curl_case.md`（用例）与 `patch/`（打印补丁）的**端到端正式验证记录**：从干净源码出发，以 patch 方式注入 94 处 `[KVC]` 打印（grep 计数 167 行，含注释行），记录一次完整的服务启动初始化与 P/R 双请求生命周期。实测 2026-09-28（log 内 09-28 07:46，容器时钟 UTC-8）。
+> 本文是 `2_kvc_cn_curl_case.md`（用例）与 `patch/`（打印补丁）的**端到端正式验证记录**：从干净源码出发，以 patch 方式注入 92 处 `[KVC]` 打印（grep 计数 163 行，含注释行），记录一次完整的服务启动初始化与 P/R 双请求生命周期。实测 2026-09-28（log 内 09-28 07:46，容器时钟 UTC-8）。
 >
 > 打印体系核心设计：
 > 1. **分配 S1 段自洽**——总横幅 → 进入 → `--- S1: 容量检查 ---` 子步横幅 → 两次外层容量探问（L4 下钻）→ S1 汇总值
@@ -14,30 +14,30 @@
 ## 1. 还原源码至原始状态
 
 ```bash
-cd /vllm-workspace/vllm && git checkout -- vllm/v1/request.py vllm/v1/core/kv_cache_utils.py vllm/v1/core/block_pool.py vllm/v1/core/kv_cache_manager.py vllm/v1/core/kv_cache_coordinator.py vllm/v1/core/single_type_kv_cache_manager.py vllm/v1/engine/core.py vllm/v1/worker/gpu_model_runner.py
+cd /vllm-workspace/vllm && git checkout -- vllm/v1/request.py vllm/v1/core/kv_cache_utils.py vllm/v1/core/block_pool.py vllm/v1/core/kv_cache_manager.py vllm/v1/core/kv_cache_coordinator.py vllm/v1/core/single_type_kv_cache_manager.py vllm/v1/engine/core.py
 cd /vllm-workspace/vllm-ascend && git checkout -- vllm_ascend/worker/model_runner_v1.py
 ```
 
-验证：9 个文件 `grep -c "\[KVC\]"` 全部为 **0**（干净基线）。实验结束时同样核验：revert 归零 + 两仓库 0 改动 + 0 进程 + .orig 清理。
+验证：8 个文件 `grep -c "\[KVC\]"` 全部为 **0**（干净基线）。实验结束时同样核验：revert 归零 + 两仓库 0 改动 + 0 进程 + .orig 清理。
 
 ## 2. 以 patch 方式应用打印代码（验证 patch 文件正确可用）
 
 ```bash
 cd /a3_inference/itask/workdir/gch02599191/kvc/patch && VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./apply_patches.sh
-# Phase0 状态检查 -> Phase1 dry-run 9/9 预检 -> Phase2 9/9 应用 -> Phase3 逐文件计数(合计 167 行) + py_compile
+# Phase0 状态检查 -> Phase1 dry-run 8/8 预检 -> Phase2 8/8 应用 -> Phase3 逐文件计数(合计 163 行) + py_compile
 ```
 
-应用后逐文件 `[KVC]` grep 计数（含注释行；合计 167 行 = 94 个 `logger.info` 打印调用点）：
+应用后逐文件 `[KVC]` grep 计数（含注释行；合计 163 行 = 92 个 `logger.info` 打印调用点）：
 
 | 文件 | grep 计数 | 打印调用点 |
 |---|---|---|
 | `v1/request.py` / `v1/core/kv_cache_utils.py` | 5 / 12 | 3 / 6 |
 | `v1/core/block_pool.py` / `kv_cache_manager.py` | 27 / **56** | 14 / **32** |
 | `v1/core/kv_cache_coordinator.py` / `single_type_kv_cache_manager.py` | 17 / 18 | 9 / 9 |
-| `v1/engine/core.py` / `v1/worker/gpu_model_runner.py` | 13 / 4 | 9 / 2 |
+| `v1/engine/core.py` | 13 | 9 |
 | `vllm_ascend/worker/model_runner_v1.py` | 15 | 9（KVP: 头横幅/概览/逐层行循环/尾横幅） |
 
-py_compile（9 文件）→ **COMPILE_OK**。核心补丁：04（12 hunk）、09（6 hunk）。
+py_compile（8 文件）→ **COMPILE_OK**。核心补丁：04（12 hunk）、09（6 hunk）。
 
 ## 3. 启动期 KVCache 初始化全流程（log/kvc_startup.log，168 行）
 
@@ -146,7 +146,7 @@ INFO [kv_cache_manager.py:551/553] 释放 ... / [L2] 释放 free_blocks 归零�
 
 ## 5. 实证结论
 
-1. **patch 167 行验证通过**：9/9 应用、94 调用点、py_compile OK；本地回环（stash→apply→revert→stash pop）与容器双验证。
+1. **patch 163 行验证通过**：8/8 应用、92 调用点、py_compile OK；本地回环（stash→apply→revert→stash pop）与容器 apply/revert 双向验证。
 2. **S1 段完整自洽**：子步横幅先行（:402）→ 两次外层探问下钻（coordinator:188 ×2）→ 汇总值（:447）——S1 语义日志全部在子步横幅之内。
 3. **S1~S4 全子步可观测**：无块步打出完整四段子步（S1 需分配 0 / S2 无前缀 / S3 无需分配 / S4 维护），R 33 个无块步全部闭合。
 4. **KVP 可读性**：每请求 KVP 固定 76 行（4 卡 × 18）；每层一行内联块标注 + K/V 首 3 值示意 + 层合并统计——一眼可读。

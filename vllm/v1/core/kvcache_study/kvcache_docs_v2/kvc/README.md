@@ -4,7 +4,7 @@
 > - **本地**：`vllm/vllm/v1/core/kvcache_study/kvcache_docs_v2/kvc/`
 > - **容器**：`/a3_inference/itask/workdir/gch02599191/kvc/`（gggtest pod；实验后已 revert，源码未改动）
 >
-> 实验内容：94 处 `[KVC]` 打印补丁（grep 计数 167 行，含注释行）以 `patch -p1` 注入后实测记录**启动期 KVCache 初始化全流程**（168 行 [KVC]）与 **P/R 双请求运行期全流程**（124 + 752 行）。
+> 实验内容：92 处 `[KVC]` 打印补丁（grep 计数 163 行，含注释行）以 `patch -p1` 注入后实测记录**启动期 KVCache 初始化全流程**（168 行 [KVC]）与 **P/R 双请求运行期全流程**（124 + 752 行）。
 >
 > 打印体系设计要点：
 > - **三级横幅 + 阶段前缀全显**：横幅对始终成对（分配 S1~S4 / 调度提交 / 释放）；每条下钻日志行首标注所属阶段（S1/S2/S3/S4/前缀查找/入队/释放/分配/提交），单条日志脱离上下文也能定位
@@ -28,11 +28,11 @@ kvc/
 │   └── gen_cn_requests.py             P/R 请求体生成器（tokenizer 实测校验 + max_tokens=FILL+9 自动推算）
 │
 ├── patch/                             【补丁】
-│   ├── 01~08_vllm_*.patch             vllm 包 8 个文件（ENQ/L1~L5/CFG 各层打印 + 阶段前缀 + S1~S4 全子步 + 调度提交包裹）
+│   ├── 01~07_vllm_*.patch             vllm 包 7 个文件（ENQ/L2~L5/CFG 各层打印 + 阶段前缀 + S1~S4 全子步 + 调度提交包裹）
 │   ├── 09_vllm_ascend_*.patch         vllm-ascend model_runner_v1.py（NPU 物理侧, K/V 分离双池 + KVP 每层一行）
-│   ├── apply_patches.sh / revert_patches.sh   一键应用/回滚（dry-run 预检 + 计数 167 行 + py_compile）
+│   ├── apply_patches.sh / revert_patches.sh   一键应用/回滚（dry-run 预检 + 计数 163 行 + py_compile）
 │   ├── README.md                      补丁讲解：为什么这么加、逐 patch 详解 + 实测踩坑记录
-│   └── kvc_patch_locations.txt        94 处打印位置清单（文件 + 行号, 与 log 实测 100% 对齐）
+│   └── kvc_patch_locations.txt        92 处打印位置清单（文件 + 行号, 与 log 实测 100% 对齐）
 │
 ├── log/                               【日志】（2026-09-28 实测全套）
 │   ├── llama.log                      服务全量日志（1274 行 = 启动 :1~388 + P :389~518 + R :519~1274）
@@ -53,7 +53,7 @@ kvc/
 ## 2. 阅读顺序
 
 1. **`docs/1_kvc_patch_apply_e2e_record.md`** —— 全貌：patch 验证 + 启动期/运行期逐段日志解读（S1 段实测 + 层统计交叉验证 n=region×4×128）
-2. **`patch/README.md`** —— 94 处打印每一处"加在哪、为什么选这"（含实测踩坑记录）
+2. **`patch/README.md`** —— 92 处打印每一处"加在哪、为什么选这"（含实测踩坑记录）
 3. **`docs/2_kvc_cn_curl_case.md`** —— 两条 curl 的设计原理、公式推演与复现注意事项
 
 ## 3. 快速复现（在 `kvc/` 根目录执行）
@@ -61,7 +61,7 @@ kvc/
 （1）应用补丁并起服务：
 
 ```bash
-cd patch && VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./apply_patches.sh && cd ..   # 9/9 应用, 167 行验证
+cd patch && VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./apply_patches.sh && cd ..   # 8/8 应用, 163 行验证
 bash scripts/start.sh                     # 起服务
 ```
 
@@ -89,7 +89,7 @@ grep '调度提交' log/kvc_r5.log | head -4          # 每步输出后的独立
 | 可用 KV 显存 / num_blocks | **51.98 GiB** / **13295**（max concurrency 207.73x @8192） |
 | 物理张量 | K/V 分离双池：每层 K_cache=V_cache=(13295, 128, 4, 128) bf16（每层 K int8 1661.88MiB + V int8 1661.88MiB，2MiB 对齐） |
 | 实测哈希链 | `df3b74831f54 → 5751b0a5469a → 3d788bda3932`（+ decode 填满段 `8529e6691553`；NONE_HASH 种子随重启变化） |
-| 补丁规模 | **94 调用点 / 167 行 [KVC]**（逐文件 (5 12 27 56 17 18 13 4)+15；manager 32 点、model_runner_v1 9 点） |
+| 补丁规模 | **92 调用点 / 163 行 [KVC]**（逐文件 (5 12 27 56 17 18 13)+15；manager 32 点、model_runner_v1 9 点） |
 | 轨迹量 | 启动 168 / P 124 / R **752**；llama.log 1274 行（分界 :389/:519）；KVP 每请求固定 76 行（4 卡 × 18） |
 | S1 段结构 | :393 总横幅 → :395 进入 → **:402 S1 子步横幅** → 探问×2(L4) → :447 汇总值——S1 语义日志全部落在子步横幅内 |
 | KVP 层行 | 块内联 `blk=N[满:128](128,4,128)` / `blk=6[未满:8](8,4,128)` + K/V 首 3 值示意 + 层统计 n（P=165888=324×512、R=266240=520×512） |

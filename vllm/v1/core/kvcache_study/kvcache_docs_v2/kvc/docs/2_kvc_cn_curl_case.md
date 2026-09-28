@@ -1,6 +1,6 @@
 # 中文 curl 用例：P 缓冲 2 块 → R 五块生命周期（复用 2 + prefill 补 1 满 1 尾 + decode 填满尾块并跨界申请第 5 块）
 
-> 环境：gggtest（PP2TP2 4 卡）、vllm 0.23.0 + vllm-ascend（94 处 `[KVC]` 打印，补丁见 `../patch/`）、`--enforce-eager`、block_size=128、KV bfloat16——取证见 `1_kvc_patch_apply_e2e_record.md`。实测 2026-09-28（log 内 09-28 07:46，容器时钟 UTC-8）。
+> 环境：gggtest（PP2TP2 4 卡）、vllm 0.23.0 + vllm-ascend（92 处 `[KVC]` 打印，补丁见 `../patch/`）、`--enforce-eager`、block_size=128、KV bfloat16——取证见 `1_kvc_patch_apply_e2e_record.md`。实测 2026-09-28（log 内 09-28 07:46，容器时钟 UTC-8）。
 >
 > R 的 prompt 设计为 **486 tokens（3 个满块 + 第 4 块 102/128，非恰好边界）**：prefill 复用 2 块后新申请 **2 块（1 满 + 1 尾）**；decode **前 26 步填满尾块、第 27 步跨界申请第 5 块**；max_tokens=35。
 
@@ -143,7 +143,7 @@ INFO [kv_cache_utils.py:396] 释放 FreeKVCacheBlockQueue.append_n(blocks=[6, 5,
 
 ## 7. 复现注意事项
 
-1. **生效前提**：服务带 94 处 `[KVC]` 打印运行（应用方法见 `../patch/README.md`）。
+1. **生效前提**：服务带 92 处 `[KVC]` 打印运行（应用方法见 `../patch/README.md`）。
 2. **区间鲁棒**：R 落在 (384,512) 任意位置皆成立。快速断言：`调度提交` R=35、KVP 层行 P=R=**64**（4 卡 × 16 层固定）、S1 汇总值 R = 33×0 + 1×1 + 1×4。
 3. **第 3 hash 的 MISS 断链**：R 的追问句内容须在缓存中不存在——与 P 仅共享前 256 token 的设计保证。
 4. **哈希值每次服务重启变化**（种子随机）：实测（2026-09-28）链值为 `df3b74831f54 → 5751b0a5469a → 3d788bda3932`（+ decode 填满段 `8529e6691553`）。

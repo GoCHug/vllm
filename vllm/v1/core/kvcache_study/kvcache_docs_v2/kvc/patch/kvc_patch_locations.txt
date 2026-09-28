@@ -1,4 +1,4 @@
-# [KVC] Print Locations (logger.info version, final. 94 call points in 9 files, 167 grep lines incl. comments)
+# [KVC] Print Locations (logger.info version, final. 92 call points in 8 files, 163 grep lines incl. comments)
 # 每条日志自动携带: INFO timestamp [filename:lineno] [KVC][layer] message
 # 横幅体系: ================ 一次性初始化 / ======== 请求阶段/分配 S1~S4/调度提交 横幅对(始终成对) / --- S 子步标记
 # 设计要点:
@@ -107,11 +107,6 @@
   :317  f"[KVC][CFG] 最终 scheduler KVCacheConfig: num_blocks={scheduler_kv_cache_config.num_blocks} "
   :322  "[KVC][CFG] "
 
-## /vllm-workspace/vllm/vllm/v1/worker/gpu_model_runner.py
-  :7018  "[KVC][L1] GPUModelRunner._allocate_kv_cache_tensors: "
-  :7148  "[KVC][L1] GPUModelRunner._reshape_kv_cache_tensors: "
-  (NPU 部署不触发, 仅校验 L1 打印假设)
-
 ## /vllm-workspace/vllm-ascend/vllm_ascend/worker/model_runner_v1.py
   :2480  "[KVC][KVP] _kvc_rel_snapshot exception: %s (%s)"
   :2518  "[KVC][KVP] "                                    (结束期开始横幅, TERM/LATE 两文案)
@@ -123,6 +118,6 @@
   :4864  "[KVC][L1] vllm-ascend _reshape_kv_cache_tensors: K_cache shape=(num_blocks, bsz, kv_heads, head_dim)"
   :4915  "[KVC][L1] "                                      (物理侧 KV Cache 分配完成横幅)
 
-# total 94 logger.info call points; grep '[KVC]' per file = (5 12 27 56 17 18 13 4)+15 = 167 lines (incl. comments)
-# 调用点分布: request 3 / utils 6 / block_pool 14 / kv_cache_manager 32 / coordinator 9 / single_type 9 / core 9 / gpu_model_runner 2 / model_runner_v1 9
+# total 92 logger.info call points; grep '[KVC]' per file = (5 12 27 56 17 18 13)+15 = 163 lines (incl. comments)
+# 调用点分布: request 3 / utils 6 / block_pool 14 / kv_cache_manager 32 / coordinator 9 / single_type 9 / core 9 / model_runner_v1 9 = 92
 # 实测计数: KVP 层行 P=R=64(4w×16L 固定); 调度提交 P=1/R=35(await 每步一次); KVP 概览 4 条/请求; 层统计 n=region×kv_heads×head_dim(实测 165888/266240)

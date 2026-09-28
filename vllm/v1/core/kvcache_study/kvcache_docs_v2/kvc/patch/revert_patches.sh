@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# revert_patches.sh —— 一键撤销 9 个 [KVC] 调试打印补丁（还原为干净源码）
+# revert_patches.sh —— 一键撤销 8 个 [KVC] 调试打印补丁（还原为干净源码）
 #
 # 用法:
 #   容器内执行:          VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./revert_patches.sh
@@ -9,8 +9,8 @@
 # 行为:
 #   Phase 0  状态检查 —— 源码中无 [KVC] 时提示已干净并退出
 #   Phase 1  patch -R --dry-run 预检(反向打必须全部可干净执行)
-#   Phase 2  patch -R -p1 逐个反转 9 个补丁
-#   Phase 3  验证: 9 文件 [KVC] 全部归 0 + py_compile
+#   Phase 2  patch -R -p1 逐个反转 8 个补丁
+#   Phase 3  验证: 8 文件 [KVC] 全部归 0 + py_compile
 #
 # 说明:
 #   - 采用 patch -R 反向应用, 不依赖 .orig 备份
@@ -20,7 +20,7 @@ set -euo pipefail
 PATCH_DIR="$(cd "$(dirname "$0")" && pwd)"
 # VLLM_DIR="${VLLM_DIR:-/vllm-workspace/vllm}"
 # VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/vllm-workspace/vllm-ascend}"
-# 本地跑(releases/v0.23.0 基线 9/9 实测通过): 直接用环境变量, 或注释上面两行改用下面两行:
+# 本地跑(releases/v0.23.0 基线 8/8 实测通过): 直接用环境变量, 或注释上面两行改用下面两行:
 VLLM_DIR="${VLLM_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm}"
 VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm-ascend}"
 
@@ -32,7 +32,6 @@ VLLM_FILES=(
   vllm/v1/core/kv_cache_coordinator.py
   vllm/v1/core/single_type_kv_cache_manager.py
   vllm/v1/engine/core.py
-  vllm/v1/worker/gpu_model_runner.py
 )
 ASCEND_FILE="vllm_ascend/worker/model_runner_v1.py"
 
@@ -55,7 +54,7 @@ echo "  检测到 [KVC] 打印(request.py:$cur / model_runner_v1.py:$cur2), 开�
 
 echo "== Phase 1: dry-run(-R) 预检 =="
 fail=0
-for f in "$PATCH_DIR"/0[1-8]_vllm_*.patch; do
+for f in "$PATCH_DIR"/0[1-7]_vllm_*.patch; do
   if (cd "$VLLM_DIR" && patch -R -p1 --dry-run < "$f" >/dev/null 2>&1); then
     echo "  ok: $(basename "$f")"
   else
@@ -70,7 +69,7 @@ fi
 [ "$fail" = 0 ] || { echo "[ABORT] 反向 dry-run 未通过: 补丁已被修改或非本套补丁产物, 未做任何更改"; exit 1; }
 
 echo "== Phase 2: 反向应用 =="
-for f in "$PATCH_DIR"/0[1-8]_vllm_*.patch; do
+for f in "$PATCH_DIR"/0[1-7]_vllm_*.patch; do
   (cd "$VLLM_DIR" && patch -R -p1 < "$f" >/dev/null 2>&1) && echo "  reverted: $(basename "$f")"
 done
 (cd "$VLLM_ASCEND_DIR" && patch -R -p1 < "$PATCH_DIR"/09_*.patch >/dev/null 2>&1) && echo "  reverted: 09_vllm_ascend_*.patch"
@@ -83,8 +82,8 @@ for f in "${VLLM_FILES[@]}"; do
 done
 n=$(kvc_count "$VLLM_ASCEND_DIR/$ASCEND_FILE")
 [ "$n" = 0 ] || { echo "  残留: $ASCEND_FILE ($n 行)"; bad=1; }
-[ "$bad" = 0 ] && echo "  9 文件 [KVC] 全部归零 ✓" || { echo "[WARN] 有残留, 请人工检查"; exit 1; }
+[ "$bad" = 0 ] && echo "  8 文件 [KVC] 全部归零 ✓" || { echo "[WARN] 有残留, 请人工检查"; exit 1; }
 
 cd "$VLLM_DIR"
-python3 -m py_compile "${VLLM_FILES[@]}" "$VLLM_ASCEND_DIR/$ASCEND_FILE" && echo "  py_compile OK (9 files)"
-echo "[DONE] 9 个补丁已全部撤销, 源码还原干净。"
+python3 -m py_compile "${VLLM_FILES[@]}" "$VLLM_ASCEND_DIR/$ASCEND_FILE" && echo "  py_compile OK (8 files)"
+echo "[DONE] 8 个补丁已全部撤销, 源码还原干净。"

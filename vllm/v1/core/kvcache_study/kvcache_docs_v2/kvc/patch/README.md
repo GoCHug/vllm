@@ -1,6 +1,6 @@
 # KVC 打印 patch 讲解（为什么这么加、每处加在哪、想验证什么）
 
-> 本目录 9 个 patch 覆盖实操中加的全部 94 处 `[KVC]` 打印（grep 计数 167 行，含注释行）：8 个在 vllm 包（`/vllm-workspace/vllm`），1 个在 vllm-ascend 包（`/vllm-workspace/vllm-ascend`），已在 gggtest（PP2TP2 4 卡 Ascend910，vllm 0.23.0 + vllm-ascend 0.23.0）容器内端到端实测通过。
+> 本目录 8 个 patch 覆盖实操中加的全部 92 处 `[KVC]` 打印（grep 计数 163 行，含注释行）：7 个在 vllm 包（`/vllm-workspace/vllm`），1 个在 vllm-ascend 包（`/vllm-workspace/vllm-ascend`），已在 gggtest（PP2TP2 4 卡 Ascend910，vllm 0.23.0 + vllm-ascend 0.23.0）容器内端到端实测通过。
 > 对照阅读：理论文档 `../0_kv_cache_management_arch.md`、`../0_kvcache_management_of_type.md`、`../0_runtime_sequence.md`；实操取证 `../docs/1_kvc_patch_apply_e2e_record.md`。
 
 ---
@@ -8,7 +8,7 @@
 ## 0. 快速使用
 
 ```bash
-# 一键应用/回滚（推荐；含 dry-run 预检 + [KVC] 计数 167 + py_compile 验证）
+# 一键应用/回滚（推荐；含 dry-run 预检 + [KVC] 计数 163 + py_compile 验证）
 VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./apply_patches.sh
 VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./revert_patches.sh
 
@@ -30,11 +30,10 @@ grep '调度提交' log/kvc_r5.log                      # async 每步输出后�
 | 05 | `v1/core/kv_cache_coordinator.py` | L4 | 逐组下放（S1/S2/S3/S4/释放/前缀查找前缀）|
 | 06 | `v1/core/single_type_kv_cache_manager.py` | L3 | 前缀查找逐块 HIT/MISS + S2/S3/S4/释放 下放 |
 | 07 | `v1/engine/core.py` | CFG | 配置侧编排（显存/逐 worker config/tensor size/shared_by/最终对齐） |
-| 08 | `v1/worker/gpu_model_runner.py` | L1 | GPU 侧分配/reshape 横幅（NPU 部署不触发，仅作布局对照） |
 | 09 | `vllm_ascend/worker/model_runner_v1.py` | L1+KVP | NPU 物理侧（K/V 分开两张 int8 张量）+ KVP 结束期逐层按块校验（15 行/9 点） |
 
 > 行号=容器部署源码（=log 实测）；kv_cache_manager.py 两侧同号；model_runner_v1.py 分歧点(:3699)之下容器=本地-2。CLI 明细 `kvc_patch_locations.txt`。
-> 调用点分布：request 3 / utils 6 / block_pool 14 / kv_cache_manager **32** / coordinator 9 / single_type 9 / core 9 / gpu_model_runner 2 / model_runner_v1 **9** = **94**。
+> 调用点分布：request 3 / utils 6 / block_pool 14 / kv_cache_manager **32** / coordinator 9 / single_type 9 / core 9 / model_runner_v1 **9** = **92**。
 
 ---
 
@@ -63,7 +62,7 @@ grep '调度提交' log/kvc_r5.log                      # async 每步输出后�
 
 ### 1.4 风格约定
 
-- 94 处统一 `logger.info(...)`；worker 进程走 vllm logger；快照/校验整链 try/except 兜底（打印绝不影响服务）。
+- 92 处统一 `logger.info(...)`；worker 进程走 vllm logger；快照/校验整链 try/except 兜底（打印绝不影响服务）。
 - 控制流零改动：所有打印均为观察点；无块步下钻与 cache 维护本就执行，只是全部可见。
 
 ---
@@ -203,6 +202,7 @@ R(752 行): 入队 hash×3 → 前缀查找 HIT1,2/MISS3(hit 256)
 13. **pod 平台回收连锁**：`itask start` 恢复 + `ssh-keygen -R "[localhost]:5558"` 清 host key + 持久卷日志保留、可写层源码自动还原。
 14. **scp 错误勿吞**：`>/dev/null 2>&1 &&` 链上前段静默失败会让后段读到旧数据——同步命令保留 stderr 并校验关键行数。
 15. **子步横幅以"最早下钻"为界**：凡给子步划界，先覆盖该子步全部下钻（含方法外部的先行探问调用），横幅置于最早一条之前。
+16. **补丁只覆盖目标部署会执行的路径**：GPU 侧打印对 NPU 部署是纯冗余（永不触发、无运行时取证价值）——按部署目标裁剪补丁集，动静（打印对日志的影响）与补丁规模严格一致。
 
 ---
 
@@ -210,10 +210,10 @@ R(752 行): 入队 hash×3 → 前缀查找 HIT1,2/MISS3(hit 256)
 
 | 验证点 | 结果 |
 |---|---|
-| 本地回环 | stash→干净→apply：9/9、167 行全 ok、py_compile ✓；恢复编辑态（56/15 计数一致） |
-| 容器应用 | 9/9 applied，逐文件 (5 12 27 56 17 18 13 4)+15 全 ok，总 167，py_compile OK |
+| 本地回环 | stash→干净→apply：8/8、163 行全 ok、py_compile ✓；恢复编辑态（56/15 计数一致） |
+| 容器应用 | 8/8 applied，逐文件 (5 12 27 56 17 18 13)+15 全 ok，总 163，py_compile OK |
 | 服务 | 就绪 55s；APIServer pid=4555 / EngineCore pid=4600 / Worker pid=4633~4636 |
 | 轨迹 | 启动 168 / P 124 / R **752**；llama.log 1274 行（:389/:519 分界） |
 | 格式验证 | S1 子步横幅先行 ✓（:393 → :395 → :402 → :447）；KVP 每层一行 ✓（层行 P=R=64 固定，`blk=6[未满:8](8,4,128)`、层统计 n=266240=520×512）；概览 KV 布局说明 ✓（张量级拆分, 非最后一维拼接）；调度提交 ✓（P=1/R=35） |
 | 响应 | P=1 token "为了" / R=35 tokens，均 finish=length |
-| 容器回收 | 杀服务（0 进程）+ 9/9 revert（[KVC] 归零 + py_compile）→ 两仓库 git 0 改动、.orig 清理 |
+| 容器回收 | 杀服务（0 进程）+ revert 归零（[KVC]=0 + py_compile）→ 两仓库 git 0 改动、.orig 清理（apply/revert 双向验证过 8 补丁套件） |
