@@ -30,7 +30,7 @@ grep '调度提交' log/kvc_r5.log                      # async 每步输出后�
 | 05 | `v1/core/kv_cache_coordinator.py` | L4 | 逐组下放（S1/S2/S3/S4/释放/前缀查找前缀）|
 | 06 | `v1/core/single_type_kv_cache_manager.py` | L3 | 前缀查找逐块 HIT/MISS + S2/S3/S4/释放 下放 |
 | 07 | `v1/engine/core.py` | CFG | 配置侧编排（显存/逐 worker config/tensor size/shared_by/最终对齐） |
-| 09 | `vllm_ascend/worker/model_runner_v1.py` | L1+KVP | NPU 物理侧（K/V 分开两张 int8 张量）+ KVP 结束期逐层按块校验（15 行/9 点） |
+| 08 | `vllm_ascend/worker/model_runner_v1.py` | L1+KVP | NPU 物理侧（K/V 分开两张 int8 张量）+ KVP 结束期逐层按块校验（15 行/9 点） |
 
 > 行号=容器部署源码（=log 实测）；kv_cache_manager.py 两侧同号；model_runner_v1.py 分歧点(:3699)之下容器=本地-2。CLI 明细 `kvc_patch_locations.txt`。
 > 调用点分布：request 3 / utils 6 / block_pool 14 / kv_cache_manager **32** / coordinator 9 / single_type 9 / core 9 / model_runner_v1 **9** = **92**。

@@ -29,7 +29,7 @@ kvc/
 │
 ├── patch/                             【补丁】
 │   ├── 01~07_vllm_*.patch             vllm 包 7 个文件（ENQ/L2~L5/CFG 各层打印 + 阶段前缀 + S1~S4 全子步 + 调度提交包裹）
-│   ├── 09_vllm_ascend_*.patch         vllm-ascend model_runner_v1.py（NPU 物理侧, K/V 分离双池 + KVP 每层一行）
+│   ├── 08_vllm_ascend_*.patch         vllm-ascend model_runner_v1.py（NPU 物理侧, K/V 分离双池 + KVP 每层一行）
 │   ├── apply_patches.sh / revert_patches.sh   一键应用/回滚（dry-run 预检 + 计数 163 行 + py_compile）
 │   ├── README.md                      补丁讲解：为什么这么加、逐 patch 详解 + 实测踩坑记录
 │   └── kvc_patch_locations.txt        92 处打印位置清单（文件 + 行号, 与 log 实测 100% 对齐）

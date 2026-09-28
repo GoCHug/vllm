@@ -61,10 +61,10 @@ for f in "$PATCH_DIR"/0[1-7]_vllm_*.patch; do
     echo "  FAIL: $(basename "$f")"; fail=1
   fi
 done
-if (cd "$VLLM_ASCEND_DIR" && patch -R -p1 --dry-run < "$PATCH_DIR"/09_*.patch >/dev/null 2>&1); then
-  echo "  ok: $(basename "$PATCH_DIR"/09_*.patch)"
+if (cd "$VLLM_ASCEND_DIR" && patch -R -p1 --dry-run < "$PATCH_DIR"/08_*.patch >/dev/null 2>&1); then
+  echo "  ok: $(basename "$PATCH_DIR"/08_*.patch)"
 else
-  echo "  FAIL: $(basename "$PATCH_DIR"/09_*.patch)"; fail=1
+  echo "  FAIL: $(basename "$PATCH_DIR"/08_*.patch)"; fail=1
 fi
 [ "$fail" = 0 ] || { echo "[ABORT] 反向 dry-run 未通过: 补丁已被修改或非本套补丁产物, 未做任何更改"; exit 1; }
 
@@ -72,7 +72,7 @@ echo "== Phase 2: 反向应用 =="
 for f in "$PATCH_DIR"/0[1-7]_vllm_*.patch; do
   (cd "$VLLM_DIR" && patch -R -p1 < "$f" >/dev/null 2>&1) && echo "  reverted: $(basename "$f")"
 done
-(cd "$VLLM_ASCEND_DIR" && patch -R -p1 < "$PATCH_DIR"/09_*.patch >/dev/null 2>&1) && echo "  reverted: 09_vllm_ascend_*.patch"
+(cd "$VLLM_ASCEND_DIR" && patch -R -p1 < "$PATCH_DIR"/08_*.patch >/dev/null 2>&1) && echo "  reverted: 08_vllm_ascend_*.patch"
 
 echo "== Phase 3: 验证 =="
 bad=0

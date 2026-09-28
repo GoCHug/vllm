@@ -8,7 +8,7 @@
 #
 # 行为:
 #   Phase 1  dry-run 预检 —— 8 个 patch 全部通过才继续, 任一失败则中止(不落盘)
-#   Phase 2  patch -p1 应用 (01~07 -> vllm, 09 -> vllm-ascend)
+#   Phase 2  patch -p1 应用 (01~07 -> vllm, 08 -> vllm-ascend)
 #   Phase 3  验证: 每文件 [KVC] 计数 + 总数(预期 163 行/92 打印调用点, 含 S1 子步横幅先行覆盖外层容量探问、调度提交包裹横幅、KVP 仅 TERM/LATE 且逐层按块展开) + py_compile
 #
 # 注意:
@@ -35,7 +35,7 @@ VLLM_FILES=(
 )
 ASCEND_FILES=(vllm_ascend/worker/model_runner_v1.py)
 EXPECT=(5 12 27 56 17 18 13)
-ASCEND_EXPECT=15                  # 09 补丁预期 [KVC] 行(含 KVP 结束期逐层按块打印: 头横幅/概览/逐块行/尾横幅)
+ASCEND_EXPECT=15                  # 08 补丁预期 [KVC] 行(含 KVP 结束期逐层按块打印: 头横幅/概览/逐块行/尾横幅)
 
 [ -d "$VLLM_DIR" ]        || { echo "[ERROR] vllm 仓库不存在: $VLLM_DIR (用 VLLM_DIR=... 指定)"; exit 1; }
 [ -d "$VLLM_ASCEND_DIR" ] || { echo "[ERROR] vllm-ascend 仓库不存在: $VLLM_ASCEND_DIR (用 VLLM_ASCEND_DIR=... 指定)"; exit 1; }
@@ -61,10 +61,10 @@ for f in "$PATCH_DIR"/0[1-7]_vllm_*.patch; do
     echo "  FAIL: $(basename "$f")"; fail=1
   fi
 done
-if (cd "$VLLM_ASCEND_DIR" && patch -p1 --dry-run < "$PATCH_DIR"/09_*.patch >/dev/null 2>&1); then
-  echo "  ok: $(basename "$PATCH_DIR"/09_*.patch)"
+if (cd "$VLLM_ASCEND_DIR" && patch -p1 --dry-run < "$PATCH_DIR"/08_*.patch >/dev/null 2>&1); then
+  echo "  ok: $(basename "$PATCH_DIR"/08_*.patch)"
 else
-  echo "  FAIL: $(basename "$PATCH_DIR"/09_*.patch)"; fail=1
+  echo "  FAIL: $(basename "$PATCH_DIR"/08_*.patch)"; fail=1
 fi
 [ "$fail" = 0 ] || { echo "[ABORT] dry-run 未全部通过, 未做任何修改 (0.23.0 基线应 8/8 通过)"; exit 1; }
 
@@ -72,7 +72,7 @@ echo "== Phase 2: 应用 =="
 for f in "$PATCH_DIR"/0[1-7]_vllm_*.patch; do
   (cd "$VLLM_DIR" && patch -p1 < "$f" >/dev/null 2>&1) && echo "  applied: $(basename "$f")"
 done
-(cd "$VLLM_ASCEND_DIR" && patch -p1 < "$PATCH_DIR"/09_*.patch >/dev/null 2>&1) && echo "  applied: 09_vllm_ascend_*.patch"
+(cd "$VLLM_ASCEND_DIR" && patch -p1 < "$PATCH_DIR"/08_*.patch >/dev/null 2>&1) && echo "  applied: 08_vllm_ascend_*.patch"
 
 echo "== Phase 3: 验证 =="
 bad=0; total=0

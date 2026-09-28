@@ -37,7 +37,7 @@ cd /a3_inference/itask/workdir/gch02599191/kvc/patch && VLLM_DIR=/vllm-workspace
 | `v1/engine/core.py` | 13 | 9 |
 | `vllm_ascend/worker/model_runner_v1.py` | 15 | 9（KVP: 头横幅/概览/逐层行循环/尾横幅） |
 
-py_compile（8 文件）→ **COMPILE_OK**。核心补丁：04（12 hunk）、09（6 hunk）。
+py_compile（8 文件）→ **COMPILE_OK**。核心补丁：04（12 hunk）、08（6 hunk）。
 
 ## 3. 启动期 KVCache 初始化全流程（log/kvc_startup.log，168 行）
 
