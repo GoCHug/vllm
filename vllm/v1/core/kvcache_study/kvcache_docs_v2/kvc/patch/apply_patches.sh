@@ -9,7 +9,7 @@
 # 行为:
 #   Phase 1  dry-run 预检 —— 8 个 patch 全部通过才继续, 任一失败则中止(不落盘)
 #   Phase 2  patch -p1 应用 (01~07 -> vllm, 08 -> vllm-ascend)
-#   Phase 3  验证: 每文件 [KVC] 计数 + 总数(预期 163 行/92 打印调用点, 含 S1 子步横幅先行覆盖外层容量探问、调度提交包裹横幅、KVP 仅 TERM/LATE 且逐层按块展开) + py_compile
+#   Phase 3  验证: 每文件 [KVC] 计数 + 总数(预期 165 行/92 打印调用点, 含 S1 子步横幅先行覆盖外层容量探问、调度提交包裹横幅、KVP 仅 TERM/LATE 且逐层按块展开) + py_compile
 #
 # 注意:
 #   - vllm 0.23.0 + vllm-ascend 0.23.0 基线 8/8 干净命中(容器实测通过)
@@ -34,7 +34,7 @@ VLLM_FILES=(
   vllm/v1/engine/core.py
 )
 ASCEND_FILES=(vllm_ascend/worker/model_runner_v1.py)
-EXPECT=(5 12 27 56 17 18 13)
+EXPECT=(5 12 27 56 17 18 15)
 ASCEND_EXPECT=15                  # 08 补丁预期 [KVC] 行(含 KVP 结束期逐层按块打印: 头横幅/概览/逐块行/尾横幅)
 
 [ -d "$VLLM_DIR" ]        || { echo "[ERROR] vllm 仓库不存在: $VLLM_DIR (用 VLLM_DIR=... 指定)"; exit 1; }
@@ -88,7 +88,7 @@ for f in "${ASCEND_FILES[@]}"; do
   total=$((total + n))
   printf "  %-60s %s 行 %s\n" "$f" "$n" "[$flag]"
 done
-echo "  [KVC] 总匹配行: $total (预期 163 行)"
+echo "  [KVC] 总匹配行: $total (预期 165 行)"
 [ "$bad" = 0 ] || { echo "[WARN] 部分文件计数与预期不符, 请人工核对"; }
 
 cd "$VLLM_DIR"

@@ -1,6 +1,6 @@
 # KVC 打印 patch 讲解（为什么这么加、每处加在哪、想验证什么）
 
-> 本目录 8 个 patch 覆盖实操中加的全部 92 处 `[KVC]` 打印（grep 计数 163 行，含注释行）：7 个在 vllm 包（`/vllm-workspace/vllm`），1 个在 vllm-ascend 包（`/vllm-workspace/vllm-ascend`），已在 gggtest（PP2TP2 4 卡 Ascend910，vllm 0.23.0 + vllm-ascend 0.23.0）容器内端到端实测通过。
+> 本目录 8 个 patch 覆盖实操中加的全部 92 处 `[KVC]` 打印（grep 计数 165 行，含注释行）：7 个在 vllm 包（`/vllm-workspace/vllm`），1 个在 vllm-ascend 包（`/vllm-workspace/vllm-ascend`），已在 gggtest（PP2TP2 4 卡 Ascend910，vllm 0.23.0 + vllm-ascend 0.23.0）容器内端到端实测通过。
 > 对照阅读：理论文档 `../0_kv_cache_management_arch.md`、`../0_kvcache_management_of_type.md`、`../0_runtime_sequence.md`；实操取证 `../docs/1_kvc_patch_apply_e2e_record.md`。
 
 ---
@@ -8,12 +8,12 @@
 ## 0. 快速使用
 
 ```bash
-# 一键应用/回滚（推荐；含 dry-run 预检 + [KVC] 计数 163 + py_compile 验证）
+# 一键应用/回滚（推荐；含 dry-run 预检 + [KVC] 计数 165 + py_compile 验证）
 VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./apply_patches.sh
 VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./revert_patches.sh
 
 # 看打印(阶段前缀即导航)
-grep '\[KVC\]' log/llama.log                         # 全部 [KVC]
+grep '\[KVC\]' log/llama2.log                        # 全部 [KVC]
 grep '======== ' log/kvc_p.log log/kvc_r5.log       # 全部阶段横幅(分配/调度提交/释放, 始终成对)
 grep -- '--- S' log/kvc_r5.log                     # 子步横幅: S1 容量检查(先行)/新块分配/无需分配新块
 grep 'TERM L' log/kvc_r5.log                       # KVP 每层一行(块内联+层统计)
@@ -29,11 +29,11 @@ grep '调度提交' log/kvc_r5.log                      # async 每步输出后�
 | 04 | `v1/core/kv_cache_manager.py` | L5 | 分配 S1~S4 全子步门面（横幅先行原则）+ 调度提交包裹 + 容量不足/延迟路径补横幅对（56 行/32 点） |
 | 05 | `v1/core/kv_cache_coordinator.py` | L4 | 逐组下放（S1/S2/S3/S4/释放/前缀查找前缀）|
 | 06 | `v1/core/single_type_kv_cache_manager.py` | L3 | 前缀查找逐块 HIT/MISS + S2/S3/S4/释放 下放 |
-| 07 | `v1/engine/core.py` | CFG | 配置侧编排（显存/逐 worker config/tensor size/shared_by/最终对齐） |
+| 07 | `v1/engine/core.py` | CFG | **① 算规格（紧跟 get_kv_cache_specs() 调用，本轮前移至此）** + 显存/逐 worker config/tensor size/shared_by/最终对齐 |
 | 08 | `vllm_ascend/worker/model_runner_v1.py` | L1+KVP | NPU 物理侧（K/V 分开两张 int8 张量）+ KVP 结束期逐层按块校验（15 行/9 点） |
 
 > 行号=容器部署源码（=log 实测）；kv_cache_manager.py 两侧同号；model_runner_v1.py 分歧点(:3699)之下容器=本地-2。CLI 明细 `kvc_patch_locations.txt`。
-> 调用点分布：request 3 / utils 6 / block_pool 14 / kv_cache_manager **32** / coordinator 9 / single_type 9 / core 9 / model_runner_v1 **9** = **92**。
+> 调用点分布：request 3 / utils 6 / block_pool 14 / kv_cache_manager **32** / coordinator 9 / single_type 9 / core **10** / model_runner_v1 **9** = **92**。
 
 ---
 
@@ -41,7 +41,7 @@ grep '调度提交' log/kvc_r5.log                      # async 每步输出后�
 
 ### 1.1 三条主线
 
-1. **静态装配线（启动初始化，一次性 168 行）**：配置侧 CFG（84 行）→ 物理侧 L1（76 行，每层 K/V 两张独立 int8 池）→ 逻辑装配（8 行），三段各带 `================` 开始/完成横幅。
+1. **静态装配线（启动初始化，一次性 169 行）**：配置侧 CFG（85 行，① 算规格 → 显存 → 逐 worker config → 最终对齐）→ 物理侧 L1（76 行，每层 K/V 两张独立 int8 池）→ 逻辑装配（8 行），三段各带 `================` 开始/完成横幅。
 2. **动态生命周期线**：入队 → 前缀查找 → 分配（S1~S4 全子步、横幅先行）→ 执行（每步调度提交独立段）→ 释放。
 3. **物理校验线（KVP）**：仅请求结束（TERM，含首步即终态）/兜底（LATE）触发；概览含一次性 KV 布局说明 + 每层一行（块内联 + K/V 首 3 值示意 + 层合并统计）。
 
@@ -165,7 +165,7 @@ grep '调度提交' log/kvc_r5.log                      # async 每步输出后�
 
 ---
 
-## 4. P→R 用例时序速查（2026-09-28；哈希链 df3b74831f54→5751b0a5469a→3d788bda3932→8529e6691553）
+## 4. P→R 用例时序速查（2026-09-28；哈希链 46caaf87c692→ca54adafdb85→aeb3ede17fc1→0cc949b05927）
 
 ```
 P(124 行): 入队 hash×2 → 前缀查找 MISS → [分配: :393 总横幅/:395 进入/:402 S1 子步横幅/探问×2/S1 3vs13294/
@@ -173,9 +173,9 @@ P(124 行): 入队 hash×2 → 前缀查找 MISS → [分配: :393 总横幅/:39
           → KVP TERM ×4卡(概览含 KV 布局 + 每层一行 16×4=64, 层统计 n=165888)
           → 调度提交 ×1 → 释放 [3,2,1]
 R(752 行): 入队 hash×3 → 前缀查找 HIT1,2/MISS3(hit 256)
-          → prefill: S2 touch[(1,1),(2,1)] / [S1 4vs13294 / S3 新块[4,5] / S4 insert 3d78...<-4]
+          → prefill: S2 touch[(1,1),(2,1)] / [S1 4vs13294 / S3 新块[4,5] / S4 insert aeb3...<-4]
           → decode 26 步: 每步 [分配无块步闭合] + [调度提交] (S1 汇总 需分配 0)
-          → 步 27 跨界: S1 1vs13290 / S3 新块[6] / S4 insert 8529...<-5
+          → 步 27 跨界: S1 1vs13290 / S3 新块[6] / S4 insert 0cc9...<-5
           → 步 28~34: 无块步 + 调度提交 (共 35 次提交)
           → KVP TERM ×4卡(每层一行 64 条, 层统计 n=266240; blk=6[未满:8](8,4,128))
           → 释放 [6,5,4,2,1] → append_n 队尾 free=13294
@@ -199,7 +199,7 @@ R(752 行): 入队 hash×3 → 前缀查找 HIT1,2/MISS3(hit 256)
 10. **`cd X && cmd &` 后台化整条链**：远程等待循环里相对路径全部失效——用绝对路径。
 11. **共用 API 的打印先 grep 全部调用方**：`KVCacheManager.cache_blocks` 被 async_scheduler 每步调用——给共用 API 打印加语境前必须确认每个调用场景的语义。
 12. **revert 对"被替换的补丁"失效**：容器源码上是旧版补丁而 revert 输入是新版时，`patch -R --dry-run` 不匹配会中止——改用 `git checkout` 还原再应用。
-13. **pod 平台回收连锁**：`itask start` 恢复 + `ssh-keygen -R "[localhost]:5558"` 清 host key + 持久卷日志保留、可写层源码自动还原。
+13. **pod 平台回收连锁**：`itask start` 恢复 + `ssh-keygen -R "[localhost]:5557"` 清 host key + 持久卷日志保留、可写层源码自动还原。
 14. **scp 错误勿吞**：`>/dev/null 2>&1 &&` 链上前段静默失败会让后段读到旧数据——同步命令保留 stderr 并校验关键行数。
 15. **子步横幅以"最早下钻"为界**：凡给子步划界，先覆盖该子步全部下钻（含方法外部的先行探问调用），横幅置于最早一条之前。
 16. **补丁只覆盖目标部署会执行的路径**：GPU 侧打印对 NPU 部署是纯冗余（永不触发、无运行时取证价值）——按部署目标裁剪补丁集，动静（打印对日志的影响）与补丁规模严格一致。
@@ -210,10 +210,10 @@ R(752 行): 入队 hash×3 → 前缀查找 HIT1,2/MISS3(hit 256)
 
 | 验证点 | 结果 |
 |---|---|
-| 本地回环 | stash→干净→apply：8/8、163 行全 ok、py_compile ✓；恢复编辑态（56/15 计数一致） |
-| 容器应用 | 8/8 applied，逐文件 (5 12 27 56 17 18 13)+15 全 ok，总 163，py_compile OK |
-| 服务 | 就绪 55s；APIServer pid=4555 / EngineCore pid=4600 / Worker pid=4633~4636 |
-| 轨迹 | 启动 168 / P 124 / R **752**；llama.log 1274 行（:389/:519 分界） |
+| 本地回环 | stash→干净→apply：8/8、165 行全 ok、py_compile ✓；恢复编辑态（56/15 计数一致） |
+| 容器应用 | 8/8 applied，逐文件 (5 12 27 56 17 18 15)+15 全 ok，总 165，py_compile OK |
+| 服务 | 就绪 56s；APIServer pid=4280 / EngineCore pid=4315 / Worker pid=4350~4353 |
+| 轨迹 | 启动 169 / P 124 / R **752**；llama2.log 1268 行（:384/:513 分界） |
 | 格式验证 | S1 子步横幅先行 ✓（:393 → :395 → :402 → :447）；KVP 每层一行 ✓（层行 P=R=64 固定，`blk=6[未满:8](8,4,128)`、层统计 n=266240=520×512）；概览 KV 布局说明 ✓（张量级拆分, 非最后一维拼接）；调度提交 ✓（P=1/R=35） |
 | 响应 | P=1 token "为了" / R=35 tokens，均 finish=length |
 | 容器回收 | 杀服务（0 进程）+ revert 归零（[KVC]=0 + py_compile）→ 两仓库 git 0 改动、.orig 清理（apply/revert 双向验证过 8 补丁套件） |
