@@ -1,8 +1,191 @@
 diff --git a/vllm_ascend/worker/model_runner_v1.py b/vllm_ascend/worker/model_runner_v1.py
-index 4c8e11e9d..07cd1e887 100644
+index 4c8e11e9d..db585756e 100644
 --- a/vllm_ascend/worker/model_runner_v1.py
 +++ b/vllm_ascend/worker/model_runner_v1.py
-@@ -4095,6 +4095,8 @@ class NPUModelRunner(GPUModelRunner):
+@@ -2334,6 +2334,11 @@ class NPUModelRunner(GPUModelRunner):
+                         for aux_hidden_states_pcp in aux_hidden_states
+                     ]
+ 
++            # [KVC][KVP] 释放前物理 KV 校验: 本步 KV 已全部落卡(前向完成), 此处为 worker 侧
++            # 与"请求生命周期最后一次写卡"对齐的时点 —— 恰在 log 中 L5 "======== 释放 ========"
++            # 横幅之前(free() 在 EngineCore 进程, 物理张量在各 worker 进程, 跨进程不可直读)。
++            self._kvc_rel_snapshot(scheduler_output)
++
+             if not self.broadcast_pp_output:
+                 # Common case.
+                 if not get_pp_group().is_last_rank:
+@@ -2400,6 +2405,170 @@ class NPUModelRunner(GPUModelRunner):
+             deferred_state_corrections_fn()
+         return None
+ 
++    # [KVC][KVP] _kvc_rel_snapshot/_kvc_kv_dump: 释放前物理 KV 快照(每步前向后调用)。
++    # 统计该请求已写 token 区间所覆盖的 block 行, 在本卡全部 layer 的 K/V 数值分布
++    # (n/mean/std/min/max/amax/zeros/nan/inf), 用以证明 KV 真实落卡且无垃圾值:
++    #   PF=prefill 落卡校验 | TERM=终值(written==prompt+max_tokens-1, 即将释放) | LATE=兜底补打
++    # free() 在 EngineCore 进程而张量在 worker 进程, 故以"最后一次写卡完成"为等价时点,
++    # 在 log 中恰位于 L5 "======== 释放 ========" 横幅之前。
++    def _kvc_rel_snapshot(self, scheduler_output) -> None:
++        try:
++            kv_caches = getattr(self, "kv_caches", None)
++            if not kv_caches or scheduler_output is None:
++                return
++            rt = getattr(self, "_kvc_rt", None)
++            if rt is None:
++                rt = self._kvc_rt = {}
++            # (a) 上轮结束后 finished 的请求: 清理追踪; 若从未打出 TERM 则兜底补打一次
++            for rid in getattr(scheduler_output, "finished_req_ids", None) or ():
++                st = rt.pop(rid, None)
++                if st is not None and not st["done"]:
++                    self._kvc_kv_dump(rid, st, "LATE")
++            # (b) 新请求注册: 初始块表 / 已算前缀 / 终值目标 = prompt+max_tokens-1
++            for req in scheduler_output.scheduled_new_reqs:
++                if req.req_id not in rt:
++                    rt[req.req_id] = {
++                        "blocks": [list(g) for g in req.block_ids] if req.block_ids else [],
++                        "written": int(req.num_computed_tokens or 0),
++                        "final": (len(req.prompt_token_ids or [])
++                                  + (req.sampling_params.max_tokens
++                                     if req.sampling_params is not None else 0) - 1),
++                        "done": False,
++                        "pf": False,
++                    }
++            # (c) 续算请求: 追加本步新分配的块(每个 KV 组一条增量)
++            cr = scheduler_output.scheduled_cached_reqs
++            for i, rid in enumerate(cr.req_ids):
++                st = rt.get(rid)
++                if st is None:
++                    continue
++                nb = cr.new_block_ids[i] if i < len(cr.new_block_ids) else None
++                if nb:
++                    for gi, gnew in enumerate(nb):
++                        if gnew and gi < len(st["blocks"]):
++                            st["blocks"][gi].extend(gnew)
++            # (d) 累加本步调度 token 数, 命中 PF/TERM 时点即打统计
++            # num_scheduled_tokens 双形态: 同步路径 dict[req_id->n]; 异步调度路径为
++            # 按批内槽位顺序的 list/ndarray —— 用 input_batch.req_ids(本步执行批)按位 zip 对齐
++            nst = scheduler_output.num_scheduled_tokens
++            if hasattr(nst, "items"):
++                sched_pairs = list(nst.items())
++            else:
++                ib = getattr(self, "input_batch", None)
++                n_reqs = int(getattr(ib, "num_reqs", 0) or 0)
++                rid_list = list(getattr(ib, "req_ids", []) or [])[:n_reqs]
++                if n_reqs > 0 and len(nst) >= n_reqs:
++                    sched_pairs = list(zip(rid_list, [int(x) for x in list(nst)[:n_reqs]]))
++                else:
++                    sched_pairs = []
++            for rid, ntok in sched_pairs:
++                st = rt.get(rid)
++                if st is None:
++                    continue
++                st["written"] += int(ntok)
++                # 第六轮: 纯 PF 触发已删(用户仅需请求结束前的物理 cache 打印)——
++                # 首步标记仅作追踪; 首步即终态与常规终态统一走 TERM 打印
++                if not st["pf"]:
++                    st["pf"] = True
++                if not st["done"] and st["written"] >= st["final"]:
++                    st["done"] = True
++                    self._kvc_kv_dump(rid, st, "TERM")
++        except Exception as e:  # 校验打印绝不影响服务
++            import traceback as _tb
++            logger.info("[KVC][KVP] _kvc_rel_snapshot exception: %s (%s)", e,
++                        _tb.format_exc().strip().splitlines()[-1])
++
++    def _kvc_kv_dump(self, rid: str, st: dict, tag: str) -> None:
++        # 第七轮: 仅请求结束(TERM/LATE)打印; 每层一行(块内联+层统计), 头部一次性 KV 布局说明
++        kv_caches = getattr(self, "kv_caches", None)
++        blocks = st["blocks"][0] if st["blocks"] else []
++        written = st["written"]
++        if not kv_caches or not blocks or written <= 0:
++            return
++        # kv_caches 双形态: 运行时 self.kv_caches 为 list[层序 -> (K,V) tuple]
++        # (base 类定义为 list; model_runner_v1.py 将 reshape dict 逐层 append 解包),
++        # dict 形态(层名 -> tuple)保留兼容 —— 实测教训: list 无 .items()
++        if isinstance(kv_caches, dict):
++            kv_iter = list(kv_caches.items())
++        else:
++            kv_iter = list(enumerate(kv_caches))
++        layers: list = []
++        for nm, kv in kv_iter:
++            if not isinstance(kv, (tuple, list)) or len(kv) < 2:
++                continue
++            kt, vt = kv[0], kv[1]
++            if kt is None or vt is None or kt.dim() < 2:
++                continue
++            layers.append((nm, kt, vt))
++        if not layers:
++            return
++        dev = str(layers[0][1].device)
++        _kt0 = layers[0][1]
++        bsz = int(_kt0.shape[1])
++        kv_heads = int(_kt0.shape[2]) if _kt0.dim() >= 3 else 0
++        head_dim = int(_kt0.shape[3]) if _kt0.dim() >= 4 else 0
++
++        # 结束期仅两文案: TERM(首步即终态或常规终态) / LATE(结束后兜底)
++        if tag == "LATE":
++            _open_msg = "请求已结束(兜底补打), 开始打印遗留物理 cache"
++            _close_msg = "兜底补打, 物理 cache 打印完毕"
++        else:
++            _open_msg = "请求结束 KVCache 即将释放, 开始打印该请求物理 cache"
++            _close_msg = "请求结束, 物理 cache 打印完毕"
++        logger.info("[KVC][KVP] " + "=" * 8 + " " + _open_msg + " " + "=" * 8)
++        # 概览 + KV 布局一次性说明(第七轮): K/V 张量级拆分, 非最后一维拼接
++        logger.info(
++            "[KVC][KVP] %s req=%s dev=%s 逐层按块: layers=%d blocks=%s region=%d/%d tok | "
++            "KV 布局: K_cache 与 V_cache 是两个独立张量池(张量级拆分, 不是最后一维拼接); "
++            "每块每层 K=V=shape(bsz=%d, kv_heads=%d, head_dim=%d), "
++            "第1维=token 槽位(满块=%d, 未满块=有效cov), 第2维=kv_heads(8/TP2), 最后一维=head_dim",
++            tag, rid, dev, len(layers), blocks, written, st["final"],
++            bsz, kv_heads, head_dim, bsz,
++        )
++
++        def _layer_stats(parts: list) -> str:
++            x = torch.cat(parts, dim=0).reshape(-1).float()
++            n = int(x.numel())
++            s = float(x.sum().item())
++            ss = float((x * x).sum().item())
++            mean = s / n
++            std = max(ss / n - mean * mean, 0.0) ** 0.5
++            return (f"统计[n={n}] mean={mean:.4g} std={std:.4g} "
++                    f"min={float(x.min().item()):.4g} max={float(x.max().item()):.4g}")
++
++        for nm, kt, vt in layers:
++            lb = int(kt.shape[1])
++            ltag = f"L{nm:02d}" if isinstance(nm, int) else str(nm)
++            blks: list = []
++            kparts: list = []
++            vparts: list = []
++            demo_blk = None
++            for e, blk in enumerate(blocks):
++                cov = min(lb, max(0, written - e * lb))
++                if cov <= 0 or blk >= int(kt.shape[0]):
++                    continue
++                mark = f"满:{cov}" if cov == lb else f"未满:{cov}"
++                blks.append(f"blk={blk}[{mark}]({cov},{kv_heads},{head_dim})")
++                if demo_blk is None:
++                    demo_blk = blk
++                kparts.append(kt[blk, :cov].float())
++                vparts.append(vt[blk, :cov].float())
++            if not blks:
++                continue
++            # tensor 简单示意: 该层首块首 token 的前 3 值
++            kdemo = ", ".join(f"{x:.4g}" for x in
++                              kt[demo_blk, 0].reshape(-1)[:3].float().tolist())
++            vdemo = ", ".join(f"{x:.4g}" for x in
++                              vt[demo_blk, 0].reshape(-1)[:3].float().tolist())
++            logger.info(
++                "[KVC][KVP] %s %s %s | K示(首块首token前3)=[%s] %s "
++                "| V示(首块首token前3)=[%s] %s",
++                tag, ltag, " ".join(blks),
++                kdemo, _layer_stats(kparts),
++                vdemo, _layer_stats(vparts),
++            )
++        logger.info("[KVC][KVP] " + "=" * 8 + " " + _close_msg + " " + "=" * 8)
++
+     @torch.inference_mode()
+     def sample_tokens(
+         self, grammar_output: "GrammarOutput | None"
+@@ -4095,6 +4264,8 @@ class NPUModelRunner(GPUModelRunner):
              dict[str, tuple(torch.Tensor, torch.Tensor)] A map between layer names
              to their corresponding memory buffer for K cache and V cache.
          """
@@ -11,7 +194,7 @@ index 4c8e11e9d..07cd1e887 100644
          # init kv cache tensors
          kv_cache_raw_tensors: dict[str, torch.Tensor | torch.Tensor | None | None] = {}
          # prefill disaggregation need the addr of cache tensor be aligned with 2M
-@@ -4255,6 +4257,19 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4255,6 +4426,19 @@ class NPUModelRunner(GPUModelRunner):
                              v_tensor_size,
                              alignment,
                          )
@@ -31,7 +214,7 @@ index 4c8e11e9d..07cd1e887 100644
  
                      if self.use_sparse and dsa_k_tensor_size is not None:
                          if current_sparse_li_c8:
-@@ -4679,6 +4694,20 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4679,6 +4863,20 @@ class NPUModelRunner(GPUModelRunner):
                      elif self.use_sparse and current_sparse_sfa_c8:
                          kv_caches[layer_name] = (k_cache,)
                      else:
@@ -52,7 +235,7 @@ index 4c8e11e9d..07cd1e887 100644
                          kv_caches[layer_name] = (k_cache, v_cache)
                  elif isinstance(current_kv_cache_spec, MambaSpec):
                      raw_tensor = kv_cache_raw_tensors[layer_name]
-@@ -4717,6 +4746,8 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4717,6 +4915,8 @@ class NPUModelRunner(GPUModelRunner):
                  else:
                      raise ValueError("Unknown KV cache spec type.")
  

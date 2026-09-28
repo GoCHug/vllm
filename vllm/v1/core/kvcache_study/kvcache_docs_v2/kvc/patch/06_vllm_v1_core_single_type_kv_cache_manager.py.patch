@@ -1,5 +1,5 @@
 diff --git a/vllm/v1/core/single_type_kv_cache_manager.py b/vllm/v1/core/single_type_kv_cache_manager.py
-index 478effcd74..de274dcb26 100644
+index 478effcd74..dd32ee3901 100644
 --- a/vllm/v1/core/single_type_kv_cache_manager.py
 +++ b/vllm/v1/core/single_type_kv_cache_manager.py
 @@ -28,6 +28,9 @@ from vllm.v1.kv_cache_interface import (
@@ -34,7 +34,7 @@ index 478effcd74..de274dcb26 100644
          # Touch the computed blocks to make sure they won't be evicted.
 +        # [KVC][L3] S2 后半: touch 命中块, ref_cnt++ 并摘出空闲队列
 +        logger.info(
-+            f"[KVC][L3] SingleTypeKVCacheManager.allocate_new_computed_blocks: "
++            f"[KVC][L3] S2 SingleTypeKVCacheManager.allocate_new_computed_blocks: "
 +            f"req={request_id}, touch 命中块 {[b.block_id for b in new_computed_blocks]}, "
 +            f"此前请求持有块数={len(req_blocks)}"
 +        )
@@ -47,7 +47,7 @@ index 478effcd74..de274dcb26 100644
              req_blocks.extend(new_blocks)
 +            # [KVC][L3] S3 下放: num_new = cdiv(num_tokens, block_size) - 已有块数
 +            logger.info(
-+                f"[KVC][L3] SingleTypeKVCacheManager.allocate_new_blocks: req={request_id}, "
++                f"[KVC][L3] S3 SingleTypeKVCacheManager.allocate_new_blocks: req={request_id}, "
 +                f"num_tokens={num_tokens}, block_size={self.block_size}, 需 {num_required_blocks} 块 "
 +                f"- 已有 {num_required_blocks - num_new_blocks} = 新分配 {num_new_blocks} 块 "
 +                f"{[b.block_id for b in new_blocks]}, 持有 req_blocks={[b.block_id for b in req_blocks]}"
@@ -61,7 +61,7 @@ index 478effcd74..de274dcb26 100644
          )
 +        # [KVC][L3] S4 下放: 满块哈希入表 (num_full_blocks = num_tokens // block_size)
 +        logger.info(
-+            f"[KVC][L3] SingleTypeKVCacheManager.cache_blocks: req={request.request_id}, "
++            f"[KVC][L3] S4 SingleTypeKVCacheManager.cache_blocks: req={request.request_id}, "
 +            f"num_tokens={num_tokens}, block_size={self.block_size}, "
 +            f"已缓存 {num_cached_blocks} 块 -> 满块数 {num_full_blocks}"
 +        )
@@ -74,7 +74,7 @@ index 478effcd74..de274dcb26 100644
  
 +        # [KVC][L3] 释放: 持有块逆序归还第2层 BlockPool
 +        logger.info(
-+            f"[KVC][L3] SingleTypeKVCacheManager.free: req={request_id}, "
++            f"[KVC][L3] 释放 SingleTypeKVCacheManager.free: req={request_id}, "
 +            f"持有 blocks={[b.block_id for b in req_blocks]} (reversed 后释放)"
 +        )
 +
@@ -87,7 +87,7 @@ index 478effcd74..de274dcb26 100644
          max_num_blocks = max_length // block_size
 +        # [KVC][L3] 前缀查找(第3层): 逐块查链式哈希, 遇 miss 即 break
 +        logger.info(
-+            f"[KVC][L3] FullAttentionManager.find_longest_cache_hit: block_size={block_size}, "
++            f"[KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit: block_size={block_size}, "
 +            f"max_length={max_length}, 最多查 {max_num_blocks} 个hash, groups={kv_cache_group_ids}, "
 +            f"spec={type(kv_cache_spec).__name__}"
 +        )
@@ -100,7 +100,7 @@ index 478effcd74..de274dcb26 100644
              ):
 +                # [KVC][L3] 逐块查表: HIT
 +                logger.info(
-+                    f"[KVC][L3]   第 {len(computed_blocks[0]) + 1} 块 HIT: "
++                    f"[KVC][L3] 前缀查找   第 {len(computed_blocks[0]) + 1} 块 HIT: "
 +                    f"BlockHash={block_hash.hex()[:12]} -> cached blocks={[b.block_id for b in cached_block]}"
 +                )
                  for computed, cached in zip(computed_blocks, cached_block):
@@ -108,7 +108,7 @@ index 478effcd74..de274dcb26 100644
              else:
 +                # [KVC][L3] 逐块查表: MISS -> 链式哈希断, 之后的块必 miss
 +                logger.info(
-+                    f"[KVC][L3]   第 {len(computed_blocks[0]) + 1} 块 MISS: "
++                    f"[KVC][L3] 前缀查找   第 {len(computed_blocks[0]) + 1} 块 MISS: "
 +                    f"BlockHash={block_hash.hex()[:12]} -> break"
 +                )
                  break
@@ -120,7 +120,7 @@ index 478effcd74..de274dcb26 100644
                  computed.pop()
 +        # [KVC][L3] 前缀查找(第3层)返回
 +        logger.info(
-+            f"[KVC][L3] FullAttentionManager.find_longest_cache_hit 返回: "
++            f"[KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit 返回: "
 +            f"computed_blocks={[[b.block_id for b in g] for g in computed_blocks]}"
 +        )
          return computed_blocks

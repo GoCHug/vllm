@@ -1,265 +1,175 @@
 # KVC 打印 patch 讲解（为什么这么加、每处加在哪、想验证什么）
 
-> 本目录 9 个 patch 覆盖实操中加的全部 79 处 `[KVC]` 打印（grep 计数 141 行，含注释行）：8 个在 vllm 包（`/vllm-workspace/vllm`），1 个在 vllm-ascend 包（`/vllm-workspace/vllm-ascend`）。在上一版 40 处基础上升级了三级横幅（初始化/阶段/分配）、S1~S4 子步标记、L3 初始化打印与 shared_by 单层显示修复。
-> 对照阅读：理论文档 `../0_kv_cache_management_arch.md`（五层架构）、`../0_kvcache_management_of_type.md`（9 个类型）、`../0_runtime_sequence.md`（请求时序）；实操取证 `../docs/1_kvc_patch_apply_e2e_record.md`。
+> 本目录 9 个 patch 覆盖实操中加的全部 94 处 `[KVC]` 打印（grep 计数 167 行，含注释行）：8 个在 vllm 包（`/vllm-workspace/vllm`），1 个在 vllm-ascend 包（`/vllm-workspace/vllm-ascend`）。历经 8 次迭代：① 三级横幅 + S1~S4 子步 + L3 init；② KVP 释放前物理校验；③ num_scheduled_tokens/kv_caches 双形态适配；④ 无块精简 + KVP 三段式(shape+tensor)；⑤ 横幅对常驻 + S2 无前缀描述 + KVP 按标签文案；⑥ S1~S4 全子步无条件 + 阶段前缀 + S3 横幅先行；⑦ S1 横幅上移 + 调度提交包裹 + PF 全删 + KVP 逐层按块；⑧ **本轮（第七轮记录）：S1 子步横幅上移至外层探问前 + KVP 每层一行与 KV 布局一次性说明**。
+> 对照阅读：理论文档 `../0_kv_cache_management_arch.md`、`../0_kvcache_management_of_type.md`、`../0_runtime_sequence.md`；实操取证 `../docs/1_kvc_patch_apply_e2e_record.md`。
 
 ---
 
 ## 0. 快速使用
 
 ```bash
-# 一键应用/回滚（推荐；含 dry-run 预检 + [KVC] 计数 + py_compile 验证）
-# 默认仓库路径为本地 Mac 路径; 容器内执行显式传 env:
+# 一键应用/回滚（推荐；含 dry-run 预检 + [KVC] 计数 167 + py_compile 验证）
 VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./apply_patches.sh
-VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./revert_patches.sh   # patch -R 反向应用, 不依赖 .orig 备份
+VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./revert_patches.sh
 
-# 手动逐个（也可用 git apply）
-cd /vllm-workspace/vllm        && patch -p1 < 01_vllm_v1_request.py.patch   # 01~08 逐个
-cd /vllm-workspace/vllm-ascend && patch -p1 < 09_vllm_ascend_worker_model_runner_v1.py.patch
-
-# 看打印（每行自动带: INFO 时间戳 [文件名:行号] [KVC][层] 消息; 三级横幅肉眼分段）
-grep '\[KVC\]' log/llama.log
+# 看打印(阶段前缀即导航)
+grep '\[KVC\]' log/llama.log                         # 全部 [KVC]
+grep '======== ' log/kvc_p.log log/kvc_r5.log       # 全部阶段横幅(分配/调度提交/释放, 始终成对)
+grep -- '--- S' log/kvc_r5.log                     # 子步横幅: S1 容量检查(先行)/新块分配/无需分配新块
+grep 'TERM L' log/kvc_r5.log                       # KVP 每层一行(块内联+层统计)
+grep 'KV 布局' log/kvc_p.log                       # 一次性 KV 布局说明(张量级拆分)
+grep '调度提交' log/kvc_r5.log                      # async 每步输出后的独立提交段
 ```
 
-| patch | 文件 | 层 | 行号（补丁后，=log 实测；`★`=本轮升级新增） |
+| patch | 文件 | 层 | 本轮变化 |
 |---|---|---|---|
-| 01 | `vllm/v1/request.py` | ENQ | 184(★入队横幅)/187/193(★横幅完成) |
-| 02 | `vllm/v1/core/kv_cache_utils.py` | ENQ+L2 | 217/258/340/366/396/617 |
-| 03 | `vllm/v1/core/block_pool.py` | L2 | 70/77/84/108/118/209/242/249/291/340/411/458/491/516 |
-| 04 | `vllm/v1/core/kv_cache_manager.py` | L5 | 143(★)/178/186(★)/222(★)/229/249/265/270(★)/367(★)/369/439(★)/441/448/459(★)/461/478(★)/480/499(★)/504/508/513(★)/525(★)/527 |
-| 05 | `vllm/v1/core/kv_cache_coordinator.py` | L4 | 188/220/261/284/299/302(★)/462/477/495 |
-| 06 | `vllm/v1/core/single_type_kv_cache_manager.py` | L3 | 95(★)/243/303/357/405/586/599/607/623 |
-| 07 | `vllm/v1/engine/core.py` | CFG | 265(★)/267/280/285/290/294/300/317/322(★) |
-| 08 | `vllm/v1/worker/gpu_model_runner.py` | L1 | 7018/7148（**NPU 不触发**） |
-| 09 | `vllm_ascend/worker/model_runner_v1.py` | L1 | 4097(★)/4259/4697/4748(★)（**NPU 实际路径**） |
+| 01 | `vllm/v1/request.py` | ENQ | 未改 |
+| 02 | `v1/core/kv_cache_utils.py` | ENQ+L2 | 未改（前缀沿用） |
+| 03 | `v1/core/block_pool.py` | L2 | 未改（前缀沿用） |
+| 04 | `v1/core/kv_cache_manager.py` | L5 | **一处移位**（详 §2）：`--- S1: 容量检查---` 上移至 full-fit 预检前（55→**56** 行，调用点 32 不变） |
+| 05 | `v1/core/kv_cache_coordinator.py` | L4 | 未改 |
+| 06 | `v1/core/single_type_kv_cache_manager.py` | L3 | 未改 |
+| 07 | `v1/engine/core.py` | CFG | 未改（启动期） |
+| 08 | `v1/worker/gpu_model_runner.py` | L1 | 未改（NPU 不触发） |
+| 09 | `vllm_ascend/worker/model_runner_v1.py` | L1+KVP | **KVP 每层一行重构**（详 §3）：概览含 KV 布局一次性说明；逐层单行内联全部块 + K/V 首 3 值示意 + 层合并统计（15 行/9 点不变） |
 
-`★` 计 19 处：三级横幅 15（初始化 6：CFG 2 + L1 2 + L5 2；请求阶段 5：入队 2 + 前缀查找 2 + 释放 1；分配 2 对中 4 条横幅计入；另有 L4 释放完成 1）+ S1~S4 子步标记 4。
-
----
-
-## 1. 设计总纲：打印点怎么选的
-
-### 1.1 两条主线决定选点
-
-1. **静态装配线（启动一次）**：配置侧 4 类型（`KVCacheSpec → KVCacheGroupSpec → KVCacheTensor → KVCacheConfig`）→ 物理侧张量申请/reshape → 逻辑侧三大件装配（`BlockPool/FreeKVCacheBlockQueue/BlockHashToBlockMap` → managers → coordinator → KVCacheManager）。每个类型落地处打一次"装配快照"。**本轮为三个装配阶段各加开始/完成横幅，日志肉眼可分段。**
-2. **动态生命周期线（每请求）**：理论时序文档把一条请求拆为 **入队 → 前缀查找（只读）→ 分配 slots（S1~S4）→ GPU 执行 → decode 循环 → 释放（逆序）**。每个阶段的**入口、关键决策点、出口**各打一条——入口带参数、决策点带判定依据、出口带结果。**本轮为每个阶段补开始/结束横幅，并把 S1~S4 各挂一条 `--- 子步 ---` 标记**，这样日志读起来就是时序文档的逐行验证。
-
-### 1.2 标签体系
-
-所有打印统一 `[KVC]` 前缀 + 层标签，`grep '\[KVC\]'` 一网打尽，按标签过滤即得某一层视角：
-
-| 标签 | 位置 | 回答的问题 |
-|---|---|---|
-| `[CFG]` | engine/core.py | KV cache "应该长什么样"：多少块、每块多大、怎么分组、显存怎么来 |
-| `[ENQ]` | request.py + kv_cache_utils.py | 入队时算出了哪些哈希（前缀缓存的 key 是什么） |
-| `[L1]` | vllm-ascend model_runner_v1.py | 物理显存实际怎么申请、什么形状 |
-| `[L2]` | block_pool.py + kv_cache_utils.py | 每个块此刻归谁：分配/释放/命中/驱逐/入表 |
-| `[L3]` | single_type_kv_cache_manager.py | 前缀逐块查表的 HIT/MISS、每步分配计算 |
-| `[L4]` | kv_cache_coordinator.py | 单组直通：L5 的指令如何下发到 L3/L2 |
-| `[L5]` | kv_cache_manager.py | Scheduler 视角：S1~S4 决策链与最终 block_table |
-
-### 1.3 打印风格约定（为什么这么写）
-
-1. **79 处全部统一 `logger.info(...)`**：vllm logger 每行自动携带 `INFO 时间戳 [文件名:行号] [KVC][层] 消息`，日志免 grep 即可精确回溯源码行；worker 进程必须走 vllm logger（见 2），引擎进程亦统一走 logger 以获得稳定转发与行号定位。
-2. **worker 进程必须走 vllm logger**（L1，model_runner_v1.py）：worker 的裸 `print` **不会**进主日志（软硬件栈对子进程 stdout 的捕获差异），必须走 vllm logger 才带 `(Worker_PP0_TP0 pid=...)` 前缀转发。这是实操踩坑后改的——第一版 L1 用 print，一条都没打出来；第二版改 logger 才可见。
-3. **只打元数据，绝不碰显存/张量**：块列表打 `[block_id, ...]` 或 `[(block_id, ref_cnt), ...]`；哈希只打前 12 个 hex 字符（完整是 32 字节 bytes，比对足够且日志可读）；shape 打 `tuple(tensor.shape)` + dtype + device。打印本身零拷贝、零开销（相对推理）。
-
-4. **不改控制流**：唯一"重写"的是 7 处值捕获——`return X` → `_x = X; logger.info(...); return _x`，语义完全等价（完整清单见 §5 第 5 条）。横幅与子步标记同样只是插入 logger 调用，不触碰任何分支。
+> 行号=容器部署源码（=log 实测）；kv_cache_manager.py 两侧同号；model_runner_v1.py 分歧点(:3699)之下容器=本地-2。CLI 明细 `kvc_patch_locations.txt`。
+> 调用点分布：request 3 / utils 6 / block_pool 14 / manager **32** / coordinator 9 / single_type 9 / core 9 / gpu_model_runner 2 / model_runner_v1 **9** = **94**。
 
 ---
 
-## 2. 逐 patch 详解
+## 1. 设计总纲
 
-### 01 request.py — 入队：链式哈希的诞生点（ENQ）
+### 1.1 三条主线（第七轮形态）
 
-**位置**：`Request.__init__` 尾部，紧跟 `self.update_block_hashes()`；入队前（:184）与入队后（:193）各一条横幅，正文 :187。
+1. **静态装配线**：配置 → 物理张量 → 逻辑装配，三阶段 `================` 横幅（未改）。
+2. **动态生命周期线**：入队 → 前缀查找 → 分配（总横幅→进入→**S1 子步横幅先行**→外层探问×2→S1 汇总；S2/S3/S4 全子步、S3 横幅先行；调度提交独立包裹）→ 释放。
+3. **物理校验线（KVP）**：仅请求结束（TERM）/兜底（LATE）；**概览行含一次性 KV 布局说明 + 每层一行**（块内联 + K/V 首 3 值示意 + 层合并统计）。
 
-**为什么在这**：入队是 KVCache 生命周期第一步。构造函数尾部时点，`block_hashes` 刚算完、`prompt_token_ids/max_tokens` 齐备——**这是能一次性看到"这条请求带来了哪些缓存 key"的最早也最全的时刻**。理论文档 4.1：满块才有哈希（`N // block_size` 个）。
+### 1.2 横幅体系（第七轮最终形态）
 
-**实测样例**（P 请求，block_size=128，2026-09-27 轮）：
-```
-[KVC][ENQ] ======== 入队 ========
-[KVC][ENQ] hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=1b158fb27097
-[KVC][ENQ] hash_block_tokens: parent=1b158fb27097, tokens=128 -> BlockHash=a5323e08231a
-[KVC][ENQ] Request(...) 入队: num_prompt_tokens=324, max_tokens=1, 满块链式哈希 BlockHash × 2: ['1b158fb27097', 'a5323e08231a']
-[KVC][ENQ] ======== 入队完成 ========
-```
-→ 324 token 只产生 2 个满块哈希（尾 68 token 无哈希）；第 2 块父哈希=第 1 块结果，链式结构肉眼可见。
-
-### 02 kv_cache_utils.py — 两大补位：哈希函数本体 + 空闲队列原语（ENQ+L2）
-
-**加了两类点，因为它们分别在两个包里"无人打"的底层原语：**
-
-1. `hash_block_tokens`（哈希计算的**实现点**，:617）：打印 `(parent, tokens数) -> 结果`。01 在调用方打结果列表，02 在实现处打每一块的推导——**验证 H(bn)=fn(H(bn-1), tokens(bn)) 链式定义**，也验证首块用 `NONE_HASH` 种子。P/R 两请求此函数输出完全相同（前 256 token 一致 → 链一致），这就是 R 能命中的全部前提。
-2. `FreeKVCacheBlockQueue` 五个原语（:217 init / :258 popleft / :340 append / :366 prepend_n / :396 append_n）：空闲队列是理论文档 3.5 节"驱逐优先级"的全部载体。每个原语的打印对应一条结论：
-   - `init`：建队规模 + 伪头尾哨兵（block_id=-1）
-   - `popleft`：**队头弹出**=分配或 null 块摘取（开池第一条就是 null_block 的摘取）
-   - `append`（单块回队尾）/ `append_n`（批量回队尾，带哈希 LRU 保护）/ `prepend_n`（插队首，优先复用）
-   - 理论文档说"无哈希块 prepend 队首"——**实操正是靠这几条打印发现 0.23.0 的 FullAttentionManager.free 走的全部是 append_n**（P 的无哈希块 3、R 的无哈希块 6 都进了队尾），推翻了文档说法。这是加这组打印最大的收获。
-
-### 03 block_pool.py — 第 2 层全普查：块的一生所有状态迁移（L2）
-
-BlockPool 是唯一能回答"**此刻每个块归谁**"的组件，14 处打印覆盖块的所有状态迁移边：
-
-| 状态迁移 | 打印点 | 验证的理论论断 |
+| 层级 | 样式 | 语义 |
 |---|---|---|
-| 建池（KVCacheBlock×N + 队列 + 哈希表 + null 摘取） | `__init__` :209 | 配置侧 num_blocks 落地逻辑侧；块 0 开池即 null |
-| 哈希表查询 | `get_one_block` :70/:77/:84、`get_cached_block` :242/:249 | 前缀命中判定：任一 group miss 即整块 miss |
-| 满块入表 | `cache_full_blocks` :291(幂等早退)/:340(入表汇总) | 只有**写满**的块才入缓存（P 尾块 68/128 不入） |
-| 新块分配 | `get_new_blocks` :411 | popleft_n 从队头弹、ref_cnt 0→1 |
-| 复用前驱逐 | `_maybe_evict_cached_block` :458 | 弹哈希表条目 + reset_hash 后块才能复用 |
-| 命中共享 | `touch` :491 | ref_cnt++ 并 O(1) 摘出空闲队列（零拷贝共享的实现点） |
-| 归还 | `free_blocks` :516 | 逆序归还、ref_cnt-- **归零才回收**、prepend/append 语义 |
+| L1 | `================ 一 =================` | 一次性装配 |
+| L2 | `======== 阶段 ========` | 入队 / 前缀查找 / **分配 S1~S4（自进入后即开始）** / 调度提交(非分配 S4) / 释放 |
+| L3 | `--- S1~S4 ---` | 分配子步横幅——**S1 先行于外层探问**、S3 先行于新块分配、双态文案（新块/无需） |
+| L4 | `[KVC][KVP] ======== 结束期文案 ========` | TERM（请求结束即将释放）/ LATE（兜底补打），内含概览 + 每层一行 |
 
-另外 `BlockHashToBlockMap.insert/pop`（:108/:118）：验证**入表不去重**（保证 block_table append-only）和驱逐时条目弹出。
+### 1.3 风格约定
 
-**为什么把 `get_cached_block` 的 HIT/MISS 打在返回前而不是循环里**：循环里每个 group 打一条太啰嗦；MISS 早退点打一条、全部命中后汇总打一条，一眼看出"断在第几块"。
-
-### 04 kv_cache_manager.py — 第 5 层门面：Scheduler 的完整决策链（L5，升级最多）
-
-**为什么重点是 `allocate_slots` 的 S1~S4**：理论文档 4.2.2 把分配拆成 S1 容量检查、S2 touch 命中块、S3 分配新块、S4 缓存满块——**prefill 和 decode 走的是同一个入口同一套四步**，这是 V1 "统一骨架" 论断的核心。本轮每一步前挂 `--- 子步标记 ---`，分配整体再加 `-------- 分配 S1~S4 --------` / `-------- 分配完成 --------` 一对横幅：
-
-- 逻辑侧初始化首尾横幅（:143/:186）：装配过程一眼分段
-- 前缀查找首尾横幅（:222/:270）+ 查找三看点（:229 跳过分支 / :249 命中结果 / :265 返回 KVCacheBlocks）：`hit_length=256` = 2 块 × 128，`max_cache_hit_length=485`（= num_tokens−1，"全命中也要重算最后一个 token"论断的实证）
-- 分配进入（:369）：`num_new_tokens/num_new_computed_tokens/request.num_computed_tokens`——区分 prefill（大 num_new_tokens）还是 decode（恒 1）
-- S1（:439 标记 / :441 容量检查 / :448 容量不足 return None 分支）：`需 X 块 vs 可用 Y 块`
-- S2（:459 标记 / :461 touch）：无命中时这步压根不进——P 轨迹全程无 S2 标记，R 借 P 种下的命中出现一次
-- S3（:478 标记 / :480 新块号列表）
-- S4+返回（:499 标记 / :504 缓存进度 / :508 **当前完整 block_table**——逻辑侧对物理侧的唯一接口，全流程的"结果"）
-- 释放首尾横幅（:525/:527）：释放前的 block_table 与 03 的归还明细呼应，构成释放闭环
-
-### 05 kv_cache_coordinator.py — 第 4 层：验证"单组直通"（L4）
-
-纯 Full Attention 只有一个 KV cache group，理论文档说协调器退化为**直通**（UnitaryKVCacheCoordinator → single_type_managers[0]）。加打印的目的不是看复杂逻辑，而是**实证这层确实是透传**：
-
-- `find_longest_cache_hit` 进入（:477）："下钻 single_type_managers[0]" + 返回（:495）`hit_length = 命中块数 × block_size`（乘法发生在这一层，理论文档 4.2.1 的公式落点）
-- S1~S4 各自的"逐组下放"（:188/:220/:261/:284）：N=1 时每个动作就一行，证明所有组的求和/分发对单组模型是平凡的
-- `free` 下放（:299）+ **释放完成横幅（:302，本轮新增）**：把释放阶段的收尾也框起来
-- `__init__`（:462）：把 spec 类型、page_size_bytes、coordinator_block_size 打出来——**block_size=128、page_size_bytes=262144 这两个关键数字第一次露面就在这**
-
-### 06 single_type_kv_cache_manager.py — 第 3 层：前缀查表的算法本体（L3）
-
-**`find_longest_cache_hit`（FullAttentionManager）是前缀缓存的算法核心**，:586/:599/:607/:623 四点打出算法的每一步：
-
-```
-入口: 最多查 (max_length // block_size) 个哈希
-循环: 第 N 块 HIT: hash=xxx -> cached blocks=[..]   ← 每块命中一行
-      第 N 块 MISS: hash=xxx -> break               ← 断链即止（链式哈希 miss 后必 miss 的论断）
-返回: computed_blocks=[[1, 2]]
-```
-
-其余四点对应"分配四步"在本层的实现细节，**加上本轮新增的初始化打印共 9 处**：
-- `__init__`（:95，本轮新增）：基类打印具体 manager 类型（FullAttentionManager）、spec 类型/block_size、group_id、缓存开关、dcp×pcp 与 block_pool 规模——补上启动链路里 L3 唯一的空档
-- `allocate_new_computed_blocks`（:243）：确认 touch 发生在这里（下钻 L2）
-- `allocate_new_blocks`（:303）：**纯算式** `需 4 块 − 已有 2 = 新分配 2 块`——把 cdiv 计算打的明明白白，R prefill "总 4 块、命中 2、补 2（1 满 1 尾）" 的账目就是这条
-- `cache_blocks`（:357）：`已缓存 0 块 → 满块数 2`（满块数 = num_tokens // block_size）
-- `free`（:405）：持有块列表（**逆序归还**的取出点）
-
-### 07 engine/core.py — 配置侧出口：4 类型一次打齐（CFG，含首尾横幅）
-
-**为什么打在 `_initialize_kv_caches` 而不是配置生成函数内部**：`get_kv_cache_configs` 是条长流水线（specs 合并→分组→逐 worker 算块数→对齐），在内部打既琐碎又容易漏；**在流水线的三个里程碑打结果快照**，字段全、一次成型；本轮在整段前后加横幅（:265/:322）：
-
-1. `determine_available_memory` 之后（:267）：各 worker profile 实测可用 KV 显存——"实际可用显存以实际跑为准"的数据源（51.98/51.99/51.94/1.95… GiB）
-2. `get_kv_cache_configs` 之后（:280/:285/:290/:294/:300）：逐 worker 打 **KVCacheConfig → KVCacheGroupSpec → KVCacheSpec(repr 全字段) → page_size_bytes → KVCacheTensor(size/shared_by)**——配置侧 4 个类型一屏打完，PP2TP2 切分（每 worker 16 层、num_kv_heads=4）也在 group 的 layer_names 里现形；KVCacheTensor 单层共享时直显层名（本轮修复 shared_by 输出：`(model.layers.0.self_attn.attn)`，不再有 "X .. X" 冗余）
-3. `generate_scheduler_kv_cache_config` 之后（:317）：**min 对齐后的最终 num_blocks**（本轮 13295）——这正是下发给逻辑侧 BlockPool 建池的数字，与 03 的 `BlockPool.__init__` 打印首尾呼应
-
-> 踩坑注记：此处曾用 `_t.offset` 打印 KVCacheTensor 的 packed 偏移字段，0.23.0 该类只有 `size/shared_by`（理论文档基于更新版本），AttributeError 直接把 EngineCore 打崩——所以 patch 里 KVCacheTensor 只打 size/shared_by，这正是"以容器实际代码为准"的教训。
-
-### 08 gpu_model_runner.py — vllm 原版物理侧（NPU 不触发，为何保留）
-
-按理论文档，物理侧 = 申请 int8 字节池（`_allocate_kv_cache_tensors`）+ reshape 成后端 shape（`_reshape_kv_cache_tensors`），于是先在 vllm 原版 GPUModelRunner 里加了这两点（:7018/:7148）。
-
-**实测一条也不出**——排查发现 NPU 上 worker 实际执行的是 vllm-ascend 重写版（见 09）。保留这个 patch 的理由：
-1. 在 GPU/CUDA 环境跑同版本 vllm 时它就是生效路径；
-2. 它是"理论文档描述的物理侧"的忠实实现样本，与 09 对照正好展示 **vllm-ascend 对物理层的重写差异**（单张合并布局 vs K/V 分离布局）。
-
-### 09 model_runner_v1.py — vllm-ascend 重写物理侧（NPU 真正的 L1，含首尾横幅）
-
-vllm-ascend 的 `NPUModelRunner` 重写了 `_allocate_kv_cache_tensors` / `_reshape_kv_cache_tensors`（**为支持 PD 分离，K、V 拆成两张独立的 int8 字节池，2M 对齐**）。本轮为整段加 `================` 开始（:4097）/完成（:4748）横幅：
-
-1. K/V 分配后（:4259）：`KVCacheTensor(size=3485204480 bytes = 3323.75MiB) -> K int8 1661.88MiB + V int8 1661.88MiB (alignment=2M)`——每层两池各半（本轮 num_blocks=13295，较上轮 13296 少 1 块的 profile 波动，张量同步变小）
-2. reshape 装配点（:4697，仅首层，16 层同形）：`K_cache shape=(13295,128,4,128) / V_cache shape=(13295,128,4,128) bf16`
-
-**为什么值得单独成 patch**：这组打印揭示了与理论文档最大的一处布局差异——**K/V 分离、维序 (num_blocks, block_size, num_kv_heads, head_dim)**（理论上文档是单张 `(num_blocks, num_kv_heads, block_size, 2*head_dim)`）；同一 block_id 在 K/V 两张张量中索引同一行，"`block_id == 张量行号`"的桥接约定在 NPU 上依然成立。
-
-> 顺带成为 vllm/vllm-ascend 双源码结构的实证：改 vllm 必须搞清哪个组件被平台插件覆盖，否则补丁会"静默失效"。
+- 94 处统一 `logger.info(...)`；worker 进程走 vllm logger；整体 try/except 兜底。
+- 控制流零改动：本轮 S1 子步横幅移位是打印位置调整；KVP 重构只改输出组织（层合并统计代替块级统计）。
 
 ---
 
-## 3. 打印点 ↔ 理论论断映射表（拿日志对答案）
+## 2. 逐 patch 详解（04 与 09 为本轮核心）
 
-| 理论论断（文档出处） | 验证打印层 | 实测结论 |
+### 04 kv_cache_manager.py（S1 子步横幅上移）
+
+```
+(方法装配后第一打印区)
+:393  ======== 分配 S1~S4 ========         总横幅(不变)
+:395  分配 KVCacheManager.allocate_slots 进入
+:402  --- S1: 容量检查---                   ← 第七轮上移: 两次外层容量探问之前
+(执行) full-fit 预检: coordinator.get_num_blocks_to_allocate(...)  → L4 S1 下钻 #1 (:188)
+(执行) remove_skipped_blocks
+(执行) 主容量探问: coordinator.get_num_blocks_to_allocate(...)    → L4 S1 下钻 #2 (:188)
+:447  S1 get_num_blocks_to_allocate: 需分配 {n} 块 vs 可用 {m} 块   ← 汇总值收尾(原 :445, +2)
+其后 S2(:467/:469/:481) S3(:485/:487/:496/:501) S4(:523/:529) 返回(:533) 完成(:539) —— 统一 +2, 结构不变
+```
+
+修复前（第六轮）：`--- S1: 容量检查---` 在两次探问**之后**打——探问下钻游离在子步横幅外（用户"S1: 容量检查顺序不对"所指）；修复后 S1 段完整自洽：**子步横幅 → 探问下钻×2 → 汇总值**。
+
+### 09 model_runner_v1.py — KVP 每层一行（第七轮重构）
+
+**输出格式**（`_kvc_kv_dump`，:2518~:2570）：
+
+```
+:2518  ======== 请求结束 KVCache 即将释放, 开始打印该请求物理 cache ========   (TERM; LATE 另一组)
+:2520  TERM req=... dev=npu:x 逐层按块: layers=16 blocks=[...] region=x/y tok | KV 布局: K_cache 与 V_cache
+       是两个独立张量池(张量级拆分, 不是最后一维拼接); 每块每层 K=V=shape(bsz=128, kv_heads=4, head_dim=128),
+       第1维=token 槽位(满块=128, 未满块=有效cov), 第2维=kv_heads(8/TP2), 最后一维=head_dim
+:2563  TERM L?? blk=N[满:128](128,4,128) blk=...[未满:8](8,4,128) | K示(首块首token前3)=[...] 统计[n] mean/std/min/max | V示(首块首token前3)=[...] 统计[n] ...
+       (每层 1 行 × 16 层; n = Σ(cov) × kv_heads × head_dim)
+:2570  ======== 请求结束, 物理 cache 打印完毕 ========
+```
+
+关键设计：
+- **块内联**：一层所有块以 `blk=N[满:bsz|未满:cov](cov,kv_heads,head_dim)` 一行罗列（未满块 shape 直接切到 cov）。
+- **层合并统计**：该层全部有效块的 K（或 V）cat 后统计，`n` 可交叉验证（P=165888=324×512、R=266240=520×512）。
+- **简单示意**：每层仅打首块首 token 的前 3 值（K 示/V 示）——兼顾"看得见真实数值"与"一行读完"。
+- **KV 布局说明**（一次）：正面回答"最后一维拆 kv"——实际是**张量级拆分**（K_cache/V_cache 两个独立池），不是最后一维拼接；逐维含义给出。
+
+---
+
+## 3. 打印点 ↔ 理论论断映射表
+
+| 理论论断 | 验证打印层 | 实测结论 |
 |---|---|---|
-| 相同前缀 → 相同哈希链（类型篇 §1.3） | ENQ hash_block_tokens | P/R 前 2 块哈希逐字节一致 ✓ |
-| 满块才有哈希（时序 4.1） | ENQ Request 入队 | 324 token → 2 哈希；486 → 3 ✓ |
-| 前缀查找"遇 miss 即断"（时序 4.2.1） | L3 第 N 块 MISS -> break | P 首块 breaking ✓ |
-| hit_length = 命中块数 × block_size（时序 4.2.1） | L4 返回 | 2 × 128 = 256 ✓ |
-| max_cache_hit_length = N−1（时序 4.2.1） | L5 get_computed_blocks | 486−1=485 ✓ |
-| touch：ref_cnt++ 摘出队列零拷贝共享（架构 4.2） | L2 touch | [(1,1),(2,1)] ✓ |
-| 分配 = cdiv(num_tokens, block_size)−已有（时序 S3） | L3 allocate_new_blocks | 需 4−已有 2=新 2 ✓ |
-| 新满块才入哈希表（架构 4.2） | L2 insert/cache_full_blocks | P 尾块 68/128 不入表 ✓ |
-| decode 每步 0/1 块（时序 4.4） | L5 S1 | 步 1~26 "需 0 块"、步 27 "需 1 块" ✓ |
-| 当步填满的块入缓存（时序 4.4） | L2 块 5 insert（decode 步 27） | map size 3→4 ✓ |
-| 逆序释放、归零才回收（时序 4.5） | L2 free_blocks | [6,5,4,2,1] 全归零 ✓ |
-| 无哈希块 prepend 队首优先复用（时序 4.5） | L2 append_n vs prepend_n | **实测全部 append_n，论断不成立于 0.23.0** ✗ |
-| 物理侧单张 (num_blocks, kv_heads, block, 2*head)（类型篇 1.4） | L1 reshape | **NPU 为 K/V 分离两张 (13295,128,4,128)** ✗ |
-| block_id == 张量行号（架构 3.2） | L1 shape 第 0 维 | 13295 行 = num_blocks ✓ |
+| 相同前缀 → 相同哈希链 | `入队 hash_block_tokens` | P/R 前 2 块一致 ✓ |
+| 前缀"遇 miss 即断" | `前缀查找 ... 第 N 块 MISS` | R 第 3 块 break ✓ |
+| S2 touch 仅在前缀命中时 | S2 touch / S2 无前缀 | R=1 touch + 34 无前缀 ✓ |
+| touch 零拷贝 | `S2 BlockPool.touch` | [(1,1),(2,1)] ✓ |
+| **S1 段自洽** | **:402 子步横幅 → 探问×2 → :447 汇总** | 顺序修复 ✓ |
+| S1 三型值 | 汇总值分布 | R：33×0 + 1×1 + 1×4 ✓ |
+| 无块步全子步可观测 | S1 需分配 0 / S3 无需 / S4 维护 | 每步闭合 ✓ |
+| async 每步提交独立于分配 S4 | `调度提交(非分配 S4)` 包裹 | R=35 次每步一条 ✓ |
+| KVP 仅结束期打印 | PF 计数 | 0 ✓ |
+| **K/V 为张量级拆分** | 概览布局说明 + 层统计 | n=region×kv_heads×head_dim 精确闭合（165888/266240）✓ |
+| **每层一行可读性** | `TERM L??` 层行 | P=R=64 条固定（4 卡 × 16 层）✓ |
+| 未满块有效行 | `blk=N[未满:cov](cov,4,128)` | blk=6 → (8,4,128) ✓ |
+| block_id == 张量行号 | L1 + 层行内联 | 直接索引 ✓ |
+| 逆序释放归零回收 | `释放 free_blocks / append_n` | [6,5,4,2,1] ✓ |
 
-## 4. 一次 P→R 用例的打印时序速查（对照找行）
+---
 
-以实操用例（P=324 token / R=486 in + 35 out，block_size=128，2026-09-27 实测；哈希为本轮种子）按出现顺序：
+## 4. P→R 用例时序速查（2026-09-28；哈希链 dc1b17e68cb7→0cd9eb7d9f2e→aee282abd7e4→9430724f6da3）
 
 ```
-P:  [ENQ] ======== 入队 ========
-    [ENQ] hash_block_tokens ×2 (NONE_HASH→1b158fb27097→a5323e08231a)               ← 链式哈希生成
-    [ENQ] Request 入队: BlockHash × 2 → [ENQ] ======== 入队完成 ========
-    [L5] ======== 前缀查找 ======== → [L4][L3] find 进入 → [L2] MISS → [L3] 第 1 块 MISS break
-    [L4][L5] 返回 hit_length=0 → [L5] ======== 前缀查找完成 ========
-    [L5] -------- 分配 S1~S4 -------- → [L5] allocate_slots 进入 → [L4] 需 3 块 ×2
-    [L5] --- S1: 容量检查--- → S1 3 vs 可用 13294
-    [L2] get_new_blocks(3) -> [1,2,3]                 ← ref_cnt 0→1
-    [L3] 新分配 3 块 → [L5] --- S3: 新块分配 --- → S3 新块 [1,2,3]
-    [L5] --- S4: 满块入缓存 --- → [L3] cache_blocks 0→2 → [L2] insert 块1(1b158fb27097)、块2(a5323e08231a) → [L2] 满块入表
-    [L5] S4 + 返回 block_table=([1,2,3],) → [L5] -------- 分配完成 --------
-    [L5] ======== 释放 ======== → [L3] 持有 [1,2,3] → [L2] free_blocks [(3,0),(2,0),(1,0)] → append_n [3,2,1]
-    → [L4] ======== 释放完成 ========
-R:  [ENQ] ======== 入队 ======== → hash ×3（前 2 与 P 同链，第 3 = 0dc651ebed07）→ ======== 入队完成 ========
-    [L2] get_one_block HIT 块1 → [L3] 第 1 块 HIT
-    [L2] get_one_block HIT 块2 → [L3] 第 2 块 HIT
-    [L2] 第 3 hash MISS → [L3] 第 3 块 MISS break → [L4] 返回 hit_length=256 → [L5] get_computed_blocks (486, [1,2], 256)
-    [L5] -------- 分配 S1~S4 -------- → allocate_slots 进入 (num_new_tokens=230)
-    [L4] 需 4 块 → [L5] --- S1: 容量检查--- → S1 4 vs 可用 13294
-    [L5] --- S2: touch 命中块 --- → [[1,2]] → [L3] touch 命中块 [1,2] → [L2] touch [(1,1),(2,1)]
-    [L2] get_new_blocks(2) -> [4,5] → [L3] 需4−已有2=新2 [4,5] → req_blocks=[1,2,4,5]
-    [L5] --- S3: 新块分配 --- → 新块 [4,5] → [L5] --- S4: 满块入缓存 --- → block_table=([1,2,4,5],) → -------- 分配完成 --------
-    [L2] insert 块4(0dc651ebed07, map 2→3)
-    decode 步1~26: [L5] -------- 分配 S1~S4 -------- (num_new_tokens=1) → --- S1 --- 需 0 → --- S3 --- 新块 [] → --- S4 --- → -------- 分配完成 --------（尾块 102→128）
-    decode 步27:  [L4] 需 1 块 (num_tokens=513) → [L2] get_new_blocks(1) -> [6]
-                  [L2] insert 块5 hash=1a4a87d90103 (map size=4)  ← 步26填满 步27入表+跨界
-    decode 步28~34: S1 需 0（块6 占 8/128 不满）
-    [L5] ======== 释放 ======== → block_table=([1,2,4,5,6],) → [L2] free_blocks [(6,0),(5,0),(4,0),(2,0),(1,0)] → append_n [6,5,4,2,1]
-    → [L4] ======== 释放完成 ========
+P(124 行): 入队 hash×2 → 前缀查找 MISS → [分配: :393 总横幅/:395 进入/:402 S1 子步横幅/探问×2/S1 3vs13294/
+          S2 无前缀/S3 新块[1,2,3]/S4 insert ×2]
+          → KVP TERM ×4卡(概览含 KV 布局 + 每层一行 16×4=64, 层统计 n=165888)
+          → 调度提交 ×1 → 释放 [3,2,1]
+R(752 行): 入队 hash×3 → 前缀查找 HIT1,2/MISS3(hit 256)
+          → prefill: S2 touch[(1,1),(2,1)] / [S1 4vs13294 / S3 新块[4,5] / S4 insert aee2...<-4]
+          → decode 26 步: 每步 [分配无块步闭合] + [调度提交] (S1 汇总 需分配 0)
+          → 步 27 跨界: S1 1vs13290 / S3 新块[6] / S4 insert 9430...<-5
+          → 步 28~34: 无块步 + 调度提交 (共 35 次提交)
+          → KVP TERM ×4卡(每层一行 64 条, 层统计 n=266240; blk=6[未满:8](8,4,128))
+          → 释放 [6,5,4,2,1] → append_n 队尾 free=13294
 ```
 
-## 5. 附：与 patch 形态相关的踩坑记录
+**计数自检**：`调度提交` P=1/R=35；KVP 层行 P=R=**64**；S1 汇总值 R = 33×0 + 1×1 + 1×4；层统计 n(P)=165888、n(R)=266240。
 
-1. **`_t.offset` 崩溃**：理论文档的 KVCacheTensor 带 packed 布局字段，0.23.0 没有——见 07。教训：**锚点字段先 grep 实际代码再引**。
-2. **worker 裸 print 静默丢失**：L1 第一版 print 一条不见 → vllm-ascend 路径 + logger 转发两个问题叠加，9 号 patch 由 print+错文件 演进为 logger+重写文件。
-3. **`model_runner_v1.py.orig.bak` 备份时机**：初次备份晚于打补丁（备成了补丁版），09 patch 一度为空；后验证 vllm-ascend 仓库 HEAD 即原始码、git diff 仅含纯插入后，改用 `git diff` 生成标准 patch，并用 `git show HEAD:` 恢复真原件。
-4. **等价重写的 return**：`return create_kv_cache_blocks(x)` → 先赋值、打印、再 return——本目录所有此类改动均语义等价，可放心用于生产观察。
-5. **批量 print→logger 转换正则误伤**（2026-09-23 修复）：转换脚本对整个文件执行 `re.sub(r',(\s*\n\s*\))', r'\1')`（本意只清理 flush=True 删除后的尾逗号），把全文件所有函数调用/参数列表的**尾逗号**全部误删——数百行纯格式改动混进 patch。修复：以 `git show HEAD:` 干净源码为底做 diff 对齐重建，非 [KVC] 区域 100% 还原——发现并保住了两处正则额外咬伤的值捕获行（`hash_block_tokens` 的 `return BlockHash(` 与 coordinator 的 `return tuple(`）。现 9 个 patch = logger.info 打印插入 + logger 导入 + 全部 7 处值捕获重写（`02 _block_hash`、`03 _b`、`04 _computed_kv_blocks`/`_res_kv_blocks`、`05 _res_blocks`/`_hit_len`、`08 _kv_cache`），无任何其他源码改动。
+---
 
-## 6. 端到端应用实测记录（2026-09-27）
+## 5. 踩坑记录
 
-9 个 patch 在 gggtest 容器（vllm 0.23.0 干净基线，pod 当日从 Stopped 重新拉起，`git checkout` 还原）上完成完整"还原 → 应用 → 启动 → P/R 运行"验证，全部通过：
+1. `_t.offset` 崩溃：只打 size/shared_by。
+2. worker 裸 print 静默：走 vllm logger。
+3. 备份时机：git diff 生成标准 patch。
+4. 等价 return：7 处值捕获语义等价。
+5. 正则误伤尾逗号：git diff 对齐重建。
+6. 异步 num_scheduled_tokens 是 list：input_batch.req_ids zip。
+7. 运行时 kv_caches 是 list：enumerate 迭代。
+8. KVP "请求结束"文案误引（PF 时）：文案必须与标签严格对应。
+9. 值捕获型日志顺序陷阱：横幅必须先行（S3 修复的推广，本轮 S1 同治）。
+10. `cd X && cmd &` 后台化整链：远程等待循环用绝对路径。
+11. 同一路径多调用方的阶段归属：给共用 API 打印加语境前先 grep 全部调用方（调度提交文案教训）。
+12. revert 脚本对"被替换的补丁"失效：补丁文件演进时改用 git checkout 还原。
+13. pod 平台回收连锁：`itask start` + `ssh-keygen -R` 清 host key + 持久卷日志保留 + 可写层自动还原。
+14. scp 错误被 `>/dev/null 2>&1` 吞掉：同步命令保留错误输出并校验关键行数。
+15. **子步横幅与外层下钻的从属关系**（本轮）：凡是给某子步 S# 划定边界的横幅，必须考虑该子步的全部下钻（含方法外部先行的探问调用）——横幅位置以"最早出现的下钻日志"为界，上移到它之前。
+
+---
+
+## 6. 端到端应用实测记录（2026-09-28 第七轮）
 
 | 验证点 | 结果 |
 |---|---|
-| 应用 | `apply_patches.sh`（容器内传 `VLLM_DIR`/`VLLM_ASCEND_DIR`）：dry-run 9/9 预检 → 9/9 应用 → 逐文件计数合计 **141 行** `[KVC]`（request 5 / utils 12 / block_pool 27 / manager 37 / coordinator 17 / single_type 18 / core 13 / gpu_model_runner 4 / model_runner_v1 8，含注释行 = 79 个打印调用点）+ py_compile OK |
-| hunk 纯净性 | 9 patch 共 **56 hunk** 全部含打印行；删除行恰好 **7 处值捕获重写**（§5 第 5 条清单），零其他源码改动 |
-| 本地往返 | git 还原 → apply 9/9 → 141 行 + py_compile OK → `revert_patches.sh` 反向应用后 `[KVC]` 全归零 + git status 干净 → 再 apply 可复现 |
-| 启动运行 | 启动期 **168 行** `[KVC]`（CFG 84 含首尾横幅 / L1 76 含首尾横幅 / 逻辑侧 8 = 横幅 2 + L2 3 + L3 1 + L4 1 + L5 1）；P 轨迹 **44 行**、R 轨迹 **537 行**（S1×35 / S2×1 / S3×35 / S4×35 / 分配横幅对×35），R 五块生命周期（复用 1,2 + prefill 4,5 + decode 填满块5 并跨界申请块6）完整走通，completion_tokens=35 / finish=length |
-
-日志行号实证（本轮实测出现过的全部打印点）：`[request.py:184/187/193]`、`[kv_cache_utils.py:217/258/396/617]`、`[block_pool.py:70/84/108/209/242/249/340/411/491/516]`、`[single_type_kv_cache_manager.py:95/243/303/357/405/586/599/607/623]`、`[kv_cache_coordinator.py:188/220/261/284/299/302/462/477/495]`、`[kv_cache_manager.py:143/178/186/222/249/265/270/367/369/439/441/459/461/478/480/499/504/508/513/525/527]`。
-
-完整日志与逐段解读见 `../docs/1_kvc_patch_apply_e2e_record.md`。本节可作为 patch 文件正确性的直接证据。
+| 本地回环 | stash→干净→apply：9/9、167 行全 ok、py_compile ✓；恢复编辑态（56/15 计数一致） |
+| 容器应用 | 9/9 applied，逐文件 (5 12 27 **56** 17 18 13 4)+**15** 全 ok，总 167，py_compile OK |
+| 轨迹 | 启动 168 / P 124 / R **752**；llama.log 1273 行（:389/:518 分界） |
+| 新格式命中 | S1 子步横幅先行 ✓（:393 → :395 → **:402** → :407/:434 探问 → :447 汇总）；KVP 每层一行 ✓（层行 P=R=64 固定，`blk=6[未满:8](8,4,128)` 切片、层统计 n=266240=520×512 精确）；概览 KV 布局说明 ✓（"张量级拆分, 不是最后一维拼接"） |
+| 响应 | P=1 token "为了" / R=35 tokens，均 finish=length |
+| 容器回收 | 杀服务（0 进程）+ 9/9 revert（[KVC] 归零 + py_compile）→ 两仓库 git 0 改动、.orig 清理 |

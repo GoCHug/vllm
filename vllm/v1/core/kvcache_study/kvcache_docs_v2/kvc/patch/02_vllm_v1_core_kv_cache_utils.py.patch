@@ -1,5 +1,5 @@
 diff --git a/vllm/v1/core/kv_cache_utils.py b/vllm/v1/core/kv_cache_utils.py
-index 107a89cc6b..fe72cf7d32 100644
+index 107a89cc6b..17ec6bf686 100644
 --- a/vllm/v1/core/kv_cache_utils.py
 +++ b/vllm/v1/core/kv_cache_utils.py
 @@ -213,6 +213,11 @@ class FreeKVCacheBlockQueue:
@@ -32,7 +32,7 @@ index 107a89cc6b..fe72cf7d32 100644
          self.num_free_blocks += 1
 +        # [KVC][L2] 单块归还队尾
 +        logger.info(
-+            f"[KVC][L2] FreeKVCacheBlockQueue.append(block_id={block.block_id}), "
++            f"[KVC][L2] 释放 FreeKVCacheBlockQueue.append(block_id={block.block_id}), "
 +            f"num_free_blocks={self.num_free_blocks}"
 +        )
  
@@ -44,7 +44,7 @@ index 107a89cc6b..fe72cf7d32 100644
          self.num_free_blocks += len(blocks)
 +        # [KVC][L2] 批量插队头(无哈希块优先复用)
 +        logger.info(
-+            f"[KVC][L2] FreeKVCacheBlockQueue.prepend_n(blocks={[b.block_id for b in blocks]}), "
++            f"[KVC][L2] 释放 FreeKVCacheBlockQueue.prepend_n(blocks={[b.block_id for b in blocks]}), "
 +            f"num_free_blocks={self.num_free_blocks}"
 +        )
  
@@ -56,7 +56,7 @@ index 107a89cc6b..fe72cf7d32 100644
          self.num_free_blocks += len(blocks)
 +        # [KVC][L2] 批量归还队尾(带哈希块LRU保护)
 +        logger.info(
-+            f"[KVC][L2] FreeKVCacheBlockQueue.append_n(blocks={[b.block_id for b in blocks]}), "
++            f"[KVC][L2] 释放 FreeKVCacheBlockQueue.append_n(blocks={[b.block_id for b in blocks]}), "
 +            f"num_free_blocks={self.num_free_blocks}"
 +        )
  
@@ -72,7 +72,7 @@ index 107a89cc6b..fe72cf7d32 100644
      )
 +    # [KVC][ENQ] 链式哈希: H(bn) = fn(H(bn-1), tokens(bn)); 首块 parent=NONE_HASH
 +    logger.info(
-+        f"[KVC][ENQ] hash_block_tokens: parent="
++        f"[KVC][ENQ] 入队 hash_block_tokens: parent="
 +        f"{'NONE_HASH' if parent_block_hash == NONE_HASH else parent_block_hash.hex()[:12]}, "
 +        f"tokens={len(curr_block_token_ids_tuple)} -> BlockHash={_block_hash.hex()[:12]}"
 +    )

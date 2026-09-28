@@ -1,5 +1,5 @@
 diff --git a/vllm/v1/core/kv_cache_coordinator.py b/vllm/v1/core/kv_cache_coordinator.py
-index 89b1e84a44..ed6e31a80d 100644
+index 89b1e84a44..c3e56b3e44 100644
 --- a/vllm/v1/core/kv_cache_coordinator.py
 +++ b/vllm/v1/core/kv_cache_coordinator.py
 @@ -25,6 +25,9 @@ from vllm.v1.kv_cache_interface import (
@@ -18,7 +18,7 @@ index 89b1e84a44..ed6e31a80d 100644
                  )
 +        # [KVC][L4] S1 各组所需新块数求和
 +        logger.info(
-+            f"[KVC][L4] KVCacheCoordinator.get_num_blocks_to_allocate: req={request_id}, "
++            f"[KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req={request_id}, "
 +            f"num_tokens={num_tokens} -> 需分配 {num_blocks_to_allocate} 块(含touch需腾挪的块)"
 +        )
          return num_blocks_to_allocate
@@ -30,7 +30,7 @@ index 89b1e84a44..ed6e31a80d 100644
              )
 +            # [KVC][L4] S2 逐组下放: touch 命中块
 +            logger.info(
-+                f"[KVC][L4] KVCacheCoordinator.allocate_new_computed_blocks: req={request_id}, "
++                f"[KVC][L4] S2 KVCacheCoordinator.allocate_new_computed_blocks: req={request_id}, "
 +                f"group={i}, new_computed_blocks={[b.block_id for b in new_computed_blocks[i]]}, "
 +                f"num_local_computed_tokens={num_local_computed_tokens}"
 +            )
@@ -52,7 +52,7 @@ index 89b1e84a44..ed6e31a80d 100644
          )
 +        # [KVC][L4] S3 逐组下放: 为待计算 token 分配新块
 +        logger.info(
-+            f"[KVC][L4] KVCacheCoordinator.allocate_new_blocks: req={request_id}, "
++            f"[KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req={request_id}, "
 +            f"num_tokens={num_tokens} -> {[[b.block_id for b in g] for g in _res_blocks]}"
 +        )
 +        return _res_blocks
@@ -65,7 +65,7 @@ index 89b1e84a44..ed6e31a80d 100644
              )
 +        # [KVC][L4] S4 缓存满块: 逐组下放 cache_blocks
 +        logger.info(
-+            f"[KVC][L4] KVCacheCoordinator.cache_blocks: req={request.request_id}, "
++            f"[KVC][L4] S4 KVCacheCoordinator.cache_blocks: req={request.request_id}, "
 +            f"num_computed_tokens={num_computed_tokens}"
 +        )
  
@@ -77,7 +77,7 @@ index 89b1e84a44..ed6e31a80d 100644
              manager.free(request_id)
 +        # [KVC][L4] 释放: 逐组下放 free
 +        logger.info(
-+            f"[KVC][L4] KVCacheCoordinator.free: req={request_id} 已逐组下放第3层释放"
++            f"[KVC][L4] 释放 KVCacheCoordinator.free: req={request_id} 已逐组下放第3层释放"
 +        )
 +        logger.info("[KVC][L4] " + "=" * 8 + " 释放完成 " + "=" * 8)
  
@@ -104,7 +104,7 @@ index 89b1e84a44..ed6e31a80d 100644
      ) -> tuple[tuple[list[KVCacheBlock], ...], int]:
 +        # [KVC][L4] 前缀查找: 单组直通 single_type_managers[0] (纯 Full Attention 只有 1 组)
 +        logger.info(
-+            f"[KVC][L4] UnitaryKVCacheCoordinator.find_longest_cache_hit: "
++            f"[KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit: "
 +            f"满块hash数={len(block_hashes)}, max_cache_hit_length={max_cache_hit_length}, "
 +            f"下钻 single_type_managers[0]"
 +        )
@@ -119,7 +119,7 @@ index 89b1e84a44..ed6e31a80d 100644
 +        _hit_len = len(hit_blocks[0]) * self.block_size
 +        # [KVC][L4] 前缀查找返回: hit_length = 命中块数 × block_size
 +        logger.info(
-+            f"[KVC][L4] UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: "
++            f"[KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: "
 +            f"hit_blocks={[[b.block_id for b in g] for g in hit_blocks]}, hit_length={_hit_len}"
 +        )
 +        return hit_blocks, _hit_len
