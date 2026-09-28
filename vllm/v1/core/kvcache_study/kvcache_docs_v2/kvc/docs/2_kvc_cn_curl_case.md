@@ -1,9 +1,8 @@
 # 中文 curl 用例：P 缓冲 2 块 → R 五块生命周期（复用 2 + prefill 补 1 满 1 尾 + decode 填满尾块并跨界申请第 5 块）
 
-> 环境：gggtest（PP2TP2 4 卡）、vllm 0.23.0 + vllm-ascend（94 处 `[KVC]` 打印，补丁见 `../patch/`）、`--enforce-eager`、block_size=128、KV bfloat16——取证见 `1_kvc_patch_apply_e2e_record.md`。实测 2026-09-28（log 内 09-28 06:54，容器时钟 UTC-8）。
+> 环境：gggtest（PP2TP2 4 卡）、vllm 0.23.0 + vllm-ascend（94 处 `[KVC]` 打印，补丁见 `../patch/`）、`--enforce-eager`、block_size=128、KV bfloat16——取证见 `1_kvc_patch_apply_e2e_record.md`。实测 2026-09-28（log 内 09-28 07:46，容器时钟 UTC-8）。
 >
 > R 的 prompt 设计为 **486 tokens（3 个满块 + 第 4 块 102/128，非恰好边界）**：prefill 复用 2 块后新申请 **2 块（1 满 + 1 尾）**；decode **前 26 步填满尾块、第 27 步跨界申请第 5 块**；max_tokens=35。
-> **第七轮升级**：①`--- S1: 容量检查---` 子步横幅**先行**（两次外层容量探问全部落在其后）②KVP **每层一行**（块内联 + 层统计，每请求固定 64 条层行）+ 概览行含 **KV 布局一次性说明**（K/V 为张量级拆分的两个独立池，非最后一维拼接；每维含义逐条给出）。
 
 ## 1. 用例总览
 
@@ -64,15 +63,15 @@ bash scripts/curl_p_r.sh
 ### 4.1 P：缓冲 2 块（log/kvc_p.log，124 行）
 
 ```
-INFO [request.py:187] [KVC][ENQ] Request(...) 入队: num_prompt_tokens=324, 满块链式哈希 BlockHash × 2: ['dc1b17e68cb7', '0cd9eb7d9f2e']
-INFO [kv_cache_manager.py:393] ======== 分配 S1~S4 ========               ← 总横幅
-INFO [kv_cache_manager.py:402] --- S1: 容量检查---                          ← 第七轮: 子步横幅先行
-INFO [kv_cache_coordinator.py:188] [KVC][L4] S1 ...get_num_blocks_to_allocate: 需分配 3 块  (×2, 均在横幅后)
+INFO [request.py:187] [KVC][ENQ] Request(...) 入队: num_prompt_tokens=324, 满块链式哈希 BlockHash × 2: ['df3b74831f54', '5751b0a5469a']
+INFO [kv_cache_manager.py:393] ======== 分配 S1~S4 ========                  ← 总横幅
+INFO [kv_cache_manager.py:402] --- S1: 容量检查---                            ← 子步横幅先行
+INFO [kv_cache_coordinator.py:188] [KVC][L4] S1 ...get_num_blocks_to_allocate: 需分配 3 块  (×2, 均在子步横幅后)
 INFO [kv_cache_manager.py:447] S1 get_num_blocks_to_allocate: 需分配 3 块 vs 可用 13294 块
 INFO [block_pool.py:411] S3 BlockPool.get_new_blocks(3): popleft_n -> block_ids=[1, 2, 3], 剩余 13291
-INFO [block_pool.py:108] S4 BlockHashToBlockMap.insert: hash=dc1b17e68cb7 <- block 1; hash=0cd9eb7d9f2e <- block 2
-[KVP:2520] TERM req=cmpl-a584...0-9c31f51a dev=npu:x ...| KV 布局: K_cache 与 V_cache 是两个独立张量池(张量级拆分, 不是最后一维拼接); 每块每层 K=V=shape(bsz=128, kv_heads=4, head_dim=128), ...
-[KVP:2563] TERM L00 blk=1[满:128](128,4,128) blk=2[满:128](128,4,128) blk=3[未满:68](68,4,128) | K示(首块首token前3)=[-0.008057, 0.1035, 0.02747] 统计[n=165888] mean=0.04895 std=1.508 min=-14.56 max=8.5 | V示=[0.0009766, 0.000576, -0.0008163] 统计[n=165888] ...
+INFO [block_pool.py:108] S4 BlockHashToBlockMap.insert: hash=df3b74831f54 <- block 1; hash=5751b0a5469a <- block 2
+[KVP:2520] TERM req=cmpl-addf4...0-a8f278a5 dev=npu:x ... | KV 布局: K_cache 与 V_cache 是两个独立张量池(张量级拆分, 不是最后一维拼接); 每块每层 K=V=shape(bsz=128, kv_heads=4, head_dim=128), ...
+[KVP:2563] TERM L00 blk=1[满:128](128,4,128) blk=2[满:128](128,4,128) blk=3[未满:68](68,4,128) | K示(首块首token前3)=[...] 统计[n=165888] ... | V示=[...] 统计[n=165888] ...
    (每 worker 16 行层行; n=165888 = 324 tok × 4 kv_heads × 128 head_dim 精确闭合)
 [KVP:2570] ======== 请求结束, 物理 cache 打印完毕 ========
 INFO [kv_cache_manager.py:676/683] 调度提交(非分配 S4) / 提交完成  (P=1 次)
@@ -84,8 +83,8 @@ INFO [block_pool.py:516] 释放 free_blocks 归零回收 [3, 2, 1]; [L2] append_
 **① 复用 2 块（前缀查找，第 3 hash MISS 断链）**：
 
 ```
-INFO [request.py:187] Request(...) 入队: num_prompt_tokens=486, max_tokens=35, BlockHash × 3: ['dc1b17e68cb7', '0cd9eb7d9f2e', 'aee282abd7e4']
-INFO [single_type_kv_cache_manager.py:599/607] 前缀查找   第 1 块 HIT: dc1b17e68cb7 -> blocks=[1] / 第 3 块 MISS: aee282abd7e4 -> break
+INFO [request.py:187] Request(...) 入队: num_prompt_tokens=486, max_tokens=35, BlockHash × 3: ['df3b74831f54', '5751b0a5469a', '3d788bda3932']
+INFO [single_type_kv_cache_manager.py:599/607] 前缀查找   第 1 块 HIT: df3b74831f54 -> blocks=[1] / 第 3 块 MISS: 3d788bda3932 -> break
 ```
 
 **② prefill（S1 子步横幅先行 + touch + S3 横幅先行）**：
@@ -96,7 +95,7 @@ INFO [kv_cache_coordinator.py:188] S1 ...需分配 4 块 (×2, 均在子步横�
 INFO [kv_cache_manager.py:447] S1: 需分配 4 块 vs 可用 13294 块
 INFO [kv_cache_manager.py:467] --- S2: touch 命中块 --- → [L2] S2 BlockPool.touch: blocks=[(1, 1), (2, 1)]
 INFO [kv_cache_manager.py:485] --- S3: 新块分配 --- → [L2] S3 get_new_blocks(2) -> [4, 5], 剩余 13290   ← 横幅先行
-INFO [block_pool.py:108] S4 insert: hash=aee282abd7e4 <- block 4, map 3
+INFO [block_pool.py:108] S4 insert: hash=3d788bda3932 <- block 4, map 3
 ```
 
 **③ decode 无块步（全子步闭合）+ 每步调度提交**：
@@ -107,13 +106,13 @@ INFO [kv_cache_manager.py:402] --- S1: 容量检查--- → [L4] S1 ...需分配 
 INFO [kv_cache_manager.py:676/677/683] ======== 调度提交(非分配 S4) ======== / 提交 cache_blocks: num_computed_tokens=487 (async 步末输出路径) / 提交完成   ← 每步一对
 ```
 
-**④ 步 27 跨界**：`S1 需分配 1 块 vs 可用 13290` → `S3 get_new_blocks(1) -> [6], 剩余 13289` → `S4 insert: hash=9430724f6da3 <- block 5`（decode 填满块 5 入表）。
+**④ 步 27 跨界**：`S1 需分配 1 块 vs 可用 13290` → `S3 get_new_blocks(1) -> [6], 剩余 13289` → `S4 insert: hash=8529e6691553 <- block 5`（decode 填满块 5 入表）。
 
 **⑤ TERM KVP 每层一行（region=520/520 = 4×128 + 8）**：
 
 ```
-[KVP:2520] TERM req=cmpl-966f...0-9195c916 dev=npu:x 逐层按块: layers=16 blocks=[1, 2, 4, 5, 6] region=520/520 tok | KV 布局: ...
-[KVP:2563] TERM L00 blk=1[满:128](128,4,128) blk=2[满:128](128,4,128) blk=4[满:128](128,4,128) blk=5[满:128](128,4,128) blk=6[未满:8](8,4,128) | K示(首块首token前3)=[0.5078, 0.9336, 0.9219] 统计[n=266240] mean=-0.0149 std=1.402 min=-10.38 max=10.81 | V示=[...] 统计[n=266240] ...
+[KVP:2520] TERM req=cmpl-8636...0-9d4982ba dev=npu:x 逐层按块: layers=16 blocks=[1, 2, 4, 5, 6] region=520/520 tok | KV 布局: ...
+[KVP:2563] TERM L00 blk=1[满:128](128,4,128) blk=2[满:128](128,4,128) blk=4[满:128](128,4,128) blk=5[满:128](128,4,128) blk=6[未满:8](8,4,128) | K示(首块首token前3)=[...] 统计[n=266240] mean=-0.0149 std=1.402 ... | V示=[...] 统计[n=266240] ...
    (4 worker × 16 层 = 64 行; n=266240 = 520 tok × 4 kv_heads × 128 head_dim 精确闭合)
 ```
 
@@ -139,15 +138,15 @@ INFO [kv_cache_utils.py:396] 释放 FreeKVCacheBlockQueue.append_n(blocks=[6, 5,
 | `../log/req_p.json` / `req_r5.json` | 请求体 |
 | `../log/resp_p.json` / `resp_r5.json`、`curl_p_screen.txt` / `curl_r5_screen.txt` | 响应与打屏 |
 | `../log/kvc_p.log`（124 行）/ `kvc_r5.log`（752 行）/ `kvc_startup.log`（168 行） | P / R / 启动期 [KVC] 拆解轨迹 |
-| `../log/llama.log`（1273 行） | 全量日志；分界 `p_run_start.txt`（:389）/ `r_run_start.txt`（:518） |
-| 同目录 `1_kvc_patch_apply_e2e_record.md` | 端到端取证（§4.1 S1 顺序实测 + §4.2 层行样本 + 层统计交叉验证） |
+| `../log/llama.log`（1274 行） | 全量日志；分界 `p_run_start.txt`（:389）/ `r_run_start.txt`（:519） |
+| 同目录 `1_kvc_patch_apply_e2e_record.md` | 端到端取证（§4.1 S1 顺序实测 + 层行样本 + 层统计交叉验证） |
 
 ## 7. 复现注意事项
 
 1. **生效前提**：服务带 94 处 `[KVC]` 打印运行（应用方法见 `../patch/README.md`）。
 2. **区间鲁棒**：R 落在 (384,512) 任意位置皆成立。快速断言：`调度提交` R=35、KVP 层行 P=R=**64**（4 卡 × 16 层固定）、S1 汇总值 R = 33×0 + 1×1 + 1×4。
 3. **第 3 hash 的 MISS 断链**：R 的追问句内容须在缓存中不存在——与 P 仅共享前 256 token 的设计保证。
-4. **哈希值每次服务重启变化**（种子随机）：本轮（2026-09-28）链值为 `dc1b17e68cb7 → 0cd9eb7d9f2e → aee282abd7e4`（+ decode 填满段 `9430724f6da3`）。
+4. **哈希值每次服务重启变化**（种子随机）：实测（2026-09-28）链值为 `df3b74831f54 → 5751b0a5469a → 3d788bda3932`（+ decode 填满段 `8529e6691553`）。
 5. **冷/热缓存对 P 的影响**：要完整复现"缓冲 → 五块生命周期"，先重启服务清缓存再依次发 P、R。
-6. **KV 布局校验要点**（本轮澄清）：K/V 为**张量级拆分**的两独立池（非最后一维拼接）；层统计 `n = region × kv_heads(4) × head_dim(128)` 精确断言（P: 165888 = 324×512、R: 266240 = 520×512）；4 卡各持不同层段与 kv_heads 切片，同层行 `K示`/`V示` 前 3 值卡间不同是正常的（TP2 切 kv_heads）。
+6. **KV 布局校验要点**：K/V 为**张量级拆分**的两独立池（非最后一维拼接）；block id 即池张量 dim0 行号（KVP 直接 `K_cache[blk]` 索引）；层统计 `n = region × kv_heads(4) × head_dim(128)` 精确断言（P: 165888、R: 266240）；4 卡各持不同层段与 kv_heads 切片，同层行 `K示`/`V示` 前 3 值卡间不同是正常的（TP2 切 kv_heads）。
 7. **阶段前缀即导航**：`grep -- '--- S' log/kvc_r5.log`（子步横幅）、`grep 'TERM L' log/kvc_r5.log`（KVP 层行）、`grep '调度提交'`（每步提交）、`grep '\[未满'`（未满块过滤）。

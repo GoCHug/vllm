@@ -1,11 +1,14 @@
-# [KVC] Print Locations (logger.info version, regenerated 2026-09-28 after round-7: S1 substep banner moved above external capacity probes + KVP per-layer single-line layout with KV-layout note, 94 call points in 9 files)
+# [KVC] Print Locations (logger.info version, final. 94 call points in 9 files, 167 grep lines incl. comments)
 # 每条日志自动携带: INFO timestamp [filename:lineno] [KVC][layer] message
 # 横幅体系: ================ 一次性初始化 / ======== 请求阶段/分配 S1~S4/调度提交 横幅对(始终成对) / --- S 子步标记
-# 第七轮两条升级:
-#   1) S1 子步横幅先行: --- S1: 容量检查---(:402) 上移到 full-fit 预检前——两次外层 S1 容量探问(L4, :407/:434)全部落在子步横幅之后, 汇总值(:447)收尾
-#   2) KVP 每层一行: 概览行新增一次性 KV 布局说明(K_cache/V_cache 为两个独立张量池=张量级拆分, 不是最后一维拼接; 每块每层 shape(bsz, kv_heads, head_dim));
-#      逐层单行内联全部块 blk=N[满:bsz|未满:cov](cov,kv_heads,head_dim) + K/V 首块首 token 前 3 值示意 + 层合并统计[n] mean/std/min/max
-# 六轮前沉淀: S1~S4 全子步无条件、阶段前缀(S1~S4/前缀查找/入队/释放/分配/提交)、S3 横幅先行、调度提交包裹、PF 已删(KVP 仅 TERM/LATE)
+# 设计要点:
+#   1) 分配横幅在方法装配后即打: 总横幅 -> 进入 -> S1 子步横幅 -> 两次外层容量探问(L4) -> S1 汇总值, S1 语义日志全部自洽
+#   2) S1~S4 四个子步无条件打印: 无新块步也打全(需分配 0 / 无前缀无需 touch / 无需分配新块 / 满块缓存维护), 结构完整闭合
+#   3) 阶段前缀全显: 每条下钻消息开头标注所属阶段(S1/S2/S3/S4/前缀查找/入队/释放/分配/提交), 单条日志可定位
+#   4) 横幅先行原则: 子步横幅先于其下钻执行(S1 探问前打横幅、S3 在 allocate_new_blocks 调用前打), 下钻日志全部落在横幅后
+#   5) 调度提交独立包裹: KVCacheManager.cache_blocks(独立于 allocate_slots 的 async_scheduler 提交路径)单列横幅对
+#   6) KVP 仅请求结束(TERM, 含首步即终态)与兜底(LATE)打印; 每层一行(块内联+层统计), 概览含一次性 KV 布局说明
+#      (K_cache/V_cache 两个独立张量池=张量级拆分, 不是最后一维拼接; block id 即池张量 dim0 行号, KVP 可直接索引)
 # 行号以容器部署源码(=log 实测)为准; kv_cache_manager.py 两侧同号, model_runner_v1.py 分歧点(:3699)之上一致, 之下容器 = 本地 - 2
 
 ## /vllm-workspace/vllm/vllm/v1/request.py
@@ -46,28 +49,28 @@
   :249  f"[KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks: req=... "
   :265  f"[KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks 返回: "
   :270  "[KVC][L5] "                                      (前缀查找完成横幅)
-  :393  "[KVC][L5] ======== 分配 S1~S4 ========           (方法装配后立即打; 顺序: 总横幅->进入->S1 子步横幅->外层探问->S1 汇总)
+  :393  "[KVC][L5] ======== 分配 S1~S4 ========           (方法装配后即打)
   :395  f"[KVC][L5] 分配 KVCacheManager.allocate_slots 进入: "
-  :402  "[KVC][L5] --- S1: 容量检查---"                    (第七轮上移: 两次外层容量探问(:407 full-fit / :434 主探问)全部落在其后)
+  :402  "[KVC][L5] --- S1: 容量检查---                    (子步横幅先行: 两次外层容量探问(:407 full-fit / :434 主探问)全部落在其后)
   :447  f"[KVC][L5] S1 get_num_blocks_to_allocate: 需分配 {n} 块 vs 可用 {m} 块"  (汇总值收尾)
   :455  f"[KVC][L5] S1 容量不足: ... return None 等待下轮调度"
-  :458  "[KVC][L5] ======== 分配未完成(容量不足) ========   (关闭横幅, 未触发)
+  :458  "[KVC][L5] ======== 分配未完成(容量不足) ========   (关闭横幅, 保持横幅对)
   :467  "[KVC][L5] --- S2: touch 命中块 ---"
   :469  f"[KVC][L5] S2 allocate_new_computed_blocks: req=..., "
   :481  "[KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---"
-  :485  "[KVC][L5] --- S3: 新块分配 ---"                    (有块, 横幅先行)
+  :485  "[KVC][L5] --- S3: 新块分配 ---"                    (有块, 横幅先于 allocate_new_blocks 执行)
   :487  "[KVC][L5] --- S3: 无需分配新块 ---"                 (无块)
   :496  f"[KVC][L5] S3 allocate_new_blocks: ... -> 新块 [...]"
   :501  f"[KVC][L5] S3 块未满, 无需分配新块 (req=..., num_new_tokens=...)"
-  :509  "[KVC][L5] --- S4: 满块入缓存(延迟/禁缓存, 本步跳过) ---"  (早退路径, 未触发)
-  :510  "[KVC][L5] ======== 分配完成 ========              (早退路径补横幅, 未触发)
+  :509  "[KVC][L5] --- S4: 满块入缓存(延迟/禁缓存, 本步跳过) ---"  (早退路径补横幅对)
+  :510  "[KVC][L5] ======== 分配完成 ========              (早退路径补横幅对)
   :523  "[KVC][L5] --- S4: 满块入缓存 ---"                  (无条件)
   :529  f"[KVC][L5] S4 cache_blocks: req=..., num_tokens_to_cache=..."
   :533  f"[KVC][L5] 分配 KVCacheManager.allocate_slots 返回: "
   :539  "[KVC][L5] ======== 分配完成 ========"
   :551  "[KVC][L5] ======== 释放 ======== "
   :553  f"[KVC][L5] 释放 KVCacheManager.free: req=..., 释放前持有 block_table=..."
-  :676  "[KVC][L5] ======== 调度提交(非分配 S4) ========     (async_scheduler 每步输出后独立提交路径)
+  :676  "[KVC][L5] ======== 调度提交(非分配 S4) ========     (async_scheduler 每步输出后的独立提交路径)
   :677  f"[KVC][L5] 提交 cache_blocks: req=..., num_computed_tokens=... (async 步末输出路径)"
   :683  "[KVC][L5] ======== 提交完成 ======== "
 
@@ -107,19 +110,19 @@
 ## /vllm-workspace/vllm/vllm/v1/worker/gpu_model_runner.py
   :7018  "[KVC][L1] GPUModelRunner._allocate_kv_cache_tensors: "
   :7148  "[KVC][L1] GPUModelRunner._reshape_kv_cache_tensors: "
-  (NPU 部署不触发)
+  (NPU 部署不触发, 仅校验 L1 打印假设)
 
 ## /vllm-workspace/vllm-ascend/vllm_ascend/worker/model_runner_v1.py
   :2480  "[KVC][KVP] _kvc_rel_snapshot exception: %s (%s)"
-  :2518  "[KVC][KVP] "                                    (结束期开始横幅, TERM/LATE 两文案; PF 已删)
+  :2518  "[KVC][KVP] "                                    (结束期开始横幅, TERM/LATE 两文案)
   :2520  "[KVC][KVP] %s req=%s dev=%s 逐层按块: layers=%d blocks=%s region=%d/%d tok | KV 布局: ..."  (概览+一次性布局说明)
   :2563  "[KVC][KVP] %s L?? blk=N[满:bsz|未满:cov](cov,kv_heads,head_dim) ... | K示(首块首token前3)=[..] 统计[n] mean/std/min/max | V示..."  (每层一行)
   :2570  "[KVC][KVP] "                                    (结束期完成横幅)
   :4264  "[KVC][L1] "                                      (物理侧 KV Cache 分配开始横幅)
-  :4426  "[KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: "
-  :4864  "[KVC][L1] vllm-ascend _reshape_kv_cache_tensors: "
+  :4426  "[KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: K/V 分开两张 int8 张量 (2M 对齐)"
+  :4864  "[KVC][L1] vllm-ascend _reshape_kv_cache_tensors: K_cache shape=(num_blocks, bsz, kv_heads, head_dim)"
   :4915  "[KVC][L1] "                                      (物理侧 KV Cache 分配完成横幅)
 
 # total 94 logger.info call points; grep '[KVC]' per file = (5 12 27 56 17 18 13 4)+15 = 167 lines (incl. comments)
-# 第七轮 manager 56 行 = 第六轮 55 + S1 子步横幅上移净增 1 注释行; 行号统一 +2(S1 值 447 起) 与 :402 新横幅
-# 实测计数(第七轮 log): 层行 P=R=64(4w×16L 固定); 调度提交 P=1/R=35; KVP 概览 4 条/请求; 层统计 n: P=165888(324×4×128) R=266240(520×4×128)
+# 调用点分布: request 3 / utils 6 / block_pool 14 / kv_cache_manager 32 / coordinator 9 / single_type 9 / core 9 / gpu_model_runner 2 / model_runner_v1 9
+# 实测计数: KVP 层行 P=R=64(4w×16L 固定); 调度提交 P=1/R=35(await 每步一次); KVP 概览 4 条/请求; 层统计 n=region×kv_heads×head_dim(实测 165888/266240)

@@ -9,7 +9,7 @@
 # 行为:
 #   Phase 1  dry-run 预检 —— 9 个 patch 全部通过才继续, 任一失败则中止(不落盘)
 #   Phase 2  patch -p1 应用 (01~08 -> vllm, 09 -> vllm-ascend)
-#   Phase 3  验证: 每文件 [KVC] 计数 + 总数(预期 167 行/94 打印调用点, 含 S1 横幅上移覆盖外层容量探问、调度提交包裹横幅、KVP 仅 TERM/LATE 且逐层按块展开) + py_compile
+#   Phase 3  验证: 每文件 [KVC] 计数 + 总数(预期 167 行/94 打印调用点, 含 S1 子步横幅先行覆盖外层容量探问、调度提交包裹横幅、KVP 仅 TERM/LATE 且逐层按块展开) + py_compile
 #
 # 注意:
 #   - vllm 0.23.0 + vllm-ascend 0.23.0 基线 9/9 干净命中(容器实测通过)

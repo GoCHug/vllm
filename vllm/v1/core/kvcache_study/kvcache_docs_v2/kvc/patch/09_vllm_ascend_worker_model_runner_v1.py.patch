@@ -1,5 +1,5 @@
 diff --git a/vllm_ascend/worker/model_runner_v1.py b/vllm_ascend/worker/model_runner_v1.py
-index 4c8e11e9d..db585756e 100644
+index 4c8e11e9d..ab0074fbf 100644
 --- a/vllm_ascend/worker/model_runner_v1.py
 +++ b/vllm_ascend/worker/model_runner_v1.py
 @@ -2334,6 +2334,11 @@ class NPUModelRunner(GPUModelRunner):
@@ -79,7 +79,7 @@ index 4c8e11e9d..db585756e 100644
 +                if st is None:
 +                    continue
 +                st["written"] += int(ntok)
-+                # 第六轮: 纯 PF 触发已删(用户仅需请求结束前的物理 cache 打印)——
++                # 仅请求结束前打印物理 cache(prefill 落卡不单独触发)——
 +                # 首步标记仅作追踪; 首步即终态与常规终态统一走 TERM 打印
 +                if not st["pf"]:
 +                    st["pf"] = True
@@ -92,7 +92,7 @@ index 4c8e11e9d..db585756e 100644
 +                        _tb.format_exc().strip().splitlines()[-1])
 +
 +    def _kvc_kv_dump(self, rid: str, st: dict, tag: str) -> None:
-+        # 第七轮: 仅请求结束(TERM/LATE)打印; 每层一行(块内联+层统计), 头部一次性 KV 布局说明
++        # 仅请求结束(TERM/LATE)打印; 每层一行(块内联+层统计), 头部一次性 KV 布局说明
 +        kv_caches = getattr(self, "kv_caches", None)
 +        blocks = st["blocks"][0] if st["blocks"] else []
 +        written = st["written"]
@@ -129,7 +129,7 @@ index 4c8e11e9d..db585756e 100644
 +            _open_msg = "请求结束 KVCache 即将释放, 开始打印该请求物理 cache"
 +            _close_msg = "请求结束, 物理 cache 打印完毕"
 +        logger.info("[KVC][KVP] " + "=" * 8 + " " + _open_msg + " " + "=" * 8)
-+        # 概览 + KV 布局一次性说明(第七轮): K/V 张量级拆分, 非最后一维拼接
++        # 概览 + KV 布局一次性说明: K/V 张量级拆分, 非最后一维拼接
 +        logger.info(
 +            "[KVC][KVP] %s req=%s dev=%s 逐层按块: layers=%d blocks=%s region=%d/%d tok | "
 +            "KV 布局: K_cache 与 V_cache 是两个独立张量池(张量级拆分, 不是最后一维拼接); "
