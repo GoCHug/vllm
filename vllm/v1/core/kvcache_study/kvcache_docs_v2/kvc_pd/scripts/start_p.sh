@@ -1,6 +1,6 @@
 #!/bin/bash
 # start_p.sh —— 启动 PD 分离 P 侧(prefill producer)实例: 卡0 / localhost:8100 / kv producer(20001, rank 0)
-# 依赖: 9 个 [KVC] 补丁已应用(用 ../kvc/patch/apply_patches.sh), 日志统一输出到 log/p_llama.log
+# 依赖: PD 补丁已应用(bash patch/apply_pd_patches.sh = kvc 01~08 + 09 指纹), 日志统一输出到 log/p_llama.log
 # 参考: vllm-ascend/examples/disaggregated_prefill_v1/mooncake_connector_deployment_guide.md
 cd "$(dirname "$0")/.." || exit 1
 mkdir -p log

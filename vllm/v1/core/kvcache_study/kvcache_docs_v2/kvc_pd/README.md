@@ -1,57 +1,83 @@
-# kvc_pd/ 目录总览（PD 分离 KVCache 正确性实验工作区 · 1P+1D · mooncake）
+# kvc_pd —— PD 分离 KVCache 传输正确性实验工作区
 
-> 本目录是 vLLM V1 KVCache 管理 **PD 分离场景**（NPU vllm-ascend 0.23.0 · 1P+1D 各 1 卡 · MooncakeConnectorV1 跨卡迁移 · proxy 同 id 双发）的端到端正确性验证全套交付物，与单机版 `../kvc/` 平级、**共用同一套 9 个 [KVC/KVP] 打印补丁**（零改动，145 行/81 调用点），侧别由独立日志文件天然区分（`p_llama.log` / `d_llama.log`）。实验后容器已 revert，源码未改动。
->
-> 实测 2026-09-27 16:13~16:17（第二轮成功轮）。**核心结论：P 侧物理卡 0 写入与 D 侧物理卡 1 经 mooncake 迁移+本地缓存复用后的 KVP 释放前统计逐项完全一致（R 请求 486 tok 全 18 项统计分毫不差，含 zeros=159/69）——PD 全链路 KV 字节级零损耗、无 NaN/Inf，得到直接实证。**
+> **回答的问题**：PD 分离（1P+1D + mooncake）下，P 侧 prefill 算出的 KVCache 传到 D 侧后，与 P 侧**逐位相等**吗？
+> **结论（2026-09-29 实测）**：**PASS**——传输区（前 p_tok-1 个 token）共 448 对块级 sha256 指纹 100% 全等（req1 192/192、req2 256/256）；不相等的槽位全部是 D 侧本地生成（bootstrap 补算 1 token + decode 新写），与传输无关。详见 `docs/1_kvc_pd_correctness_record.md`。
 
-## 1. 目录树
+## 目录结构
 
 ```
 kvc_pd/
-├── README.md                            <- 本文件（目录总览）
-│
-├── scripts/                             【PD 部署与实验脚本】
-│   ├── start_p.sh                       启动 P 侧（物理 npu:0 / :8100 / kv_producer rank0 / mooncake 20001）
-│   ├── start_d.sh                       启动 D 侧（物理 npu:1 / :8200 / kv_consumer rank1 / mooncake 20002）
-│   ├── start_proxy.sh                   启动 proxy（:8000 → P/D 同 request_id 双发, vllm-ascend 官方示例）
-│   ├── stop_pd.sh                       停止全部组件（proxy → 两实例 → 验证零进程）
-│   └── curl_pd.sh                       经 proxy 发 P/R 双请求 + 落盘 + 拆双侧各三段轨迹（共 6 个）
-│
+├── README.md                           本文档
+├── patch/                              PD 补丁套装
+│   ├── 09_pd_kv_fingerprint.patch      KV 内容指纹探针（叠在 kvc 08 之上的增量）
+│   ├── apply_pd_patches.sh             一键应用：kvc 01~08 + 09
+│   └── revert_pd_patches.sh            一键撤销：先撤 09 再撤 01~08（源码还原干净）
+├── scripts/
+│   ├── run_all.sh                      一键全流程（打补丁→起 P/D/proxy→发 P/R→杀服务→撤补丁）
+│   ├── start_p.sh                      P 侧：卡0 / :8100 / kv_producer(rank0, port 20001)
+│   ├── start_d.sh                      D 侧：卡1 / :8200 / kv_consumer(rank1, port 20002)
+│   ├── start_proxy.sh                  负载代理：:8000 同 request_id 双发 P/D
+│   ├── curl_pd.sh                      发 req_p/req_r + 提取双侧 [KVC] 轨迹六段
+│   ├── stop_pd.sh                      杀 proxy + P/D 全部进程并确认归零
+│   └── compare_fp.py                   P/D 指纹自动对账 → log/verdict.txt（PASS/FAIL）
+├── log/                                最新一轮（2026-09-29 v2 指纹轮）产物
+│   ├── verdict.txt                     自动裁决全文（448/448 Tx 全等 → PASS）
+│   ├── kvc_{p,d}_{startup,req1,req2}.log  双侧 [KVC] 轨迹（含 [FPB] 块指纹 / [FP] 层指纹）
+│   ├── {p,d}_llama.log                 双侧服务全量日志（boot/编排/建池/mooncake/请求全程）
+│   ├── curl_{p,r}_screen.txt           curl 命令 + 打屏
+│   ├── req_{p,r}.json / resp_{p,r}.json  请求体 / 响应体
+│   └── run_all_screen.log              一键脚本全程录像
 ├── docs/
-│   └── 1_kvc_pd_correctness_record.md   PD 正确性验证实录: 部署形态 / HCCL_IF_IP 踩坑 / 双侧 KVP 一致性对照 /
-│                                         PD 六大新观察（D 本地缓存复用·增量传输·独立 BlockPool 等）
-│
-└── log/                                  【实验产物】（2026-09-27 第二轮成功轮全套, 19 文件）
-    ├── p_llama.log / d_llama.log        P / D 实例全量日志（421 / 919 行, 含 mooncake adxl glog）
-    ├── proxy.log                        双发代理日志
-    ├── kvc_p_startup.log (83) / kvc_d_startup.log (83)    双侧启动段 [KVC] 轨迹（TP1: CFG42+L1 36+逻辑侧5）
-    ├── kvc_p_req1.log (44) / kvc_p_req2.log (55)          P 侧两请求轨迹（种块 / 复用断链 + S2 touch）
-    ├── kvc_d_req1.log (59) / kvc_d_req2.log (548)         D 侧两请求轨迹（接收 / 本地缓存命中 + 35 步 decode）
-    ├── req_p.json / req_r5.json         请求体（复用 ../kvc/log/ 单机版同一对用例）
-    ├── resp_p.json / resp_r5.json       响应体（P=1 / R=35 tokens, finish=length）
-    ├── curl_p_screen.txt / curl_r5_screen.txt             curl 打屏实录
-    └── p_start_*.txt / d_start_*.txt    双侧×双请求轨迹分界行（4 个）
+│   ├── 1_kvc_pd_correctness_record.md  实验分析文档（设计/时间线/req_p·req_r 对账/归因/复现）
+│   ├── 2_pd_prefix_cache_matrix.md      P/D prefix cache 四象限开关矩阵（机制底座/四格成本对照/正确性/选型；已含实测回填）
+│   └── 3_pcm_quadrant_experiment.md     四象限实测实录（10 号 PCM 补丁·六打点·三新发现：整块 DMA/带宽实测/块号语义）
+└── pcm/                                自包含子工作区（prefix cache 四象限实验，详见 pcm/README.md）
+    ├── patch/                          10 号 [PCM] 补丁套件（独立于 kvc 01-09；gen 生成器 + apply/revert）
+    ├── scripts/                        参数化 start_{p,d}.sh（pc 开关注入）+ run_quadrant.sh + run_matrix.sh
+    └── log/                            四象限产物：q{1..4}_*/ ×12 文件 + matrix_summary.md 对照总表
 ```
 
-## 2. 补丁依赖
+## 环境信息（2026-09-29 实测轮）
 
-PD 实验不引入新补丁——直接使用 `../kvc/patch/` 的同一套 9 patch（含 KVP 释放前物理校验）。apply/revert 也在那边执行（见 docs/1 §6 复现步骤）。
+| 项 | P 侧（prefill/producer） | D 侧（decode/consumer） |
+|---|---|---|
+| NPU | 卡0 npu:0（4×hpu910a3 之一） | 卡1 npu:1 |
+| 服务 | localhost:8100 | localhost:8200 |
+| kv 角色 | kv_producer rank0, port 20001 | kv_consumer rank1, port 20002 |
+| KV 显存/块数 | 33.78 GiB / 2161 块 | 33.79 GiB / 2162 块 |
+| 传输 | mooncake-transfer-engine-npu 0.3.11.post1，adxl device 直传，proxy :8000 双发 | 同左 |
 
-## 3. 核心实验结论（详 docs/1 §5 对照表）
+- 模型：Meta-Llama-3-8B bf16，TP1×2 实例，block_size=128，enforce_eager，seed=1024
+- 软件：vllm 0.23.0 + vllm-ascend 0.23.0（/vllm-workspace 源码仓，site-packages 直链）
+- 补丁：kvc 01~08（同 `../kvc/patch/`，168 行 [KVC] 基础打印）+ 09 指纹（本目录，.Tx/.Xx 块指纹 + 层指纹）
 
-| 验证项 | 结果 |
-|---|---|
-| mooncake 跨卡迁移（845.58ms 全量 324 tok） | ✓ 成功（adxl P2P DMA, 卡0→卡1） |
-| **P 卡 vs D 卡 KVP 统计对照（R 请求 486 tok）** | **18 项逐项完全一致**（n=15,925,488 / std=1.969 / zeros=159/69 分毫不差）→ **零比特差异** |
-| D 本地缓存复用（请求 2 命中 D 侧块 [1,2]） | ✓ HIT hash=3fa6fb86447a/6e3746e03188 → 第二次传输仅 1.31ms 增量 |
-| P 请求 324 tok 对照：V zeros 60 vs 59 | 差 1 可精确归因：D 首 decode 步重写尾 token 的 KV（非传输损耗；R 请求交叉证明） |
-| 双侧数据健康 | 全 5 行 KVP nan=0 inf=0；n 全部 = written×32768 精确吻合（TP1: 8头×128维×32层） |
-| P/D 独立 BlockPool | 同内容 token 双侧哈希链不同（各自 NONE_HASH 种子），缓存各自独立维护 |
+## 操作步骤（容器内）
 
-## 4. 快速复现与阅读顺序
+```bash
+cd /a3_inference/itask/workdir/gch02599191/kvc_pd
 
-1. **`docs/1_kvc_pd_correctness_record.md`** —— 全貌：部署架构 / 第一轮 HCCL_IF_IP 踩坑实录（部署指南 bug）/ 双侧轨迹解读 / KVP 一致性对照表与三重验证 / PD 六大新观察
-2. 双侧 KVP 直接对照：`grep '\[KVP\]' log/kvc_p_req*.log log/kvc_d_req*.log`
-3. 复现命令六步见 docs/1 §6（打补丁 → 起 P → 起 D → 起 proxy → curl_pd.sh → 回收）
+# 一键全流程（推荐；后台跑也行, 见脚本头注释）
+bash scripts/run_all.sh
+python3 scripts/compare_fp.py        # 产出/刷新 log/verdict.txt
 
-> **踩坑警示**：启动脚本切勿恢复 `export HCCL_IF_IP=localhost`（vllm-ascend 0.23.0 部署指南示例的非法值，会将使 D 侧 adxl 连接 P 数据端口失败 103900 → transfer ret=-1 → 请求 500）。原因与修复证明见 docs/1 §2。
+# 分步等价操作
+bash patch/apply_pd_patches.sh       # 1. 打 kvc 01~08 + 09（dry-run 预检 + 计数验证）
+bash scripts/start_p.sh              # 2. 起 P（先）, 等就绪
+bash scripts/start_d.sh              # 3. 起 D（后）, 等就绪
+bash scripts/start_proxy.sh          # 4. 起 proxy
+bash scripts/curl_pd.sh              # 5. 发 req_p/req_r, 提双侧轨迹+屏显落盘
+bash scripts/stop_pd.sh              # 6. 杀服务
+bash patch/revert_pd_patches.sh      # 7. 撤补丁（源码还原干净, [KVC] 归零）
+```
+
+就绪标志：`grep 'Application startup complete' log/{p,d}_llama.log`；proxy：`curl -s localhost:8000/healthcheck`。
+
+## 三层指纹速查（09 补丁输出）
+
+| 行标 | 格式 | 判读 |
+|---|---|---|
+| `[KVC][KVP][FPB]` | `blk{N}K.Tx=<hash>/K.Xx=<hash>`（V 同构） | Tx=前 p_tok-1 tok 传输区；Xx=该块全部已写槽。P/D 同块 Tx 全等 ⇔ 传输无损 |
+| `[KVC][KVP][FP]` | `K.prompt=<hash> K.all=<hash> …` | 层级总对账（prompt 区含补算槽, 全等层数少是预期） |
+| 统计行（08 基线） | mean/std/min/max + 首 3 值 | 弱校验；ULP 级 bit 差不可见, 仅作人类可读参考 |
+
+裁决规则与自动对账见 `scripts/compare_fp.py` 头注释；完整实验故事（含 D 侧载入步/补算步取证、哈希盐、req2 前缀命中）见 `docs/1_kvc_pd_correctness_record.md`。

@@ -1,0 +1,103 @@
+--- a/vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_connector.py
++++ b/vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_connector.py
+@@ -786,7 +786,15 @@
+         # Full prefix cache hit: do not need to read remote blocks, just notify
+         # P worker that we have the blocks we need.
+         num_local_blocks = sum(len(group_block_ids) for group_block_ids in local_block_ids)
++        # [PCM 5/6] XFER-entry —— 实拉对账(post-slice: worker 侧已按 D 命中跳过; 全量上报见 PFINISH)
++        logger.info(
++            "[PCM] XFER-entry req=%s recv_groups=%s pull_groups=%s",
++            remote_request_id,
++            [len(g) for g in local_block_ids],
++            [len(g) for g in remote_block_ids],
++        )
+         if num_local_blocks == 0 and not has_replicate_k_blocks:
++            logger.info("[PCM] XFER req=%s FULL-HIT-SKIP: 0 blocks to pull", remote_request_id)
+             return
+ 
+         # Check if we have the remote metadata cached.
+@@ -978,6 +986,19 @@
+             self.tp_rank,
+             session_id,
+         )
++        # [PCM 6/6] XFER-end —— 实传字节/描述符/有效带宽/实拉块清单(post-slice)
++        _pcm_xfer_bytes = sum(length_list)
++        _pcm_xfer_secs = max(req_transfer_elapsed / 1000.0, 1e-9)
++        logger.info(
++            "[PCM] XFER-end req=%s segments=%d bytes=%d (%.1f MiB) eff_GBps=%.2f pull_local=%s pull_remote=%s",
++            remote_request_id,
++            len(src_list),
++            _pcm_xfer_bytes,
++            _pcm_xfer_bytes / 1048576,
++            _pcm_xfer_bytes / 1e9 / _pcm_xfer_secs,
++            local_block_ids,
++            remote_block_ids,
++        )
+ 
+         ready_attention_group_reformat_block_ids = []
+         for reformat_group, is_group_transfer_end in attention_group_reformat_block_ids:
+@@ -1805,6 +1826,15 @@
+             num_computed_tokens,
+             params,
+         )
++        # [PCM 2/6] SCHED —— 每请求本地命中数: P 侧=省算依据, D 侧=传输抵扣依据
++        logger.info(
++            "[PCM] SCHED req=%s prompt=%d local_hit=%d do_rp=%s do_rd=%s",
++            request.request_id,
++            self._state_prefill_token_count(len(request.prompt_token_ids or [])),
++            num_computed_tokens,
++            bool(params is not None and params.get("do_remote_prefill")),
++            bool(params is not None and params.get("do_remote_decode")),
++        )
+ 
+         if params is not None and params.get("do_remote_prefill"):
+             # Remote prefill: get all prompt blocks from remote.
+@@ -1837,6 +1867,14 @@
+                     local_block_ids = blocks.get_unhashed_block_ids_all_groups() if num_external_tokens > 0 else []
+                     local_full_block_ids = blocks.get_block_ids() if num_external_tokens > 0 else tuple()
+                     # Get unhashed blocks to pull from remote.
++                    # [PCM 3/6] ALLOC —— D 仅为 external token 分配未哈希新块(接收目标)
++                    logger.info(
++                        "[PCM] ALLOC req=%s external=%d recv_blocks=%s all_blocks=%s",
++                        request.request_id,
++                        num_external_tokens,
++                        local_block_ids,
++                        local_full_block_ids,
++                    )
+                     self._reqs_need_recv[request.request_id] = (
+                         request,
+                         local_block_ids,
+@@ -1906,6 +1944,15 @@
+         computed_block_ids = self._get_swa_transfer_block_ids(computed_block_ids)
+         computed_block_lens = [len(block_id_list) for block_id_list in computed_block_ids]
+         delay_free_blocks = sum(computed_block_lens) > 0
++        # [PCM 4/6] PFINISH —— P 恒上报全部 prompt 块, 不感知 D 缓存
++        logger.info(
++            "[PCM] PFINISH req=%s prompt=%d prompt_blocks=%d report_blocks=%s delay_free=%s",
++            request.request_id,
++            len(request.prompt_token_ids),
++            num_prompt_blocks,
++            computed_block_lens,
++            delay_free_blocks,
++        )
+         if delay_free_blocks:
+             logger.info("Delaying free of %d blocks for request %s", sum(computed_block_lens), request.request_id)
+             self._reqs_need_send[request.request_id] = time.time()
+@@ -2062,6 +2109,17 @@
+             self.tp_num_need_pulls = num_d_block_heads // num_p_block_heads
+         self.local_remote_block_port_mapping: dict[str, list[list[int]] | None] = {}
+         self.remote_port_send_num: dict[str, dict[int, RemotePortInfo]] = {}
++        # [PCM 1/6] CFG —— 四象限自证: 角色与 prefix cache 开关
++        logger.info(
++            "[PCM] CFG role=%s enable_prefix_caching=%s block_size=%d ptp=%d dtp=%d tp=%d rank=%d",
++            self.kv_role,
++            self.vllm_config.cache_config.enable_prefix_caching,
++            self.block_size,
++            self._prefill_tp_size,
++            self._decode_tp_size,
++            self.tp_size,
++            self.tp_rank,
++        )
+ 
+     def _get_prefill_decode_size(self, vllm_config: VllmConfig):
+         # get prefill tp and dp size from extra config
