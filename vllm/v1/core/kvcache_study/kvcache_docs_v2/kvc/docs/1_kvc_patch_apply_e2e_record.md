@@ -14,7 +14,7 @@
 |---|---|---|---|
 | 配置侧 | CFG | 85 | **① 算规格（紧跟 get_kv_cache_specs() 调用，本轮前移至此）** → ② 各 worker 可用 KV 显存 → 逐 worker `KVCacheConfig`（num_blocks/组数/张量数）→ 逐张量 size/shared_by → 最终 scheduler 侧 min 对齐 |
 | 物理侧 | L1 | 76 | 每层 KVCacheTensor 拆 **K int8 池 + V int8 池**两张独立张量（2MiB 对齐）；reshape 后 K_cache=V_cache=(num_blocks, 128, 4, 128) bf16，block id 即 dim0 行号 |
-| 逻辑侧 | L5 | 8 | 空闲队列（伪头尾哨兵）/ null 块 / BlockPool / L3 manager / 单组直通 coordinator 逐层装配 |
+| 逻辑侧 | L2~L5 | 8 | 自底向上逐组件 `__init__完成：`——L2 空闲队列（伪头尾哨兵）/ L2 BlockHashToBlockMap / L2 BlockPool（null 块摘取）/ L3 manager / L4 单组直通 coordinator / L5 门面 |
 
 **二、运行期（每请求/每步动态，横幅对 + `--- S 子步标记 ---` + 阶段前缀）**
 
