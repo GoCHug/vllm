@@ -1,5 +1,5 @@
 diff --git a/vllm/v1/core/single_type_kv_cache_manager.py b/vllm/v1/core/single_type_kv_cache_manager.py
-index 478effcd74..dd32ee3901 100644
+index 478effcd74..ddff1becb0 100644
 --- a/vllm/v1/core/single_type_kv_cache_manager.py
 +++ b/vllm/v1/core/single_type_kv_cache_manager.py
 @@ -28,6 +28,9 @@ from vllm.v1.kv_cache_interface import (
@@ -16,9 +16,9 @@ index 478effcd74..dd32ee3901 100644
          self.kv_cache_group_id = kv_cache_group_id
          self._null_block = block_pool.null_block
  
-+        # [KVC][L3] SingleTypeKVCacheManager 初始化: 持有第2层 BlockPool 引用, 前缀缓存算法本体就位
++        # [KVC][L3] SingleTypeKVCacheManager 初始化完成: 持有第2层 BlockPool 引用, 前缀缓存算法本体就位
 +        logger.info(
-+            f"[KVC][L3] {type(self).__name__}.__init__: "
++            f"[KVC][L3] {type(self).__name__}.__init__完成："
 +            f"spec={type(kv_cache_spec).__name__}(block_size={self.block_size}), "
 +            f"scheduler_block_size={scheduler_block_size}, group_id={kv_cache_group_id}, "
 +            f"enable_caching={enable_caching}, dcp×pcp={dcp_world_size}×{pcp_world_size}, "

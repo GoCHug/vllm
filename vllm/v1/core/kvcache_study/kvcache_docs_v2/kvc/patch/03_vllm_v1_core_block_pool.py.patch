@@ -1,8 +1,20 @@
 diff --git a/vllm/v1/core/block_pool.py b/vllm/v1/core/block_pool.py
-index 4202f52708..22800eda63 100644
+index 4202f52708..bc678ea6ee 100644
 --- a/vllm/v1/core/block_pool.py
 +++ b/vllm/v1/core/block_pool.py
-@@ -66,10 +66,25 @@ class BlockHashToBlockMap:
+@@ -58,6 +58,11 @@ class BlockHashToBlockMap:
+         self._cache: dict[
+             BlockHashWithGroupId, KVCacheBlock | dict[int, KVCacheBlock]
+         ] = {}
++        # [KVC][L2] 哈希映射表初始化完成: 前缀缓存 hash→block 查找表(空表)
++        logger.info(
++            f"[KVC][L2] BlockHashToBlockMap.__init__完成：底容器 size={len(self._cache)}, "
++            f"value=KVCacheBlock | dict[block_id→KVCacheBlock](不去重 append-only)"
++        )
+ 
+     def get_one_block(self, key: BlockHashWithGroupId) -> KVCacheBlock | None:
+         """
+@@ -66,10 +71,25 @@ class BlockHashToBlockMap:
          blocks = self._cache.get(key)
          if blocks is not None:
              if isinstance(blocks, KVCacheBlock):
@@ -29,7 +41,7 @@ index 4202f52708..22800eda63 100644
          return None
  
      def insert(self, key: BlockHashWithGroupId, block: KVCacheBlock) -> None:
-@@ -89,11 +104,21 @@ class BlockHashToBlockMap:
+@@ -89,11 +109,21 @@ class BlockHashToBlockMap:
              blocks[block.block_id] = block
          else:
              self._unexpected_blocks_type(blocks)
@@ -51,13 +63,13 @@ index 4202f52708..22800eda63 100644
          blocks = self._cache.pop(key, None)
          if blocks is None:
              # block_hash not found in the cache
-@@ -180,6 +205,15 @@ class BlockPool:
+@@ -180,6 +210,15 @@ class BlockPool:
          self.kv_event_queue: list[KVCacheEvent] = []
  
          self.metrics_collector = metrics_collector
-+        # [KVC][L2] BlockPool 初始化: 三大内件(KVCacheBlock 列表/空闲队列/哈希映射表)
++        # [KVC][L2] BlockPool 初始化完成: 三大内件(KVCacheBlock 列表/空闲队列/哈希映射表)就绪, null 块已摘取
 +        logger.info(
-+            f"[KVC][L2] BlockPool.__init__: num_gpu_blocks={self.num_gpu_blocks}, "
++            f"[KVC][L2] BlockPool.__init__完成：num_gpu_blocks={self.num_gpu_blocks}, "
 +            f"创建 KVCacheBlock × {self.num_gpu_blocks} (block_id=0..{self.num_gpu_blocks - 1}), "
 +            f"free_block_queue={type(self.free_block_queue).__name__}(num_free_blocks={self.free_block_queue.num_free_blocks}), "
 +            f"cached_block_hash_to_block={type(self.cached_block_hash_to_block).__name__}(size={len(self.cached_block_hash_to_block)}), "
@@ -67,7 +79,7 @@ index 4202f52708..22800eda63 100644
  
      def get_cached_block(
          self, block_hash: BlockHash, kv_cache_group_ids: list[int]
-@@ -204,8 +238,18 @@ class BlockPool:
+@@ -204,8 +243,18 @@ class BlockPool:
                  block_hash_with_group_id
              )
              if not block:
@@ -86,7 +98,7 @@ index 4202f52708..22800eda63 100644
          return cached_blocks
  
      def cache_full_blocks(
-@@ -243,6 +287,11 @@ class BlockPool:
+@@ -243,6 +292,11 @@ class BlockPool:
                  map.
          """
          if num_cached_blocks >= num_full_blocks:
@@ -98,7 +110,7 @@ index 4202f52708..22800eda63 100644
              return
          new_full_blocks = blocks[num_cached_blocks:num_full_blocks]
          assert len(request.block_hashes) >= num_full_blocks
-@@ -282,6 +331,19 @@ class BlockPool:
+@@ -282,6 +336,19 @@ class BlockPool:
              if new_hashes is not None:
                  new_hashes.append(maybe_convert_block_hash(block_hash))
  
@@ -118,7 +130,7 @@ index 4202f52708..22800eda63 100644
          if self.enable_kv_cache_events:
              if num_cached_blocks == 0:
                  parent_block_hash: ExternalBlockHash | None = None
-@@ -345,6 +407,11 @@ class BlockPool:
+@@ -345,6 +412,11 @@ class BlockPool:
              raise ValueError(f"Cannot get {num_blocks} free blocks from the pool")
  
          ret: list[KVCacheBlock] = self.free_block_queue.popleft_n(num_blocks)
@@ -130,7 +142,7 @@ index 4202f52708..22800eda63 100644
  
          # In order to only iterate the list once, we duplicated code a bit
          if self.enable_caching:
-@@ -387,6 +454,11 @@ class BlockPool:
+@@ -387,6 +459,11 @@ class BlockPool:
              # eviction is not needed
              return False
  
@@ -142,7 +154,7 @@ index 4202f52708..22800eda63 100644
          block.reset_hash()
  
          if self.enable_kv_cache_events:
-@@ -415,6 +487,11 @@ class BlockPool:
+@@ -415,6 +492,11 @@ class BlockPool:
              block.ref_cnt += 1
              if self.metrics_collector:
                  self.metrics_collector.on_block_accessed(block)
@@ -154,7 +166,7 @@ index 4202f52708..22800eda63 100644
  
      def free_blocks(
          self, ordered_blocks: Iterable[KVCacheBlock], prepend: bool = False
-@@ -435,6 +512,12 @@ class BlockPool:
+@@ -435,6 +517,12 @@ class BlockPool:
          freed_blocks = [
              block for block in blocks_list if block.ref_cnt == 0 and not block.is_null
          ]

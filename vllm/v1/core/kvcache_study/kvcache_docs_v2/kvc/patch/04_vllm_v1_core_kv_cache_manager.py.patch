@@ -1,5 +1,5 @@
 diff --git a/vllm/v1/core/kv_cache_manager.py b/vllm/v1/core/kv_cache_manager.py
-index 9f0bfc5880..1bd5f053e4 100644
+index 9f0bfc5880..000eea05ae 100644
 --- a/vllm/v1/core/kv_cache_manager.py
 +++ b/vllm/v1/core/kv_cache_manager.py
 @@ -139,6 +139,9 @@ class KVCacheManager:
@@ -16,9 +16,9 @@ index 9f0bfc5880..1bd5f053e4 100644
          self.empty_kv_cache_blocks = KVCacheBlocks(
              tuple(() for _ in range(self.num_kv_cache_groups))
          )
-+        # [KVC][L5] KVCacheManager 初始化: 顶层门面装配(第4层协调器 + 第2层块池)
++        # [KVC][L5] KVCacheManager 初始化完成: 顶层门面装配完成(第4层协调器 + 第2层块池)
 +        logger.info(
-+            f"[KVC][L5] KVCacheManager.__init__: coordinator={type(self.coordinator).__name__}, "
++            f"[KVC][L5] KVCacheManager.__init__完成：coordinator={type(self.coordinator).__name__}, "
 +            f"num_kv_cache_groups={self.num_kv_cache_groups}, "
 +            f"managers={[type(m).__name__ for m in self.coordinator.single_type_managers]}, "
 +            f"block_pool(num_gpu_blocks={self.block_pool.num_gpu_blocks}), enable_caching={enable_caching}, "

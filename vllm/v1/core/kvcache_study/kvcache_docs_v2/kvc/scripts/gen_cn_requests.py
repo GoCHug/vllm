@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# 生成中文缓存实验请求: P(缓冲2块) / R5(5块生命周期), block_size=128 (NPU 实测值)
-# R5 设计目标: prompt 落在 (384, 512) tokens -> 第 3 块满 + 第 4 块非满(X = R-384)
+# 生成中文缓存实验请求: P(缓冲2块) / R(5块生命周期), block_size=128 (NPU 实测值)
+# R 设计目标(五块生命周期): prompt 落在 (384, 512) tokens -> 第 3 块满 + 第 4 块非满(X = R-384)
 #             decode 前 FILL=128-X 步填满第 4 块, 步 FILL+1 跨界申请第 5 块
 #             max_tokens = FILL + 9 (跨界后 7 步落第 5 块 + 最后 1 个输出仅采样)
 import json, sys
@@ -55,7 +55,7 @@ if "--gen" in sys.argv:
     with open("log/req_p.json", "w", encoding="utf-8") as f:
         json.dump({"model": MODEL, "prompt": P_TEXT,
                    "max_tokens": 1, "temperature": 0, "ignore_eos": True}, f, ensure_ascii=False)
-    with open("log/req_r5.json", "w", encoding="utf-8") as f:
+    with open("log/req_r.json", "w", encoding="utf-8") as f:
         json.dump({"model": MODEL, "prompt": R_TEXT,
                    "max_tokens": MAX_TOKENS, "temperature": 0, "ignore_eos": True}, f, ensure_ascii=False)
-    print(f"WROTE log/req_p.json / log/req_r5.json (max_tokens={MAX_TOKENS})")
+    print(f"WROTE log/req_p.json / log/req_r.json (max_tokens={MAX_TOKENS})")

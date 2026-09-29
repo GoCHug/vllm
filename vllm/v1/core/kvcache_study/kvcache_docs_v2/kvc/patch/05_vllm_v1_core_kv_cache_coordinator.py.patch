@@ -1,5 +1,5 @@
 diff --git a/vllm/v1/core/kv_cache_coordinator.py b/vllm/v1/core/kv_cache_coordinator.py
-index 89b1e84a44..c3e56b3e44 100644
+index 89b1e84a44..5e2ff358e3 100644
 --- a/vllm/v1/core/kv_cache_coordinator.py
 +++ b/vllm/v1/core/kv_cache_coordinator.py
 @@ -25,6 +25,9 @@ from vllm.v1.kv_cache_interface import (
@@ -89,7 +89,7 @@ index 89b1e84a44..c3e56b3e44 100644
          self.single_type_managers[0].use_eagle = 0 in self.eagle_group_ids
 +        # [KVC][L4] 单组直通协调器初始化: 持有 1 个第3层 manager + 1 个第2层 BlockPool
 +        logger.info(
-+            f"[KVC][L4] UnitaryKVCacheCoordinator.__init__: 单组直通, "
++            f"[KVC][L4] UnitaryKVCacheCoordinator.__init__完成：单组直通, "
 +            f"managers={[type(m).__name__ for m in self.single_type_managers]}, "
 +            f"kv_cache_spec={type(self.kv_cache_spec).__name__}"
 +            f"(block_size={self.kv_cache_spec.block_size}, "

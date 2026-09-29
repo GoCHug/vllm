@@ -198,7 +198,7 @@ index 4c8e11e9d..ab0074fbf 100644
                              v_tensor_size,
                              alignment,
                          )
-+                        # [KVC][L1] 物理侧(vllm-ascend 重写): K/V 分开两张 int8 张量 (2M 对齐, 支持 PD 分离)
++                        # [KVC][L1] 物理侧(vllm-ascend 重写): K/V 分开两张 int8 张量 (2M 对齐)
 +                        logger.info(
 +                            "[KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: "
 +                            "%s: KVCacheTensor(size=%d bytes = %.2fMiB) -> K int8 %.2fMiB + V int8 %.2fMiB"
