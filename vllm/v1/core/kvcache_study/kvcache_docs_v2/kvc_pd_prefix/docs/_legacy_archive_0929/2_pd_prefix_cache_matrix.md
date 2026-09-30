@@ -165,7 +165,7 @@ sed 's/^    --enforce-eager/    --enforce-eager --no-enable-prefix-caching/' scr
 # 四次组合 × curl_pd.sh 双请求（P 324 / R 486 固定 workload，即本文 §2 标尺）
 ```
 
-每格验收五点：`grep 'KV cache transfer' log/d_llama.log`（②④ 应 ~2-3ms、①③ ~1.4ms）、`grep 'hit_length' log/kvc_*_req2.log`（①③ P/D 双侧 256；② D 侧 0；④ 双侧 0）、`grep 'Prefix cache hit rate'`（① 双 31.6%② P 31.6%/D 0、③ P 0/D 31.6%、④ 双 0）、`grep '\[KVP\]'`（四格 18 项一致性）、`grep 'Delaying free'`（四格均出现）。表 §0 的推算值即本方案的预期答案，回填即闭环。
+每格验收五点：`grep 'KV cache transfer' log/d_llama.log`（②④ 应 ~2-3ms、①③ ~1.4ms）、`grep 'hit_length' log/kvc_*_reqr.log`（①③ P/D 双侧 256；② D 侧 0；④ 双侧 0）、`grep 'Prefix cache hit rate'`（① 双 31.6%② P 31.6%/D 0、③ P 0/D 31.6%、④ 双 0）、`grep '\[KVP\]'`（四格 18 项一致性）、`grep 'Delaying free'`（四格均出现）。表 §0 的推算值即本方案的预期答案，回填即闭环。
 
 > **回填结果（2026-09-29 08:17 实测，docs/3 §6）**：五点预测**全中**——耗时 ①③ 1.07/1.09ms、②④ 1.38/1.18ms（比预测略快，实测有效带宽 31-57GB/s），hit_length（SCHED local_hit 口径）/hit_rate/Delaying free 逐格分毫不差；KVP 18 项一致性因 PCM 轮未叠加 09 号指纹补丁未逐块复核，由 docs/1 象限① + 数理解耦论证补足（docs/3 §7）。
 

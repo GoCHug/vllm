@@ -6,32 +6,59 @@
 #   例: ./run_quadrant.sh q1_p1d1 1 1     # 象限① 双开
 #       ./run_quadrant.sh q2_p1d0 1 0     # 象限② P开D关
 #
-# 证据落盘( pcm/log/<qname>/ ):
+# 证据落盘( kvc_pd_prefix/log/<qname>/ ):
 #   p_llama.log / d_llama.log / proxy.log      三组件全量日志
 #   resp_p.json / resp_r.json                  双请求响应
 #   p_pcm.txt / d_pcm.txt                      [PCM] 观察行(6 打点)
 #   d_transfer.txt                             mooncake 传输耗时行(原生)
 #   p_hitrate.txt / d_hitrate.txt              Prometheus 命中率行(原生)
 #   q_summary.md                               本象限一行式快照
-# 前提: 10 号 PCM 补丁已应用; 4 卡空闲(无 vllm 进程); ../../log/req_*.json 就位
+# 前提: 10 号 PCM 补丁已应用; 4 卡空闲(无 vllm 进程); ../kvc_pd/log/req_*.json 就位
 # ==============================================================================
 set -uo pipefail   # 不用 -e: 单步失败仍要保证收尾清理
-BASE="$(cd "$(dirname "$0")/.." && pwd)"       # pcm/ 根
-KVC_PD="$(cd "$BASE/.." && pwd)"               # kvc_pd/
+BASE="$(cd "$(dirname "$0")/.." && pwd)"       # kvc_pd_prefix/ 根
+KVC_PD="$(cd "$BASE/../kvc_pd" && pwd)"        # 平级 kvc_pd/(复用其请求体)
 REQS="$KVC_PD/log"
 PROXY=/vllm-workspace/vllm-ascend/examples/disaggregated_prefill_v1/load_balance_proxy_server_example.py
 
 Q="$1"; PPC="$2"; DPC="$3"
 QDIR="$BASE/log/$Q"; mkdir -p "$QDIR"
+PCM_P_NPU="${PCM_P_NPU:-0}"; PCM_D_NPU="${PCM_D_NPU:-1}"
 
 PN="on"; [ "$PPC" = "0" ] && PN="off"
 DN="on"; [ "$DPC" = "0" ] && DN="off"
-echo "== [$Q] P(pc=$PN) D(pc=$DN) begin $(date +%T) =="
+echo "== [$Q] P(pc=$PN, npu$PCM_P_NPU) D(pc=$DN, npu$PCM_D_NPU) begin $(date +%T) =="
+
+# 兜底清理: 失败路径 exit 也不能把 vllm 残留留给下一象限(否则连环占卡)
+cleanup() {
+  pkill -f "load_balance_proxy_server_example" 2>/dev/null; sleep 2
+  pkill -f "v[l]lm serve" 2>/dev/null; sleep 6
+  pkill -9 -f "v[l]lm serve" 2>/dev/null; pkill -9 -f "load_balance_[p]roxy" 2>/dev/null; sleep 3
+}
+trap cleanup EXIT
+
+hbm_used_mb() {  # $1=容器内卡号 → npu-smi 第 n 条 HBM 已用 MB（空=测量失败）
+  npu-smi info 2>/dev/null | grep -oE "[0-9]+ */ *65536" | sed -n "$(( $1 + 1 ))p" | tr -d ' ' | cut -d/ -f1
+}
+guard_hbm() {  # $1=卡号 $2=最多等秒 —— 外部租户瞬占防护(阈值≈12GB: 恒留 49GiB 需求裕量)
+  local card="$1" tlimit="$2" t0 u
+  t0=$(date +%s)
+  while :; do
+    u=$(hbm_used_mb "$card")
+    if [ -n "$u" ] && [ "$u" -lt 12000 ] 2>/dev/null; then echo "[HBM] [$Q] npu$card used=${u}MB 就绪"; return 0; fi
+    if [ $(( $(date +%s) - t0 )) -gt "$tlimit" ]; then echo "[WARN] [$Q] npu$card HBM used=${u:-?}MB 等待 ${tlimit}s 未清，放行试跑"; return 1; fi
+    sleep 10
+  done
+}
 
 wait_ready() {  # $1=日志文件 $2=超时秒
   local log="$1" tlimit="$2" t0
   t0=$(date +%s)
   while ! grep -q "Application startup complete" "$log" 2>/dev/null; do
+    if grep -qE "Engine core initialization failed|smashing detected" "$log" 2>/dev/null; then
+      echo "[ERROR] [$Q] 启动崩溃(见 $log): $log —— 早退收尾"
+      return 1
+    fi
     if [ $(( $(date +%s) - t0 )) -gt "$tlimit" ]; then
       echo "[ERROR] [$Q] 就绪超时(${tlimit}s): $log —— 保留现场, 跳过后续请求"
       return 1
@@ -42,10 +69,14 @@ wait_ready() {  # $1=日志文件 $2=超时秒
   return 0
 }
 
-# ---------- 1. 起 P → D → proxy ----------
+# ---------- 0. P 卡防抢占 ----------
+guard_hbm "$PCM_P_NPU" 120 || true
+
+# ---------- 1. 起 P → (D 卡) → D → proxy ----------
 bash "$BASE/scripts/start_p.sh" "log/$Q" "$PPC"
 wait_ready "$QDIR/p_llama.log" 300 || { cp "$QDIR/p_llama.log" "$QDIR/p_llama.timeout" 2>/dev/null; exit 1; }
 
+guard_hbm "$PCM_D_NPU" 120 || true
 bash "$BASE/scripts/start_d.sh" "log/$Q" "$DPC"
 wait_ready "$QDIR/d_llama.log" 300 || { cp "$QDIR/d_llama.log" "$QDIR/d_llama.timeout" 2>/dev/null; exit 1; }
 

@@ -1,4 +1,4 @@
-===== kvc_p_req1.log vs kvc_d_req1.log =====
+===== kvc_p_reqp.log vs kvc_d_reqp.log =====
 层集合: P=32 D=32
 p_tok: P=324 D=324  传输区 Tx = 双侧各取前 p_tok-1=323 tok
 Tx 指纹对账: 192/192 对全等
@@ -68,7 +68,7 @@ Xx 不等明细 (62 条, 均应落于尾块/decode 块):
   L31 blk3V: P=79f937cbfe880fca D=2a562ce2abbe6ad0  (尾块/本地重算槽位或 decode 新块(预期))
 --> 裁决: [PASS] mooncake 传输逐位无损, 差异均来自本地生成区
 
-===== kvc_p_req2.log vs kvc_d_req2.log =====
+===== kvc_p_reqr.log vs kvc_d_reqr.log =====
 层集合: P=32 D=32
 p_tok: P=486 D=486  传输区 Tx = 双侧各取前 p_tok-1=485 tok
 Tx 指纹对账: 256/256 对全等

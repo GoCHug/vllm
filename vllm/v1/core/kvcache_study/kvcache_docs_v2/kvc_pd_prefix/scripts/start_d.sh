@@ -2,12 +2,12 @@
 # ==============================================================================
 # start_d.sh —— PCM 四象限实验 D 侧启动（参数 = 1:PC开启 | 0:PC关闭）
 #
-# 与 ../../scripts/start_d.sh 同源（卡/端口/rank/握手全一致），仅两处差异：
+# 与 ../kvc_pd/scripts/start_d.sh 同源（卡/端口/rank/握手全一致），仅两处差异：
 #   1) $2=0 时注入 --no-enable-prefix-caching（象限开关）
-#   2) 日志落 PCM 象限目录 $PCM_Q（由调用方传入，相对 pcm/ 根）
-# 教训继承: 勿设 HCCL_IF_IP（vllm-ascend 0.23.0 部署指南 bug，见 ../../docs/1 §2）
+#   2) 日志落 PCM 象限目录 $PCM_Q（由调用方传入，相对 kvc_pd_prefix/ 根）
+# 教训继承: 勿设 HCCL_IF_IP（vllm-ascend 0.23.0 部署指南 bug，见 ../kvc_pd/docs/1 §2）
 # ==============================================================================
-cd "$(dirname "$0")/.." || exit 1          # pcm/ 根
+cd "$(dirname "$0")/.." || exit 1          # kvc_pd_prefix/ 根
 PCM_Q="${1:?用法: start_d.sh <象限日志目录> <pc:1|0>}"
 PCM_PC="${2:?用法: start_d.sh <象限日志目录> <pc:1|0>}"
 mkdir -p "$PCM_Q"
@@ -21,7 +21,7 @@ export HCCL_CONNECT_TIMEOUT=120
 export GLOO_SOCKET_IFNAME=lo
 export TP_SOCKET_IFNAME=lo
 export HCCL_SOCKET_IFNAME=lo
-export ASCEND_RT_VISIBLE_DEVICES=1
+export ASCEND_RT_VISIBLE_DEVICES=${PCM_D_NPU:-1}
 
 setsid nohup vllm serve /home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model \
     --host localhost --port 8200 \

@@ -10,7 +10,7 @@
 #   5. revert_pd_patches.sh 撤补丁(源码还原干净)
 #
 # 用法(容器内):
-#   cd /a3_inference/itask/workdir/gch02599191/kvc_pd
+#   cd /a3_inference/itask/workdir/wsl02075301/kvc_pd
 #   setsid nohup bash scripts/run_all.sh > log/run_all_screen.log 2>&1 < /dev/null &
 #   tail -f log/run_all_screen.log    # 观察进度
 # ==============================================================================

@@ -105,8 +105,8 @@ def cmp_req(name_p: str, name_d: str):
 
 def main():
     out, allok = [], True
-    pairs = [("kvc_p_req1.log", "kvc_d_req1.log"),
-             ("kvc_p_req2.log", "kvc_d_req2.log")]
+    pairs = [("kvc_p_reqp.log", "kvc_d_reqp.log"),
+             ("kvc_p_reqr.log", "kvc_d_reqr.log")]
     for p, d in pairs:
         if (LOG / p).exists() and (LOG / d).exists():
             lines, ok = cmp_req(p, d)

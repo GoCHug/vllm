@@ -1,7 +1,7 @@
 # kvc_pd —— PD 分离 KVCache 传输正确性实验工作区
 
 > **回答的问题**：PD 分离（1P+1D + mooncake）下，P 侧 prefill 算出的 KVCache 传到 D 侧后，与 P 侧**逐位相等**吗？
-> **结论（2026-09-29 实测）**：**PASS**——传输区（前 p_tok-1 个 token）共 448 对块级 sha256 指纹 100% 全等（req1 192/192、req2 256/256）；不相等的槽位全部是 D 侧本地生成（bootstrap 补算 1 token + decode 新写），与传输无关。详见 `docs/1_kvc_pd_correctness_record.md`。
+> **结论（2026-09-30 gggtest 容器实测轮）**：**PASS**——传输区（前 p_tok-1 个 token）共 448 对块级 sha256 指纹 100% 全等（req_p 192/192、req_r 256/256）；不相等的槽位全部是 D 侧本地生成（bootstrap 补算 1 token + decode 新写），与传输无关。曾于 09-29 旧容器完整复现一次，两轮 verdict **MD5 逐字节一致**（详见 `docs/1_kvc_pd_correctness_record.md` §8）。log/ 只保留最新一轮，后续重跑直接原地覆盖更新。
 
 ## 目录结构
 
@@ -20,31 +20,30 @@ kvc_pd/
 │   ├── curl_pd.sh                      发 req_p/req_r + 提取双侧 [KVC] 轨迹六段
 │   ├── stop_pd.sh                      杀 proxy + P/D 全部进程并确认归零
 │   └── compare_fp.py                   P/D 指纹自动对账 → log/verdict.txt（PASS/FAIL）
-├── log/                                最新一轮（2026-09-29 v2 指纹轮）产物
+├── log/                                最新一轮（2026-09-30 gggtest）产物·重跑直接覆盖更新
 │   ├── verdict.txt                     自动裁决全文（448/448 Tx 全等 → PASS）
-│   ├── kvc_{p,d}_{startup,req1,req2}.log  双侧 [KVC] 轨迹（含 [FPB] 块指纹 / [FP] 层指纹）
-│   ├── {p,d}_llama.log                 双侧服务全量日志（boot/编排/建池/mooncake/请求全程）
+│   ├── kvc_{p,d}_{startup,reqp,reqr}.log  双侧 [KVC] 轨迹（含 [FPB] 块指纹 / [FP] 层指纹）
+│   ├── {p,d}_llama.log / proxy.log     双侧服务全量日志 + 负载代理日志
 │   ├── curl_{p,r}_screen.txt           curl 命令 + 打屏
 │   ├── req_{p,r}.json / resp_{p,r}.json  请求体 / 响应体
 │   └── run_all_screen.log              一键脚本全程录像
 ├── docs/
 │   ├── 1_kvc_pd_correctness_record.md  实验分析文档（设计/时间线/req_p·req_r 对账/归因/复现）
-│   ├── 2_pd_prefix_cache_matrix.md      P/D prefix cache 四象限开关矩阵（机制底座/四格成本对照/正确性/选型；已含实测回填）
-│   └── 3_pcm_quadrant_experiment.md     四象限实测实录（10 号 PCM 补丁·六打点·三新发现：整块 DMA/带宽实测/块号语义）
-└── pcm/                                自包含子工作区（prefix cache 四象限实验，详见 pcm/README.md）
-    ├── patch/                          10 号 [PCM] 补丁套件（独立于 kvc 01-09；gen 生成器 + apply/revert）
-    ├── scripts/                        参数化 start_{p,d}.sh（pc 开关注入）+ run_quadrant.sh + run_matrix.sh
-    └── log/                            四象限产物：q{1..4}_*/ ×12 文件 + matrix_summary.md 对照总表
+│   └── 2_pd_request_lifecycle.md       请求全流程与 token 归属（proxy 改写/P 哑 token 扳机/D 吐首 token/串行点与异常路径）
+# 平级 ../kvc_pd_prefix/：prefix cache 四象限实验工作区
+#   docs/pd_prefix_cache_matrix.md = 原 kvc_pd docs/2+3 整合（机制/场景卡/实测/选型/事故记录）
+#   patch/ + scripts/ + log/round_0930_guian/（权威实测轮全套）
 ```
 
-## 环境信息（2026-09-29 实测轮）
+## 环境信息（2026-09-30 gggtest 实测轮）
 
 | 项 | P 侧（prefill/producer） | D 侧（decode/consumer） |
 |---|---|---|
-| NPU | 卡0 npu:0（4×hpu910a3 之一） | 卡1 npu:1 |
+| 容器 | gggtest（itask, 4×hpu910a3, openEuler 24.03 LTS-SP3, workdir /a3_inference/itask/workdir/wsl02075301） | 同容器卡1 npu:1 |
+| NPU | 卡0 npu:0 | 卡1 npu:1 |
 | 服务 | localhost:8100 | localhost:8200 |
 | kv 角色 | kv_producer rank0, port 20001 | kv_consumer rank1, port 20002 |
-| KV 显存/块数 | 33.78 GiB / 2161 块 | 33.79 GiB / 2162 块 |
+| KV 显存/块数 | 33.78 GiB / 2162 块 | 33.79 GiB / 2162 块 |
 | 传输 | mooncake-transfer-engine-npu 0.3.11.post1，adxl device 直传，proxy :8000 双发 | 同左 |
 
 - 模型：Meta-Llama-3-8B bf16，TP1×2 实例，block_size=128，enforce_eager，seed=1024
@@ -54,7 +53,7 @@ kvc_pd/
 ## 操作步骤（容器内）
 
 ```bash
-cd /a3_inference/itask/workdir/gch02599191/kvc_pd
+cd /a3_inference/itask/workdir/wsl02075301/kvc_pd
 
 # 一键全流程（推荐；后台跑也行, 见脚本头注释）
 bash scripts/run_all.sh
@@ -80,4 +79,8 @@ bash patch/revert_pd_patches.sh      # 7. 撤补丁（源码还原干净, [KVC] 
 | `[KVC][KVP][FP]` | `K.prompt=<hash> K.all=<hash> …` | 层级总对账（prompt 区含补算槽, 全等层数少是预期） |
 | 统计行（08 基线） | mean/std/min/max + 首 3 值 | 弱校验；ULP 级 bit 差不可见, 仅作人类可读参考 |
 
-裁决规则与自动对账见 `scripts/compare_fp.py` 头注释；完整实验故事（含 D 侧载入步/补算步取证、哈希盐、req2 前缀命中）见 `docs/1_kvc_pd_correctness_record.md`。
+裁决规则与自动对账见 `scripts/compare_fp.py` 头注释；完整实验故事（含 D 侧载入步/补算步取证、哈希盐、req_r 前缀命中）见 `docs/1_kvc_pd_correctness_record.md`。
+
+## 复现性备注
+
+本实验曾在 09-29 旧容器（容器已回收，产物已释出）与 09-30 gggtest 轮两次独立跑通：两轮 verdict.txt **MD5 逐字节一致**（b4cf086b…，含 126 条 Xx 差异明细的层号/块号/双侧哈希值全量相同）、生成文本逐 token 全同——跨容器/跨物理卡下 seed=1024 + enforce_eager 的执行链**位级确定**。唯二波动：P 侧池块数（2161→2162，显存碎片级）与哈希盐链（含 request_id，每轮新请求 ID 不同属预期；轮内 P/D 同 ID 同盐，Tx 全等才是判据）。详见 `docs/1_kvc_pd_correctness_record.md` §8。
