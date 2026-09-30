@@ -1,5 +1,5 @@
 diff --git a/vllm/v1/core/kv_cache_manager.py b/vllm/v1/core/kv_cache_manager.py
-index 9f0bfc5880..000eea05ae 100644
+index 9f0bfc5880..8d1980fb3a 100644
 --- a/vllm/v1/core/kv_cache_manager.py
 +++ b/vllm/v1/core/kv_cache_manager.py
 @@ -139,6 +139,9 @@ class KVCacheManager:
@@ -88,7 +88,7 @@ index 9f0bfc5880..000eea05ae 100644
          # When loading KV data asynchronously, we may have zero new tokens to
          # compute while still allocating slots for externally computed tokens.
          if num_new_tokens == 0 and num_external_computed_tokens == 0:
-@@ -351,6 +388,19 @@ class KVCacheManager:
+@@ -351,6 +388,34 @@ class KVCacheManager:
              self.max_model_len,
          )
  
@@ -96,10 +96,25 @@ index 9f0bfc5880..000eea05ae 100644
 +        # S1 容量探问的 L4 下钻(全部落在横幅之后)
 +        logger.info("[KVC][L5] " + "=" * 8 + " 分配 S1~S4 " + "=" * 8)
 +        # [KVC][L5] 进入信息: 紧跟横幅打, 无条件并加"分配"阶段前缀
++        # Blocks 布局(kv_cache_manager.py:281-312): |<comp>|<new_comp>|<ext_comp>|<new>|<lookahead>|
++        #   comp=request.num_computed_tokens  new_comp=num_new_computed_tokens
++        #   ext_comp=num_external_computed_tokens(connector 外部已算, PD 分离 = P 传给 D 的 KV tok)
++        #   new=num_new_tokens  lookahead=num_lookahead_tokens
 +        logger.info(
 +            f"[KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req={request.request_id}, "
-+            f"num_new_tokens={num_new_tokens}, num_new_computed_tokens={num_new_computed_tokens}, "
-+            f"request.num_computed_tokens={request.num_computed_tokens}, request.num_tokens={request.num_tokens}"
++            f"num_new_tokens={num_new_tokens}(new), "
++            f"num_new_computed_tokens={num_new_computed_tokens}(new_comp), "
++            f"num_external_computed_tokens={num_external_computed_tokens}(ext_comp=P传D_KV), "
++            f"num_encoder_tokens={num_encoder_tokens}, num_lookahead_tokens={num_lookahead_tokens}, "
++            f"request.num_computed_tokens={request.num_computed_tokens}(comp), "
++            f"request.num_tokens={request.num_tokens}, delay_cache_blocks={delay_cache_blocks}"
++        )
++        # [KVC][L5] 五段布局量化行: PD 场景看 ext_comp(P->D 传输抵扣) 与 <new>(本步实际计算)
++        logger.info(
++            f"[KVC][L5] 分配布局: |<comp>={request.num_computed_tokens} |<new_comp>={num_new_computed_tokens} "
++            f"|<ext_comp>={num_external_computed_tokens}(P传D) |<new>={num_new_tokens} "
++            f"|<lookahead>={num_lookahead_tokens}| num_local_computed_tokens={num_local_computed_tokens} "
++            f"total_computed_tokens={total_computed_tokens} to_be_computed={num_new_tokens + num_lookahead_tokens}"
 +        )
 +        # [KVC][L5] S1 子步横幅先行: 两次外层容量探问的 L4 下钻
 +        # 全部落在 S1 子步横幅之后
@@ -108,7 +123,7 @@ index 9f0bfc5880..000eea05ae 100644
          if full_sequence_must_fit:
              # First check and fail if the full request sequence won't fit.
              full_num_tokens = min(request.num_tokens, self.max_model_len)
-@@ -393,8 +443,19 @@ class KVCacheManager:
+@@ -393,8 +458,19 @@ class KVCacheManager:
          )
  
          available_blocks = self.block_pool.get_num_free_blocks() - reserved_blocks
@@ -128,7 +143,7 @@ index 9f0bfc5880..000eea05ae 100644
              return None
  
          if (
-@@ -403,23 +464,50 @@ class KVCacheManager:
+@@ -403,23 +479,50 @@ class KVCacheManager:
          ):
              # Append the new computed blocks to the request blocks until now to
              # avoid the case where the new blocks cannot be allocated.
@@ -179,7 +194,7 @@ index 9f0bfc5880..000eea05ae 100644
              return self.create_kv_cache_blocks(new_blocks)
  
          # NOTE(woosuk): We want to commit (cache) up to num_local_computed_tokens
-@@ -431,9 +519,25 @@ class KVCacheManager:
+@@ -431,9 +534,25 @@ class KVCacheManager:
              total_computed_tokens + num_new_tokens,
              request.num_tokens,
          )
@@ -206,7 +221,7 @@ index 9f0bfc5880..000eea05ae 100644
  
      def free(self, request: Request) -> None:
          """Free the blocks allocated for the request.
-@@ -443,6 +547,13 @@ class KVCacheManager:
+@@ -443,6 +562,13 @@ class KVCacheManager:
          Args:
              request: The request to free the blocks.
          """
@@ -220,7 +235,7 @@ index 9f0bfc5880..000eea05ae 100644
          self.coordinator.free(request.request_id)
  
      def remove_skipped_blocks(
-@@ -559,7 +670,17 @@ class KVCacheManager:
+@@ -559,7 +685,17 @@ class KVCacheManager:
                  that are already cached and tokens to be cached.
          """
          if self.enable_caching:

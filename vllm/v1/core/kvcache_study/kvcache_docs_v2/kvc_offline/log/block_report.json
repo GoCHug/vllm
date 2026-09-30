@@ -1,0 +1,10558 @@
+{
+ "verdict": "PASS",
+ "B0": [
+  {
+   "file": "kv_D0_1_9b2b9e4f.pt",
+   "side": "D",
+   "rank": 0,
+   "seq": 1,
+   "p_tok": 324,
+   "w_tok": 324,
+   "cov": [
+    128,
+    128,
+    68
+   ],
+   "block_table": [
+    1,
+    2,
+    3
+   ],
+   "kv_heads": 4,
+   "struct_ok": true
+  },
+  {
+   "file": "kv_D0_2_abc09176.pt",
+   "side": "D",
+   "rank": 0,
+   "seq": 2,
+   "p_tok": 486,
+   "w_tok": 520,
+   "cov": [
+    128,
+    128,
+    128,
+    128,
+    8
+   ],
+   "block_table": [
+    1,
+    2,
+    4,
+    5,
+    6
+   ],
+   "kv_heads": 4,
+   "struct_ok": true
+  },
+  {
+   "file": "kv_D1_1_9b2b9e4f.pt",
+   "side": "D",
+   "rank": 1,
+   "seq": 1,
+   "p_tok": 324,
+   "w_tok": 324,
+   "cov": [
+    128,
+    128,
+    68
+   ],
+   "block_table": [
+    1,
+    2,
+    3
+   ],
+   "kv_heads": 4,
+   "struct_ok": true
+  },
+  {
+   "file": "kv_D1_2_abc09176.pt",
+   "side": "D",
+   "rank": 1,
+   "seq": 2,
+   "p_tok": 486,
+   "w_tok": 520,
+   "cov": [
+    128,
+    128,
+    128,
+    128,
+    8
+   ],
+   "block_table": [
+    1,
+    2,
+    4,
+    5,
+    6
+   ],
+   "kv_heads": 4,
+   "struct_ok": true
+  },
+  {
+   "file": "kv_P0_1_86535257.pt",
+   "side": "P",
+   "rank": 0,
+   "seq": 1,
+   "p_tok": 324,
+   "w_tok": 324,
+   "cov": [
+    128,
+    128,
+    68
+   ],
+   "block_table": [
+    1,
+    2,
+    3
+   ],
+   "kv_heads": 4,
+   "struct_ok": true
+  },
+  {
+   "file": "kv_P0_2_816242b6.pt",
+   "side": "P",
+   "rank": 0,
+   "seq": 2,
+   "p_tok": 486,
+   "w_tok": 486,
+   "cov": [
+    128,
+    128,
+    128,
+    102
+   ],
+   "block_table": [
+    1,
+    2,
+    4,
+    5
+   ],
+   "kv_heads": 4,
+   "struct_ok": true
+  },
+  {
+   "file": "kv_P1_1_86535257.pt",
+   "side": "P",
+   "rank": 1,
+   "seq": 1,
+   "p_tok": 324,
+   "w_tok": 324,
+   "cov": [
+    128,
+    128,
+    68
+   ],
+   "block_table": [
+    1,
+    2,
+    3
+   ],
+   "kv_heads": 4,
+   "struct_ok": true
+  },
+  {
+   "file": "kv_P1_2_816242b6.pt",
+   "side": "P",
+   "rank": 1,
+   "seq": 2,
+   "p_tok": 486,
+   "w_tok": 486,
+   "cov": [
+    128,
+    128,
+    128,
+    102
+   ],
+   "block_table": [
+    1,
+    2,
+    4,
+    5
+   ],
+   "kv_heads": 4,
+   "struct_ok": true
+  },
+  {
+   "note": "seq=2 r0 cov/block_table 异构(pd期预期: P 停在prompt, D 延伸到 decode)——P.cov=[128, 128, 128, 102] P.w_tok=486 / D.cov=[128, 128, 128, 128, 8] D.w_tok=520",
+   "P_block_table": [
+    1,
+    2,
+    4,
+    5
+   ],
+   "D_block_table": [
+    1,
+    2,
+    4,
+    5,
+    6
+   ]
+  },
+  {
+   "note": "seq=2 r1 cov/block_table 异构(pd期预期: P 停在prompt, D 延伸到 decode)——P.cov=[128, 128, 128, 102] P.w_tok=486 / D.cov=[128, 128, 128, 128, 8] D.w_tok=520",
+   "P_block_table": [
+    1,
+    2,
+    4,
+    5
+   ],
+   "D_block_table": [
+    1,
+    2,
+    4,
+    5,
+    6
+   ]
+  }
+ ],
+ "B1": [
+  {
+   "key": "D0s1",
+   "n_checked": 512,
+   "n_equal": 512
+  },
+  {
+   "key": "D0s2",
+   "n_checked": 768,
+   "n_equal": 768
+  },
+  {
+   "key": "D1s1",
+   "n_checked": 512,
+   "n_equal": 512
+  },
+  {
+   "key": "D1s2",
+   "n_checked": 768,
+   "n_equal": 768
+  },
+  {
+   "key": "P0s1",
+   "n_checked": 512,
+   "n_equal": 512
+  },
+  {
+   "key": "P0s2",
+   "n_checked": 640,
+   "n_equal": 640
+  },
+  {
+   "key": "P1s1",
+   "n_checked": 512,
+   "n_equal": 512
+  },
+  {
+   "key": "P1s2",
+   "n_checked": 640,
+   "n_equal": 640
+  }
+ ],
+ "B2": [
+  {
+   "seq": 1,
+   "rank": 0,
+   "p_tok": 324,
+   "pairs_checked": 64,
+   "pairs_equal": 64
+  },
+  {
+   "seq": 1,
+   "rank": 1,
+   "p_tok": 324,
+   "pairs_checked": 64,
+   "pairs_equal": 64
+  },
+  {
+   "seq": 2,
+   "rank": 0,
+   "p_tok": 486,
+   "pairs_checked": 64,
+   "pairs_equal": 64
+  },
+  {
+   "seq": 2,
+   "rank": 1,
+   "p_tok": 486,
+   "pairs_checked": 64,
+   "pairs_equal": 64
+  }
+ ],
+ "B3": [
+  {
+   "layer": 0,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 0,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 1,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.001953=0.02%幅值,4元素)",
+   "hist": {
+    "exact": 508,
+    "MANHIGH": 2,
+    "ULP": 2
+   },
+   "first": [
+    {
+     "layer": 1,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c5f",
+     "pb": "0x3c60",
+     "xor_bits": 6,
+     "bit_pos": "0+1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 1,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e81",
+     "pb": "0x3e80",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 1,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e53",
+     "pb": "0x3e52",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 1,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0009766=0.30%幅值,58元素)",
+   "hist": {
+    "exact": 454,
+    "MANHIGH": 16,
+    "ULP": 40,
+    "EXPONENT": 2
+   },
+   "first": [
+    {
+     "layer": 1,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbb40",
+     "pb": "0xbb3f",
+     "xor_bits": 7,
+     "bit_pos": "0+1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 1,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe27",
+     "pb": "0xbe28",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 1,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3cd8",
+     "pb": "0x3cd9",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 2,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=0.13%幅值,250元素)",
+   "hist": {
+    "exact": 262,
+    "ULP": 163,
+    "MANHIGH": 78,
+    "EXPONENT": 9
+   },
+   "first": [
+    {
+     "layer": 2,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d01",
+     "pb": "0x3d05",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 2,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ec0",
+     "pb": "0x3ec1",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 2,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf90",
+     "pb": "0xbf91",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 2,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.003906=0.51%幅值,357元素)",
+   "hist": {
+    "exact": 155,
+    "ULP": 222,
+    "MANHIGH": 117,
+    "EXPONENT": 18
+   },
+   "first": [
+    {
+     "layer": 2,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dff",
+     "pb": "0x3dfc",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 2,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3de4",
+     "pb": "0x3de3",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 2,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbde9",
+     "pb": "0xbdea",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 3,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01758=0.12%幅值,305元素)",
+   "hist": {
+    "exact": 207,
+    "ULP": 204,
+    "MANHIGH": 89,
+    "EXPONENT": 11,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 3,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f76",
+     "pb": "0x3f75",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 3,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf11",
+     "pb": "0xbf10",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 3,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbea3",
+     "pb": "0xbea4",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 3,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.61%幅值,374元素)",
+   "hist": {
+    "exact": 138,
+    "ULP": 225,
+    "MANHIGH": 134,
+    "EXPONENT": 15
+   },
+   "first": [
+    {
+     "layer": 3,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c9b",
+     "pb": "0x3c99",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 3,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd5f",
+     "pb": "0xbd66",
+     "xor_bits": 4,
+     "bit_pos": "0+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 3,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3a9a",
+     "pb": "0x3b01",
+     "xor_bits": 6,
+     "bit_pos": "0+1+3+4+7+8",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 4,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.36%幅值,334元素)",
+   "hist": {
+    "exact": 178,
+    "SIGN": 1,
+    "ULP": 218,
+    "MANHIGH": 104,
+    "EXPONENT": 11
+   },
+   "first": [
+    {
+     "layer": 4,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3b63",
+     "pb": "0xbb49",
+     "xor_bits": 4,
+     "bit_pos": "1+3+5+15",
+     "sig": "SIGN"
+    },
+    {
+     "layer": 4,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e68",
+     "pb": "0x3e6b",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 4,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e3c",
+     "pb": "0x3e3a",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 4,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.003906=0.42%幅值,406元素)",
+   "hist": {
+    "exact": 106,
+    "ULP": 228,
+    "MANHIGH": 145,
+    "EXPONENT": 32,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 4,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d12",
+     "pb": "0x3d11",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 4,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e70",
+     "pb": "0x3e71",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 4,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d85",
+     "pb": "0x3d82",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 5,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.33%幅值,328元素)",
+   "hist": {
+    "exact": 184,
+    "EXPONENT": 9,
+    "ULP": 206,
+    "MANHIGH": 113
+   },
+   "first": [
+    {
+     "layer": 5,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f01",
+     "pb": "0x3eff",
+     "xor_bits": 8,
+     "bit_pos": "1+2+3+4+5+6+7+8",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 5,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f2e",
+     "pb": "0x3f2d",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 5,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3da9",
+     "pb": "0x3d99",
+     "xor_bits": 2,
+     "bit_pos": "4+5",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 5,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.004883=0.46%幅值,428元素)",
+   "hist": {
+    "exact": 84,
+    "ULP": 258,
+    "MANHIGH": 153,
+    "EXPONENT": 16,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 5,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e5f",
+     "pb": "0x3e5d",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 5,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe6a",
+     "pb": "0xbe69",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 5,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd88",
+     "pb": "0xbd89",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 6,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.30%幅值,392元素)",
+   "hist": {
+    "exact": 120,
+    "ULP": 242,
+    "MANHIGH": 130,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 6,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbecd",
+     "pb": "0xbece",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 6,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe4f",
+     "pb": "0xbe5c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 6,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f36",
+     "pb": "0x3f38",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 6,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.57%幅值,444元素)",
+   "hist": {
+    "exact": 68,
+    "ULP": 264,
+    "MANHIGH": 153,
+    "EXPONENT": 26,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 6,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbcb3",
+     "pb": "0xbcb1",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 6,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf04",
+     "pb": "0xbf03",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 6,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd90",
+     "pb": "0xbd8a",
+     "xor_bits": 3,
+     "bit_pos": "1+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 7,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.42%幅值,379元素)",
+   "hist": {
+    "exact": 133,
+    "ULP": 221,
+    "MANHIGH": 137,
+    "EXPONENT": 21
+   },
+   "first": [
+    {
+     "layer": 7,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf0d",
+     "pb": "0xbf0c",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 7,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fed",
+     "pb": "0x3fef",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 7,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf23",
+     "pb": "0xbf25",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 7,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.82%幅值,426元素)",
+   "hist": {
+    "exact": 86,
+    "ULP": 234,
+    "MANHIGH": 160,
+    "EXPONENT": 31,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 7,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe24",
+     "pb": "0xbe22",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 7,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdda",
+     "pb": "0xbde4",
+     "xor_bits": 5,
+     "bit_pos": "1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 7,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e56",
+     "pb": "0x3e59",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 8,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03516=0.32%幅值,344元素)",
+   "hist": {
+    "exact": 168,
+    "MANHIGH": 104,
+    "ULP": 228,
+    "EXPONENT": 12
+   },
+   "first": [
+    {
+     "layer": 8,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ef3",
+     "pb": "0x3eef",
+     "xor_bits": 3,
+     "bit_pos": "2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 8,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe6d",
+     "pb": "0xbe65",
+     "xor_bits": 1,
+     "bit_pos": "3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 8,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe96",
+     "pb": "0xbe93",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 8,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.84%幅值,435元素)",
+   "hist": {
+    "exact": 77,
+    "ULP": 240,
+    "MANHIGH": 170,
+    "EXPONENT": 25
+   },
+   "first": [
+    {
+     "layer": 8,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3de2",
+     "pb": "0x3de1",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 8,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dd0",
+     "pb": "0x3dcb",
+     "xor_bits": 4,
+     "bit_pos": "0+1+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 8,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbce8",
+     "pb": "0xbce3",
+     "xor_bits": 3,
+     "bit_pos": "0+1+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 9,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03906=0.26%幅值,370元素)",
+   "hist": {
+    "exact": 142,
+    "MANHIGH": 123,
+    "ULP": 228,
+    "EXPONENT": 19
+   },
+   "first": [
+    {
+     "layer": 9,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f7b",
+     "pb": "0x3f7c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 9,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd56",
+     "pb": "0xbd6d",
+     "xor_bits": 5,
+     "bit_pos": "0+1+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 9,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fc4",
+     "pb": "0x3fc5",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 9,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01416=0.76%幅值,420元素)",
+   "hist": {
+    "exact": 92,
+    "ULP": 238,
+    "MANHIGH": 153,
+    "EXPONENT": 28,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 9,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d78",
+     "pb": "0x3d70",
+     "xor_bits": 1,
+     "bit_pos": "3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 9,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbbbf",
+     "pb": "0xbb86",
+     "xor_bits": 4,
+     "bit_pos": "0+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 9,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d4d",
+     "pb": "0x3d41",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 10,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03906=0.36%幅值,365元素)",
+   "hist": {
+    "exact": 147,
+    "ULP": 233,
+    "MANHIGH": 117,
+    "EXPONENT": 15
+   },
+   "first": [
+    {
+     "layer": 10,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeea",
+     "pb": "0xbeee",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 10,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f71",
+     "pb": "0x3f6f",
+     "xor_bits": 4,
+     "bit_pos": "1+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 10,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe3d",
+     "pb": "0xbe3c",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 10,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01514=1.63%幅值,424元素)",
+   "hist": {
+    "exact": 88,
+    "MANHIGH": 146,
+    "ULP": 253,
+    "EXPONENT": 25
+   },
+   "first": [
+    {
+     "layer": 10,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d5e",
+     "pb": "0x3d62",
+     "xor_bits": 4,
+     "bit_pos": "2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 10,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe90",
+     "pb": "0xbe91",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 10,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e59",
+     "pb": "0x3e5a",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 11,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.60%幅值,379元素)",
+   "hist": {
+    "exact": 133,
+    "MANHIGH": 143,
+    "ULP": 216,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 11,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeb3",
+     "pb": "0xbeb4",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 11,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdde",
+     "pb": "0xbdd9",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 11,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe4b",
+     "pb": "0xbe4d",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 11,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007935=0.74%幅值,414元素)",
+   "hist": {
+    "exact": 98,
+    "ULP": 236,
+    "MANHIGH": 145,
+    "EXPONENT": 32,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 11,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dc8",
+     "pb": "0x3dcb",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 11,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dca",
+     "pb": "0x3dcd",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 11,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c5d",
+     "pb": "0x3c62",
+     "xor_bits": 6,
+     "bit_pos": "0+1+2+3+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 12,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.53%幅值,390元素)",
+   "hist": {
+    "exact": 122,
+    "ULP": 245,
+    "MANHIGH": 126,
+    "EXPONENT": 19
+   },
+   "first": [
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ebb",
+     "pb": "0x3eb7",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe37",
+     "pb": "0xbe38",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbec5",
+     "pb": "0xbec8",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 12,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009766=0.77%幅值,441元素)",
+   "hist": {
+    "exact": 71,
+    "MANHIGH": 148,
+    "ULP": 264,
+    "EXPONENT": 28,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbcf4",
+     "pb": "0xbcf3",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e40",
+     "pb": "0x3e41",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd93",
+     "pb": "0xbd95",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 13,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.63%幅值,416元素)",
+   "hist": {
+    "exact": 96,
+    "MANHIGH": 146,
+    "ULP": 244,
+    "EXPONENT": 26
+   },
+   "first": [
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fa7",
+     "pb": "0x3fa8",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd06",
+     "pb": "0xbd17",
+     "xor_bits": 2,
+     "bit_pos": "0+4",
+     "sig": "ULP"
+    },
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf75",
+     "pb": "0xbf77",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 13,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009766=0.95%幅值,422元素)",
+   "hist": {
+    "exact": 90,
+    "MANHIGH": 160,
+    "ULP": 235,
+    "EXPONENT": 27
+   },
+   "first": [
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e3b",
+     "pb": "0x3e3c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd8d",
+     "pb": "0xbd86",
+     "xor_bits": 3,
+     "bit_pos": "0+1+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e51",
+     "pb": "0x3e50",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 14,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.32%幅值,405元素)",
+   "hist": {
+    "exact": 107,
+    "ULP": 232,
+    "MANHIGH": 151,
+    "EXPONENT": 22
+   },
+   "first": [
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf8d",
+     "pb": "0xbf8c",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeb2",
+     "pb": "0xbeb1",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ed8",
+     "pb": "0x3ed1",
+     "xor_bits": 2,
+     "bit_pos": "0+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 14,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01172=0.77%幅值,444元素)",
+   "hist": {
+    "exact": 68,
+    "EXPONENT": 30,
+    "MANHIGH": 170,
+    "ULP": 244
+   },
+   "first": [
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c2e",
+     "pb": "0x3c82",
+     "xor_bits": 4,
+     "bit_pos": "2+3+5+7",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe6e",
+     "pb": "0xbe74",
+     "xor_bits": 3,
+     "bit_pos": "1+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e98",
+     "pb": "0x3e95",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 15,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.53%幅值,402元素)",
+   "hist": {
+    "exact": 110,
+    "ULP": 248,
+    "MANHIGH": 132,
+    "EXPONENT": 22
+   },
+   "first": [
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e97",
+     "pb": "0x3e96",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdd0",
+     "pb": "0xbdd1",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ff6",
+     "pb": "0x3ff5",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 15,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009766=0.77%幅值,459元素)",
+   "hist": {
+    "exact": 53,
+    "MANHIGH": 175,
+    "ULP": 246,
+    "EXPONENT": 38
+   },
+   "first": [
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbcf0",
+     "pb": "0xbce5",
+     "xor_bits": 3,
+     "bit_pos": "0+2+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdea",
+     "pb": "0xbdf0",
+     "xor_bits": 3,
+     "bit_pos": "1+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d8f",
+     "pb": "0x3d89",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 16,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.39%幅值,382元素)",
+   "hist": {
+    "exact": 130,
+    "MANHIGH": 142,
+    "ULP": 222,
+    "EXPONENT": 18
+   },
+   "first": [
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf3c",
+     "pb": "0xbf3b",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe0b",
+     "pb": "0xbe0a",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ddf",
+     "pb": "0x3de8",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 16,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009766=0.80%幅值,438元素)",
+   "hist": {
+    "exact": 74,
+    "ULP": 236,
+    "MANHIGH": 171,
+    "EXPONENT": 31
+   },
+   "first": [
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeae",
+     "pb": "0xbeaf",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbee3",
+     "pb": "0xbee5",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c3b",
+     "pb": "0x3c48",
+     "xor_bits": 5,
+     "bit_pos": "0+1+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 17,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03906=0.32%幅值,392元素)",
+   "hist": {
+    "exact": 120,
+    "ULP": 232,
+    "MANHIGH": 141,
+    "EXPONENT": 19
+   },
+   "first": [
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dc5",
+     "pb": "0x3dcd",
+     "xor_bits": 1,
+     "bit_pos": "3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd2b",
+     "pb": "0xbd41",
+     "xor_bits": 4,
+     "bit_pos": "1+3+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbc2e",
+     "pb": "0xbbc7",
+     "xor_bits": 8,
+     "bit_pos": "0+3+5+6+7+8+9+10",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 17,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=1.18%幅值,440元素)",
+   "hist": {
+    "exact": 72,
+    "ULP": 249,
+    "MANHIGH": 159,
+    "EXPONENT": 32
+   },
+   "first": [
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe09",
+     "pb": "0xbe0c",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e29",
+     "pb": "0x3e2b",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d2b",
+     "pb": "0x3d32",
+     "xor_bits": 3,
+     "bit_pos": "0+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 18,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.56%幅值,396元素)",
+   "hist": {
+    "exact": 116,
+    "ULP": 231,
+    "MANHIGH": 145,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f96",
+     "pb": "0x3f95",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf42",
+     "pb": "0xbf41",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ca5",
+     "pb": "0x3c96",
+     "xor_bits": 4,
+     "bit_pos": "0+1+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 18,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=0.58%幅值,439元素)",
+   "hist": {
+    "exact": 73,
+    "ULP": 260,
+    "MANHIGH": 154,
+    "EXPONENT": 24,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe7b",
+     "pb": "0xbe77",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d9f",
+     "pb": "0x3da3",
+     "xor_bits": 4,
+     "bit_pos": "2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e59",
+     "pb": "0x3e56",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 19,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04297=0.33%幅值,376元素)",
+   "hist": {
+    "exact": 136,
+    "MANHIGH": 154,
+    "EXPONENT": 12,
+    "ULP": 210
+   },
+   "first": [
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf4f",
+     "pb": "0xbf51",
+     "xor_bits": 4,
+     "bit_pos": "1+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e3f",
+     "pb": "0x3e41",
+     "xor_bits": 6,
+     "bit_pos": "1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe42",
+     "pb": "0xbe3d",
+     "xor_bits": 7,
+     "bit_pos": "0+1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 19,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01019=1.00%幅值,421元素)",
+   "hist": {
+    "exact": 91,
+    "ULP": 249,
+    "MANHIGH": 146,
+    "EXPONENT": 23,
+    "SIGN": 3
+   },
+   "first": [
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3de0",
+     "pb": "0x3de2",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe47",
+     "pb": "0xbe44",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe3b",
+     "pb": "0xbe3c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 20,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04114=0.34%幅值,391元素)",
+   "hist": {
+    "exact": 121,
+    "ULP": 247,
+    "MANHIGH": 131,
+    "EXPONENT": 13
+   },
+   "first": [
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fb2",
+     "pb": "0x3fb3",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x4038",
+     "pb": "0x4037",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f35",
+     "pb": "0x3f38",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 20,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.57%幅值,459元素)",
+   "hist": {
+    "exact": 53,
+    "MANHIGH": 182,
+    "ULP": 245,
+    "EXPONENT": 31,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbc5d",
+     "pb": "0xbc33",
+     "xor_bits": 5,
+     "bit_pos": "1+2+3+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3cb8",
+     "pb": "0x3cc5",
+     "xor_bits": 6,
+     "bit_pos": "0+2+3+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdd9",
+     "pb": "0xbdd3",
+     "xor_bits": 2,
+     "bit_pos": "1+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 21,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.19%幅值,376元素)",
+   "hist": {
+    "exact": 136,
+    "ULP": 228,
+    "MANHIGH": 128,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fc3",
+     "pb": "0x3fc2",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf2c",
+     "pb": "0xbf2a",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf84",
+     "pb": "0xbf83",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 21,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.39%幅值,457元素)",
+   "hist": {
+    "exact": 55,
+    "MANHIGH": 169,
+    "ULP": 259,
+    "EXPONENT": 28,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d98",
+     "pb": "0x3d96",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e21",
+     "pb": "0x3e23",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e77",
+     "pb": "0x3e78",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 22,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.37%幅值,397元素)",
+   "hist": {
+    "exact": 115,
+    "MANHIGH": 123,
+    "ULP": 250,
+    "EXPONENT": 24
+   },
+   "first": [
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbed8",
+     "pb": "0xbed5",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e0f",
+     "pb": "0x3e07",
+     "xor_bits": 1,
+     "bit_pos": "3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe3b",
+     "pb": "0xbe3e",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 22,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.72%幅值,444元素)",
+   "hist": {
+    "exact": 68,
+    "MANHIGH": 158,
+    "ULP": 255,
+    "EXPONENT": 30,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3da9",
+     "pb": "0x3db0",
+     "xor_bits": 3,
+     "bit_pos": "0+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dd0",
+     "pb": "0x3dc8",
+     "xor_bits": 2,
+     "bit_pos": "3+4",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe3d",
+     "pb": "0xbe43",
+     "xor_bits": 6,
+     "bit_pos": "1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 23,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.43%幅值,377元素)",
+   "hist": {
+    "exact": 135,
+    "ULP": 224,
+    "MANHIGH": 128,
+    "EXPONENT": 25
+   },
+   "first": [
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fab",
+     "pb": "0x3fa8",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f90",
+     "pb": "0x3f8f",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f40",
+     "pb": "0x3f3f",
+     "xor_bits": 7,
+     "bit_pos": "0+1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 23,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009766=0.64%幅值,450元素)",
+   "hist": {
+    "exact": 62,
+    "ULP": 245,
+    "MANHIGH": 176,
+    "EXPONENT": 29
+   },
+   "first": [
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d03",
+     "pb": "0x3d02",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e51",
+     "pb": "0x3e55",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe58",
+     "pb": "0xbe5a",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 24,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.39%幅值,386元素)",
+   "hist": {
+    "exact": 126,
+    "MANHIGH": 130,
+    "ULP": 237,
+    "EXPONENT": 19
+   },
+   "first": [
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd3e",
+     "pb": "0xbd47",
+     "xor_bits": 5,
+     "bit_pos": "0+3+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f75",
+     "pb": "0x3f76",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfdd",
+     "pb": "0xbfdb",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 24,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=0.87%幅值,431元素)",
+   "hist": {
+    "exact": 81,
+    "ULP": 246,
+    "MANHIGH": 161,
+    "EXPONENT": 24
+   },
+   "first": [
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe16",
+     "pb": "0xbe13",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe27",
+     "pb": "0xbe24",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe97",
+     "pb": "0xbe95",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 25,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03516=0.27%幅值,373元素)",
+   "hist": {
+    "exact": 139,
+    "MANHIGH": 139,
+    "ULP": 209,
+    "EXPONENT": 23,
+    "SIGN": 2
+   },
+   "first": [
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ed4",
+     "pb": "0x3ed9",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbec2",
+     "pb": "0xbec6",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbed0",
+     "pb": "0xbece",
+     "xor_bits": 4,
+     "bit_pos": "1+2+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 25,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01465=1.13%幅值,457元素)",
+   "hist": {
+    "exact": 55,
+    "EXPONENT": 38,
+    "ULP": 238,
+    "MANHIGH": 181
+   },
+   "first": [
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd81",
+     "pb": "0xbd77",
+     "xor_bits": 6,
+     "bit_pos": "1+2+4+5+6+7",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e12",
+     "pb": "0x3e10",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd2a",
+     "pb": "0xbd23",
+     "xor_bits": 2,
+     "bit_pos": "0+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 26,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03906=0.28%幅值,391元素)",
+   "hist": {
+    "exact": 121,
+    "ULP": 230,
+    "MANHIGH": 140,
+    "EXPONENT": 21
+   },
+   "first": [
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf8f",
+     "pb": "0xbf8e",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf9f",
+     "pb": "0xbfa0",
+     "xor_bits": 6,
+     "bit_pos": "0+1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f78",
+     "pb": "0x3f76",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 26,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=0.64%幅值,434元素)",
+   "hist": {
+    "exact": 78,
+    "MANHIGH": 156,
+    "ULP": 250,
+    "EXPONENT": 28
+   },
+   "first": [
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e53",
+     "pb": "0x3e4f",
+     "xor_bits": 3,
+     "bit_pos": "2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe1d",
+     "pb": "0xbe24",
+     "xor_bits": 4,
+     "bit_pos": "0+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3da7",
+     "pb": "0x3da6",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 27,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.23%幅值,396元素)",
+   "hist": {
+    "exact": 116,
+    "ULP": 236,
+    "MANHIGH": 133,
+    "EXPONENT": 26,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f0d",
+     "pb": "0x3f0b",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f84",
+     "pb": "0x3f83",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eb6",
+     "pb": "0x3eb8",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 27,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01953=1.64%幅值,443元素)",
+   "hist": {
+    "exact": 69,
+    "EXPONENT": 34,
+    "MANHIGH": 182,
+    "ULP": 226,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3cff",
+     "pb": "0x3d06",
+     "xor_bits": 7,
+     "bit_pos": "0+3+4+5+6+7+8",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f04",
+     "pb": "0x3f03",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe24",
+     "pb": "0xbe1c",
+     "xor_bits": 3,
+     "bit_pos": "3+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 28,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.41%幅值,368元素)",
+   "hist": {
+    "exact": 144,
+    "MANHIGH": 125,
+    "ULP": 225,
+    "EXPONENT": 18
+   },
+   "first": [
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf99",
+     "pb": "0xbf97",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbee5",
+     "pb": "0xbee1",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fb5",
+     "pb": "0x3fb4",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 28,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01886=0.75%幅值,446元素)",
+   "hist": {
+    "exact": 66,
+    "ULP": 248,
+    "MANHIGH": 157,
+    "EXPONENT": 41
+   },
+   "first": [
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe26",
+     "pb": "0xbe24",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe31",
+     "pb": "0xbe36",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbebf",
+     "pb": "0xbec1",
+     "xor_bits": 6,
+     "bit_pos": "1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 29,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04297=0.28%幅值,393元素)",
+   "hist": {
+    "exact": 119,
+    "ULP": 258,
+    "MANHIGH": 114,
+    "EXPONENT": 21
+   },
+   "first": [
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fd7",
+     "pb": "0x3fd6",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ff5",
+     "pb": "0x3ff6",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fbf",
+     "pb": "0x3fc0",
+     "xor_bits": 7,
+     "bit_pos": "0+1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 29,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=1.08%幅值,428元素)",
+   "hist": {
+    "exact": 84,
+    "MANHIGH": 153,
+    "ULP": 253,
+    "EXPONENT": 22
+   },
+   "first": [
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe07",
+     "pb": "0xbe10",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eeb",
+     "pb": "0x3eea",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e90",
+     "pb": "0x3e94",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 30,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03906=0.31%幅值,397元素)",
+   "hist": {
+    "exact": 115,
+    "ULP": 241,
+    "MANHIGH": 135,
+    "EXPONENT": 21
+   },
+   "first": [
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fcc",
+     "pb": "0x3fcd",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf18",
+     "pb": "0xbf17",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f78",
+     "pb": "0x3f76",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 30,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.02148=0.96%幅值,461元素)",
+   "hist": {
+    "exact": 51,
+    "ULP": 241,
+    "MANHIGH": 179,
+    "EXPONENT": 40,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeb3",
+     "pb": "0xbeb1",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbee1",
+     "pb": "0xbedd",
+     "xor_bits": 4,
+     "bit_pos": "2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd89",
+     "pb": "0xbd83",
+     "xor_bits": 2,
+     "bit_pos": "1+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 31,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.21%幅值,362元素)",
+   "hist": {
+    "exact": 150,
+    "MANHIGH": 112,
+    "ULP": 244,
+    "EXPONENT": 6
+   },
+   "first": [
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe32",
+     "pb": "0xbe3f",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x408f",
+     "pb": "0x408e",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf24",
+     "pb": "0xbf25",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 31,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.74%幅值,442元素)",
+   "hist": {
+    "exact": 70,
+    "MANHIGH": 180,
+    "ULP": 246,
+    "EXPONENT": 16
+   },
+   "first": [
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe33",
+     "pb": "0xbe2e",
+     "xor_bits": 4,
+     "bit_pos": "0+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdff",
+     "pb": "0xbdf8",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe19",
+     "pb": "0xbe1a",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 0,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 0,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 1,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.11%幅值,10元素)",
+   "hist": {
+    "exact": 502,
+    "MANHIGH": 5,
+    "ULP": 5
+   },
+   "first": [
+    {
+     "layer": 1,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf33",
+     "pb": "0xbf34",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 1,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe9f",
+     "pb": "0xbea0",
+     "xor_bits": 6,
+     "bit_pos": "0+1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 1,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf8c",
+     "pb": "0xbf8b",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 1,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0002441=0.06%幅值,68元素)",
+   "hist": {
+    "exact": 444,
+    "MANHIGH": 15,
+    "ULP": 51,
+    "EXPONENT": 2
+   },
+   "first": [
+    {
+     "layer": 1,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd0b",
+     "pb": "0xbd0c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 1,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d14",
+     "pb": "0x3d15",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 1,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbc2b",
+     "pb": "0xbc2c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 2,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.02148=0.18%幅值,229元素)",
+   "hist": {
+    "exact": 283,
+    "ULP": 139,
+    "MANHIGH": 83,
+    "EXPONENT": 7
+   },
+   "first": [
+    {
+     "layer": 2,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfe5",
+     "pb": "0xbfe4",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 2,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e96",
+     "pb": "0x3e98",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 2,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbed2",
+     "pb": "0xbece",
+     "xor_bits": 3,
+     "bit_pos": "2+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 2,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.002441=0.21%幅值,346元素)",
+   "hist": {
+    "exact": 166,
+    "ULP": 213,
+    "MANHIGH": 123,
+    "EXPONENT": 10
+   },
+   "first": [
+    {
+     "layer": 2,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dde",
+     "pb": "0x3ddd",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 2,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe99",
+     "pb": "0xbe98",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 2,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d1e",
+     "pb": "0x3d1d",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 3,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=0.12%幅值,306元素)",
+   "hist": {
+    "exact": 206,
+    "ULP": 182,
+    "MANHIGH": 111,
+    "EXPONENT": 13
+   },
+   "first": [
+    {
+     "layer": 3,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xc06a",
+     "pb": "0xc069",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 3,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fda",
+     "pb": "0x3fd9",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 3,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d22",
+     "pb": "0x3d29",
+     "xor_bits": 3,
+     "bit_pos": "0+1+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 3,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.003906=0.29%幅值,410元素)",
+   "hist": {
+    "exact": 102,
+    "ULP": 259,
+    "MANHIGH": 131,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 3,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbda9",
+     "pb": "0xbda8",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 3,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbc93",
+     "pb": "0xbc96",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 3,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe00",
+     "pb": "0xbe02",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 4,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.57%幅值,324元素)",
+   "hist": {
+    "exact": 188,
+    "EXPONENT": 14,
+    "ULP": 201,
+    "MANHIGH": 109
+   },
+   "first": [
+    {
+     "layer": 4,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3bb0",
+     "pb": "0x3c10",
+     "xor_bits": 5,
+     "bit_pos": "5+7+8+9+10",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 4,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbedf",
+     "pb": "0xbede",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 4,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fda",
+     "pb": "0x3fd8",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 4,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.63%幅值,416元素)",
+   "hist": {
+    "exact": 96,
+    "ULP": 249,
+    "MANHIGH": 141,
+    "EXPONENT": 26
+   },
+   "first": [
+    {
+     "layer": 4,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe29",
+     "pb": "0xbe2a",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 4,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbcc4",
+     "pb": "0xbcbf",
+     "xor_bits": 6,
+     "bit_pos": "0+1+3+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 4,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe28",
+     "pb": "0xbe29",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 5,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.61%幅值,354元素)",
+   "hist": {
+    "exact": 158,
+    "ULP": 233,
+    "MANHIGH": 106,
+    "EXPONENT": 15
+   },
+   "first": [
+    {
+     "layer": 5,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe22",
+     "pb": "0xbe23",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 5,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbea3",
+     "pb": "0xbea1",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 5,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf01",
+     "pb": "0xbf02",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 5,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.48%幅值,428元素)",
+   "hist": {
+    "exact": 84,
+    "MANHIGH": 160,
+    "EXPONENT": 22,
+    "ULP": 246
+   },
+   "first": [
+    {
+     "layer": 5,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3df4",
+     "pb": "0x3df3",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 5,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbbae",
+     "pb": "0xbb5f",
+     "xor_bits": 5,
+     "bit_pos": "0+4+5+6+7",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 5,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe40",
+     "pb": "0xbe3e",
+     "xor_bits": 6,
+     "bit_pos": "1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 6,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.50%幅值,384元素)",
+   "hist": {
+    "exact": 128,
+    "ULP": 234,
+    "MANHIGH": 123,
+    "EXPONENT": 27
+   },
+   "first": [
+    {
+     "layer": 6,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f1e",
+     "pb": "0x3f1d",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 6,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f33",
+     "pb": "0x3f32",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 6,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3de7",
+     "pb": "0x3dd0",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 6,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.008301=0.80%幅值,452元素)",
+   "hist": {
+    "exact": 60,
+    "ULP": 242,
+    "MANHIGH": 173,
+    "EXPONENT": 37
+   },
+   "first": [
+    {
+     "layer": 6,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe40",
+     "pb": "0xbe42",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 6,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dc0",
+     "pb": "0x3dc2",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 6,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe55",
+     "pb": "0xbe53",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 7,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.52%幅值,375元素)",
+   "hist": {
+    "exact": 137,
+    "MANHIGH": 134,
+    "EXPONENT": 18,
+    "ULP": 223
+   },
+   "first": [
+    {
+     "layer": 7,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d5a",
+     "pb": "0x3d65",
+     "xor_bits": 6,
+     "bit_pos": "0+1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 7,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3db1",
+     "pb": "0x3dbc",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 7,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf01",
+     "pb": "0xbef9",
+     "xor_bits": 6,
+     "bit_pos": "3+4+5+6+7+8",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 7,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.008667=1.03%幅值,444元素)",
+   "hist": {
+    "exact": 68,
+    "ULP": 237,
+    "MANHIGH": 177,
+    "EXPONENT": 30
+   },
+   "first": [
+    {
+     "layer": 7,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe5f",
+     "pb": "0xbe5d",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 7,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe02",
+     "pb": "0xbe07",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 7,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e8d",
+     "pb": "0x3e8e",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 8,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.42%幅值,365元素)",
+   "hist": {
+    "exact": 147,
+    "MANHIGH": 113,
+    "ULP": 234,
+    "EXPONENT": 17,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 8,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe4e",
+     "pb": "0xbe54",
+     "xor_bits": 3,
+     "bit_pos": "1+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 8,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe5d",
+     "pb": "0xbe50",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 8,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfef",
+     "pb": "0xbff0",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 8,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0127=1.73%幅值,438元素)",
+   "hist": {
+    "exact": 74,
+    "ULP": 249,
+    "MANHIGH": 163,
+    "EXPONENT": 26
+   },
+   "first": [
+    {
+     "layer": 8,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbde1",
+     "pb": "0xbde0",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 8,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eab",
+     "pb": "0x3ead",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 8,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d8e",
+     "pb": "0x3d91",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 9,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.63%幅值,395元素)",
+   "hist": {
+    "exact": 117,
+    "ULP": 238,
+    "MANHIGH": 140,
+    "EXPONENT": 17
+   },
+   "first": [
+    {
+     "layer": 9,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3efa",
+     "pb": "0x3efc",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 9,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe07",
+     "pb": "0xbe0c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 9,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbea9",
+     "pb": "0xbea8",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 9,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01123=1.11%幅值,435元素)",
+   "hist": {
+    "exact": 77,
+    "ULP": 265,
+    "MANHIGH": 138,
+    "EXPONENT": 32
+   },
+   "first": [
+    {
+     "layer": 9,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd9f",
+     "pb": "0xbd9a",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 9,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dcb",
+     "pb": "0x3dcc",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 9,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeb0",
+     "pb": "0xbeb2",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 10,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.57%幅值,376元素)",
+   "hist": {
+    "exact": 136,
+    "MANHIGH": 122,
+    "ULP": 231,
+    "EXPONENT": 23
+   },
+   "first": [
+    {
+     "layer": 10,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe87",
+     "pb": "0xbe89",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 10,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f57",
+     "pb": "0x3f58",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 10,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d3b",
+     "pb": "0x3d30",
+     "xor_bits": 3,
+     "bit_pos": "0+1+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 10,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.006348=0.59%幅值,430元素)",
+   "hist": {
+    "exact": 82,
+    "MANHIGH": 152,
+    "ULP": 247,
+    "EXPONENT": 31
+   },
+   "first": [
+    {
+     "layer": 10,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbda9",
+     "pb": "0xbda7",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 10,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe03",
+     "pb": "0xbe04",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 10,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe44",
+     "pb": "0xbe43",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 11,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.75%幅值,390元素)",
+   "hist": {
+    "exact": 122,
+    "ULP": 247,
+    "MANHIGH": 128,
+    "EXPONENT": 15
+   },
+   "first": [
+    {
+     "layer": 11,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf8b",
+     "pb": "0xbf8a",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 11,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f8f",
+     "pb": "0x3f8e",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 11,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dbd",
+     "pb": "0x3dc3",
+     "xor_bits": 6,
+     "bit_pos": "1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 11,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01367=1.17%幅值,409元素)",
+   "hist": {
+    "exact": 103,
+    "ULP": 266,
+    "MANHIGH": 123,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 11,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe74",
+     "pb": "0xbe76",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 11,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbea9",
+     "pb": "0xbeab",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 11,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e1f",
+     "pb": "0x3e21",
+     "xor_bits": 5,
+     "bit_pos": "1+2+3+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 12,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.27%幅值,388元素)",
+   "hist": {
+    "exact": 124,
+    "ULP": 215,
+    "EXPONENT": 22,
+    "MANHIGH": 151
+   },
+   "first": [
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf21",
+     "pb": "0xbf22",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfd8",
+     "pb": "0xbfd9",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf6f",
+     "pb": "0xbf6e",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 12,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01367=1.14%幅值,424元素)",
+   "hist": {
+    "exact": 88,
+    "MANHIGH": 158,
+    "ULP": 240,
+    "EXPONENT": 26
+   },
+   "first": [
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd14",
+     "pb": "0xbd0f",
+     "xor_bits": 4,
+     "bit_pos": "0+1+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ca4",
+     "pb": "0x3c9a",
+     "xor_bits": 5,
+     "bit_pos": "1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e39",
+     "pb": "0x3e3e",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 13,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.56%幅值,423元素)",
+   "hist": {
+    "exact": 89,
+    "ULP": 275,
+    "MANHIGH": 129,
+    "EXPONENT": 19
+   },
+   "first": [
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ed5",
+     "pb": "0x3ed3",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e5c",
+     "pb": "0x3e59",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbec6",
+     "pb": "0xbec5",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 13,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=1.40%幅值,429元素)",
+   "hist": {
+    "exact": 83,
+    "EXPONENT": 18,
+    "ULP": 260,
+    "MANHIGH": 151
+   },
+   "first": [
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3977",
+     "pb": "0x39fa",
+     "xor_bits": 4,
+     "bit_pos": "0+2+3+7",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd8d",
+     "pb": "0xbd89",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe83",
+     "pb": "0xbe7f",
+     "xor_bits": 6,
+     "bit_pos": "2+3+4+5+6+7",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 14,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.58%幅值,385元素)",
+   "hist": {
+    "exact": 127,
+    "ULP": 246,
+    "MANHIGH": 120,
+    "EXPONENT": 19
+   },
+   "first": [
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e87",
+     "pb": "0x3e84",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf59",
+     "pb": "0xbf58",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f7b",
+     "pb": "0x3f7c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 14,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01025=0.77%幅值,425元素)",
+   "hist": {
+    "exact": 87,
+    "ULP": 240,
+    "MANHIGH": 160,
+    "EXPONENT": 25
+   },
+   "first": [
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e99",
+     "pb": "0x3e9a",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dd1",
+     "pb": "0x3dd3",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e92",
+     "pb": "0x3e93",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 15,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.48%幅值,380元素)",
+   "hist": {
+    "exact": 132,
+    "MANHIGH": 137,
+    "ULP": 215,
+    "EXPONENT": 28
+   },
+   "first": [
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f20",
+     "pb": "0x3f1e",
+     "xor_bits": 5,
+     "bit_pos": "1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e8a",
+     "pb": "0x3e87",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe2a",
+     "pb": "0xbe25",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 15,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01074=0.55%幅值,442元素)",
+   "hist": {
+    "exact": 70,
+    "ULP": 246,
+    "MANHIGH": 173,
+    "EXPONENT": 23
+   },
+   "first": [
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ea9",
+     "pb": "0x3ea8",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e0d",
+     "pb": "0x3e0c",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eaa",
+     "pb": "0x3ea7",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 16,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04297=0.31%幅值,392元素)",
+   "hist": {
+    "exact": 120,
+    "MANHIGH": 120,
+    "ULP": 253,
+    "EXPONENT": 18,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eef",
+     "pb": "0x3ef2",
+     "xor_bits": 4,
+     "bit_pos": "0+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ed1",
+     "pb": "0x3ed4",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e92",
+     "pb": "0x3e91",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 16,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009766=0.66%幅值,439元素)",
+   "hist": {
+    "exact": 73,
+    "ULP": 224,
+    "MANHIGH": 182,
+    "EXPONENT": 32,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe45",
+     "pb": "0xbe44",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbde4",
+     "pb": "0xbde7",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e45",
+     "pb": "0x3e44",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 17,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.56%幅值,393元素)",
+   "hist": {
+    "exact": 119,
+    "MANHIGH": 122,
+    "ULP": 246,
+    "EXPONENT": 25
+   },
+   "first": [
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe8a",
+     "pb": "0xbe8d",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbcf1",
+     "pb": "0xbcbe",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+3+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe2b",
+     "pb": "0xbe28",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 17,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01074=0.80%幅值,438元素)",
+   "hist": {
+    "exact": 74,
+    "MANHIGH": 170,
+    "ULP": 238,
+    "EXPONENT": 30
+   },
+   "first": [
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e22",
+     "pb": "0x3e1f",
+     "xor_bits": 5,
+     "bit_pos": "0+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf0a",
+     "pb": "0xbf09",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e2d",
+     "pb": "0x3e37",
+     "xor_bits": 3,
+     "bit_pos": "1+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 18,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03906=0.29%幅值,381元素)",
+   "hist": {
+    "exact": 131,
+    "MANHIGH": 130,
+    "ULP": 238,
+    "EXPONENT": 13
+   },
+   "first": [
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ecc",
+     "pb": "0x3ed0",
+     "xor_bits": 3,
+     "bit_pos": "2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f96",
+     "pb": "0x3f95",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d95",
+     "pb": "0x3d9a",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 18,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.99%幅值,437元素)",
+   "hist": {
+    "exact": 75,
+    "ULP": 229,
+    "EXPONENT": 37,
+    "MANHIGH": 170,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe17",
+     "pb": "0xbe11",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd24",
+     "pb": "0xbd25",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3b13",
+     "pb": "0xba4a",
+     "xor_bits": 6,
+     "bit_pos": "0+3+4+6+8+15",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 19,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.58%幅值,372元素)",
+   "hist": {
+    "exact": 140,
+    "ULP": 227,
+    "MANHIGH": 120,
+    "EXPONENT": 24,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeb8",
+     "pb": "0xbeb9",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd3c",
+     "pb": "0xbd1c",
+     "xor_bits": 1,
+     "bit_pos": "5",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ec5",
+     "pb": "0x3ec6",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 19,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.008789=0.94%幅值,436元素)",
+   "hist": {
+    "exact": 76,
+    "ULP": 247,
+    "MANHIGH": 157,
+    "EXPONENT": 32
+   },
+   "first": [
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e29",
+     "pb": "0x3e25",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f3a",
+     "pb": "0x3f3b",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3cc4",
+     "pb": "0x3ccd",
+     "xor_bits": 2,
+     "bit_pos": "0+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 20,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.40%幅值,394元素)",
+   "hist": {
+    "exact": 118,
+    "MANHIGH": 152,
+    "ULP": 226,
+    "EXPONENT": 16
+   },
+   "first": [
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd77",
+     "pb": "0xbd46",
+     "xor_bits": 3,
+     "bit_pos": "0+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe75",
+     "pb": "0xbe7b",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfd2",
+     "pb": "0xbfd0",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 20,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.00885=0.93%幅值,432元素)",
+   "hist": {
+    "exact": 80,
+    "MANHIGH": 153,
+    "ULP": 249,
+    "EXPONENT": 30
+   },
+   "first": [
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdea",
+     "pb": "0xbdde",
+     "xor_bits": 3,
+     "bit_pos": "2+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d4a",
+     "pb": "0x3d49",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3aca",
+     "pb": "0x3b05",
+     "xor_bits": 7,
+     "bit_pos": "0+1+2+3+6+7+8",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 21,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.39%幅值,409元素)",
+   "hist": {
+    "exact": 103,
+    "ULP": 257,
+    "EXPONENT": 14,
+    "MANHIGH": 138
+   },
+   "first": [
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d94",
+     "pb": "0x3d86",
+     "xor_bits": 2,
+     "bit_pos": "1+4",
+     "sig": "ULP"
+    },
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d88",
+     "pb": "0x3d7b",
+     "xor_bits": 6,
+     "bit_pos": "0+1+4+5+6+7",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf41",
+     "pb": "0xbf3e",
+     "xor_bits": 7,
+     "bit_pos": "0+1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 21,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.008789=0.76%幅值,444元素)",
+   "hist": {
+    "exact": 68,
+    "ULP": 244,
+    "MANHIGH": 174,
+    "EXPONENT": 26
+   },
+   "first": [
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe54",
+     "pb": "0xbe55",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd99",
+     "pb": "0xbd8a",
+     "xor_bits": 3,
+     "bit_pos": "0+1+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe53",
+     "pb": "0xbe50",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 22,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03516=0.32%幅值,390元素)",
+   "hist": {
+    "exact": 122,
+    "ULP": 233,
+    "MANHIGH": 136,
+    "EXPONENT": 21
+   },
+   "first": [
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f3f",
+     "pb": "0x3f3b",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbef1",
+     "pb": "0xbee8",
+     "xor_bits": 3,
+     "bit_pos": "0+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eef",
+     "pb": "0x3eee",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 22,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009766=0.81%幅值,414元素)",
+   "hist": {
+    "exact": 98,
+    "MANHIGH": 156,
+    "ULP": 233,
+    "EXPONENT": 25
+   },
+   "first": [
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ebe",
+     "pb": "0x3ec0",
+     "xor_bits": 6,
+     "bit_pos": "1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdf8",
+     "pb": "0xbdf4",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3caf",
+     "pb": "0x3c96",
+     "xor_bits": 4,
+     "bit_pos": "0+3+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 23,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.41%幅值,364元素)",
+   "hist": {
+    "exact": 148,
+    "MANHIGH": 126,
+    "ULP": 219,
+    "EXPONENT": 19
+   },
+   "first": [
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f26",
+     "pb": "0x3f29",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dd4",
+     "pb": "0x3dc4",
+     "xor_bits": 1,
+     "bit_pos": "4",
+     "sig": "ULP"
+    },
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fe7",
+     "pb": "0x3fe6",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 23,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01172=0.63%幅值,442元素)",
+   "hist": {
+    "exact": 70,
+    "MANHIGH": 176,
+    "ULP": 236,
+    "EXPONENT": 30
+   },
+   "first": [
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e76",
+     "pb": "0x3e79",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e7c",
+     "pb": "0x3e79",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbda3",
+     "pb": "0xbd9f",
+     "xor_bits": 4,
+     "bit_pos": "2+3+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 24,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.58%幅值,380元素)",
+   "hist": {
+    "exact": 132,
+    "ULP": 225,
+    "MANHIGH": 138,
+    "EXPONENT": 17
+   },
+   "first": [
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe61",
+     "pb": "0xbe60",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbef4",
+     "pb": "0xbef7",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3df1",
+     "pb": "0x3df0",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 24,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009766=0.62%幅值,436元素)",
+   "hist": {
+    "exact": 76,
+    "ULP": 219,
+    "MANHIGH": 186,
+    "EXPONENT": 31
+   },
+   "first": [
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3cf9",
+     "pb": "0x3cd8",
+     "xor_bits": 2,
+     "bit_pos": "0+5",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd2a",
+     "pb": "0xbd2e",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ded",
+     "pb": "0x3de4",
+     "xor_bits": 2,
+     "bit_pos": "0+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 25,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.20%幅值,391元素)",
+   "hist": {
+    "exact": 121,
+    "ULP": 247,
+    "MANHIGH": 132,
+    "EXPONENT": 12
+   },
+   "first": [
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf85",
+     "pb": "0xbf83",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfe5",
+     "pb": "0xbfe3",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fe5",
+     "pb": "0x3fe3",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 25,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=0.57%幅值,430元素)",
+   "hist": {
+    "exact": 82,
+    "MANHIGH": 162,
+    "ULP": 248,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe0f",
+     "pb": "0xbe12",
+     "xor_bits": 4,
+     "bit_pos": "0+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe73",
+     "pb": "0xbe76",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdba",
+     "pb": "0xbdb3",
+     "xor_bits": 2,
+     "bit_pos": "0+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 26,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.41%幅值,397元素)",
+   "hist": {
+    "exact": 115,
+    "ULP": 249,
+    "MANHIGH": 135,
+    "EXPONENT": 13
+   },
+   "first": [
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ebc",
+     "pb": "0x3eb8",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbda0",
+     "pb": "0xbdbc",
+     "xor_bits": 3,
+     "bit_pos": "2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f8e",
+     "pb": "0x3f8d",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 26,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01538=0.99%幅值,450元素)",
+   "hist": {
+    "exact": 62,
+    "ULP": 255,
+    "MANHIGH": 156,
+    "EXPONENT": 39
+   },
+   "first": [
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e80",
+     "pb": "0x3e81",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ec0",
+     "pb": "0x3ebd",
+     "xor_bits": 6,
+     "bit_pos": "0+2+3+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe15",
+     "pb": "0xbe16",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 27,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.41%幅值,401元素)",
+   "hist": {
+    "exact": 111,
+    "ULP": 245,
+    "MANHIGH": 139,
+    "EXPONENT": 17
+   },
+   "first": [
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf7d",
+     "pb": "0xbf7e",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fde",
+     "pb": "0x3fdd",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fc0",
+     "pb": "0x3fbf",
+     "xor_bits": 7,
+     "bit_pos": "0+1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 27,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01758=0.71%幅值,419元素)",
+   "hist": {
+    "exact": 93,
+    "MANHIGH": 154,
+    "ULP": 243,
+    "EXPONENT": 22
+   },
+   "first": [
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe7f",
+     "pb": "0xbe78",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbde6",
+     "pb": "0xbde9",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e19",
+     "pb": "0x3e1f",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 28,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.47%幅值,382元素)",
+   "hist": {
+    "exact": 130,
+    "ULP": 246,
+    "MANHIGH": 126,
+    "EXPONENT": 9,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eae",
+     "pb": "0x3eaa",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e7e",
+     "pb": "0x3e7d",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbda6",
+     "pb": "0xbdba",
+     "xor_bits": 3,
+     "bit_pos": "2+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 28,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01399=0.72%幅值,454元素)",
+   "hist": {
+    "exact": 58,
+    "MANHIGH": 177,
+    "EXPONENT": 32,
+    "ULP": 245
+   },
+   "first": [
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd33",
+     "pb": "0xbd2e",
+     "xor_bits": 4,
+     "bit_pos": "0+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd18",
+     "pb": "0xbced",
+     "xor_bits": 7,
+     "bit_pos": "0+2+4+5+6+7+8",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e4f",
+     "pb": "0x3e58",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 29,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.125=0.45%幅值,412元素)",
+   "hist": {
+    "exact": 100,
+    "ULP": 253,
+    "MANHIGH": 142,
+    "EXPONENT": 17
+   },
+   "first": [
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeb9",
+     "pb": "0xbeb5",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf92",
+     "pb": "0xbf91",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f62",
+     "pb": "0x3f61",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 29,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=0.43%幅值,425元素)",
+   "hist": {
+    "exact": 87,
+    "ULP": 239,
+    "MANHIGH": 158,
+    "EXPONENT": 27,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd8f",
+     "pb": "0xbd89",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe61",
+     "pb": "0xbe5f",
+     "xor_bits": 5,
+     "bit_pos": "1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c34",
+     "pb": "0x3b86",
+     "xor_bits": 7,
+     "bit_pos": "1+4+5+7+8+9+10",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 30,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.37%幅值,408元素)",
+   "hist": {
+    "exact": 104,
+    "ULP": 239,
+    "MANHIGH": 145,
+    "EXPONENT": 24
+   },
+   "first": [
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eed",
+     "pb": "0x3eeb",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f2e",
+     "pb": "0x3f2d",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf1f",
+     "pb": "0xbf1e",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 30,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01953=1.01%幅值,454元素)",
+   "hist": {
+    "exact": 58,
+    "EXPONENT": 40,
+    "MANHIGH": 202,
+    "ULP": 212
+   },
+   "first": [
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3bde",
+     "pb": "0x3c2e",
+     "xor_bits": 7,
+     "bit_pos": "4+5+6+7+8+9+10",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ec6",
+     "pb": "0x3ec8",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd3d",
+     "pb": "0xbd46",
+     "xor_bits": 6,
+     "bit_pos": "0+1+3+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 31,
+   "which": "K",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03516=0.31%幅值,400元素)",
+   "hist": {
+    "exact": 112,
+    "ULP": 254,
+    "MANHIGH": 126,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf7e",
+     "pb": "0xbf7d",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbec4",
+     "pb": "0xbec1",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f79",
+     "pb": "0x3f7b",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 31,
+   "which": "V",
+   "tok": 323,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01953=1.31%幅值,457元素)",
+   "hist": {
+    "exact": 55,
+    "MANHIGH": 183,
+    "ULP": 247,
+    "EXPONENT": 26,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe7b",
+     "pb": "0xbe7c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdb1",
+     "pb": "0xbda9",
+     "xor_bits": 2,
+     "bit_pos": "3+4",
+     "sig": "ULP"
+    },
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbead",
+     "pb": "0xbeaa",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 0,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 0,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 1,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 1,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 2,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 2,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 3,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 3,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 4,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 4,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 5,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 5,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 6,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 6,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 7,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 7,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 8,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 8,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 9,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 9,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 10,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 10,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 11,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 11,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 12,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.58%幅值,49元素)",
+   "hist": {
+    "exact": 463,
+    "MANHIGH": 13,
+    "ULP": 36
+   },
+   "first": [
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f1c",
+     "pb": "0x3f1b",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ea9",
+     "pb": "0x3ea8",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f45",
+     "pb": "0x3f44",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 12,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.001953=0.18%幅值,55元素)",
+   "hist": {
+    "exact": 457,
+    "ULP": 45,
+    "EXPONENT": 1,
+    "MANHIGH": 9
+   },
+   "first": [
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbb23",
+     "pb": "0xbb21",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdec",
+     "pb": "0xbded",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xb79e",
+     "pb": "0x3887",
+     "xor_bits": 8,
+     "bit_pos": "0+3+4+8+9+10+11+15",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 13,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.39%幅值,321元素)",
+   "hist": {
+    "exact": 191,
+    "ULP": 232,
+    "EXPONENT": 11,
+    "MANHIGH": 78
+   },
+   "first": [
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e86",
+     "pb": "0x3e87",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ec2",
+     "pb": "0x3ec3",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d8b",
+     "pb": "0x3d8e",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 13,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.43%幅值,349元素)",
+   "hist": {
+    "exact": 163,
+    "ULP": 207,
+    "MANHIGH": 122,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe69",
+     "pb": "0xbe68",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d3e",
+     "pb": "0x3d41",
+     "xor_bits": 7,
+     "bit_pos": "0+1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe2b",
+     "pb": "0xbe2a",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 14,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.24%幅值,324元素)",
+   "hist": {
+    "exact": 188,
+    "MANHIGH": 103,
+    "ULP": 203,
+    "EXPONENT": 18
+   },
+   "first": [
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd14",
+     "pb": "0xbd2b",
+     "xor_bits": 6,
+     "bit_pos": "0+1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdcb",
+     "pb": "0xbdca",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe3a",
+     "pb": "0xbe3b",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 14,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.005859=0.39%幅值,397元素)",
+   "hist": {
+    "exact": 115,
+    "ULP": 256,
+    "MANHIGH": 131,
+    "EXPONENT": 10
+   },
+   "first": [
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3daa",
+     "pb": "0x3dae",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e2a",
+     "pb": "0x3e29",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe67",
+     "pb": "0xbe65",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 15,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.23%幅值,350元素)",
+   "hist": {
+    "exact": 162,
+    "ULP": 239,
+    "MANHIGH": 94,
+    "EXPONENT": 17
+   },
+   "first": [
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf33",
+     "pb": "0xbf32",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3de0",
+     "pb": "0x3dde",
+     "xor_bits": 5,
+     "bit_pos": "1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbc76",
+     "pb": "0xbc66",
+     "xor_bits": 1,
+     "bit_pos": "4",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 15,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.006836=0.61%幅值,432元素)",
+   "hist": {
+    "exact": 80,
+    "MANHIGH": 167,
+    "ULP": 242,
+    "EXPONENT": 23
+   },
+   "first": [
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe5d",
+     "pb": "0xbe60",
+     "xor_bits": 5,
+     "bit_pos": "0+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d22",
+     "pb": "0x3d29",
+     "xor_bits": 3,
+     "bit_pos": "0+1+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe25",
+     "pb": "0xbe22",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 16,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.41%幅值,336元素)",
+   "hist": {
+    "exact": 176,
+    "ULP": 225,
+    "MANHIGH": 100,
+    "EXPONENT": 11
+   },
+   "first": [
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ead",
+     "pb": "0x3eaf",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c9e",
+     "pb": "0x3cb4",
+     "xor_bits": 3,
+     "bit_pos": "1+3+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeac",
+     "pb": "0xbeab",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 16,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.65%幅值,397元素)",
+   "hist": {
+    "exact": 115,
+    "ULP": 241,
+    "MANHIGH": 135,
+    "EXPONENT": 21
+   },
+   "first": [
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe80",
+     "pb": "0xbe81",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbea0",
+     "pb": "0xbe9f",
+     "xor_bits": 6,
+     "bit_pos": "0+1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf0b",
+     "pb": "0xbf0a",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 17,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.56%幅值,365元素)",
+   "hist": {
+    "exact": 147,
+    "ULP": 246,
+    "MANHIGH": 106,
+    "EXPONENT": 13
+   },
+   "first": [
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eff",
+     "pb": "0x3efb",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbef1",
+     "pb": "0xbeed",
+     "xor_bits": 3,
+     "bit_pos": "2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d89",
+     "pb": "0x3d7c",
+     "xor_bits": 6,
+     "bit_pos": "0+2+4+5+6+7",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 17,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.005859=0.74%幅值,433元素)",
+   "hist": {
+    "exact": 79,
+    "ULP": 263,
+    "MANHIGH": 146,
+    "EXPONENT": 24
+   },
+   "first": [
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e35",
+     "pb": "0x3e34",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd90",
+     "pb": "0xbd8e",
+     "xor_bits": 4,
+     "bit_pos": "1+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d7e",
+     "pb": "0x3d82",
+     "xor_bits": 6,
+     "bit_pos": "2+3+4+5+6+7",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 18,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.29%幅值,335元素)",
+   "hist": {
+    "exact": 177,
+    "MANHIGH": 119,
+    "ULP": 203,
+    "EXPONENT": 13
+   },
+   "first": [
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf18",
+     "pb": "0xbf17",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf90",
+     "pb": "0xbf8f",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeba",
+     "pb": "0xbebc",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 18,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.29%幅值,407元素)",
+   "hist": {
+    "exact": 105,
+    "MANHIGH": 129,
+    "ULP": 261,
+    "EXPONENT": 16,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf0b",
+     "pb": "0xbf0c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c6b",
+     "pb": "0x3c60",
+     "xor_bits": 3,
+     "bit_pos": "0+1+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ecb",
+     "pb": "0x3ecc",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 19,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.48%幅值,335元素)",
+   "hist": {
+    "exact": 177,
+    "ULP": 203,
+    "MANHIGH": 121,
+    "EXPONENT": 11
+   },
+   "first": [
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf49",
+     "pb": "0xbf48",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3dee",
+     "pb": "0x3dfb",
+     "xor_bits": 3,
+     "bit_pos": "0+2+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd44",
+     "pb": "0xbd54",
+     "xor_bits": 1,
+     "bit_pos": "4",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 19,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.68%幅值,405元素)",
+   "hist": {
+    "exact": 107,
+    "ULP": 238,
+    "MANHIGH": 147,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d6a",
+     "pb": "0x3d68",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbed4",
+     "pb": "0xbed3",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d89",
+     "pb": "0x3d84",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 20,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.41%幅值,365元素)",
+   "hist": {
+    "exact": 147,
+    "ULP": 215,
+    "MANHIGH": 130,
+    "EXPONENT": 19,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x4016",
+     "pb": "0x4017",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe40",
+     "pb": "0xbe3f",
+     "xor_bits": 7,
+     "bit_pos": "0+1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf5f",
+     "pb": "0xbf60",
+     "xor_bits": 6,
+     "bit_pos": "0+1+2+3+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 20,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.50%幅值,442元素)",
+   "hist": {
+    "exact": 70,
+    "ULP": 278,
+    "EXPONENT": 31,
+    "MANHIGH": 132,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe02",
+     "pb": "0xbe01",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c04",
+     "pb": "0x3bdc",
+     "xor_bits": 7,
+     "bit_pos": "3+4+6+7+8+9+10",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd69",
+     "pb": "0xbd6d",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 21,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.43%幅值,359元素)",
+   "hist": {
+    "exact": 153,
+    "MANHIGH": 127,
+    "ULP": 218,
+    "EXPONENT": 14
+   },
+   "first": [
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbed6",
+     "pb": "0xbed8",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f94",
+     "pb": "0x3f93",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe06",
+     "pb": "0xbe11",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 21,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.41%幅值,430元素)",
+   "hist": {
+    "exact": 82,
+    "ULP": 259,
+    "MANHIGH": 142,
+    "EXPONENT": 29
+   },
+   "first": [
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbcc7",
+     "pb": "0xbccb",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ead",
+     "pb": "0x3eac",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eb4",
+     "pb": "0x3eb2",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 22,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.26%幅值,377元素)",
+   "hist": {
+    "exact": 135,
+    "ULP": 235,
+    "MANHIGH": 124,
+    "EXPONENT": 17,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf1b",
+     "pb": "0xbf19",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ebc",
+     "pb": "0x3eba",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf7b",
+     "pb": "0xbf7a",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 22,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.64%幅值,418元素)",
+   "hist": {
+    "exact": 94,
+    "ULP": 245,
+    "MANHIGH": 151,
+    "EXPONENT": 22
+   },
+   "first": [
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbee7",
+     "pb": "0xbee6",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c8c",
+     "pb": "0x3c86",
+     "xor_bits": 2,
+     "bit_pos": "1+3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbef7",
+     "pb": "0xbef8",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 23,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.45%幅值,388元素)",
+   "hist": {
+    "exact": 124,
+    "ULP": 251,
+    "MANHIGH": 121,
+    "EXPONENT": 15,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e8d",
+     "pb": "0x3e89",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f04",
+     "pb": "0x3f05",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ee4",
+     "pb": "0x3ee1",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 23,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01099=0.62%幅值,420元素)",
+   "hist": {
+    "exact": 92,
+    "EXPONENT": 19,
+    "MANHIGH": 149,
+    "ULP": 252
+   },
+   "first": [
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbbda",
+     "pb": "0xbb74",
+     "xor_bits": 5,
+     "bit_pos": "1+2+3+5+7",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe3e",
+     "pb": "0xbe39",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe93",
+     "pb": "0xbe94",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 24,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.20%幅值,364元素)",
+   "hist": {
+    "exact": 148,
+    "ULP": 232,
+    "MANHIGH": 121,
+    "EXPONENT": 11
+   },
+   "first": [
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf94",
+     "pb": "0xbf95",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f79",
+     "pb": "0x3f78",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeca",
+     "pb": "0xbece",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 24,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.008789=0.46%幅值,418元素)",
+   "hist": {
+    "exact": 94,
+    "ULP": 240,
+    "MANHIGH": 157,
+    "EXPONENT": 21
+   },
+   "first": [
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe40",
+     "pb": "0xbe41",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbcc3",
+     "pb": "0xbcae",
+     "xor_bits": 5,
+     "bit_pos": "0+2+3+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe81",
+     "pb": "0xbe83",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 25,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.25%幅值,392元素)",
+   "hist": {
+    "exact": 120,
+    "ULP": 271,
+    "MANHIGH": 110,
+    "EXPONENT": 11
+   },
+   "first": [
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd1b",
+     "pb": "0xbd18",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdcf",
+     "pb": "0xbdc9",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbec3",
+     "pb": "0xbec5",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 25,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01367=0.90%幅值,432元素)",
+   "hist": {
+    "exact": 80,
+    "MANHIGH": 150,
+    "EXPONENT": 24,
+    "ULP": 257,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c22",
+     "pb": "0x3c50",
+     "xor_bits": 4,
+     "bit_pos": "1+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e7f",
+     "pb": "0x3e80",
+     "xor_bits": 8,
+     "bit_pos": "0+1+2+3+4+5+6+7",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ed5",
+     "pb": "0x3ed3",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 26,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.22%幅值,394元素)",
+   "hist": {
+    "exact": 118,
+    "ULP": 247,
+    "MANHIGH": 135,
+    "EXPONENT": 12
+   },
+   "first": [
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfd4",
+     "pb": "0xbfd5",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfd7",
+     "pb": "0xbfd8",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e44",
+     "pb": "0x3e47",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 26,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=0.68%幅值,437元素)",
+   "hist": {
+    "exact": 75,
+    "ULP": 226,
+    "EXPONENT": 33,
+    "MANHIGH": 178
+   },
+   "first": [
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe78",
+     "pb": "0xbe7d",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdf1",
+     "pb": "0xbdfb",
+     "xor_bits": 2,
+     "bit_pos": "1+3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3b4c",
+     "pb": "0x38b6",
+     "xor_bits": 8,
+     "bit_pos": "1+3+4+5+6+7+8+9",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 27,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.35%幅值,387元素)",
+   "hist": {
+    "exact": 125,
+    "MANHIGH": 129,
+    "ULP": 243,
+    "EXPONENT": 15
+   },
+   "first": [
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f35",
+     "pb": "0x3f38",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfaf",
+     "pb": "0xbfb0",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf50",
+     "pb": "0xbf51",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 27,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.02344=1.92%幅值,438元素)",
+   "hist": {
+    "exact": 74,
+    "ULP": 230,
+    "MANHIGH": 182,
+    "EXPONENT": 26
+   },
+   "first": [
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe77",
+     "pb": "0xbe73",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eb8",
+     "pb": "0x3eb7",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe8f",
+     "pb": "0xbe90",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 28,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.43%幅值,408元素)",
+   "hist": {
+    "exact": 104,
+    "MANHIGH": 140,
+    "ULP": 247,
+    "EXPONENT": 21
+   },
+   "first": [
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3da1",
+     "pb": "0x3d96",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x401a",
+     "pb": "0x401b",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe91",
+     "pb": "0xbe8a",
+     "xor_bits": 4,
+     "bit_pos": "0+1+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 28,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=0.59%幅值,445元素)",
+   "hist": {
+    "exact": 67,
+    "MANHIGH": 169,
+    "ULP": 238,
+    "EXPONENT": 38
+   },
+   "first": [
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbcd3",
+     "pb": "0xbcb4",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe9d",
+     "pb": "0xbe9a",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd87",
+     "pb": "0xbd8b",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 29,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.04688=0.32%幅值,397元素)",
+   "hist": {
+    "exact": 115,
+    "MANHIGH": 126,
+    "ULP": 240,
+    "EXPONENT": 31
+   },
+   "first": [
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e62",
+     "pb": "0x3e5f",
+     "xor_bits": 5,
+     "bit_pos": "0+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf32",
+     "pb": "0xbf33",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf2c",
+     "pb": "0xbf2b",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 29,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01758=1.25%幅值,429元素)",
+   "hist": {
+    "exact": 83,
+    "ULP": 242,
+    "MANHIGH": 159,
+    "EXPONENT": 27,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e97",
+     "pb": "0x3e96",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e1d",
+     "pb": "0x3e20",
+     "xor_bits": 5,
+     "bit_pos": "0+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3edd",
+     "pb": "0x3ee4",
+     "xor_bits": 4,
+     "bit_pos": "0+3+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 30,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.52%幅值,395元素)",
+   "hist": {
+    "exact": 117,
+    "MANHIGH": 131,
+    "ULP": 251,
+    "EXPONENT": 13
+   },
+   "first": [
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeb8",
+     "pb": "0xbeb5",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e73",
+     "pb": "0x3e6a",
+     "xor_bits": 3,
+     "bit_pos": "0+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbef6",
+     "pb": "0xbef5",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 30,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.02344=1.10%幅值,449元素)",
+   "hist": {
+    "exact": 63,
+    "MANHIGH": 181,
+    "ULP": 225,
+    "EXPONENT": 42,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd47",
+     "pb": "0xbd1c",
+     "xor_bits": 5,
+     "bit_pos": "0+1+3+4+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbc38",
+     "pb": "0xbc49",
+     "xor_bits": 4,
+     "bit_pos": "0+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e84",
+     "pb": "0x3e82",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 31,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.40%幅值,356元素)",
+   "hist": {
+    "exact": 156,
+    "ULP": 234,
+    "MANHIGH": 109,
+    "EXPONENT": 13
+   },
+   "first": [
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfb4",
+     "pb": "0xbfb6",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbca4",
+     "pb": "0xbcc2",
+     "xor_bits": 4,
+     "bit_pos": "1+2+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fc4",
+     "pb": "0x3fc2",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 31,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01953=0.58%幅值,424元素)",
+   "hist": {
+    "exact": 88,
+    "MANHIGH": 182,
+    "ULP": 214,
+    "EXPONENT": 28
+   },
+   "first": [
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdf4",
+     "pb": "0xbdfb",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e2d",
+     "pb": "0x3e32",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdb9",
+     "pb": "0xbdb4",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 0,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 0,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 1,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 1,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 2,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 2,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 3,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 3,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 4,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 4,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 5,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 5,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 6,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 6,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 7,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 7,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 8,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 8,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 9,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 9,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 10,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 10,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 11,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 11,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "exact"
+  },
+  {
+   "layer": 12,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.07%幅值,35元素)",
+   "hist": {
+    "exact": 477,
+    "MANHIGH": 5,
+    "ULP": 30
+   },
+   "first": [
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f1c",
+     "pb": "0x3f1b",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e46",
+     "pb": "0x3e47",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 12,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fab",
+     "pb": "0x3faa",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 12,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.001953=0.15%幅值,72元素)",
+   "hist": {
+    "exact": 440,
+    "MANHIGH": 18,
+    "ULP": 53,
+    "EXPONENT": 1
+   },
+   "first": [
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c1b",
+     "pb": "0x3c1c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ab3",
+     "pb": "0x3ab2",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 12,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xb9e3",
+     "pb": "0xb9ed",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 13,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.30%幅值,286元素)",
+   "hist": {
+    "exact": 226,
+    "ULP": 188,
+    "MANHIGH": 92,
+    "EXPONENT": 6
+   },
+   "first": [
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd81",
+     "pb": "0xbd83",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe69",
+     "pb": "0xbe68",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 13,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbcca",
+     "pb": "0xbcbf",
+     "xor_bits": 5,
+     "bit_pos": "0+2+4+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 13,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.003906=0.42%幅值,328元素)",
+   "hist": {
+    "exact": 184,
+    "MANHIGH": 104,
+    "ULP": 213,
+    "EXPONENT": 11
+   },
+   "first": [
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f5f",
+     "pb": "0x3f60",
+     "xor_bits": 6,
+     "bit_pos": "0+1+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdf0",
+     "pb": "0xbdf5",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 13,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ddf",
+     "pb": "0x3de1",
+     "xor_bits": 5,
+     "bit_pos": "1+2+3+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 14,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.61%幅值,337元素)",
+   "hist": {
+    "exact": 175,
+    "ULP": 227,
+    "MANHIGH": 98,
+    "EXPONENT": 12
+   },
+   "first": [
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e24",
+     "pb": "0x3e21",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf1d",
+     "pb": "0xbf1e",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f19",
+     "pb": "0x3f1a",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 14,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.004883=0.40%幅值,368元素)",
+   "hist": {
+    "exact": 144,
+    "ULP": 233,
+    "MANHIGH": 116,
+    "EXPONENT": 18,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3cd0",
+     "pb": "0x3cd3",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3de3",
+     "pb": "0x3de0",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 14,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbc2a",
+     "pb": "0xbc44",
+     "xor_bits": 5,
+     "bit_pos": "1+2+3+5+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 15,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.62%幅值,352元素)",
+   "hist": {
+    "exact": 160,
+    "ULP": 226,
+    "EXPONENT": 15,
+    "MANHIGH": 110,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf16",
+     "pb": "0xbf14",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3c15",
+     "pb": "0x3bfc",
+     "xor_bits": 8,
+     "bit_pos": "0+3+5+6+7+8+9+10",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 15,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e97",
+     "pb": "0x3e96",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 15,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009766=0.64%幅值,411元素)",
+   "hist": {
+    "exact": 101,
+    "MANHIGH": 144,
+    "ULP": 248,
+    "EXPONENT": 19
+   },
+   "first": [
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbed7",
+     "pb": "0xbedc",
+     "xor_bits": 3,
+     "bit_pos": "0+1+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e1e",
+     "pb": "0x3e1d",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 15,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbef8",
+     "pb": "0xbef7",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 16,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.26%幅值,316元素)",
+   "hist": {
+    "exact": 196,
+    "MANHIGH": 111,
+    "ULP": 196,
+    "EXPONENT": 9
+   },
+   "first": [
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe1a",
+     "pb": "0xbe15",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f0e",
+     "pb": "0x3f0d",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 16,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf8b",
+     "pb": "0xbf8a",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 16,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.005859=0.55%幅值,413元素)",
+   "hist": {
+    "exact": 99,
+    "MANHIGH": 145,
+    "ULP": 246,
+    "EXPONENT": 21,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d8b",
+     "pb": "0x3d8c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdaf",
+     "pb": "0xbdb2",
+     "xor_bits": 4,
+     "bit_pos": "0+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 16,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e33",
+     "pb": "0x3e34",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 17,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.56%幅值,363元素)",
+   "hist": {
+    "exact": 149,
+    "ULP": 236,
+    "MANHIGH": 111,
+    "EXPONENT": 16
+   },
+   "first": [
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f7e",
+     "pb": "0x3f7c",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f42",
+     "pb": "0x3f46",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 17,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d85",
+     "pb": "0x3d8a",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 17,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.77%幅值,412元素)",
+   "hist": {
+    "exact": 100,
+    "ULP": 240,
+    "MANHIGH": 148,
+    "EXPONENT": 23,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ed4",
+     "pb": "0x3ed2",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf41",
+     "pb": "0xbf3f",
+     "xor_bits": 6,
+     "bit_pos": "1+2+3+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 17,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3da7",
+     "pb": "0x3da6",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 18,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.51%幅值,331元素)",
+   "hist": {
+    "exact": 181,
+    "ULP": 192,
+    "MANHIGH": 123,
+    "EXPONENT": 16
+   },
+   "first": [
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fc7",
+     "pb": "0x3fc6",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe96",
+     "pb": "0xbe99",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 18,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f69",
+     "pb": "0x3f67",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 18,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.005859=0.99%幅值,430元素)",
+   "hist": {
+    "exact": 82,
+    "MANHIGH": 155,
+    "ULP": 252,
+    "EXPONENT": 22,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd62",
+     "pb": "0xbd5e",
+     "xor_bits": 4,
+     "bit_pos": "2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd88",
+     "pb": "0xbd85",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 18,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe9d",
+     "pb": "0xbe9e",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 19,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.61%幅值,355元素)",
+   "hist": {
+    "exact": 157,
+    "ULP": 241,
+    "MANHIGH": 101,
+    "EXPONENT": 13
+   },
+   "first": [
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfa1",
+     "pb": "0xbfa0",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf6f",
+     "pb": "0xbf6d",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe08",
+     "pb": "0xbe11",
+     "xor_bits": 3,
+     "bit_pos": "0+3+4",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 19,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.53%幅值,422元素)",
+   "hist": {
+    "exact": 90,
+    "MANHIGH": 146,
+    "ULP": 255,
+    "EXPONENT": 21
+   },
+   "first": [
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3db7",
+     "pb": "0x3db8",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e51",
+     "pb": "0x3e54",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 19,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe47",
+     "pb": "0xbe49",
+     "xor_bits": 3,
+     "bit_pos": "1+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 20,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.55%幅值,338元素)",
+   "hist": {
+    "exact": 174,
+    "MANHIGH": 120,
+    "ULP": 205,
+    "EXPONENT": 13
+   },
+   "first": [
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe12",
+     "pb": "0xbe08",
+     "xor_bits": 3,
+     "bit_pos": "1+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfcc",
+     "pb": "0xbfcb",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3eaa",
+     "pb": "0x3ea6",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 20,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.008423=0.87%幅值,427元素)",
+   "hist": {
+    "exact": 85,
+    "MANHIGH": 152,
+    "ULP": 250,
+    "EXPONENT": 24,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbea4",
+     "pb": "0xbea3",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeb1",
+     "pb": "0xbeaf",
+     "xor_bits": 4,
+     "bit_pos": "1+2+3+4",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 20,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e2b",
+     "pb": "0x3e27",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 21,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.41%幅值,389元素)",
+   "hist": {
+    "exact": 123,
+    "ULP": 247,
+    "MANHIGH": 124,
+    "EXPONENT": 18
+   },
+   "first": [
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf54",
+     "pb": "0xbf55",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e5d",
+     "pb": "0x3e60",
+     "xor_bits": 5,
+     "bit_pos": "0+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 21,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3edf",
+     "pb": "0x3edc",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 21,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009277=1.12%幅值,419元素)",
+   "hist": {
+    "exact": 93,
+    "ULP": 236,
+    "MANHIGH": 155,
+    "EXPONENT": 28
+   },
+   "first": [
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3da5",
+     "pb": "0x3da7",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbc36",
+     "pb": "0xbc43",
+     "xor_bits": 5,
+     "bit_pos": "0+2+4+5+6",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 21,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f02",
+     "pb": "0x3f01",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 22,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.58%幅值,376元素)",
+   "hist": {
+    "exact": 136,
+    "ULP": 237,
+    "MANHIGH": 122,
+    "EXPONENT": 17
+   },
+   "first": [
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e5c",
+     "pb": "0x3e58",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf6e",
+     "pb": "0xbf6f",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e54",
+     "pb": "0x3e55",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 22,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.008301=0.77%幅值,403元素)",
+   "hist": {
+    "exact": 109,
+    "ULP": 231,
+    "EXPONENT": 20,
+    "MANHIGH": 152
+   },
+   "first": [
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe57",
+     "pb": "0xbe54",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbef5",
+     "pb": "0xbef3",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 22,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3aa1",
+     "pb": "0x3a50",
+     "xor_bits": 5,
+     "bit_pos": "0+4+5+6+7",
+     "sig": "EXPONENT"
+    }
+   ]
+  },
+  {
+   "layer": 23,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.03125=0.23%幅值,374元素)",
+   "hist": {
+    "exact": 138,
+    "ULP": 215,
+    "MANHIGH": 145,
+    "EXPONENT": 14
+   },
+   "first": [
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ece",
+     "pb": "0x3eca",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3efd",
+     "pb": "0x3efa",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 23,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f2d",
+     "pb": "0x3f2f",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 23,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.007812=0.48%幅值,433元素)",
+   "hist": {
+    "exact": 79,
+    "EXPONENT": 28,
+    "ULP": 259,
+    "MANHIGH": 145,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbc83",
+     "pb": "0xbc6f",
+     "xor_bits": 5,
+     "bit_pos": "2+3+5+6+7",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e09",
+     "pb": "0x3e05",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 23,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbda4",
+     "pb": "0xbdac",
+     "xor_bits": 1,
+     "bit_pos": "3",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 24,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.58%幅值,381元素)",
+   "hist": {
+    "exact": 131,
+    "ULP": 253,
+    "MANHIGH": 119,
+    "EXPONENT": 9
+   },
+   "first": [
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbedf",
+     "pb": "0xbedc",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e20",
+     "pb": "0x3e1d",
+     "xor_bits": 5,
+     "bit_pos": "0+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 24,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d6d",
+     "pb": "0x3d69",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 24,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01025=0.89%幅值,448元素)",
+   "hist": {
+    "exact": 64,
+    "ULP": 252,
+    "MANHIGH": 175,
+    "EXPONENT": 21
+   },
+   "first": [
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe80",
+     "pb": "0xbe81",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe58",
+     "pb": "0xbe55",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 24,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe4d",
+     "pb": "0xbe4c",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 25,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.40%幅值,372元素)",
+   "hist": {
+    "exact": 140,
+    "MANHIGH": 132,
+    "EXPONENT": 18,
+    "ULP": 222
+   },
+   "first": [
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xc003",
+     "pb": "0xc004",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3df9",
+     "pb": "0x3e01",
+     "xor_bits": 7,
+     "bit_pos": "3+4+5+6+7+8+9",
+     "sig": "EXPONENT"
+    },
+    {
+     "layer": 25,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fc9",
+     "pb": "0x3fca",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 25,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.009766=0.33%幅值,423元素)",
+   "hist": {
+    "exact": 89,
+    "MANHIGH": 161,
+    "ULP": 246,
+    "EXPONENT": 16
+   },
+   "first": [
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e1b",
+     "pb": "0x3e1c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbbef",
+     "pb": "0xbbd7",
+     "xor_bits": 3,
+     "bit_pos": "3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 25,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbdec",
+     "pb": "0xbdee",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 26,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.46%幅值,392元素)",
+   "hist": {
+    "exact": 120,
+    "ULP": 236,
+    "MANHIGH": 141,
+    "EXPONENT": 15
+   },
+   "first": [
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fbe",
+     "pb": "0x3fbf",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe91",
+     "pb": "0xbe96",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 26,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ed6",
+     "pb": "0x3edb",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 26,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01367=0.86%幅值,439元素)",
+   "hist": {
+    "exact": 73,
+    "MANHIGH": 162,
+    "ULP": 244,
+    "EXPONENT": 33
+   },
+   "first": [
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e78",
+     "pb": "0x3e7f",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f00",
+     "pb": "0x3f02",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 26,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbc7c",
+     "pb": "0xbc39",
+     "xor_bits": 3,
+     "bit_pos": "0+2+6",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 27,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.43%幅值,412元素)",
+   "hist": {
+    "exact": 100,
+    "ULP": 253,
+    "MANHIGH": 132,
+    "EXPONENT": 27
+   },
+   "first": [
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ff8",
+     "pb": "0x3ffb",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x4003",
+     "pb": "0x4004",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 27,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3fea",
+     "pb": "0x3feb",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 27,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01953=0.76%幅值,424元素)",
+   "hist": {
+    "exact": 88,
+    "ULP": 270,
+    "EXPONENT": 19,
+    "MANHIGH": 135
+   },
+   "first": [
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f5a",
+     "pb": "0x3f5c",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbd66",
+     "pb": "0xbd4e",
+     "xor_bits": 2,
+     "bit_pos": "3+5",
+     "sig": "ULP"
+    },
+    {
+     "layer": 27,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3de0",
+     "pb": "0x3de1",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 28,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.55%幅值,405元素)",
+   "hist": {
+    "exact": 107,
+    "MANHIGH": 134,
+    "ULP": 246,
+    "EXPONENT": 25
+   },
+   "first": [
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x4007",
+     "pb": "0x4008",
+     "xor_bits": 4,
+     "bit_pos": "0+1+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfb2",
+     "pb": "0xbfb3",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 28,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbea1",
+     "pb": "0xbea2",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 28,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01367=0.64%幅值,456元素)",
+   "hist": {
+    "exact": 56,
+    "ULP": 236,
+    "EXPONENT": 34,
+    "MANHIGH": 185,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d09",
+     "pb": "0x3d0c",
+     "xor_bits": 2,
+     "bit_pos": "0+2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3ed2",
+     "pb": "0x3ed3",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 28,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e41",
+     "pb": "0x3e47",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 29,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.22%幅值,402元素)",
+   "hist": {
+    "exact": 110,
+    "ULP": 251,
+    "MANHIGH": 131,
+    "EXPONENT": 20
+   },
+   "first": [
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbfa7",
+     "pb": "0xbfa6",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe65",
+     "pb": "0xbe68",
+     "xor_bits": 3,
+     "bit_pos": "0+2+3",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 29,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf56",
+     "pb": "0xbf57",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 29,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.01562=0.42%幅值,427元素)",
+   "hist": {
+    "exact": 85,
+    "MANHIGH": 171,
+    "ULP": 231,
+    "EXPONENT": 24,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe8b",
+     "pb": "0xbe8c",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f44",
+     "pb": "0x3f43",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 29,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d9b",
+     "pb": "0x3dac",
+     "xor_bits": 5,
+     "bit_pos": "0+1+2+4+5",
+     "sig": "MANHIGH"
+    }
+   ]
+  },
+  {
+   "layer": 30,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.53%幅值,404元素)",
+   "hist": {
+    "exact": 108,
+    "ULP": 245,
+    "MANHIGH": 137,
+    "EXPONENT": 21,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbed6",
+     "pb": "0xbeda",
+     "xor_bits": 2,
+     "bit_pos": "2+3",
+     "sig": "ULP"
+    },
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e9d",
+     "pb": "0x3ea0",
+     "xor_bits": 5,
+     "bit_pos": "0+2+3+4+5",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 30,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf74",
+     "pb": "0xbf72",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 30,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.02246=1.38%幅值,443元素)",
+   "hist": {
+    "exact": 69,
+    "ULP": 254,
+    "EXPONENT": 32,
+    "MANHIGH": 156,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3d7b",
+     "pb": "0x3d78",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3e24",
+     "pb": "0x3e26",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 30,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf03",
+     "pb": "0xbf05",
+     "xor_bits": 2,
+     "bit_pos": "1+2",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 31,
+   "which": "K",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0625=0.56%幅值,394元素)",
+   "hist": {
+    "exact": 118,
+    "ULP": 246,
+    "MANHIGH": 126,
+    "EXPONENT": 21,
+    "SIGN": 1
+   },
+   "first": [
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbf5d",
+     "pb": "0xbf5c",
+     "xor_bits": 1,
+     "bit_pos": "0",
+     "sig": "ULP"
+    },
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0x3f53",
+     "pb": "0x3f54",
+     "xor_bits": 3,
+     "bit_pos": "0+1+2",
+     "sig": "MANHIGH"
+    },
+    {
+     "layer": 31,
+     "which": "K",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe7e",
+     "pb": "0xbe7d",
+     "xor_bits": 2,
+     "bit_pos": "0+1",
+     "sig": "ULP"
+    }
+   ]
+  },
+  {
+   "layer": 31,
+   "which": "V",
+   "tok": 485,
+   "tag": "尾槽",
+   "sig": "recompute(|Δ|max=0.0166=1.15%幅值,448元素)",
+   "hist": {
+    "exact": 64,
+    "ULP": 239,
+    "MANHIGH": 184,
+    "EXPONENT": 25
+   },
+   "first": [
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbeff",
+     "pb": "0xbefb",
+     "xor_bits": 1,
+     "bit_pos": "2",
+     "sig": "ULP"
+    },
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbe46",
+     "pb": "0xbe44",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    },
+    {
+     "layer": 31,
+     "which": "V",
+     "blk": 1,
+     "tok": 0,
+     "pa": "0xbef9",
+     "pb": "0xbefb",
+     "xor_bits": 1,
+     "bit_pos": "1",
+     "sig": "ULP"
+    }
+   ]
+  }
+ ],
+ "B4": {
+  "seq1_r0_residual": {
+   "seq": 1,
+   "rank": 0,
+   "unwritten": {
+    "K": {
+     "slots": 30720,
+     "nonzero": 0
+    },
+    "V": {
+     "slots": 30720,
+     "nonzero": 0
+    }
+   }
+  },
+  "seq1_r1_residual": {
+   "seq": 1,
+   "rank": 1,
+   "unwritten": {
+    "K": {
+     "slots": 30720,
+     "nonzero": 0
+    },
+    "V": {
+     "slots": 30720,
+     "nonzero": 0
+    }
+   }
+  },
+  "seq2_r0_decode": {
+   "rows": 34,
+   "health": "无",
+   "first3": [
+    -5.375,
+    1.164,
+    -1.539
+   ]
+  },
+  "seq2_r0_residual": {
+   "seq": 2,
+   "rank": 0,
+   "unwritten": {
+    "K": {
+     "slots": 61440,
+     "nonzero": 0
+    },
+    "V": {
+     "slots": 61440,
+     "nonzero": 0
+    }
+   }
+  },
+  "seq2_r1_decode": {
+   "rows": 34,
+   "health": "无",
+   "first3": [
+    0.953,
+    -0.139,
+    -0.412
+   ]
+  },
+  "seq2_r1_residual": {
+   "seq": 2,
+   "rank": 1,
+   "unwritten": {
+    "K": {
+     "slots": 61440,
+     "nonzero": 0
+    },
+    "V": {
+     "slots": 61440,
+     "nonzero": 0
+    }
+   }
+  }
+ },
+ "issues": []
+}

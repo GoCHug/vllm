@@ -4,7 +4,7 @@
 > - **本地**：`vllm/vllm/v1/core/kvcache_study/kvcache_docs_v2/kvc/`
 > - **容器**：`/a3_inference/itask/workdir/gch02599191/kvc/`（gggtest pod；实验后已 revert，源码未改动）
 >
-> **实验**：95 处 `[KVC]` 打印补丁（grep 168 行）patch 注入 vllm + vllm-ascend 后实测——**启动期** KVCache 初始化全流程（172 行 [KVC]）与 **P/R 双请求**运行期全流程（124 + 752 行）。
+> **实验**：96 处 `[KVC]` 打印补丁（grep 170 行；04 补丁 09-30 增强版 +2 行——allocate_slots 新增五段布局行 comp/new_comp/ext_comp/new/lookahead）patch 注入 vllm + vllm-ascend 后实测——**启动期** KVCache 初始化全流程（172 行 [KVC]）与 **P/R 双请求**运行期全流程（124 + 752 行）。
 >
 > **打印嵌入模式**：配置侧 CFG（`--- ①/②/③ ---` 子步横幅对应 算规格→测预算→做编排）→ 物理侧 L1（K/V int8 双池 + reshape）→ 逻辑侧 `__init__` 级联（自底向上六组件）→ 运行期（S1~S4 分配子步 + 前缀查找 + 入队哈希 + 释放 + KVP 物理校验）。对应理论文档 `../1_init_physical_memory.md` 与 `../0_runtime_sequence.md`。
 
@@ -27,8 +27,8 @@ kvc/
 │   ├── 06_vllm_v1_core_single_type_kv_cache_manager.py.patch 9 处 [L3] HIT/MISS/释放
 │   ├── 07_vllm_v1_engine_core.py.patch            13 处 [CFG] ①②③ 小步/最终对齐/横幅
 │   ├── 08_vllm_ascend_worker_model_runner_v1.py.patch    9 处 [L1]/[KVP]
-│   ├── apply_patches.sh / revert_patches.sh  一键应用/回滚（dry-run 预检 + 168 行计数 + py_compile）
-│   └── kvc_patch_locations.txt         95 处打印位置清单
+│   ├── apply_patches.sh / revert_patches.sh  一键应用/回滚（dry-run 预检 + 170 行计数 + py_compile）
+│   └── kvc_patch_locations.txt         96 处打印位置清单
 ├── log/                                本轮产物（8 个文件）
 │   ├── llama-3-8b.log                  1272 行 = 启动 1~387 + P 388~517 + R 518~1272
 │   ├── kvc_startup.log                 172 行 [KVC] 启动期拆解（CFG 88 + L1 76 + 逻辑 8）
@@ -52,7 +52,7 @@ kvc/
 | 可用 KV 显存 / num_blocks | **51.94~51.99 GiB** / **13296**（max concurrency 207.75x @8192） |
 | 物理张量 | K/V 分离：K_cache=V_cache=(13296, 128, 4, 128) bf16；int8 池 1662 MiB ×2/层，2MiB 对齐 |
 | 实测哈希链 | `337... → 344... → 5bb...`（+decode 填满段；NONE_HASH 种子随重启变化） |
-| 补丁规模 | **95 打印调用点**，逐文件 5/10/29/56/17/18/18/15 = 168 行 [KVC]（含注释） |
+| 补丁规模 | **96 打印调用点**，逐文件 5/10/29/58/17/18/18/15 = 170 行 [KVC]（含注释） |
 | 轨迹量 | 启动 172 / P 124 / R 752 行；KVP 每请求固定 76 行 |
 
 ## 3. 操作步骤（容器内完整复现流程）
@@ -64,7 +64,7 @@ kvc/
 ```bash
 cd /a3_inference/itask/workdir/gch02599191/kvc/patch
 VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend \
-    ./apply_patches.sh          # 8/8 dry-run + 应用 + 计数 168 行 + py_compile
+    ./apply_patches.sh          # 8/8 dry-run + 应用 + 计数 170 行 + py_compile
 bash scripts/start.sh           # setsid nohup + sleep 5, 日志 llama-3-8b.log
 grep 'Application startup complete' log/llama-3-8b.log   # 就绪判定（约 58s）
 ```

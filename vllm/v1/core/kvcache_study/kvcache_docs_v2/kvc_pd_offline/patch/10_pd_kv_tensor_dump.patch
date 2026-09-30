@@ -1,0 +1,93 @@
+--- a/vllm_ascend/worker/model_runner_v1.py
++++ b/vllm_ascend/worker/model_runner_v1.py
+@@ -2609,7 +2609,90 @@
+                 _kvc_fp(v_pp) if v_pp else "-", _kvc_fp(vparts),
+             )
+         logger.info("[KVC][KVP] " + "=" * 8 + " " + _close_msg + " " + "=" * 8)
++        # [KVC][KVT] 10 号补丁: TERM 张量归档 —— 与 09 指纹同一快照双链双证据
++        # (在线 sha256 链判等 / 离线 .pt 链取证: token/head 粒度逐元素比对与位模式判别)
++        self._kvc_tensor_dump(tag, rid, st, layers, written, p_tok)
+ 
++    # [KVC][KVT] _kvc_tensor_dump: 10 号补丁 —— 09 指纹之后, 把同一 TERM 快照的原始
++    # K/V 张量固化为 .pt 文件。env 开关 KVC_DUMP_TENSORS=1 启用(默认关, 零侵入);
++    # 输出目录 KVC_DUMP_DIR(默认 log/tensors, 相对 cwd=工作区根, 由 start 脚本保证)。
++    # 时点保证: TERM 在释放前触发(free 在 EngineCore 进程), 张量内容为原始位终值;
++    # cpu().clone() 令快照脱离 NPU 池张量存储(块复用不再影响快照), 落盘不等待。
++    def _kvc_tensor_dump(self, tag, rid, st, layers, written, p_tok) -> None:
++        try:
++            import os
++            import threading
++            if os.environ.get("KVC_DUMP_TENSORS", "0") != "1":
++                return
++            if tag != "TERM":  # LATE 是释放后兜底, 块内容或已被复用, 非证据级, 不归档
++                logger.info("[KVC][KVT] %s 非 TERM, 跳过张量归档", tag)
++                return
++            ok_blocks = st["blocks"][0] if st["blocks"] else []
++            if not ok_blocks or written <= 0 or not layers:
++                return
++            # 实例角色(P/D/X): kv_transfer_config.kv_role(P=kv_producer/D=kv_consumer)
++            try:
++                _kv_role = str(getattr(self.vllm_config.kv_transfer_config,
++                                       "kv_role", ""))
++            except Exception:
++                _kv_role = ""
++            side = ("P" if "producer" in _kv_role
++                    else "D" if "consumer" in _kv_role else "X")
++            seq = int(getattr(self, "_kvc_kvt_seq", 0)) + 1
++            self._kvc_kvt_seq = seq  # 本实例第 seq 次 TERM 归档; P/D 各自计数, 跨侧按 seq 配对
++            # 展平: 按 block_table 顺序逐块取前 cov 槽拼接 -> 每层 K/V 均
++            # (sum(cov), kv_heads, head_dim), 行号即 token 全局序号(与 09 指纹同切片语义)
++            Ks, Vs = [], []
++            covs = None
++            for nm, kt, vt in layers:
++                lb = int(kt.shape[1])
++                if covs is None:
++                    covs = [min(lb, max(0, written - e * lb))
++                            for e in range(len(ok_blocks))]
++                ks, vs = [], []
++                for e, blk in enumerate(ok_blocks):
++                    cov = covs[e]
++                    if cov <= 0 or blk >= int(kt.shape[0]):
++                        continue
++                    ks.append(kt[blk, :cov])
++                    vs.append(vt[blk, :cov])
++                Ks.append(torch.cat(ks, dim=0).cpu().clone())
++                Vs.append(torch.cat(vs, dim=0).cpu().clone())
++            meta = {
++                "schema": "kvt-1",
++                "side": side, "seq": seq,
++                "request_id": rid, "tag": tag,
++                "p_tok": int(p_tok), "w_tok": int(written),
++                "final": int(st["final"]),
++                "cov": [int(c) for c in (covs or [])],
++                "block_table": [int(b) for b in ok_blocks],
++                "layers": len(layers),
++                "layer_ids": [str(nm) for nm, _, _ in layers],
++                "kv_heads": int(layers[0][1].shape[2]),
++                "head_dim": int(layers[0][1].shape[3]),
++                "block_size": int(layers[0][1].shape[1]),
++                "dtype": str(layers[0][1].dtype),
++                "dev": str(layers[0][1].device),
++                "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
++            }
++            bundle = {"K": Ks, "V": Vs, "meta": meta}
++            out_dir = os.environ.get("KVC_DUMP_DIR", "log/tensors")
++            os.makedirs(out_dir, exist_ok=True)
++            fname = "kv_{}_{}_{}.pt".format(side, seq, rid.split("-")[-1][:8])
++            path = os.path.join(out_dir, fname)
++            # cpu().clone() 已同步快照进 host 内存(与卡上块的后续复用解耦);
++            # torch.save 交后台线程, TERM 关键路径不等磁盘 IO
++            threading.Thread(target=torch.save, args=(bundle, path),
++                             daemon=True).start()
++            logger.info(
++                "[KVC][KVT] %s %s s%d 张量归档(与指纹同点双证据): layers=%d "
++                "w_tok=%d p_tok=%d block_table=%s cov=%s -> %s (后台落盘)",
++                tag, side, seq, len(layers), written, p_tok,
++                [int(b) for b in ok_blocks], meta["cov"], path,
++            )
++        except Exception as e:  # 归档绝不影响服务
++            logger.info("[KVC][KVT] 张量归档异常(忽略): %s (%s)", e, type(e).__name__)
++
+     @torch.inference_mode()
+     def sample_tokens(
+         self, grammar_output: "GrammarOutput | None"

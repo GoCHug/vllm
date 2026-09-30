@@ -1,7 +1,7 @@
 # kvc_pd —— PD 分离 KVCache 传输正确性实验工作区
 
 > **回答的问题**：PD 分离（1P+1D + mooncake）下，P 侧 prefill 算出的 KVCache 传到 D 侧后，与 P 侧**逐位相等**吗？
-> **结论（2026-09-30 gggtest 容器实测轮）**：**PASS**——传输区（前 p_tok-1 个 token）共 448 对块级 sha256 指纹 100% 全等（req_p 192/192、req_r 256/256）；不相等的槽位全部是 D 侧本地生成（bootstrap 补算 1 token + decode 新写），与传输无关。曾于 09-29 旧容器完整复现一次，两轮 verdict **MD5 逐字节一致**（详见 `docs/1_kvc_pd_correctness_record.md` §8）。log/ 只保留最新一轮，后续重跑直接原地覆盖更新。
+> **结论（2026-09-30 08:01 gggtest 容器实测轮，04 补丁布局增强版）**：**PASS**——传输区（前 p_tok-1 个 token）共 448 对块级 sha256 指纹 100% 全等（req_p 192/192、req_r 256/256）；不相等的槽位全部是 D 侧本地生成（bootstrap 补算 1 token + decode 新写），与传输无关。已三轮完整复现（09-29 首测 + 09-30 上午复测 + 09-30 本轮 04 补丁增强版），三轮 verdict **MD5 逐字节一致**（详见 `docs/1_kvc_pd_correctness_record.md` §8）。log/ 只保留最新一轮，后续重跑直接原地覆盖更新。
 
 ## 目录结构
 
@@ -43,12 +43,12 @@ kvc_pd/
 | NPU | 卡0 npu:0 | 卡1 npu:1 |
 | 服务 | localhost:8100 | localhost:8200 |
 | kv 角色 | kv_producer rank0, port 20001 | kv_consumer rank1, port 20002 |
-| KV 显存/块数 | 33.78 GiB / 2162 块 | 33.79 GiB / 2162 块 |
+| KV 显存/块数 | 33.78 GiB / 2161 块 | 33.79 GiB / 2162 块 |
 | 传输 | mooncake-transfer-engine-npu 0.3.11.post1，adxl device 直传，proxy :8000 双发 | 同左 |
 
 - 模型：Meta-Llama-3-8B bf16，TP1×2 实例，block_size=128，enforce_eager，seed=1024
 - 软件：vllm 0.23.0 + vllm-ascend 0.23.0（/vllm-workspace 源码仓，site-packages 直链）
-- 补丁：kvc 01~08（同 `../kvc/patch/`，168 行 [KVC] 基础打印）+ 09 指纹（本目录，.Tx/.Xx 块指纹 + 层指纹）
+- 补丁：kvc 01~08（同 `../kvc/patch/`，**170 行 [KVC]**，04 补丁 09-30 增强版——allocate_slots 新增 five-段布局行 `|<comp>|<new_comp>|<ext_comp(P传D)>|<new>|<lookahead>|`）+ 09 指纹（本目录，.Tx/.Xx 块指纹 + 层指纹）
 
 ## 操作步骤（容器内）
 
@@ -83,4 +83,12 @@ bash patch/revert_pd_patches.sh      # 7. 撤补丁（源码还原干净, [KVC] 
 
 ## 复现性备注
 
-本实验曾在 09-29 旧容器（容器已回收，产物已释出）与 09-30 gggtest 轮两次独立跑通：两轮 verdict.txt **MD5 逐字节一致**（b4cf086b…，含 126 条 Xx 差异明细的层号/块号/双侧哈希值全量相同）、生成文本逐 token 全同——跨容器/跨物理卡下 seed=1024 + enforce_eager 的执行链**位级确定**。唯二波动：P 侧池块数（2161→2162，显存碎片级）与哈希盐链（含 request_id，每轮新请求 ID 不同属预期；轮内 P/D 同 ID 同盐，Tx 全等才是判据）。详见 `docs/1_kvc_pd_correctness_record.md` §8。
+本实验已三轮独立跑通（09-29 旧容器首测、09-30 上午 gggtest 复测、09-30 08:01 gggtest 增强轮——04 补丁加入五段布局打印）：三轮 verdict.txt **MD5 逐字节一致**（b4cf086b…，含 126 条 Xx 差异明细的层号/块号/双侧哈希值全量相同）、生成文本逐 token 全同——跨容器/跨物理卡下 seed=1024 + enforce_eager 的执行链**位级确定**。波动仅显存碎片级（P 侧池 2161↔2162）与哈希盐链（含 request_id，每轮不同属预期；轮内 P/D 同 ID 同盐，Tx 全等才是判据）。详见 `docs/1_kvc_pd_correctness_record.md` §8。
+
+## 相邻工作区
+
+| 工作区 | 关系 |
+|---|---|
+| `../kvc_pd_offline/` | **v2 离线张量链**（设计定稿待实施）：TERM 快照 `.pt` 归档 + 五级离线检查器（L0~L4），补指纹链"不等时无法取证"的短板——见其 `docs/1_tensor_archive_design.md`；判定前提（分区间框架）与本区共享 |
+| `../kvc/` | 01~08 基础打印补丁共用（本区 apply 脚本跨区引用） |
+| `../kvc_pd_prefix/` | prefix 四象限实验（独立主题） |
