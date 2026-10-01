@@ -1,15 +1,24 @@
 {
  "files": [
   {
-   "file": "kv_D0_1_9b2b9e4f.pt",
-   "md5": "51c49560b7ae0d8c1e68242aa233fc75",
-   "bytes": 25222453,
-   "side": "D",
-   "rank": 0,
+   "file": "kv_S00_1_b9c6961a.pt",
+   "md5": "c33b87343d102923f33583653cda26c1",
+   "bytes": 12611839,
+   "pp": 0,
+   "tp": 0,
    "seq": 1,
-   "request_id": "cmpl-50f8c5ad-bd31-4e37-97f1-4257edd8251d-0-9b2b9e4f",
+   "request_id": "cmpl-b6a364047e7c615d-0-b9c6961a",
    "p_tok": 324,
    "w_tok": 324,
+   "layers": 16,
+   "layer_ids_head": [
+    "0",
+    "1"
+   ],
+   "layer_ids_tail": [
+    "14",
+    "15"
+   ],
    "cov": [
     128,
     128,
@@ -23,15 +32,24 @@
    "kv_heads": 4
   },
   {
-   "file": "kv_D0_2_abc09176.pt",
-   "md5": "89d7b0996567b7b29627ab96950f6940",
-   "bytes": 42036149,
-   "side": "D",
-   "rank": 0,
+   "file": "kv_S00_2_bae2bb90.pt",
+   "md5": "598a66c4a70401a35d2a534dbac66b3c",
+   "bytes": 21018747,
+   "pp": 0,
+   "tp": 0,
    "seq": 2,
-   "request_id": "cmpl-d07da47f-f3ed-4474-88af-573eedffa8e6-0-abc09176",
+   "request_id": "cmpl-95b36664d171dcb5-0-bae2bb90",
    "p_tok": 486,
    "w_tok": 520,
+   "layers": 16,
+   "layer_ids_head": [
+    "0",
+    "1"
+   ],
+   "layer_ids_tail": [
+    "14",
+    "15"
+   ],
    "cov": [
     128,
     128,
@@ -49,15 +67,24 @@
    "kv_heads": 4
   },
   {
-   "file": "kv_D1_1_9b2b9e4f.pt",
-   "md5": "b94407dde7d2832eccba8f0a10a892c7",
-   "bytes": 25222453,
-   "side": "D",
-   "rank": 1,
+   "file": "kv_S01_1_b9c6961a.pt",
+   "md5": "ec5eaf84a439f600e9e87db9eb8ed2ad",
+   "bytes": 12611839,
+   "pp": 0,
+   "tp": 1,
    "seq": 1,
-   "request_id": "cmpl-50f8c5ad-bd31-4e37-97f1-4257edd8251d-0-9b2b9e4f",
+   "request_id": "cmpl-b6a364047e7c615d-0-b9c6961a",
    "p_tok": 324,
    "w_tok": 324,
+   "layers": 16,
+   "layer_ids_head": [
+    "0",
+    "1"
+   ],
+   "layer_ids_tail": [
+    "14",
+    "15"
+   ],
    "cov": [
     128,
     128,
@@ -71,15 +98,24 @@
    "kv_heads": 4
   },
   {
-   "file": "kv_D1_2_abc09176.pt",
-   "md5": "051cb022656425f9ab67d510e6444350",
-   "bytes": 42036149,
-   "side": "D",
-   "rank": 1,
+   "file": "kv_S01_2_bae2bb90.pt",
+   "md5": "7f3d524e03c2c7b65de48dcc5dcbaa07",
+   "bytes": 21018747,
+   "pp": 0,
+   "tp": 1,
    "seq": 2,
-   "request_id": "cmpl-d07da47f-f3ed-4474-88af-573eedffa8e6-0-abc09176",
+   "request_id": "cmpl-95b36664d171dcb5-0-bae2bb90",
    "p_tok": 486,
    "w_tok": 520,
+   "layers": 16,
+   "layer_ids_head": [
+    "0",
+    "1"
+   ],
+   "layer_ids_tail": [
+    "14",
+    "15"
+   ],
    "cov": [
     128,
     128,
@@ -97,15 +133,24 @@
    "kv_heads": 4
   },
   {
-   "file": "kv_P0_1_86535257.pt",
-   "md5": "c71e33ca545b4fe46818df83c5d50fb4",
-   "bytes": 25222453,
-   "side": "P",
-   "rank": 0,
+   "file": "kv_S10_1_b9c6961a.pt",
+   "md5": "1ef5e377e2ff629d7c02b8c73866b492",
+   "bytes": 12611839,
+   "pp": 1,
+   "tp": 0,
    "seq": 1,
-   "request_id": "cmpl-50f8c5ad-bd31-4e37-97f1-4257edd8251d-0-86535257",
+   "request_id": "cmpl-b6a364047e7c615d-0-b9c6961a",
    "p_tok": 324,
    "w_tok": 324,
+   "layers": 16,
+   "layer_ids_head": [
+    "0",
+    "1"
+   ],
+   "layer_ids_tail": [
+    "14",
+    "15"
+   ],
    "cov": [
     128,
     128,
@@ -119,39 +164,59 @@
    "kv_heads": 4
   },
   {
-   "file": "kv_P0_2_816242b6.pt",
-   "md5": "f73acf1d642ac3f9d4e831d49e498ae7",
-   "bytes": 33629301,
-   "side": "P",
-   "rank": 0,
+   "file": "kv_S10_2_bae2bb90.pt",
+   "md5": "88eb129648c09d5f9799f0ac59616968",
+   "bytes": 21018747,
+   "pp": 1,
+   "tp": 0,
    "seq": 2,
-   "request_id": "cmpl-d07da47f-f3ed-4474-88af-573eedffa8e6-0-816242b6",
+   "request_id": "cmpl-95b36664d171dcb5-0-bae2bb90",
    "p_tok": 486,
-   "w_tok": 486,
+   "w_tok": 520,
+   "layers": 16,
+   "layer_ids_head": [
+    "0",
+    "1"
+   ],
+   "layer_ids_tail": [
+    "14",
+    "15"
+   ],
    "cov": [
     128,
     128,
     128,
-    102
+    128,
+    8
    ],
    "block_table": [
     1,
     2,
     4,
-    5
+    5,
+    6
    ],
    "kv_heads": 4
   },
   {
-   "file": "kv_P1_1_86535257.pt",
-   "md5": "ccbc82b7c740b32a2935ad73b24b338b",
-   "bytes": 25222453,
-   "side": "P",
-   "rank": 1,
+   "file": "kv_S11_1_b9c6961a.pt",
+   "md5": "4766b7d98405770b3b879079e6d45e05",
+   "bytes": 12611839,
+   "pp": 1,
+   "tp": 1,
    "seq": 1,
-   "request_id": "cmpl-50f8c5ad-bd31-4e37-97f1-4257edd8251d-0-86535257",
+   "request_id": "cmpl-b6a364047e7c615d-0-b9c6961a",
    "p_tok": 324,
    "w_tok": 324,
+   "layers": 16,
+   "layer_ids_head": [
+    "0",
+    "1"
+   ],
+   "layer_ids_tail": [
+    "14",
+    "15"
+   ],
    "cov": [
     128,
     128,
@@ -165,26 +230,37 @@
    "kv_heads": 4
   },
   {
-   "file": "kv_P1_2_816242b6.pt",
-   "md5": "c29477340159d26312371681d825fec6",
-   "bytes": 33629301,
-   "side": "P",
-   "rank": 1,
+   "file": "kv_S11_2_bae2bb90.pt",
+   "md5": "cfb42fde0ad223c6dc597a5d698f4ba8",
+   "bytes": 21018747,
+   "pp": 1,
+   "tp": 1,
    "seq": 2,
-   "request_id": "cmpl-d07da47f-f3ed-4474-88af-573eedffa8e6-0-816242b6",
+   "request_id": "cmpl-95b36664d171dcb5-0-bae2bb90",
    "p_tok": 486,
-   "w_tok": 486,
+   "w_tok": 520,
+   "layers": 16,
+   "layer_ids_head": [
+    "0",
+    "1"
+   ],
+   "layer_ids_tail": [
+    "14",
+    "15"
+   ],
    "cov": [
     128,
     128,
     128,
-    102
+    128,
+    8
    ],
    "block_table": [
     1,
     2,
     4,
-    5
+    5,
+    6
    ],
    "kv_heads": 4
   }

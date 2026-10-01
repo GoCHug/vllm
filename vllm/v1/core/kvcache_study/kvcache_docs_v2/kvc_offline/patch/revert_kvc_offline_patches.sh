@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# revert_kvc_offline_patches.sh —— 撤销 kvc_offline 补丁套装
+# revert_kvc_offline_patches.sh —— 撤销 kvc_offline(v3 单机 PP2×TP2) 补丁套装
 #                                  （11 先撤 → 调 kvc_pd 撤 09 → 调 kvc 撤 01~08）
 #
 # 用法(容器内):

@@ -1,11 +1,12 @@
 #!/bin/bash
 # ==============================================================================
-# apply_kvc_offline_patches.sh —— kvc_offline block 原样归档补丁套装
+# apply_kvc_offline_patches.sh —— kvc_offline(v3 单机 PP2×TP2) block 原样归档补丁套装
 #                                （kvc 01~08 → kvc_pd 09 指纹 → 本区 11 block 归档）
 #
 # 11: 11_pp2tp2_block_dump.patch —— 在 09 之上叠加 TERM block 原样张量归档
 #     (_kvc_kv_dump 收尾处调 _kvc_block_dump: 每块整存 kt[blk] 不 gather,
-#      env 开关 KVC_DUMP_BLOCKS=1 / KVC_DUMP_DIR; TP rank 自动区分多路文件)
+#      env 开关 KVC_DUMP_BLOCKS=1 / KVC_DUMP_DIR; 单机 PP2×TP2 下每 worker
+#      (pp×tp 4 路)各自归档, 文件 kv_S{pp}{tp}_{seq}_{rid尾8}.pt)
 #
 # 用法(容器内):
 #   VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend \

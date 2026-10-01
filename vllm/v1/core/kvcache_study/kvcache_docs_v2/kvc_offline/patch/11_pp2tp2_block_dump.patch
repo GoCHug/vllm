@@ -1,21 +1,22 @@
 --- a/vllm_ascend/worker/model_runner_v1.py
 +++ b/vllm_ascend/worker/model_runner_v1.py
-@@ -2609,7 +2609,108 @@
+@@ -2609,7 +2609,110 @@
                  _kvc_fp(v_pp) if v_pp else "-", _kvc_fp(vparts),
              )
          logger.info("[KVC][KVP] " + "=" * 8 + " " + _close_msg + " " + "=" * 8)
-+        # [KVC][KVB] 11 号补丁: TERM block 原样张量归档 —— 与 09 指纹同点双证据。
-+        # 与 10 号(kvc_pd_offline, gather 展平)的差异: 每块整存, 不 cat 不切 cov,
-+        # .pt 内张量与 NPU 池该块逐字节同构(含未写槽位, 残值/复用痕迹可查);
-+        # 行号对齐由离线检查器按 block_table+cov 重建(check_kv_blocks.py)。
++        # [KVC][KVB] 11 号补丁(kvc_offline v3): TERM block 原样张量归档 —— 与 09 指纹
++        # 同点双证据。单机 PP2xTP2 混合并行下每 worker(=pp_stage*TP+tp_rank 4 worker,
++        # 各持 16 层/4 kv_heads 分片)各自执行, 产出 8 份 kv_{S}{pp}{tp}_{seq}_{rid}.pt。
++        # 与 10 号(kvc_pd_offline, gather 展平)差异: 每块整存不 cat, .pt 张量与 NPU 池
++        # 块逐字节同构(含未写槽位); 行号对齐由离线检查器重建(check_kv_blocks.py)。
 +        self._kvc_block_dump(tag, rid, st, layers, written, p_tok)
  
-+    # [KVC][KVB] _kvc_block_dump: 11 号补丁 —— block 原样物理张量归档(pp2tp2 实验)。
++    # [KVC][KVB] _kvc_block_dump: 11 号补丁(kvc_offline v3) —— block 原样物理张量归档。
 +    # env: KVC_DUMP_BLOCKS=1 启用(默认关, 零侵入); 输出目录 KVC_DUMP_DIR(默认
-+    # log/tensors, 相对 cwd=工作区根)。TP2 下每 rank worker 进程各自执行(TP rank
-+    # 取 get_tp_group().rank_in_group), 产出 kv_{side}{rank}_{seq}_{rid尾8}.pt 多路
-+    # 文件; (side,rank) 各自 seq 计数, 跨侧按 side+rank+seq 配对。
-+    # 时点/安全语义同 10 号: TERM 在释放前触发, cpu().clone() 位级镜像脱离池存储,
++    # log/tensors, 相对 cwd=工作区根)。归档身份: pp/tp rank 取 vllm 并行组
++    # (get_pp_group/get_tp_group 模块级已 import), 文件名 kv_{S}{pp}{tp}_{seq}_{rid尾8};
++    # 单机无 PD 传输, S 仅作身份标签(X 启动早期并行组未初始化时兜底)。
++    # 时点/安全语义同 08/10 号: TERM 在释放前触发, cpu().clone() 位级镜像脱离池存储,
 +    # torch.save 后台落盘 TERM 不等 IO, 异常兜底绝不影响服务。
 +    def _kvc_block_dump(self, tag, rid, st, layers, written, p_tok) -> None:
 +        try:
@@ -28,24 +29,21 @@
 +            ok_blocks = st["blocks"][0] if st["blocks"] else []
 +            if not ok_blocks or written <= 0 or not layers:
 +                return
-+            # 实例角色(P/D/X): kv_transfer_config.kv_role
++            # worker 身份: PP stage + TP rank(vllm 并行组; 失败兜底 0/0)
 +            try:
-+                _kv_role = str(getattr(self.vllm_config.kv_transfer_config,
-+                                       "kv_role", ""))
++                pp_rank = int(get_pp_group().rank_in_group)
 +            except Exception:
-+                _kv_role = ""
-+            side = ("P" if "producer" in _kv_role
-+                    else "D" if "consumer" in _kv_role else "X")
-+            # TP rank: TP1 时 rank_in_group=0 退化为单路; TP2 时双 rank 各dump各的
++                pp_rank = 0
 +            try:
-+                from vllm.distributed.parallel_state import get_tp_group
 +                tp_rank = int(get_tp_group().rank_in_group)
 +            except Exception:
 +                tp_rank = 0
++            # 身份标签: 单机无 kv_role, 用 S 占位(检查器按 pp/tp 分片对账)
++            side = "S"
 +            _seq_map = getattr(self, "_kvc_kvb_seq", None)
 +            if _seq_map is None:
 +                _seq_map = self._kvc_kvb_seq = {}
-+            _key = (side, tp_rank)
++            _key = (pp_rank, tp_rank)
 +            seq = int(_seq_map.get(_key, 0)) + 1
 +            _seq_map[_key] = seq
 +            # 块覆盖槽数(与 09 指纹同公式): 第 e 块 cov = min(bs, w_tok - e*bs)
@@ -53,7 +51,9 @@
 +            covs = [min(lb0, max(0, written - e * lb0))
 +                    for e in range(len(ok_blocks))]
 +            # ★ 原样归档核心: 每层每块 kt[blk] 整块 (bs, kv_heads, head_dim),
-+            #    不 cat 不切片 —— .pt 张量与 NPU 池块逐字节同构, 含未写槽位
++            #    不 cat 不切片 —— .pt 张量与 NPU 池块逐字节同构, 含未写槽位。
++            #    PP2xTP2 下本 worker 的 layers 只含本 stage 的 16 层(layer 序号
++            #    保留全局编号, meta.layer_ids 记录), 4 worker 联合覆盖全 32 层。
 +            K_layers: list = []
 +            V_layers: list = []
 +            for nm, kt, vt in layers:
@@ -69,8 +69,8 @@
 +            if not K_layers or not K_layers[0]:
 +                return
 +            meta = {
-+                "schema": "kvt2-raw",
-+                "side": side, "rank": tp_rank, "seq": seq,
++                "schema": "kvt3-raw",
++                "side": side, "pp": pp_rank, "tp": tp_rank, "seq": seq,
 +                "request_id": rid, "tag": tag,
 +                "p_tok": int(p_tok), "w_tok": int(written),
 +                "final": int(st["final"]),
@@ -88,18 +88,20 @@
 +            bundle = {"K": K_layers, "V": V_layers, "meta": meta}
 +            out_dir = os.environ.get("KVC_DUMP_DIR", "log/tensors")
 +            os.makedirs(out_dir, exist_ok=True)
-+            fname = "kv_{}{}_{}_{}.pt".format(side, tp_rank, seq,
-+                                              rid.split("-")[-1][:8])
++            fname = "kv_{}{}{}_{}_{}.pt".format(side, pp_rank, tp_rank, seq,
++                                                rid.split("-")[-1][:8])
 +            path = os.path.join(out_dir, fname)
 +            # cpu().clone() 已同步快照进 host; torch.save 后台线程, TERM 不等 IO
 +            threading.Thread(target=torch.save, args=(bundle, path),
 +                             daemon=True).start()
 +            logger.info(
-+                "[KVC][KVB] %s %s r%d s%d block原样归档(与指纹同点双证据): "
-+                "layers=%d w_tok=%d p_tok=%d block_table=%s cov=%s "
++                "[KVC][KVB] %s pp%d tp%d s%d block原样归档(与指纹同点双证据): "
++                "layers=%d[%s] w_tok=%d p_tok=%d block_table=%s cov=%s "
 +                "kv_heads=%d -> %s (后台落盘)",
-+                tag, side, tp_rank, seq, len(layers), written, p_tok,
-+                [int(b) for b in ok_blocks], meta["cov"],
++                tag, pp_rank, tp_rank, seq, len(layers),
++                (meta["layer_ids"][0] if meta["layer_ids"] else "?") + "~" +
++                (meta["layer_ids"][-1] if meta["layer_ids"] else "?"),
++                written, p_tok, [int(b) for b in ok_blocks], meta["cov"],
 +                meta["kv_heads"], path,
 +            )
 +        except Exception as e:  # 归档绝不影响服务

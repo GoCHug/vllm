@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# pull_tensors.sh —— kvc_offline(pp2tp2) 产物回收（容器内 pack → 主机侧 fetch）
+# pull_tensors.sh —— kvc_offline(v3 单机 PP2×TP2) 产物回收（容器 pack → 主机 fetch）
 #
 # 容器内: bash scripts/pull_tensors.sh pack
 #   -> 等 8 个 .pt 全就位 -> md5 写 tensors/manifest.json -> tar.gz 整个 log/
@@ -15,7 +15,7 @@ case "$MODE" in
 pack)
   cd "$HERE"
   mkdir -p log/tensors
-  echo "== [pack] 等待归档就位 (expect 8 .pt: kv_{P0,P1,D0,D1}_{1,2}) =="
+  echo "== [pack] 等待归档就位 (expect 8 .pt: kv_S{00,01,10,11}_{1,2}) =="
   for i in $(seq 1 12); do
     N=$(ls log/tensors/kv_*.pt 2>/dev/null | wc -l | tr -d " ")
     [ "$N" -ge 8 ] && break
@@ -23,9 +23,9 @@ pack)
   done
   N=$(ls log/tensors/kv_*.pt 2>/dev/null | wc -l | tr -d " ")
   [ "$N" -ge 1 ] || { echo "[ERROR] 无归档产物"; exit 1; }
-  [ "$N" = 8 ] || echo "[WARN] 归档数量 $N != 8 (P0/P1/D0/D1 × seq1/2), 继续打包"
+  [ "$N" = 8 ] || echo "[WARN] 归档数量 $N != 8 (4 worker × seq1/2), 继续打包"
 
-  echo "== [pack] 写 manifest.json (md5 + meta 摘要, 含 rank) =="
+  echo "== [pack] 写 manifest.json (md5 + meta 摘要, 含 pp/tp) =="
   python3 - <<'PYEOF'
 import hashlib, json, glob, torch
 from pathlib import Path
@@ -35,9 +35,10 @@ for f in sorted(glob.glob("log/tensors/kv_*.pt")):
     m = torch.load(f, map_location="cpu")["meta"]
     mani["files"].append({
         "file": Path(f).name, "md5": h, "bytes": Path(f).stat().st_size,
-        "side": m["side"], "rank": m["rank"], "seq": m["seq"],
+        "pp": m["pp"], "tp": m["tp"], "seq": m["seq"],
         "request_id": m["request_id"],
-        "p_tok": m["p_tok"], "w_tok": m["w_tok"],
+        "p_tok": m["p_tok"], "w_tok": m["w_tok"], "layers": m["layers"],
+        "layer_ids_head": m["layer_ids"][:2], "layer_ids_tail": m["layer_ids"][-2:],
         "cov": m["cov"], "block_table": m["block_table"],
         "kv_heads": m["kv_heads"]})
 Path("log/tensors/manifest.json").write_text(
@@ -65,16 +66,16 @@ fetch)
   echo "== [fetch] \r 规范化 (tqdm 孤立 \r -> \n, 同 v1 纪律) =="
   python3 - <<'PYEOF'
 from pathlib import Path
-for f in (Path("log/p_llama.log"), Path("log/d_llama.log")):
-    if f.exists():
-        raw = f.read_bytes()
-        norm = raw.replace(b"\r\r\n", b"\n").replace(b"\r\n", b"\n") \
-                  .replace(b"\r", b"\n")
-        if norm != raw:
-            f.write_bytes(norm)
-            print(f"  {f}: 规范化 {raw.count(b'\r')} 个 \r")
-        else:
-            print(f"  {f}: 无需规范化")
+f = Path("log/llama-3-8b.log")
+if f.exists():
+    raw = f.read_bytes()
+    norm = raw.replace(b"\r\r\n", b"\n").replace(b"\r\n", b"\n") \
+              .replace(b"\r", b"\n")
+    if norm != raw:
+        f.write_bytes(norm)
+        print(f"  {f}: 规范化 {raw.count(b'\r')} 个 \r")
+    else:
+        print(f"  {f}: 无需规范化")
 PYEOF
   echo "== [fetch] 校验 manifest md5 =="
   python3 - <<'PYEOF'
