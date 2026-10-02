@@ -1,10 +1,11 @@
 #!/bin/bash
 # ==============================================================================
-# revert_patches.sh —— 一键撤销 8 个 [KVC] 调试打印补丁（还原为干净源码）
+# revert_patches.sh —— 一键撤销 8 个 [KVC] 调试补丁（还原为干净源码, kvc 版）
 #
 # 用法:
-#   容器内执行:          VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./revert_patches.sh
-#   本地(默认路径已配):  ./revert_patches.sh        # 或用 VLLM_DIR=... VLLM_ASCEND_DIR=... 自定义仓库位置
+#   容器内(默认路径):   ./revert_patches.sh
+#   容器内(显式指定):   VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./revert_patches.sh
+#   本地测试(可选):     VLLM_DIR=<本地vllm仓库> VLLM_ASCEND_DIR=<本地vllm-ascend仓库> ./revert_patches.sh
 #
 # 行为:
 #   Phase 0  状态检查 —— 源码中无 [KVC] 时提示已干净并退出
@@ -14,15 +15,13 @@
 #
 # 说明:
 #   - 采用 patch -R 反向应用, 不依赖 .orig 备份
+#   - 实验完成后必须执行本脚本, 保持容器源码未改动
 # ==============================================================================
 set -euo pipefail
 
 PATCH_DIR="$(cd "$(dirname "$0")" && pwd)"
-# VLLM_DIR="${VLLM_DIR:-/vllm-workspace/vllm}"
-# VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/vllm-workspace/vllm-ascend}"
-# 本地跑(releases/v0.23.0 基线 8/8 实测通过): 直接用环境变量, 或注释上面两行改用下面两行:
-VLLM_DIR="${VLLM_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm}"
-VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm-ascend}"
+VLLM_DIR="${VLLM_DIR:-/vllm-workspace/vllm}"
+VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/vllm-workspace/vllm-ascend}"
 
 VLLM_FILES=(
   vllm/v1/request.py
@@ -38,7 +37,7 @@ ASCEND_FILE="vllm_ascend/worker/model_runner_v1.py"
 [ -d "$VLLM_DIR" ]        || { echo "[ERROR] vllm 仓库不存在: $VLLM_DIR (用 VLLM_DIR=... 指定)"; exit 1; }
 [ -d "$VLLM_ASCEND_DIR" ] || { echo "[ERROR] vllm-ascend 仓库不存在: $VLLM_ASCEND_DIR (用 VLLM_ASCEND_DIR=... 指定)"; exit 1; }
 
-kvc_count() {  # BSD grep -c 无匹配时输出 0 且 exit 1 —— 只压码值, 不再追加输出(避免 "0\n0")
+kvc_count() {  # BSD grep -c 无匹配时输出 0 且 exit 1 —— 只压码值
   grep -c "\[KVC\]" "$1" 2>/dev/null || true
 }
 
@@ -72,7 +71,7 @@ echo "== Phase 2: 反向应用 =="
 for f in "$PATCH_DIR"/0[1-7]_vllm_*.patch; do
   (cd "$VLLM_DIR" && patch -R -p1 < "$f" >/dev/null 2>&1) && echo "  reverted: $(basename "$f")"
 done
-(cd "$VLLM_ASCEND_DIR" && patch -R -p1 < "$PATCH_DIR"/08_*.patch >/dev/null 2>&1) && echo "  reverted: 08_vllm_ascend_*.patch"
+(cd "$VLLM_ASCEND_DIR" && patch -R -p1 < "$PATCH_DIR"/08_*.patch >/dev/null 2>&1) && echo "  reverted: 08_vllm_ascend_*.patch (v2 归档版)"
 
 echo "== Phase 3: 验证 =="
 bad=0
@@ -86,4 +85,6 @@ n=$(kvc_count "$VLLM_ASCEND_DIR/$ASCEND_FILE")
 
 cd "$VLLM_DIR"
 python3 -m py_compile "${VLLM_FILES[@]}" "$VLLM_ASCEND_DIR/$ASCEND_FILE" && echo "  py_compile OK (8 files)"
-echo "[DONE] 8 个补丁已全部撤销, 源码还原干净。"
+kvp_line=$(grep -c "def _kvc_kv_save\|def _kvc_rel_snapshot" "$VLLM_ASCEND_DIR/$ASCEND_FILE" || true)
+[ "$kvp_line" = 0 ] && echo "  v2 方法已移除, 源码还原干净 ✓" || echo "  [WARN] 仍存在 kvs 方法"
+echo "[DONE] 8 个补丁已全部撤销, 源码还原干净 —— 容器回到未改动状态。"

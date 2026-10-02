@@ -1,0 +1,31 @@
+== 日志行计数 ==
+  开始保存横幅:  8 (预期 8)
+  完成保存横幅:  8 (预期 8)
+  [KVS] 总行: 20 (v2.1:532 → v2.2:20 → v2.3:20 行)
+
+== 横幅行块表/cov vs 归档 meta ==
+  PP0_TP1 s1: blk=[1, 2, 3] cov=[128, 128, 68] vs meta OK
+  PP0_TP0 s1: blk=[1, 2, 3] cov=[128, 128, 68] vs meta OK
+  PP1_TP0 s1: blk=[1, 2, 3] cov=[128, 128, 68] vs meta OK
+  PP1_TP1 s1: blk=[1, 2, 3] cov=[128, 128, 68] vs meta OK
+  PP0_TP1 s2: blk=[1, 2, 4, 5, 6] cov=[128, 128, 128, 128, 8] vs meta OK
+  PP0_TP0 s2: blk=[1, 2, 4, 5, 6] cov=[128, 128, 128, 128, 8] vs meta OK
+  PP1_TP0 s2: blk=[1, 2, 4, 5, 6] cov=[128, 128, 128, 128, 8] vs meta OK
+  PP1_TP1 s2: blk=[1, 2, 4, 5, 6] cov=[128, 128, 128, 128, 8] vs meta OK
+
+== 完成横幅(字节/耗时) vs manifest ==
+  kv_pp0tp1_s1_994a2ef5.pt: 12612247 B (32.2ms) vs manifest OK
+  kv_pp0tp0_s1_994a2ef5.pt: 12612247 B (32.4ms) vs manifest OK
+  kv_pp1tp0_s1_994a2ef5.pt: 12612247 B (32.1ms) vs manifest OK
+  kv_pp1tp1_s1_994a2ef5.pt: 12612247 B (32.7ms) vs manifest OK
+  kv_pp0tp0_s2_81604d58.pt: 21019411 B (44.6ms) vs manifest OK
+  kv_pp0tp1_s2_81604d58.pt: 21019411 B (45.1ms) vs manifest OK
+  kv_pp1tp0_s2_81604d58.pt: 21019411 B (44.9ms) vs manifest OK
+  kv_pp1tp1_s2_81604d58.pt: 21019411 B (44.6ms) vs manifest OK
+  落盘耗时: min 32.1 / max 45.1 / avg 38.6 ms
+
+== curl/响应 ==
+  [P] prompt=324 completion=1 text='为了'
+  [R] prompt=486 completion=35 text='://www.zhihu.com/q'
+
+[AUDIT_DONE] v2.3 横幅式日志 <-> 归档实体 全链对账完成(全 OK)
