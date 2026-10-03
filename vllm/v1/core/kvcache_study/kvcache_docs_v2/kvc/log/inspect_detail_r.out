@@ -1,5 +1,5 @@
-== kv_pp0tp0_s2_81604d58.pt 单文件深查 (schema=kvt4-raw) ==
-  worker: pp=0 tp=0 seq=2 req尾8=81604d58 tag=TERM dev=npu:0 ts=2026-10-02 15:17:21
+== kv_pp0tp0_s2_81516ab1.pt 单文件深查 (schema=kvt4-raw) ==
+  worker: pp=0 tp=0 seq=2 req尾8=81516ab1 tag=TERM dev=npu:0 ts=2026-10-02 16:26:01
   token:  p_tok=486 w_tok=520 final=520
   pool:   block_size=128 kv_heads=4 head_dim=128 dtype=torch.bfloat16 layers=16
   池布局: K/V 两个独立张量池(张量级拆分); 第0维=块号, 第1维=token槽位, 第2维=kv_heads, 第3维=head_dim

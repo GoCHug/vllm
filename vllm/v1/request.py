@@ -27,9 +27,6 @@ from vllm.v1.utils import ConstantList
 if TYPE_CHECKING:
     from vllm.lora.request import LoRARequest
     from vllm.v1.core.kv_cache_utils import BlockHash
-# KVCache 调试 logger
-from vllm.logger import init_logger
-logger = init_logger(__name__)
 
 
 @dataclass
@@ -180,17 +177,7 @@ class Request:
         # reference cycle (Request -> partial -> Request) that prevents
         # immediate garbage collection via reference counting.
         self._block_hasher: Callable[[Request], list[BlockHash]] | None = block_hasher
-        # [KVC][ENQ] 入队阶段开始
-        logger.info("[KVC][ENQ] " + "=" * 8 + " 入队 " + "=" * 8)
         self.update_block_hashes()
-        # [KVC][ENQ] 入队阶段: 预计算满块链式哈希 (BlockHash, 纯哈希不含 group_id)
-        logger.info(
-            f"[KVC][ENQ] Request(request_id={self.request_id}) 入队: "
-            f"num_prompt_tokens={self.num_prompt_tokens}, max_tokens={self.max_tokens}, "
-            f"满块链式哈希 BlockHash × {len(self.block_hashes)}: "
-            f"{[h.hex()[:12] for h in self.block_hashes]}"
-        )
-        logger.info("[KVC][ENQ] " + "=" * 8 + " 入队完成 " + "=" * 8)
 
         self.skip_reading_prefix_cache = self.get_skip_reading_prefix_cache()
 

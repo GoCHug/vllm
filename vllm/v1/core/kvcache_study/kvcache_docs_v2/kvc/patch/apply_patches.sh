@@ -2,21 +2,21 @@
 # ==============================================================================
 # apply_patches.sh —— kvc 一键应用 8 个 [KVC] KVCache 调试补丁(v0.23.0 基线)
 #
-# 与 ../kvc/ 的差异: 08 号补丁为 v2 重设计——请求结束(TERM)不再逐层打印物理 cache,
-#   而是把该请求在各 worker 的物理 KV 块整块(含未写槽位, .cpu().clone() 位级快照)
-#   原样 torch.save 归档为 .pt, 由 scripts/inspect_kv_tensors.py 离线查看。
+# 08 号补丁为 v2.3: 请求结束(TERM)不打印物理 cache, 而是把该请求在各 worker 的物理
+#   KV 块整块(含未写槽位, .cpu().clone() 位级快照)原样 torch.save 归档为 .pt,
+#   归档时打横幅式两行日志(======== 开始/完成保存物理tensor ========)。
 #   env 开关: KVC_SAVE_KV=1 启用(默认关, 零侵入); KVC_SAVE_DIR 输出目录。
 #
 # 用法:
-#   容器内(默认路径):   ./apply_patches.sh
-#   容器内(显式指定):   VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./apply_patches.sh
-#   本地测试(可选):     VLLM_DIR=<本地vllm仓库> VLLM_ASCEND_DIR=<本地vllm-ascend仓库> ./apply_patches.sh
+#   本地(默认路径):     ./apply_patches.sh
+#   容器内(需指定):     VLLM_DIR=/vllm-workspace/vllm VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend ./apply_patches.sh
+#   (容器内 run_all.sh 已自动导出容器路径, 无需手动传)
 #
 # 行为:
 #   Phase 0  已应用检测(源码带 [KVC] 即中止)
 #   Phase 1  dry-run 预检 8 补丁(任一失败则不落盘)
 #   Phase 2  patch -p1 应用(01~07 -> vllm, 08 -> vllm-ascend)
-#   Phase 3  验证: [KVC] 计数(vllm 155 行 + vllm-ascend 16 行 = 171 行) + py_compile
+#   Phase 3  验证: [KVC] 计数(174 行 = vllm 155 + vllm-ascend 19) + py_compile
 #   Phase 4  [KVS] 归档开关提示(scripts/start.sh 会自动导出)
 #
 # 注意:
@@ -26,8 +26,8 @@
 set -euo pipefail
 
 PATCH_DIR="$(cd "$(dirname "$0")" && pwd)"
-VLLM_DIR="${VLLM_DIR:-/vllm-workspace/vllm}"
-VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/vllm-workspace/vllm-ascend}"
+VLLM_DIR="${VLLM_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm}"
+VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm-ascend}"
 
 VLLM_FILES=(
   vllm/v1/request.py

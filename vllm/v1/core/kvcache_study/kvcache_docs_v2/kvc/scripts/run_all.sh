@@ -2,16 +2,19 @@
 # ==============================================================================
 # run_all.sh —— kvc 一键实验（容器内执行；产物回收/杀服务/撤补丁为独立后续步骤）
 #
-# 拓扑: 单机 PP2×TP2（与 ../kvc/、../kvc_offline/ 同形态, 占满 4 卡, 直发 :8000）
+# 拓扑: 单机 PP2×TP2（占满 4 卡, 直发 :8000）
 # 五阶段:
-#   [1/5] patch:   apply_patches.sh（kvc 01~07 管理侧打印 + 08 v2 物理KV原样归档）
+#   [1/5] patch:   apply_patches.sh（kvc 01~07 管理侧打印 + 08 v2.3 物理KV原样归档）
 #   [2/5] 起服务:  start.sh（自动 export KVC_SAVE_KV=1 + KVC_SAVE_DIR=<工作区>/tensors）
 #                  → 就绪（500s 超时; 四 worker 物理池横幅×4）
 #   [3/5] 发请求:  curl_p_r.sh（P/R 双请求 + 打屏留痕 + 三段 [KVC] 轨迹 + 等归档）
 #   [4/5] 验归档:  8 个 .pt（4 worker × P/R）; [KVS] 行为留痕
 #   [5/5] 容器内初检: inspect_kv_tensors.py 列表模式 + 自检 + P/R 公共块比对
 # （后续手动步骤: scripts/pull_artifacts.sh pack|fetch → scripts/stop.sh →
-#   patch/revert_patches.sh —— 实验完毕保持容器源码未改动）
+#   patch/revert_patches.sh —— 实验完毕保持容器源码未改动; 本脚本已导出容器路径,）
+#
+# 注: apply/revert 补丁脚本默认仓库路径为本地 macOS 路径(开箱即用于本地);
+#     容器内由本脚本/手动按 README 传 VLLM_DIR=/vllm-workspace/vllm 等覆盖。
 #
 # 用法(容器内):
 #   cd /a3_inference/itask/workdir/wsl02075301/kvc
@@ -19,6 +22,10 @@
 #   tail -f log/run_all_screen.log
 # ==============================================================================
 cd "$(dirname "$0")/.." || exit 1
+# 容器路径显式导出(apply/revert 脚本默认路径为本地 macOS 路径, 容器内必须覆盖;
+# 本地直接跑 apply/revert 时无需任何传参)
+export VLLM_DIR=/vllm-workspace/vllm
+export VLLM_ASCEND_DIR=/vllm-workspace/vllm-ascend
 mkdir -p log tensors
 echo "===== [run_all] $(date '+%F %T') kvc 物理KV原样归档实验开始 ====="
 [ -f log/req_p.json ] && [ -f log/req_r.json ] || { echo "[FATAL] req_p/req_r 缺失"; exit 1; }

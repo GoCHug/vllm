@@ -1,24 +1,24 @@
-===== worker pp0tp0 =====
+===== [worker pp0tp0] =====
 == 公共块逐位比对 ==
-  A: kv_pp0tp0_s1_994a2ef5.pt pp0tp0 s1 req尾8=994a2ef5 w_tok=324 blocks=[1, 2, 3]
-  B: kv_pp0tp0_s2_81604d58.pt pp0tp0 s2 req尾8=81604d58 w_tok=520 blocks=[1, 2, 4, 5, 6]
+  A: kv_pp0tp0_s1_b3cb18f2.pt pp0tp0 s1 req尾8=b3cb18f2 w_tok=324 blocks=[1, 2, 3]
+  B: kv_pp0tp0_s2_81516ab1.pt pp0tp0 s2 req尾8=81516ab1 w_tok=520 blocks=[1, 2, 4, 5, 6]
   公共块: [1, 2]
   [PASS] 全部公共块 [1, 2] 在 16 层 K/V 前 min(cov) 有效行逐位相等 (共 2097152 元素) —— 前缀缓存命中块内容零篡改(复用=读共享, 不重算不覆写)
-===== worker pp0tp1 =====
+===== [worker pp0tp1] =====
 == 公共块逐位比对 ==
-  A: kv_pp0tp1_s1_994a2ef5.pt pp0tp1 s1 req尾8=994a2ef5 w_tok=324 blocks=[1, 2, 3]
-  B: kv_pp0tp1_s2_81604d58.pt pp0tp1 s2 req尾8=81604d58 w_tok=520 blocks=[1, 2, 4, 5, 6]
+  A: kv_pp0tp1_s1_b3cb18f2.pt pp0tp1 s1 req尾8=b3cb18f2 w_tok=324 blocks=[1, 2, 3]
+  B: kv_pp0tp1_s2_81516ab1.pt pp0tp1 s2 req尾8=81516ab1 w_tok=520 blocks=[1, 2, 4, 5, 6]
   公共块: [1, 2]
   [PASS] 全部公共块 [1, 2] 在 16 层 K/V 前 min(cov) 有效行逐位相等 (共 2097152 元素) —— 前缀缓存命中块内容零篡改(复用=读共享, 不重算不覆写)
-===== worker pp1tp0 =====
+===== [worker pp1tp0] =====
 == 公共块逐位比对 ==
-  A: kv_pp1tp0_s1_994a2ef5.pt pp1tp0 s1 req尾8=994a2ef5 w_tok=324 blocks=[1, 2, 3]
-  B: kv_pp1tp0_s2_81604d58.pt pp1tp0 s2 req尾8=81604d58 w_tok=520 blocks=[1, 2, 4, 5, 6]
+  A: kv_pp1tp0_s1_b3cb18f2.pt pp1tp0 s1 req尾8=b3cb18f2 w_tok=324 blocks=[1, 2, 3]
+  B: kv_pp1tp0_s2_81516ab1.pt pp1tp0 s2 req尾8=81516ab1 w_tok=520 blocks=[1, 2, 4, 5, 6]
   公共块: [1, 2]
   [PASS] 全部公共块 [1, 2] 在 16 层 K/V 前 min(cov) 有效行逐位相等 (共 2097152 元素) —— 前缀缓存命中块内容零篡改(复用=读共享, 不重算不覆写)
-===== worker pp1tp1 =====
+===== [worker pp1tp1] =====
 == 公共块逐位比对 ==
-  A: kv_pp1tp1_s1_994a2ef5.pt pp1tp1 s1 req尾8=994a2ef5 w_tok=324 blocks=[1, 2, 3]
-  B: kv_pp1tp1_s2_81604d58.pt pp1tp1 s2 req尾8=81604d58 w_tok=520 blocks=[1, 2, 4, 5, 6]
+  A: kv_pp1tp1_s1_b3cb18f2.pt pp1tp1 s1 req尾8=b3cb18f2 w_tok=324 blocks=[1, 2, 3]
+  B: kv_pp1tp1_s2_81516ab1.pt pp1tp1 s2 req尾8=81516ab1 w_tok=520 blocks=[1, 2, 4, 5, 6]
   公共块: [1, 2]
   [PASS] 全部公共块 [1, 2] 在 16 层 K/V 前 min(cov) 有效行逐位相等 (共 2097152 元素) —— 前缀缓存命中块内容零篡改(复用=读共享, 不重算不覆写)
