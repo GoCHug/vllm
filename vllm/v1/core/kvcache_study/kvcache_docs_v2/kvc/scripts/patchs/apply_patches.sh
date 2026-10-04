@@ -28,6 +28,7 @@ set -euo pipefail
 PATCH_DIR="$(cd "$(dirname "$0")" && pwd)"
 VLLM_DIR="${VLLM_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm}"
 VLLM_ASCEND_DIR="${VLLM_ASCEND_DIR:-/Users/wushanglun/Desktop/vllmgch/vllm-ascend}"
+# VLLM_DIR=/c/Users/89517/Desktop/github/vllm-npu/vllm VLLM_ASCEND_DIR=/c/Users/89517/Desktop/github/vllm-npu/vllm-ascend ./apply_patches.sh
 
 VLLM_FILES=(
   vllm/v1/request.py
