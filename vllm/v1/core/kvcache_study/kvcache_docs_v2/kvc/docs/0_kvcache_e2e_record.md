@@ -339,9 +339,9 @@ INFO 10-03 15:17:30 [kv_cache_manager.py:186] [KVC][L5] ================ 逻辑�
 | 行号 | 谁打的（源码） | 说什么 / 怎么算 | 与 [KVC] 的对账 |
 |---|---|---|---|
 | :32 | APIServer（utils.py:1404） | **block_size=128**：开了 prefix cache / chunked prefill 时 vllm 把存储分块粒径定成 128（NPU 页对齐默认）——后面所有"满块 128 tokens、按 128 切哈希"的分母 | [KVC][L1] `K_cache=(num_blocks, 128, 4, 128)` 的 dim1=128 即此值 |
-| :159 | Worker_PP0_TP0（worker.py:593） | worker 0 卡**实测可分配 KV 显存 51.96 GiB**（整卡可用 − 权重 − 激活 − warmup 峰值）；4 worker 各打 1 行，本卡只是第一行 | §3.1 (b) [KVC] `determine_available_memory` 的 51.96/51.97/51.92/51.93——同一测量、[KVC] 四卡一屏对比，原生行只逐卡逐行 |
-| :162 | EngineCore（kv_cache_utils.py:1771） | **总 KV 容量 1,701,248 tokens** = num_blocks × block_size | 13,291 × 128 = 1,701,248——与 §3.1 (c) 最终 num_blocks 完全一致 |
-| :163 | EngineCore（kv_cache_utils.py:1772） | **maximum concurrency 207.67x**：满载 8,192-token 长请求时的并发上限（理论上限，实际受连续批处理调度影响） | 1,701,248 ÷ 8,192 = 207.67——同源两行连算，max_model_len=8192 为分母 |
+| :155 | Worker_PP0_TP0（worker.py:593） | worker 0 卡**实测可分配 KV 显存 51.96 GiB**（整卡可用 − 权重 − 激活 − warmup 峰值）；4 worker 各打 1 行，本卡只是第一行 | §3.1 (b) [KVC] `determine_available_memory` 的 51.96/51.97/51.92/51.93——同一测量、[KVC] 四卡一屏对比，原生行只逐卡逐行 |
+| :158 | EngineCore（kv_cache_utils.py:1771） | **总 KV 容量 1,701,248 tokens** = num_blocks × block_size | 13,291 × 128 = 1,701,248——与 §3.1 (c) 最终 num_blocks 完全一致 |
+| :159 | EngineCore（kv_cache_utils.py:1772） | **maximum concurrency 207.67x**：满载 8,192-token 长请求时的并发上限（理论上限，实际受连续批处理调度影响） | 1,701,248 ÷ 8,192 = 207.67——同源两行连算，max_model_len=8192 为分母 |
 | :338 | EngineCore（core.py:369） | **init engine 10.78 s**：profile（=② 测预算的 dummy forward）+ create kv cache（=③ 做编排 + ④ 落张量）+ warmup 的总耗时 | [KVC] 各步（15:17:18 编排 → 15:17:25 落张量完成）全落在这 10.78s 内；逻辑侧装配（§3.3，15:17:30）紧随其后——[KVC] 打印对启动时延的净增量可用此行与无 patch 版对比衡量 |
 | :394 | APIServer（uvicorn） | **服务就绪标志**：路由全部挂载、uvicorn 开始收请求 | P 分界行号 395 与本行紧邻（:394 就绪标志，:395 即 P 入队）——§4 的 P/R 轨迹分界从这条起算（分界号由 curl_p_r.sh 运行时取行数，不落盘）；start.sh 的就绪探测就是 `grep 'Application startup complete' logs/server/llama-3-8b.log` |
 
