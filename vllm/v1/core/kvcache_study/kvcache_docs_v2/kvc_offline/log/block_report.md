@@ -1,7 +1,0 @@
-# block_report（kvc_offline v3 单机 PP2×TP2 block 原样检查）
-- verdict: **PASS**
-- workers: [(0, 0), (0, 1), (1, 0), (1, 1)] | seqs: [1, 2]
-- C1 集合互证: [{'key': 'S00s1', 'n_checked': 112, 'n_equal': 112}, {'key': 'S00s2', 'n_checked': 176, 'n_equal': 176}, {'key': 'S01s1', 'n_checked': 112, 'n_equal': 112}, {'key': 'S01s2', 'n_checked': 176, 'n_equal': 176}, {'key': 'S10s1', 'n_checked': 112, 'n_equal': 112}, {'key': 'S10s2', 'n_checked': 176, 'n_equal': 176}, {'key': 'S11s1', 'n_checked': 112, 'n_equal': 112}, {'key': 'S11s2', 'n_checked': 176, 'n_equal': 176}]
-- C2 缓存驻留: [{'worker': 'S00', 'common_blocks': [1, 2], 'n_pairs': 64, 'n_equal': 64}, {'worker': 'S01', 'common_blocks': [1, 2], 'n_pairs': 64, 'n_equal': 64}, {'worker': 'S10', 'common_blocks': [1, 2], 'n_pairs': 64, 'n_equal': 64}, {'worker': 'S11', 'common_blocks': [1, 2], 'n_pairs': 64, 'n_equal': 64}]
-- C4 统计: {'S00_decode': {'rows': 34, 'health': '无', 'first3': [-5.375, 1.164, -1.539]}, 'S01_decode': {'rows': 34, 'health': '无', 'first3': [0.953, -0.139, -0.412]}, 'S10_decode': {'rows': 34, 'health': '无', 'first3': [-0.287, 0.087, -0.277]}, 'S11_decode': {'rows': 34, 'health': '无', 'first3': [-1.5, 1.531, 0.695]}, 'S00_residual': {'K': {'slots': 61440, 'nonzero': 0}, 'V': {'slots': 61440, 'nonzero': 0}}, 'S01_residual': {'K': {'slots': 61440, 'nonzero': 0}, 'V': {'slots': 61440, 'nonzero': 0}}, 'S10_residual': {'K': {'slots': 61440, 'nonzero': 0}, 'V': {'slots': 61440, 'nonzero': 0}}, 'S11_residual': {'K': {'slots': 61440, 'nonzero': 0}, 'V': {'slots': 61440, 'nonzero': 0}}}
-- issues: []
