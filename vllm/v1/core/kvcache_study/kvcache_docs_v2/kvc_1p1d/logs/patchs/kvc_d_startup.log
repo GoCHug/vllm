@@ -1,0 +1,87 @@
+INFO 10-04 05:48:16 [core.py:245] [KVC][CFG] ================ 配置侧 KVCache 编排开始 ================
+INFO 10-04 05:48:16 [core.py:246] [KVC][CFG] --- ①: 算规格 ---
+INFO 10-04 05:48:16 [core.py:257] [KVC][CFG] ① 算规格 get_kv_cache_specs: worker0=32×FullAttentionSpec(首 model.layers.0.self_attn.attn, 末 model.layers.31.self_attn.attn)
+INFO 10-04 05:48:16 [core.py:259] [KVC][CFG] --- ②: 测预算 ---
+INFO 10-04 05:48:19 [core.py:280] [KVC][CFG] determine_available_memory: 各 worker 可用 KV 显存 = ['33.79GiB']
+INFO 10-04 05:48:19 [core.py:284] [KVC][CFG] --- ③: 做编排 ---
+INFO 10-04 05:48:19 [core.py:294] [KVC][CFG] worker0 KVCacheConfig: num_blocks=2162, groups数=1, tensors数=32
+INFO 10-04 05:48:19 [core.py:299] [KVC][CFG]   [0] KVCacheGroupSpec(group_id=0): layers=32 (首层 model.layers.0.self_attn.attn, 末层 model.layers.31.self_attn.attn), is_eagle_group=False
+INFO 10-04 05:48:19 [core.py:304] [KVC][CFG]   [0]   kv_cache_spec=FullAttentionSpec(block_size=128, num_kv_heads=8, head_size=128, dtype=torch.bfloat16, kv_quant_mode=<KVQuantMode.NONE: 0>, page_size_padded=None, head_size_v=128, sliding_window=None, attention_chunk_size=None)
+INFO 10-04 05:48:19 [core.py:308] [KVC][CFG]   [0]   page_size_bytes=524288 (512.0KB/层/块), storage_block_size=128
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.0.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.1.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.2.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.3.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.4.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.5.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.6.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.7.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.8.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.9.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.10.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.11.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.12.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.13.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.14.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.15.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.16.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.17.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.18.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.19.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.20.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.21.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.22.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.23.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.24.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.25.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.26.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.27.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.28.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.29.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.30.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1133510656 bytes (1081.00MiB), shared_by=1 层 (model.layers.31.self_attn.attn)
+INFO 10-04 05:48:19 [core.py:331] [KVC][CFG] 最终 scheduler KVCacheConfig: num_blocks=2162 (跨 worker min 对齐), cache_config.num_gpu_blocks=2162, block_size=128
+INFO 10-04 05:48:19 [core.py:336] [KVC][CFG] ================ 配置侧 KVCache 编排完成 ================
+INFO 10-04 05:48:19 [model_runner_v1.py:4350] [KVC][L1] ================ 物理侧 KV Cache 分配开始 ================
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.0.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.1.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.2.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.3.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.4.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.5.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.6.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.7.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.8.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.9.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.10.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.11.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.12.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.13.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.14.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:19 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.15.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.16.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.17.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.18.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.19.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.20.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.21.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.22.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.23.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.24.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.25.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.26.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.27.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.28.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.29.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.30.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.31.self_attn.attn: KVCacheTensor(size=1133510656 bytes = 1081.00MiB) -> K int8 540.50MiB + V int8 540.50MiB (alignment=2097152, device=npu:0)
+INFO 10-04 05:48:20 [model_runner_v1.py:4950] [KVC][L1] vllm-ascend _reshape_kv_cache_tensors: model.layers.0.self_attn.attn (本组 32 层同形) -> K_cache shape=(2162, 128, 8, 128) dtype=torch.bfloat16 / V_cache shape=(2162, 128, 8, 128) dtype=torch.bfloat16, device=npu:0 (K/V 分离布局)
+INFO 10-04 05:48:20 [model_runner_v1.py:5001] [KVC][L1] ================ 物理侧 KV Cache 分配完成 ================
+INFO 10-04 05:48:23 [kv_cache_manager.py:143] [KVC][L5] ================ 逻辑侧初始化开始 ================
+INFO 10-04 05:48:23 [kv_cache_utils.py:217] [KVC][L2] FreeKVCacheBlockQueue.__init__完成：num_free_blocks=2162, 伪头尾哨兵 fake_free_list_head/tail(block_id=-1), 类型=FreeKVCacheBlockQueue
+INFO 10-04 05:48:23 [block_pool.py:62] [KVC][L2] BlockHashToBlockMap.__init__完成：底容器 size=0, value=KVCacheBlock | dict[block_id→KVCacheBlock](不去重 append-only)
+INFO 10-04 05:48:23 [block_pool.py:214] [KVC][L2] BlockPool.__init__完成：num_gpu_blocks=2162, 创建 KVCacheBlock × 2162 (block_id=0..2161), free_block_queue=FreeKVCacheBlockQueue(num_free_blocks=2161), cached_block_hash_to_block=BlockHashToBlockMap(size=0), null_block=KVCacheBlock(block_id=0, is_null=True), enable_caching=True, hash_block_size=128
+INFO 10-04 05:48:23 [single_type_kv_cache_manager.py:95] [KVC][L3] FullAttentionManager.__init__完成：spec=FullAttentionSpec(block_size=128), scheduler_block_size=128, group_id=0, enable_caching=True, dcp×pcp=1×1, block_pool(num_gpu_blocks=2162)
+INFO 10-04 05:48:23 [kv_cache_coordinator.py:462] [KVC][L4] UnitaryKVCacheCoordinator.__init__完成：单组直通, managers=['FullAttentionManager'], kv_cache_spec=FullAttentionSpec(block_size=128, page_size_bytes=524288), coordinator_block_size=128
+INFO 10-04 05:48:23 [kv_cache_manager.py:178] [KVC][L5] KVCacheManager.__init__完成：coordinator=UnitaryKVCacheCoordinator, num_kv_cache_groups=1, managers=['FullAttentionManager'], block_pool(num_gpu_blocks=2162), enable_caching=True, max_model_len=8192, empty_kv_cache_blocks=KVCacheBlocks([],)
+INFO 10-04 05:48:23 [kv_cache_manager.py:186] [KVC][L5] ================ 逻辑侧初始化完成 ================

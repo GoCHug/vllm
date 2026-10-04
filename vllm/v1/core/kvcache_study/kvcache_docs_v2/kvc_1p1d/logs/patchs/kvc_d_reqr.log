@@ -1,0 +1,729 @@
+INFO 10-04 05:48:38 [request.py:184] [KVC][ENQ] ======== 入队 ========
+INFO 10-04 05:48:38 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=135ca20a428e
+INFO 10-04 05:48:38 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=135ca20a428e, tokens=128 -> BlockHash=2c66447799ec
+INFO 10-04 05:48:38 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=2c66447799ec, tokens=128 -> BlockHash=1ab1e9265e1c
+INFO 10-04 05:48:38 [request.py:187] [KVC][ENQ] Request(request_id=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85) 入队: num_prompt_tokens=486, max_tokens=35, 满块链式哈希 BlockHash × 3: ['135ca20a428e', '2c66447799ec', '1ab1e9265e1c']
+INFO 10-04 05:48:38 [request.py:193] [KVC][ENQ] ======== 入队完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:222] [KVC][L5] ======== 前缀查找 ========
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:477] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit: 满块hash数=3, max_cache_hit_length=485, 下钻 single_type_managers[0]
+INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:586] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit: block_size=128, max_length=485, 最多查 3 个hash, groups=[0], spec=FullAttentionSpec
+INFO 10-04 05:48:38 [block_pool.py:75] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=135ca20a428e, group_id=0) -> HIT KVCacheBlock(block_id=1)
+INFO 10-04 05:48:38 [block_pool.py:254] [KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash=135ca20a428e groups=[0] -> blocks=[1]
+INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:599] [KVC][L3] 前缀查找   第 1 块 HIT: BlockHash=135ca20a428e -> cached blocks=[1]
+INFO 10-04 05:48:38 [block_pool.py:75] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=2c66447799ec, group_id=0) -> HIT KVCacheBlock(block_id=2)
+INFO 10-04 05:48:38 [block_pool.py:254] [KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash=2c66447799ec groups=[0] -> blocks=[2]
+INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:599] [KVC][L3] 前缀查找   第 2 块 HIT: BlockHash=2c66447799ec -> cached blocks=[2]
+INFO 10-04 05:48:38 [block_pool.py:89] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=1ab1e9265e1c, group_id=0) -> MISS
+INFO 10-04 05:48:38 [block_pool.py:247] [KVC][L2] 前缀查找 BlockPool.get_cached_block: MISS BlockHash=1ab1e9265e1c (group_id=0 未命中) -> None
+INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:607] [KVC][L3] 前缀查找   第 3 块 MISS: BlockHash=1ab1e9265e1c -> break
+INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:623] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit 返回: computed_blocks=[[1, 2]]
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:495] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: hit_blocks=[[1, 2]], hit_length=256
+INFO 10-04 05:48:38 [kv_cache_manager.py:249] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 num_tokens=486, max_cache_hit_length=485, hit_length=256, hit_blocks=[[1, 2]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:265] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks 返回: KVCacheBlocks(blocks=([1, 2],)), num_computed_tokens=256
+INFO 10-04 05:48:38 [kv_cache_manager.py:270] [KVC][L5] ======== 前缀查找完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=0(new), num_new_computed_tokens=256(new_comp), num_external_computed_tokens=230(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=0(comp), request.num_tokens=486, delay_cache_blocks=True
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=0 |<new_comp>=256 |<ext_comp>=230(P传D) |<new>=0 |<lookahead>=0| num_local_computed_tokens=256 total_computed_tokens=486 to_be_computed=0
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=486 -> 需分配 4 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=486 -> 需分配 4 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 4 块 vs 可用 2161 块 (free=2161 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:482] [KVC][L5] --- S2: touch 命中块 ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:484] [KVC][L5] S2 allocate_new_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, new_computed_blocks=[[1, 2]]
+INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:243] [KVC][L3] S2 SingleTypeKVCacheManager.allocate_new_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, touch 命中块 [1, 2], 此前请求持有块数=0
+INFO 10-04 05:48:38 [block_pool.py:496] [KVC][L2] S2 BlockPool.touch: blocks=[(1, 1), (2, 1)] (ref_cnt 已 +1)
+INFO 10-04 05:48:38 [block_pool.py:416] [KVC][L2] S3 BlockPool.get_new_blocks(2): popleft_n -> block_ids=[4, 5], 剩余 num_free_blocks=2157
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:220] [KVC][L4] S2 KVCacheCoordinator.allocate_new_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, group=0, new_computed_blocks=[1, 2], num_local_computed_tokens=256
+INFO 10-04 05:48:38 [kv_cache_manager.py:500] [KVC][L5] --- S3: 新块分配 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=486 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:511] [KVC][L5] S3 allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_need_slot=486 -> 新块 []
+INFO 10-04 05:48:38 [kv_cache_manager.py:524] [KVC][L5] --- S4: 满块入缓存(延迟/禁缓存, 本步跳过) ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:525] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=486 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:357] [KVC][L3] S4 SingleTypeKVCacheManager.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=486, block_size=128, 已缓存 2 块 -> 满块数 3
+INFO 10-04 05:48:38 [block_pool.py:113] [KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=1ab1e9265e1c, group_id=0) <- KVCacheBlock(block_id=4), map size=3
+INFO 10-04 05:48:38 [block_pool.py:345] [KVC][L2] S4 BlockPool.cache_full_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 新满块 1 块 block_ids=[4] 入 BlockHashToBlockMap (num_cached_blocks 2 -> 3, group_id=0, map size=3)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=486
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=485(comp), request.num_tokens=486, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=485 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=485 total_computed_tokens=485 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=486 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=486 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=486 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=486
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=486
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=486(comp), request.num_tokens=486, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=486 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=486 total_computed_tokens=486 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=487 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=487 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=486
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=486
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=486 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=486
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=487(comp), request.num_tokens=487, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=487 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=487 total_computed_tokens=487 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=488 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=488 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=487
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=487
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=487 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=487
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=488(comp), request.num_tokens=488, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=488 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=488 total_computed_tokens=488 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=489 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=489 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=488
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=488
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=488 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=488
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=489(comp), request.num_tokens=489, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=489 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=489 total_computed_tokens=489 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=490 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=490 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=489
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=489
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=489 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=489
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=490(comp), request.num_tokens=490, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=490 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=490 total_computed_tokens=490 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=491 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=491 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=490
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=490
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=490 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=490
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=491(comp), request.num_tokens=491, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=491 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=491 total_computed_tokens=491 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=492 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=492 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=491
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=491
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=491 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=491
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=492(comp), request.num_tokens=492, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=492 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=492 total_computed_tokens=492 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=493 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=493 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=492
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=492
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=492 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=492
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=493(comp), request.num_tokens=493, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=493 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=493 total_computed_tokens=493 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=494 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=494 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=493
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=493
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=493 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=493
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=494(comp), request.num_tokens=494, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=494 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=494 total_computed_tokens=494 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=495 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=495 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=494
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=494
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=494 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=494
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=495(comp), request.num_tokens=495, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=495 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=495 total_computed_tokens=495 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=496 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=496 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=495
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=495
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=495 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=495
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=496(comp), request.num_tokens=496, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=496 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=496 total_computed_tokens=496 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=497 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=497 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=496
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=496
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=496 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=496
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=497(comp), request.num_tokens=497, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=497 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=497 total_computed_tokens=497 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=498 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=498 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=497
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=497
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=497 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=497
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=498(comp), request.num_tokens=498, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=498 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=498 total_computed_tokens=498 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=499 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=499 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=498
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=498
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=498 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=498
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=499(comp), request.num_tokens=499, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=499 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=499 total_computed_tokens=499 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=500 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=500 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=499
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=499
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=499 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=499
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=500(comp), request.num_tokens=500, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=500 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=500 total_computed_tokens=500 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=501 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=501 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=500
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=500
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=500 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=500
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=501(comp), request.num_tokens=501, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=501 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=501 total_computed_tokens=501 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=502 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=502 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=501
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=501
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=501 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=501
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=502(comp), request.num_tokens=502, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=502 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=502 total_computed_tokens=502 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=503 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=503 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=502
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=502
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=502 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=502
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=503(comp), request.num_tokens=503, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=503 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=503 total_computed_tokens=503 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=504 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=504 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=503
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=503
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=503 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=503
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=504(comp), request.num_tokens=504, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=504 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=504 total_computed_tokens=504 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=505 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=505 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=504
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=504
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=504 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=504
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=505(comp), request.num_tokens=505, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=505 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=505 total_computed_tokens=505 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=506 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=506 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=505
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=505
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=505 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=505
+INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=506(comp), request.num_tokens=506, delay_cache_blocks=False
+INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=506 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=506 total_computed_tokens=506 to_be_computed=1
+INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=507 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:38 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:38 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=507 -> [[]]
+INFO 10-04 05:48:38 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=506
+INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=506
+INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=506 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=506
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=507(comp), request.num_tokens=507, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=507 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=507 total_computed_tokens=507 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=508 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=508 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=507
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=507
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=507 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=507
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=508(comp), request.num_tokens=508, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=508 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=508 total_computed_tokens=508 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=509 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=509 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=508
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=508
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=508 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=508
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=509(comp), request.num_tokens=509, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=509 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=509 total_computed_tokens=509 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=510 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=510 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=509
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=509
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=509 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=509
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=510(comp), request.num_tokens=510, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=510 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=510 total_computed_tokens=510 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=511 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=511 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=510
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=510
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=510 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=510
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=511(comp), request.num_tokens=511, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=511 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=511 total_computed_tokens=511 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=512 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=512 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=511
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=511
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=1ab1e9265e1c, tokens=128 -> BlockHash=7261b1085585
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=511 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=511
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=512(comp), request.num_tokens=512, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=512 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=512 total_computed_tokens=512 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=513 -> 需分配 1 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 1 块 vs 可用 2157 块 (free=2157 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:500] [KVC][L5] --- S3: 新块分配 ---
+INFO 10-04 05:48:39 [block_pool.py:416] [KVC][L2] S3 BlockPool.get_new_blocks(1): popleft_n -> block_ids=[6], 剩余 num_free_blocks=2156
+INFO 10-04 05:48:39 [single_type_kv_cache_manager.py:303] [KVC][L3] S3 SingleTypeKVCacheManager.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=513, block_size=128, 需 5 块 - 已有 4 = 新分配 1 块 [6], 持有 req_blocks=[1, 2, 4, 5, 6]
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=513 -> [[6]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:511] [KVC][L5] S3 allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_need_slot=513 -> 新块 [6]
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [single_type_kv_cache_manager.py:357] [KVC][L3] S4 SingleTypeKVCacheManager.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=512, block_size=128, 已缓存 3 块 -> 满块数 4
+INFO 10-04 05:48:39 [block_pool.py:113] [KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=7261b1085585, group_id=0) <- KVCacheBlock(block_id=5), map size=4
+INFO 10-04 05:48:39 [block_pool.py:345] [KVC][L2] S4 BlockPool.cache_full_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 新满块 1 块 block_ids=[5] 入 BlockHashToBlockMap (num_cached_blocks 3 -> 4, group_id=0, map size=4)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=512
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=512
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([6],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5, 6],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=512 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=512
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=513(comp), request.num_tokens=513, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=513 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=513 total_computed_tokens=513 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=514 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2156 块 (free=2156 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=514 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=513
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=513
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5, 6],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=513 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=513
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=514(comp), request.num_tokens=514, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=514 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=514 total_computed_tokens=514 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=515 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2156 块 (free=2156 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=515 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=514
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=514
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5, 6],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=514 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=514
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=515(comp), request.num_tokens=515, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=515 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=515 total_computed_tokens=515 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=516 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2156 块 (free=2156 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=516 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=515
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=515
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5, 6],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=515 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=515
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=516(comp), request.num_tokens=516, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=516 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=516 total_computed_tokens=516 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=517 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2156 块 (free=2156 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=517 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=516
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=516
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5, 6],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=516 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=516
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=517(comp), request.num_tokens=517, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=517 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=517 total_computed_tokens=517 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=518 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2156 块 (free=2156 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=518 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=517
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=517
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5, 6],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=517 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=517
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=518(comp), request.num_tokens=518, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=518 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=518 total_computed_tokens=518 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=519 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2156 块 (free=2156 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=519 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=518
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=518
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5, 6],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=518 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=518
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=519(comp), request.num_tokens=519, delay_cache_blocks=False
+INFO 10-04 05:48:39 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=519 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=1 |<lookahead>=0| num_local_computed_tokens=519 total_computed_tokens=519 to_be_computed=1
+INFO 10-04 05:48:39 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=520 -> 需分配 0 块(含touch需腾挪的块)
+INFO 10-04 05:48:39 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 0 块 vs 可用 2156 块 (free=2156 - reserved=0)
+INFO 10-04 05:48:39 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+INFO 10-04 05:48:39 [kv_cache_manager.py:502] [KVC][L5] --- S3: 无需分配新块 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens=520 -> [[]]
+INFO 10-04 05:48:39 [kv_cache_manager.py:516] [KVC][L5] S3 块未满, 无需分配新块 (req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_new_tokens=1)
+INFO 10-04 05:48:39 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=519
+INFO 10-04 05:48:39 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_tokens_to_cache=519
+INFO 10-04 05:48:39 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 当前完整 block_table=([1, 2, 4, 5, 6],)
+INFO 10-04 05:48:39 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-04 05:48:39 [model_runner_v1.py:2586] [KVC][KVS] ======== 开始保存物理tensor side=D worker=PP0_TP0 dev=npu:0 TERM seq=2 req尾8=af900b85: K_cache/V_cache(双独立张量池, 每块 shape=(128,8,128) torch.bfloat16, 含未写槽位) 32 层 × 5 块 blk=[1, 2, 4, 5, 6] cov=[128, 128, 128, 128, 8] -> D/req2_af900b85/kv_pp0tp0.pt ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=519 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=519
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=520 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, num_computed_tokens=520
+INFO 10-04 05:48:39 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:566] [KVC][L5] ======== 释放 ========
+INFO 10-04 05:48:39 [kv_cache_manager.py:568] [KVC][L5] 释放 KVCacheManager.free: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, 释放前持有 block_table=([1, 2, 4, 5, 6],)
+INFO 10-04 05:48:39 [single_type_kv_cache_manager.py:405] [KVC][L3] 释放 SingleTypeKVCacheManager.free: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85, 持有 blocks=[1, 2, 4, 5, 6] (reversed 后释放)
+INFO 10-04 05:48:39 [block_pool.py:521] [KVC][L2] 释放 BlockPool.free_blocks: blocks=[(6, 0), (5, 0), (4, 0), (2, 0), (1, 0)] (ref_cnt 已 -1), 归零回收 5 块 [6, 5, 4, 2, 1], append_n -> 队尾(LRU保护)
+INFO 10-04 05:48:39 [kv_cache_utils.py:391] [KVC][L2] 释放 FreeKVCacheBlockQueue.append_n(blocks=[6, 5, 4, 2, 1]), num_free_blocks=2161
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:299] [KVC][L4] 释放 KVCacheCoordinator.free: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85 已逐组下放第3层释放
+INFO 10-04 05:48:39 [kv_cache_coordinator.py:302] [KVC][L4] ======== 释放完成 ========
+INFO 10-04 05:48:39 [model_runner_v1.py:2637] [KVC][KVS] ======== 完成保存物理tensor side=D worker=PP0_TP0 dev=npu:0 seq=2 req尾8=af900b85: D/req2_af900b85/kv_pp0tp0.pt (K_cache/V_cache, 32 层 × 5 块, 83976971 B = 80.1 MiB) 落盘 106.2 ms ========

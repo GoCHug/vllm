@@ -1,0 +1,41 @@
+=== 2026-10-03 15:17:31 kvc P/R 双请求实验 (v2: TERM 物理KV原样归档) ===
+--- 请求 1: P ---
+$ curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json" -d @scripts/curl/req_p.json
+{"id":"cmpl-b6b18c35b4fb325e","object":"text_completion","created":1791040651,"model":"/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model","choices":[{"index":0,"text":"为了","logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null,"prompt_logprobs":null,"prompt_token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":"vllm-0.23.0-tp2-pp2-40a70bd8","usage":{"prompt_tokens":324,"total_tokens":325,"completion_tokens":1,"prompt_tokens_details":null},"kv_transfer_params":null}
+[P done] (P 分界行号 llama-3-8b.log:394)
+--- 请求 2: R ---
+$ curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json" -d @scripts/curl/req_r.json
+{"id":"cmpl-863603840a5003dc","object":"text_completion","created":1791040659,"model":"/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model","choices":[{"index":0,"text":"://www.zhihu.com/question/404202526\n1. 什么是前缀缓存？前缀缓存的作用是什么？\n2","logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null,"prompt_logprobs":null,"prompt_token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":"vllm-0.23.0-tp2-pp2-40a70bd8","usage":{"prompt_tokens":486,"total_tokens":521,"completion_tokens":35,"prompt_tokens_details":null},"kv_transfer_params":null}
+[R done] (R 分界行号 llama-3-8b.log:460)
+== [KVC] 轨迹提取完成(三段 + [KVS] 留痕) ==
+   172 logs/patchs/kvc_startup.log
+    61 logs/patchs/kvc_p.log
+   719 logs/patchs/kvc_r.log
+    20 logs/patchs/kvs_archive_lines.log
+   972 total
+[KVS] 归档文件数: 8/8 (tensors/req{seq}_{rid尾8}/kv_pp{p}tp{t}.pt); 明细见 logs/patchs/kvs_archive_lines.log
+tensors/:
+total 16
+drwxr-xr-x 4  502 games  62 Oct  3 15:17 .
+drwxr-xr-x 6  502 games 156 Oct  3 15:13 ..
+drwxr-xr-x 2 root root  120 Oct  3 15:17 req1_bdd8c88d
+drwxr-xr-x 2 root root  120 Oct  3 15:17 req2_9eb8d7fa
+
+tensors/req1_bdd8c88d:
+total 49272
+drwxr-xr-x 2 root root       120 Oct  3 15:17 .
+drwxr-xr-x 4  502 games       62 Oct  3 15:17 ..
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp0tp0.pt
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp0tp1.pt
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp1tp0.pt
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp1tp1.pt
+
+tensors/req2_9eb8d7fa:
+total 82120
+drwxr-xr-x 2 root root       120 Oct  3 15:17 .
+drwxr-xr-x 4  502 games       62 Oct  3 15:17 ..
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp0tp0.pt
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp0tp1.pt
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp1tp0.pt
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp1tp1.pt
+== DONE 打屏/curl 响应/三段轨迹/归档清单 全部落盘 (logs/ + tensors/) ==

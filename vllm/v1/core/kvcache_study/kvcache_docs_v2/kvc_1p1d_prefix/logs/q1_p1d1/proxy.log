@@ -1,0 +1,12 @@
+INFO:     Started server process [41089]
+INFO:     Waiting for application startup.
+2026-10-04 09:46:22,331 INFO [load_balance_proxy_server_example] Initialized 1 prefill clients and 1 decode clients in worker 41089.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://localhost:8000 (Press CTRL+C to quit)
+INFO:     ::1:53164 - "GET /healthcheck HTTP/1.1" 200 OK
+INFO:     ::1:53166 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     ::1:44264 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [41089]

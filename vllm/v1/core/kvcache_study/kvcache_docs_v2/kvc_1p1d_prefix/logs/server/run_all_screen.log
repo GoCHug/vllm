@@ -1,0 +1,160 @@
+===== [run_all] 2026-10-04 09:44:52 kvc_1p1d_prefix 1P1D Prefix 四象限实验开始 =====
+===== [1/5] 打补丁（01 号 PCM 六打点注入 mooncake_connector.py） =====
+[OK] [PCM] x7 注入完成: CFG / SCHED / ALLOC / PFINISH / XFER-entry / FULL-HIT / XFER-end
+[OK] py_compile 通过
+48681a9d77a13fe358f1f8efa0aa012d  /vllm-workspace/vllm-ascend/vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_connector.py
+[DONE] 01 号 PCM 补丁已应用。
+===== [2/5] 四象限矩阵（每象限~2.5-3min, 全程~12min; 失败重试×2） =====
+[MATRIX] 动态选卡: P=npu0 D=npu1 (clean: 0 1 2 3)
+== [MATRIX] q1_p1d1 trial#1 于 09:44:55 ==
+== [q1_p1d1] P(pc=on, npu0) D(pc=on, npu1) begin 09:44:55 ==
+[HBM] [q1_p1d1] npu0 used=3148MB 就绪
+[P 启动] pc=on flag='' npu0 -> logs/q1_p1d1/p_llama.log (就绪探活: Application startup complete)
+[OK] [q1_p1d1] p_llama.log 就绪 (耗时 45s)
+[HBM] [q1_p1d1] npu1 used=2879MB 就绪
+[D 启动] pc=on flag='' npu1 -> logs/q1_p1d1/d_llama.log (就绪探活: Application startup complete)
+[OK] [q1_p1d1] d_llama.log 就绪 (耗时 40s)
+[OK] [q1_p1d1] proxy 就绪
+[q1_p1d1] P(pc=on) D(pc=on) —— 2026-10-04 09:46:41
+CFG(P):      (EngineCore pid=40037) INFO 10-04 09:45:29 [mooncake_connector.py:2113] [PCM] CFG role=kv_producer enable_prefix_caching=True block_size=128 ptp=1 dtp=1 tp=1 rank=0
+CFG(D):      (EngineCore pid=40716) INFO 10-04 09:46:11 [mooncake_connector.py:2113] [PCM] CFG role=kv_consumer enable_prefix_caching=True block_size=128 ptp=1 dtp=1 tp=1 rank=0
+SCHED(P)末:  (EngineCore pid=40037) INFO 10-04 09:46:32 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-9a21697b-1e17-4198-80cc-2210badf738f-0-823e1ab3 prompt=486 local_hit=256 do_rp=False do_rd=True
+SCHED(D)末:  (EngineCore pid=40716) INFO 10-04 09:46:32 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-9a21697b-1e17-4198-80cc-2210badf738f-0-81d51ab5 prompt=486 local_hit=256 do_rp=True do_rd=False
+ALLOC(D)末:  (EngineCore pid=40716) INFO 10-04 09:46:32 [mooncake_connector.py:1871] [PCM] ALLOC req=cmpl-9a21697b-1e17-4198-80cc-2210badf738f-0-81d51ab5 external=230 recv_blocks=[[4, 5]] all_blocks=([1, 2, 4, 5],)
+PFINISH 末:  (EngineCore pid=40037) INFO 10-04 09:46:32 [mooncake_connector.py:1948] [PCM] PFINISH req=cmpl-9a21697b-1e17-4198-80cc-2210badf738f-0-823e1ab3 prompt=486 prompt_blocks=4 report_blocks=[4] delay_free=True
+XFERentry末: (EngineCore pid=40716) INFO 10-04 09:46:32 [mooncake_connector.py:790] [PCM] XFER-entry req=cmpl-9a21697b-1e17-4198-80cc-2210badf738f-0-823e1ab3 recv_groups=[2] pull_groups=[2]
+XFERend末:   (EngineCore pid=40716) INFO 10-04 09:46:32 [mooncake_connector.py:992] [PCM] XFER-end req=cmpl-9a21697b-1e17-4198-80cc-2210badf738f-0-823e1ab3 segments=64 bytes=33554432 (32.0 MiB) eff_GBps=28.79 pull_local=([4, 5],) pull_remote=([4, 5],)
+transfer:    (EngineCore pid=40716) INFO 10-04 09:46:32 [mooncake_connector.py:981] KV cache transfer for request cmpl-9a21697b-1e17-4198-80cc-2210badf738f-0-823e1ab3 took 1.17 ms. local_ip 172.16.210.237 local_device_id 0 remote_session_id 172.16.210.237:15038
+hitrate(P):  (APIServer pid=39900) INFO 10-04 09:46:39 [loggers.py:271] Engine 000: Avg prompt throughput: 23.0 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 31.6%, External prefix cache hit rate: 0.0%
+hitrate(D):  (APIServer pid=40465) INFO 10-04 09:46:37 [loggers.py:271] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 3.5 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 31.6%, External prefix cache hit rate: 100.0%
+[OK] [q1_p1d1] 组件已归零
+== [q1_p1d1] DONE 09:46:54 ==
+== [MATRIX] q1_p1d1 PASS (trial 1)
+== [MATRIX] q2_p1d0 trial#1 于 09:47:05 ==
+== [q2_p1d0] P(pc=on, npu0) D(pc=off, npu1) begin 09:47:05 ==
+[HBM] [q2_p1d0] npu0 used=3151MB 就绪
+[P 启动] pc=on flag='' npu0 -> logs/q2_p1d0/p_llama.log (就绪探活: Application startup complete)
+[OK] [q2_p1d0] p_llama.log 就绪 (耗时 45s)
+[HBM] [q2_p1d0] npu1 used=2878MB 就绪
+[D 启动] pc=off flag='--no-enable-prefix-caching' npu1 -> logs/q2_p1d0/d_llama.log (就绪探活: Application startup complete)
+[OK] [q2_p1d0] d_llama.log 就绪 (耗时 40s)
+[OK] [q2_p1d0] proxy 就绪
+[q2_p1d0] P(pc=on) D(pc=off) —— 2026-10-04 09:48:51
+CFG(P):      (EngineCore pid=41714) INFO 10-04 09:47:38 [mooncake_connector.py:2113] [PCM] CFG role=kv_producer enable_prefix_caching=True block_size=128 ptp=1 dtp=1 tp=1 rank=0
+CFG(D):      (EngineCore pid=42285) INFO 10-04 09:48:22 [mooncake_connector.py:2113] [PCM] CFG role=kv_consumer enable_prefix_caching=False block_size=128 ptp=1 dtp=1 tp=1 rank=0
+SCHED(P)末:  (EngineCore pid=41714) INFO 10-04 09:48:42 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 prompt=486 local_hit=256 do_rp=False do_rd=True
+SCHED(D)末:  (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-b2610fcd prompt=486 local_hit=0 do_rp=True do_rd=False
+ALLOC(D)末:  (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:1871] [PCM] ALLOC req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-b2610fcd external=486 recv_blocks=[[4, 5, 6, 7]] all_blocks=([4, 5, 6, 7],)
+PFINISH 末:  (EngineCore pid=41714) INFO 10-04 09:48:42 [mooncake_connector.py:1948] [PCM] PFINISH req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 prompt=486 prompt_blocks=4 report_blocks=[4] delay_free=True
+XFERentry末: (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:790] [PCM] XFER-entry req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 recv_groups=[4] pull_groups=[4]
+XFERend末:   (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:992] [PCM] XFER-end req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 segments=128 bytes=67108864 (64.0 MiB) eff_GBps=45.81 pull_local=([4, 5, 6, 7],) pull_remote=([1, 2, 4, 5],)
+transfer:    (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:981] KV cache transfer for request cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 took 1.46 ms. local_ip 172.16.210.237 local_device_id 0 remote_session_id 172.16.210.237:16671
+hitrate(P):  (APIServer pid=41583) INFO 10-04 09:48:47 [loggers.py:271] Engine 000: Avg prompt throughput: 23.0 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 31.6%, External prefix cache hit rate: 0.0%
+hitrate(D):  (APIServer pid=42154) INFO 10-04 09:48:48 [loggers.py:271] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 3.5 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%, External prefix cache hit rate: 100.0%
+[OK] [q2_p1d0] 组件已归零
+== [q2_p1d0] DONE 09:49:05 ==
+== [MATRIX] q2_p1d0 PASS (trial 1)
+== [MATRIX] q3_p0d1 trial#1 于 09:49:16 ==
+== [q3_p0d1] P(pc=off, npu0) D(pc=on, npu1) begin 09:49:16 ==
+[HBM] [q3_p0d1] npu0 used=3151MB 就绪
+[P 启动] pc=off flag='--no-enable-prefix-caching' npu0 -> logs/q3_p0d1/p_llama.log (就绪探活: Application startup complete)
+[OK] [q3_p0d1] p_llama.log 就绪 (耗时 45s)
+[HBM] [q3_p0d1] npu1 used=2879MB 就绪
+[D 启动] pc=on flag='' npu1 -> logs/q3_p0d1/d_llama.log (就绪探活: Application startup complete)
+[OK] [q3_p0d1] d_llama.log 就绪 (耗时 40s)
+[OK] [q3_p0d1] proxy 就绪
+[q3_p0d1] P(pc=off) D(pc=on) —— 2026-10-04 09:51:02
+CFG(P):      (EngineCore pid=43279) INFO 10-04 09:49:48 [mooncake_connector.py:2113] [PCM] CFG role=kv_producer enable_prefix_caching=False block_size=128 ptp=1 dtp=1 tp=1 rank=0
+CFG(D):      (EngineCore pid=43846) INFO 10-04 09:50:32 [mooncake_connector.py:2113] [PCM] CFG role=kv_consumer enable_prefix_caching=True block_size=128 ptp=1 dtp=1 tp=1 rank=0
+SCHED(P)末:  (EngineCore pid=43279) INFO 10-04 09:50:53 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-44355299-7dcb-4fe1-b0a5-5808d368f466-0-a8bb4e9c prompt=486 local_hit=0 do_rp=False do_rd=True
+SCHED(D)末:  (EngineCore pid=43846) INFO 10-04 09:50:53 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-44355299-7dcb-4fe1-b0a5-5808d368f466-0-8f58b734 prompt=486 local_hit=256 do_rp=True do_rd=False
+ALLOC(D)末:  (EngineCore pid=43846) INFO 10-04 09:50:53 [mooncake_connector.py:1871] [PCM] ALLOC req=cmpl-44355299-7dcb-4fe1-b0a5-5808d368f466-0-8f58b734 external=230 recv_blocks=[[4, 5]] all_blocks=([1, 2, 4, 5],)
+PFINISH 末:  (EngineCore pid=43279) INFO 10-04 09:50:53 [mooncake_connector.py:1948] [PCM] PFINISH req=cmpl-44355299-7dcb-4fe1-b0a5-5808d368f466-0-a8bb4e9c prompt=486 prompt_blocks=4 report_blocks=[4] delay_free=True
+XFERentry末: (EngineCore pid=43846) INFO 10-04 09:50:53 [mooncake_connector.py:790] [PCM] XFER-entry req=cmpl-44355299-7dcb-4fe1-b0a5-5808d368f466-0-a8bb4e9c recv_groups=[2] pull_groups=[2]
+XFERend末:   (EngineCore pid=43846) INFO 10-04 09:50:53 [mooncake_connector.py:992] [PCM] XFER-end req=cmpl-44355299-7dcb-4fe1-b0a5-5808d368f466-0-a8bb4e9c segments=64 bytes=33554432 (32.0 MiB) eff_GBps=28.84 pull_local=([4, 5],) pull_remote=([6, 7],)
+transfer:    (EngineCore pid=43846) INFO 10-04 09:50:53 [mooncake_connector.py:981] KV cache transfer for request cmpl-44355299-7dcb-4fe1-b0a5-5808d368f466-0-a8bb4e9c took 1.16 ms. local_ip 172.16.210.237 local_device_id 0 remote_session_id 172.16.210.237:16879
+hitrate(P):  (APIServer pid=43143) INFO 10-04 09:50:58 [loggers.py:271] Engine 000: Avg prompt throughput: 48.6 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%, External prefix cache hit rate: 0.0%
+hitrate(D):  (APIServer pid=43715) INFO 10-04 09:50:59 [loggers.py:271] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 3.5 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 31.6%, External prefix cache hit rate: 100.0%
+[OK] [q3_p0d1] 组件已归零
+== [q3_p0d1] DONE 09:51:15 ==
+== [MATRIX] q3_p0d1 PASS (trial 1)
+== [MATRIX] q4_p0d0 trial#1 于 09:51:26 ==
+== [q4_p0d0] P(pc=off, npu0) D(pc=off, npu1) begin 09:51:26 ==
+[HBM] [q4_p0d0] npu0 used=3152MB 就绪
+[P 启动] pc=off flag='--no-enable-prefix-caching' npu0 -> logs/q4_p0d0/p_llama.log (就绪探活: Application startup complete)
+[OK] [q4_p0d0] p_llama.log 就绪 (耗时 45s)
+[HBM] [q4_p0d0] npu1 used=2879MB 就绪
+[D 启动] pc=off flag='--no-enable-prefix-caching' npu1 -> logs/q4_p0d0/d_llama.log (就绪探活: Application startup complete)
+[OK] [q4_p0d0] d_llama.log 就绪 (耗时 40s)
+[OK] [q4_p0d0] proxy 就绪
+[q4_p0d0] P(pc=off) D(pc=off) —— 2026-10-04 09:53:12
+CFG(P):      (EngineCore pid=45084) INFO 10-04 09:51:58 [mooncake_connector.py:2113] [PCM] CFG role=kv_producer enable_prefix_caching=False block_size=128 ptp=1 dtp=1 tp=1 rank=0
+CFG(D):      (EngineCore pid=45650) INFO 10-04 09:52:42 [mooncake_connector.py:2113] [PCM] CFG role=kv_consumer enable_prefix_caching=False block_size=128 ptp=1 dtp=1 tp=1 rank=0
+SCHED(P)末:  (EngineCore pid=45084) INFO 10-04 09:53:03 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-bb12b16c-8f36-4e8d-a8a9-34e5b569d664-0-9e5766f7 prompt=486 local_hit=0 do_rp=False do_rd=True
+SCHED(D)末:  (EngineCore pid=45650) INFO 10-04 09:53:03 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-bb12b16c-8f36-4e8d-a8a9-34e5b569d664-0-9186d6d7 prompt=486 local_hit=0 do_rp=True do_rd=False
+ALLOC(D)末:  (EngineCore pid=45650) INFO 10-04 09:53:03 [mooncake_connector.py:1871] [PCM] ALLOC req=cmpl-bb12b16c-8f36-4e8d-a8a9-34e5b569d664-0-9186d6d7 external=486 recv_blocks=[[4, 5, 6, 7]] all_blocks=([4, 5, 6, 7],)
+PFINISH 末:  (EngineCore pid=45084) INFO 10-04 09:53:03 [mooncake_connector.py:1948] [PCM] PFINISH req=cmpl-bb12b16c-8f36-4e8d-a8a9-34e5b569d664-0-9e5766f7 prompt=486 prompt_blocks=4 report_blocks=[4] delay_free=True
+XFERentry末: (EngineCore pid=45650) INFO 10-04 09:53:03 [mooncake_connector.py:790] [PCM] XFER-entry req=cmpl-bb12b16c-8f36-4e8d-a8a9-34e5b569d664-0-9e5766f7 recv_groups=[4] pull_groups=[4]
+XFERend末:   (EngineCore pid=45650) INFO 10-04 09:53:03 [mooncake_connector.py:992] [PCM] XFER-end req=cmpl-bb12b16c-8f36-4e8d-a8a9-34e5b569d664-0-9e5766f7 segments=64 bytes=67108864 (64.0 MiB) eff_GBps=56.93 pull_local=([4, 5, 6, 7],) pull_remote=([4, 5, 6, 7],)
+transfer:    (EngineCore pid=45650) INFO 10-04 09:53:03 [mooncake_connector.py:981] KV cache transfer for request cmpl-bb12b16c-8f36-4e8d-a8a9-34e5b569d664-0-9e5766f7 took 1.18 ms. local_ip 172.16.210.237 local_device_id 0 remote_session_id 172.16.210.237:15325
+hitrate(P):  (APIServer pid=44953) INFO 10-04 09:53:08 [loggers.py:271] Engine 000: Avg prompt throughput: 48.6 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%, External prefix cache hit rate: 0.0%
+hitrate(D):  (APIServer pid=45520) INFO 10-04 09:53:08 [loggers.py:271] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 3.5 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%, External prefix cache hit rate: 100.0%
+[OK] [q4_p0d0] 组件已归零
+== [q4_p0d0] DONE 09:53:25 ==
+== [MATRIX] q4_p0d0 PASS (trial 1)
+===== [MATRIX] 四象限汇总(一行式; 全表见 matrix_report) =====
+  [q1_p1d1] transfer:    (EngineCore pid=40716) INFO 10-04 09:46:32 [mooncake_connector.py:981] KV cache transfer for request cmpl-9a21697b-1e17-4198-80cc-2210badf738f-0-823e1ab3 took 1.17 ms. local_ip 172.16.210.237 local_device_id 0 remote_session_id 172.16.210.237:15038
+  [q2_p1d0] transfer:    (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:981] KV cache transfer for request cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 took 1.46 ms. local_ip 172.16.210.237 local_device_id 0 remote_session_id 172.16.210.237:16671
+  [q3_p0d1] transfer:    (EngineCore pid=43846) INFO 10-04 09:50:53 [mooncake_connector.py:981] KV cache transfer for request cmpl-44355299-7dcb-4fe1-b0a5-5808d368f466-0-a8bb4e9c took 1.16 ms. local_ip 172.16.210.237 local_device_id 0 remote_session_id 172.16.210.237:16879
+  [q4_p0d0] transfer:    (EngineCore pid=45650) INFO 10-04 09:53:03 [mooncake_connector.py:981] KV cache transfer for request cmpl-bb12b16c-8f36-4e8d-a8a9-34e5b569d664-0-9e5766f7 took 1.18 ms. local_ip 172.16.210.237 local_device_id 0 remote_session_id 172.16.210.237:15325
+MATRIX-DONE 09:53:37
+===== [3/5] 四象限汇总（对照总表 + 铁律核验） =====
+====================================================================================================
+kvc_1p1d_prefix 1P1D Prefix Cache 四象限汇总(PCM 六打点 · 第二请求 req_r=486 tok)
+扫描根: logs | 象限: 4 个(缺则标 MISS) | workload: req_p 324(种) -> req_r 486(复用 256)
+====================================================================================================
+  q1_p1d1/  [有产物]
+  q2_p1d0/  [有产物]
+  q3_p0d1/  [有产物]
+  q4_p0d0/  [有产物]
+
+[表] 四象限对照总表
+| 象限 | pc(P/D) | P.hit | D.hit | ext | recv | MiB | seg | eff(GB/s) | took(ms) | hit%(P/D) | resp_r(cmpl) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| q1_p1d1 | P✓/D✓ | 256 | 256 | 230 | [[4, 5]] | 32.0 | 64 | 28.79 | 1.17 | 31.6/31.6 | 35 |
+| q2_p1d0 | P✓/D✗ | 256 | 0 | 486 | [[4, 5, 6, 7]] | 64.0 | 128 | 45.81 | 1.46 | 31.6/0.0 | 35 |
+| q3_p0d1 | P✗/D✓ | 0 | 256 | 230 | [[4, 5]] | 32.0 | 64 | 28.84 | 1.16 | 0.0/31.6 | 35 |
+| q4_p0d0 | P✗/D✗ | 0 | 0 | 486 | [[4, 5, 6, 7]] | 64.0 | 64 | 56.93 | 1.18 | 0.0/0.0 | 35 |
+
+> 注: hit% 为 Prometheus 末次采样值(10s 窗口可能错过末次命中——如权威轮 q1 的 P 侧实际 31.6% 被窗口错过仍显示 0.0%; 命中权威判据 = SCHED local_hit / (324+486))。
+
+[表] 铁律核验(核心判据) ——
+  q1_p1d1:
+    A-P本地命中      实测=256  期望=256  PASS
+    B-D本地命中      实测=256  期望=256  PASS
+    B-传输MiB      实测=32.0  期望=32.0  PASS
+    C-P上报总块数     实测=4  期望=4  PASS
+    D-输出tok      实测=35  期望=35  PASS
+  q2_p1d0:
+    A-P本地命中      实测=256  期望=256  PASS
+    B-D本地命中      实测=0  期望=0  PASS
+    B-传输MiB      实测=64.0  期望=64.0  PASS
+    C-P上报总块数     实测=4  期望=4  PASS
+    D-输出tok      实测=35  期望=35  PASS
+  q3_p0d1:
+    A-P本地命中      实测=0  期望=0  PASS
+    B-D本地命中      实测=256  期望=256  PASS
+    B-传输MiB      实测=32.0  期望=32.0  PASS
+    C-P上报总块数     实测=4  期望=4  PASS
+    D-输出tok      实测=35  期望=35  PASS
+  q4_p0d0:
+    A-P本地命中      实测=0  期望=0  PASS
+    B-D本地命中      实测=0  期望=0  PASS
+    B-传输MiB      实测=64.0  期望=64.0  PASS
+    C-P上报总块数     实测=4  期望=4  PASS
+    D-输出tok      实测=35  期望=35  PASS
+
+[DONE] 铁律核验 20/20 项 PASS —— 四条铁律全中: P 开关只管算多少 / D 开关只管传多少 / P 上报恒全量 / 正确性与象限无关
+
+[OK] 报告已落盘: logs/analysis/matrix_report.out
+===== [4/5] 打包产物 (kvc_1p1d_prefix_bundle.tar.gz = logs/, 供主机侧 fetch) =====

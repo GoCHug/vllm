@@ -1,0 +1,350 @@
+===== [run_all] 2026-10-03 15:16:36 kvc 物理KV原样归档实验开始 =====
+===== [1/6] 打补丁（kvc 01~07 管理侧 + 08 v2.5 TERM 物理KV原样归档, 请求子目录 + 块-行映射） =====
+== Phase 0: 已应用检测 ==
+  ok: 源码为干净状态
+== Phase 1: dry-run 预检 ==
+  ok: 01_vllm_v1_request.py.patch
+  ok: 02_vllm_v1_core_kv_cache_utils.py.patch
+  ok: 03_vllm_v1_core_block_pool.py.patch
+  ok: 04_vllm_v1_core_kv_cache_manager.py.patch
+  ok: 05_vllm_v1_core_kv_cache_coordinator.py.patch
+  ok: 06_vllm_v1_core_single_type_kv_cache_manager.py.patch
+  ok: 07_vllm_v1_engine_core.py.patch
+  ok: 08_vllm_ascend_worker_model_runner_v1.py.patch (v2: TERM 物理KV原样归档, 替代打印)
+== Phase 2: 应用 ==
+  applied: 01_vllm_v1_request.py.patch
+  applied: 02_vllm_v1_core_kv_cache_utils.py.patch
+  applied: 03_vllm_v1_core_block_pool.py.patch
+  applied: 04_vllm_v1_core_kv_cache_manager.py.patch
+  applied: 05_vllm_v1_core_kv_cache_coordinator.py.patch
+  applied: 06_vllm_v1_core_single_type_kv_cache_manager.py.patch
+  applied: 07_vllm_v1_engine_core.py.patch
+  applied: 08_vllm_ascend_*.patch (v2.5 块-行映射归档版)
+== Phase 3: 验证 ==
+  vllm/v1/request.py                                           5 行 [ok]
+  vllm/v1/core/kv_cache_utils.py                               10 行 [ok]
+  vllm/v1/core/block_pool.py                                   29 行 [ok]
+  vllm/v1/core/kv_cache_manager.py                             58 行 [ok]
+  vllm/v1/core/kv_cache_coordinator.py                         17 行 [ok]
+  vllm/v1/core/single_type_kv_cache_manager.py                 18 行 [ok]
+  vllm/v1/engine/core.py                                       18 行 [ok]
+  vllm_ascend/worker/model_runner_v1.py                        19 行 [ok]
+  [KVC] 总匹配行: 174 (预期 174 行 = vllm 155 + vllm-ascend 19)
+  py_compile OK (8 files)
+  v2 特征方法 _kvc_kv_save 存在 ✓
+  v1 打印方法 _kvc_kv_dump 已移除 ✓
+== Phase 4: 归档开关提示 ==
+  kvc 实验的 TERM 归档由 env 控制:
+    KVC_SAVE_KV=1                    # 开启( scripts/server/start.sh 已自动导出 )
+    KVC_SAVE_DIR=<目录>              # 输出目录(默认 log/tensors; start.sh 用 <工作区>/tensors)
+[DONE] 8 个补丁已应用并验证(08 为 v2.5 块-行映射归档版)。
+===== [2/6] 启动服务（单机 PP2×TP2 占 4 卡, KVC_SAVE_KV=1） =====
+[env] KVC_SAVE_KV=1  KVC_SAVE_DIR=/a3_inference/itask/workdir/wsl02075301/kvc/tensors
+服务已后台启动（单机 PP2×TP2 占 4 卡, TERM 归档 -> /a3_inference/itask/workdir/wsl02075301/kvc/tensors）-> logs/server/llama-3-8b.log（首次约 100s 就绪）
+就绪标志: grep 'Application startup complete' logs/server/llama-3-8b.log   # 出现 1 行即就绪
+归档启用横幅(每 worker 一行, 共 4): grep '物理KV原样归档已启用' logs/server/llama-3-8b.log
+TERM 归档行为(每 worker×请求一行): grep '\[KVS\]' logs/server/llama-3-8b.log
+[OK] 服务就绪 (等待 50s)
+  四 worker 物理池分配横幅: 4 ✓
+  [KVS] 归档启用横幅: 0/4 (首个前向后打印)
+===== [3/6] 发送 P/R 双请求（直发 :8000） =====
+=== 2026-10-03 15:17:31 kvc P/R 双请求实验 (v2: TERM 物理KV原样归档) ===
+--- 请求 1: P ---
+$ curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json" -d @scripts/curl/req_p.json
+{"id":"cmpl-b6b18c35b4fb325e","object":"text_completion","created":1791040651,"model":"/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model","choices":[{"index":0,"text":"为了","logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null,"prompt_logprobs":null,"prompt_token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":"vllm-0.23.0-tp2-pp2-40a70bd8","usage":{"prompt_tokens":324,"total_tokens":325,"completion_tokens":1,"prompt_tokens_details":null},"kv_transfer_params":null}
+[P done] (P 分界行号 llama-3-8b.log:394)
+--- 请求 2: R ---
+$ curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json" -d @scripts/curl/req_r.json
+{"id":"cmpl-863603840a5003dc","object":"text_completion","created":1791040659,"model":"/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model","choices":[{"index":0,"text":"://www.zhihu.com/question/404202526\n1. 什么是前缀缓存？前缀缓存的作用是什么？\n2","logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null,"prompt_logprobs":null,"prompt_token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":"vllm-0.23.0-tp2-pp2-40a70bd8","usage":{"prompt_tokens":486,"total_tokens":521,"completion_tokens":35,"prompt_tokens_details":null},"kv_transfer_params":null}
+[R done] (R 分界行号 llama-3-8b.log:460)
+== [KVC] 轨迹提取完成(三段 + [KVS] 留痕) ==
+   172 logs/patchs/kvc_startup.log
+    61 logs/patchs/kvc_p.log
+   719 logs/patchs/kvc_r.log
+    20 logs/patchs/kvs_archive_lines.log
+   972 total
+[KVS] 归档文件数: 8/8 (tensors/req{seq}_{rid尾8}/kv_pp{p}tp{t}.pt); 明细见 logs/patchs/kvs_archive_lines.log
+tensors/:
+total 16
+drwxr-xr-x 4  502 games  62 Oct  3 15:17 .
+drwxr-xr-x 6  502 games 156 Oct  3 15:13 ..
+drwxr-xr-x 2 root root  120 Oct  3 15:17 req1_bdd8c88d
+drwxr-xr-x 2 root root  120 Oct  3 15:17 req2_9eb8d7fa
+
+tensors/req1_bdd8c88d:
+total 49272
+drwxr-xr-x 2 root root       120 Oct  3 15:17 .
+drwxr-xr-x 4  502 games       62 Oct  3 15:17 ..
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp0tp0.pt
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp0tp1.pt
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp1tp0.pt
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp1tp1.pt
+
+tensors/req2_9eb8d7fa:
+total 82120
+drwxr-xr-x 2 root root       120 Oct  3 15:17 .
+drwxr-xr-x 4  502 games       62 Oct  3 15:17 ..
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp0tp0.pt
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp0tp1.pt
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp1tp0.pt
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp1tp1.pt
+== DONE 打屏/curl 响应/三段轨迹/归档清单 全部落盘 (logs/ + tensors/) ==
+===== [4/6] 检查归档落盘 (expect: tensors/req{seq}_{rid尾8}/kv_pp{p}tp{t}.pt × 8) =====
+[OK] 8 个归档就位（一请求一子目录, 目录内 4 worker 各 1 份）
+tensors/:
+total 16
+drwxr-xr-x 4  502 games  62 Oct  3 15:17 .
+drwxr-xr-x 6  502 games 156 Oct  3 15:13 ..
+drwxr-xr-x 2 root root  120 Oct  3 15:17 req1_bdd8c88d
+drwxr-xr-x 2 root root  120 Oct  3 15:17 req2_9eb8d7fa
+
+tensors/req1_bdd8c88d:
+total 49272
+drwxr-xr-x 2 root root       120 Oct  3 15:17 .
+drwxr-xr-x 4  502 games       62 Oct  3 15:17 ..
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp0tp0.pt
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp0tp1.pt
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp1tp0.pt
+-rw-r--r-- 1 root root  12611023 Oct  3 15:17 kv_pp1tp1.pt
+
+tensors/req2_9eb8d7fa:
+total 82120
+drwxr-xr-x 2 root root       120 Oct  3 15:17 .
+drwxr-xr-x 4  502 games       62 Oct  3 15:17 ..
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp0tp0.pt
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp0tp1.pt
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp1tp0.pt
+-rw-r--r-- 1 root root  21017419 Oct  3 15:17 kv_pp1tp1.pt
+===== [5/6] 容器内初检 =====
+-- 归档查看报告（逐请求逐 worker 逐 block 的 K/V shape/dtype/tensor 预览） --
+[W1003 15:17:51.998815556 FunctionLoader.cpp:48] Warning: LD_PRELOAD detected, FunctionLoader prefers RTLD_DEFAULT for symbol resolution. (function operator())
+==============================================================================
+kvc 物理 KV Cache 张量离线查看报告(08 v2.5 请求子目录 + 块-行映射)
+归档目录: tensors | 请求: 2 个 | 生成: 2026-10-03 15:17:54
+==============================================================================
+  req1_bdd8c88d/  (4 个 worker 归档)
+  req2_9eb8d7fa/  (4 个 worker 归档)
+
+==============================================================================
+[1/2] 开始加载请求 req1_bdd8c88d  (cmpl-b6b18c35b4fb325e-0-bdd8c88d) 的 kvcache 物理张量
+==============================================================================
+  request_id : cmpl-b6b18c35b4fb325e-0-bdd8c88d
+  tag=TERM  prompt=324 tok  written=324 tok  dev=npu:0
+  该请求使用了 block id [1, 2, 3]  (num_blocks=3, block_size=128)
+  块有效槽位 cov=[128, 128, 68]  (kv_heads=4, head_dim=128, 含未写槽位原样归档)
+
+---- worker PP0_TP0  [kv_pp0tp0.pt | 组内 16 层张量 | torch.bfloat16 | npu:0] ----
+  block id=1  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 1 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.5078, +0.9336, +0.9219, -0.6758, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.01538, +0.0008049, +0.03345, -0.08691, ...]
+  block id=2  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 2 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-6.594, -1.328, -1.93, -1.258, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.006317, +0.03174, +0.01025, -0.0007324, ...]
+  block id=3  (有效槽位 68/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 3 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.5898, +0.5508, +2.047, -0.8789, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.02698, -0.004303, +0.0354, -0.01855, ...]
+
+---- worker PP0_TP1  [kv_pp0tp1.pt | 组内 16 层张量 | torch.bfloat16 | npu:1] ----
+  block id=1  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 1 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.008057, +0.1035, +0.02747, +0.003387, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.0009766, +0.000576, -0.0008163, +0.0006714, ...]
+  block id=2  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 2 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.9766, +0.6758, -0.5586, -0.3164, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.01331, -0.02441, -0.003403, -0.02979, ...]
+  block id=3  (有效槽位 68/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 3 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.2812, -0.7422, +0.1113, -0.2334, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.0001068, +0.0001402, -0.001076, +0.0003395, ...]
+
+---- worker PP1_TP0  [kv_pp1tp0.pt | 组内 16 层张量 | torch.bfloat16 | npu:2] ----
+  block id=1  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 1 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.01624, +0.003906, -0.01404, +0.003571, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.00293, +0.000412, -0.003296, -0.004303, ...]
+  block id=2  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 2 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.1641, -1.109, -1.016, +1.117, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.1914, -0.2871, +0.1875, -0.1064, ...]
+  block id=3  (有效槽位 68/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 3 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.0835, +0.6328, +0.003998, +0.2217, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.1543, -0.4551, -0.1768, +0.1348, ...]
+
+---- worker PP1_TP1  [kv_pp1tp1.pt | 组内 16 层张量 | torch.bfloat16 | npu:3] ----
+  block id=1  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 1 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.000721, -0.002731, -0.002029, -0.001625, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.008545, +0.005676, +0.00135, -0.008423, ...]
+  block id=2  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 2 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.9766, -0.3711, +1.594, -0.2373, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.08447, -0.04614, +0.02368, +0.2617, ...]
+  block id=3  (有效槽位 68/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 3 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.9102, -0.1338, -0.9258, +0.3906, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.09375, -0.3066, -0.1494, +0.06494, ...]
+
+==============================================================================
+[2/2] 开始加载请求 req2_9eb8d7fa  (cmpl-863603840a5003dc-0-9eb8d7fa) 的 kvcache 物理张量
+==============================================================================
+  request_id : cmpl-863603840a5003dc-0-9eb8d7fa
+  tag=TERM  prompt=486 tok  written=520 tok  dev=npu:0
+  该请求使用了 block id [1, 2, 4, 5, 6]  (num_blocks=5, block_size=128)
+  块有效槽位 cov=[128, 128, 128, 128, 8]  (kv_heads=4, head_dim=128, 含未写槽位原样归档)
+
+---- worker PP0_TP0  [kv_pp0tp0.pt | 组内 16 层张量 | torch.bfloat16 | npu:0] ----
+  block id=1  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 1 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.5078, +0.9336, +0.9219, -0.6758, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.01538, +0.0008049, +0.03345, -0.08691, ...]
+  block id=2  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 2 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-6.594, -1.328, -1.93, -1.258, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.006317, +0.03174, +0.01025, -0.0007324, ...]
+  block id=4  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 4 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.5898, +0.5508, +2.047, -0.8789, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.02698, -0.004303, +0.0354, -0.01855, ...]
+  block id=5  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 5 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+3.609, +3, -0.9141, -1.68, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.01648, +0.02515, +0.001633, -0.05029, ...]
+  block id=6  (有效槽位 8/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 6 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-7.594, -3.656, -0.1504, -0.8398, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.06396, -0.006165, -0.02283, -0.07861, ...]
+
+---- worker PP0_TP1  [kv_pp0tp1.pt | 组内 16 层张量 | torch.bfloat16 | npu:1] ----
+  block id=1  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 1 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.008057, +0.1035, +0.02747, +0.003387, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.0009766, +0.000576, -0.0008163, +0.0006714, ...]
+  block id=2  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 2 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.9766, +0.6758, -0.5586, -0.3164, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.01331, -0.02441, -0.003403, -0.02979, ...]
+  block id=4  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 4 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.2812, -0.7422, +0.1113, -0.2334, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.0001068, +0.0001402, -0.001076, +0.0003395, ...]
+  block id=5  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 5 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.6406, +0.457, +0.21, +0.1309, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.05127, -0.01904, -0.009827, -0.04883, ...]
+  block id=6  (有效槽位 8/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 6 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+2.5, -1.523, +0.3906, -1.188, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.01904, +0.04248, +0.03711, -0.02893, ...]
+
+---- worker PP1_TP0  [kv_pp1tp0.pt | 组内 16 层张量 | torch.bfloat16 | npu:2] ----
+  block id=1  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 1 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.01624, +0.003906, -0.01404, +0.003571, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.00293, +0.000412, -0.003296, -0.004303, ...]
+  block id=2  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 2 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.1641, -1.109, -1.016, +1.117, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.1914, -0.2871, +0.1875, -0.1064, ...]
+  block id=4  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 4 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.08008, +0.6328, +0.002579, +0.2236, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.1533, -0.4531, -0.1768, +0.127, ...]
+  block id=5  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 5 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.5977, -0.4629, -0.5352, +0.7891, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.08008, +0.5352, +0.2832, +0.07812, ...]
+  block id=6  (有效槽位 8/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 6 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-1.359, +0.09961, +1.281, +0.4688, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.1055, +0.08545, -0.2451, +0.1338, ...]
+
+---- worker PP1_TP1  [kv_pp1tp1.pt | 组内 16 层张量 | torch.bfloat16 | npu:3] ----
+  block id=1  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 1 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.000721, -0.002731, -0.002029, -0.001625, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.008545, +0.005676, +0.00135, -0.008423, ...]
+  block id=2  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 2 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-0.9766, -0.3711, +1.594, -0.2373, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.08447, -0.04614, +0.02368, +0.2617, ...]
+  block id=4  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 4 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.9062, -0.1338, -0.9258, +0.3867, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.09521, -0.3086, -0.1484, +0.06348, ...]
+  block id=5  (有效槽位 128/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 5 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [-1.32, -0.1191, +1.516, -0.4727, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [+0.2695, -0.126, -0.3848, +0.09131, ...]
+  block id=6  (有效槽位 8/128; = 组内 16 张 K + 16 张 V 张量(dim0) 各取第 6 行)
+    k cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      k tensor  = [+0.165, -1.109, -0.6445, +0.4688, ...]
+    v cache  shape=(128, 4, 128)  dtype=torch.bfloat16  (展示第 0 层, 16 张同构)
+      v tensor  = [-0.2041, -0.05762, -0.543, +0.2832, ...]
+
+==============================================================================
+[END] 报告完毕 —— tensor 预览为首 token 首 head 前 4 值(第 0 层); 完整张量请 torch.load(<归档路径>)['K'/'V']
+[DONE] 报告已落盘: logs/analysis/inspect_kv_tensors.out
+-- 前缀复用关系检查（pairwise: 公共表头块逐位 / 尾块槽位 / ULP） --
+[W1003 15:17:57.595395268 FunctionLoader.cpp:48] Warning: LD_PRELOAD detected, FunctionLoader prefers RTLD_DEFAULT for symbol resolution. (function operator())
+============================================================================
+kvc prefix cache 前缀复用关系检查(08 v2.5 归档 · pairwise)
+归档目录: tensors | 请求: 2 个 | 生成: 2026-10-03 15:18:00
+============================================================================
+  req1_bdd8c88d/  seq=1  块表=[1, 2, 3]  cov=[128, 128, 68]
+  req2_9eb8d7fa/  seq=2  块表=[1, 2, 4, 5, 6]  cov=[128, 128, 128, 128, 8]
+
+============================================================================
+[1/1] 前缀复用: req1_bdd8c88d(seq=1) --种块--> req2_9eb8d7fa(seq=2) 命中共享表头块
+============================================================================
+  共享表头块: [1, 2] (k=2, 命中 tokens ≈ 256)
+  早请求: cmpl-b6b18c35b4fb325e-0-bdd8c88d  块表=[1, 2, 3]  cov=[128, 128, 68]
+  晚请求: cmpl-863603840a5003dc-0-9eb8d7fa  块表=[1, 2, 4, 5, 6]  cov=[128, 128, 128, 128, 8]
+  C) 公共块逐位断言: 4 worker × 16 层 × 2 池 × 2 块 = 256 组张量 bf16 位模式逐位相等 PASS(0 组差异)
+  D) 未写槽位全零: PASS（全部尾块 [cov:] 槽位为零, 块池新建基线）
+  E) 重算一致性(同 token 段前 68 槽): 早 req b3 vs 晚 req b4:
+     L00 K: 位翻转 2/34816 (0.01%), Pearson=0.999990 (仅 ULP 级)
+     L00 V: 位翻转 18/34816 (0.05%), Pearson=1.000008 (仅 ULP 级)
+     L15 K: 位翻转 26953/34816 (77.42%), Pearson=0.999966 (深层残差流放大属正常)
+     L15 V: 位翻转 30589/34816 (87.86%), Pearson=0.999883 (深层残差流放大属正常)
+
+============================================================================
+[DONE] 前缀复用关系对 1 个: 1 对全 PASS; C 逐位=零拷贝铁证, D 槽位=块池零基线, E ULP=重算确定性。
+============================================================================
+[DONE] 报告已落盘: logs/analysis/inspect_prefix.out
+===== [6/6] 打包产物 (kvc_bundle.tar.gz = logs/ + tensors/, 供主机侧 fetch) =====
