@@ -1,0 +1,457 @@
+==============================================================================
+kvc 物理 KV Cache 张量离线查看报告(08 v2.5 请求子目录 + 块-行映射)
+归档目录: tensors | 请求: 2 个 | 生成: 2026-10-04 11:20:57
+==============================================================================
+  req1_bdd8c88d/  (4 个 worker 归档)
+  req2_9eb8d7fa/  (4 个 worker 归档)
+
+==============================================================================
+[1/2] 开始加载请求 req1_bdd8c88d  (cmpl-b6b18c35b4fb325e-0-bdd8c88d) 的 kvcache 物理张量
+==============================================================================
+  request_id : cmpl-b6b18c35b4fb325e-0-bdd8c88d
+  tag=TERM  prompt=324 tok  written=324 tok  dev=npu:0
+  该请求使用了 block id [1, 2, 3]  (num_blocks=3, block_size=128)
+  块有效槽位 cov=[128, 128, 68]  (kv_heads=4, head_dim=128, 含未写槽位原样归档)
+
+---- worker PP0_TP0  [kv_pp0tp0.pt | 组内 16 层张量 | torch.bfloat16 | npu:0] ----
+  block id=1  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 1 行
+      L00   K_cache[ 0] 第 1 行   |   V_cache[ 0] 第 1 行
+      L01   K_cache[ 1] 第 1 行   |   V_cache[ 1] 第 1 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 1 行   |   V_cache[15] 第 1 行
+
+    第 0 层, block id=1 对应张量第 1 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.5078, +0.9336, +0.9219, -0.6758, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.01538, +0.0008049, +0.03345, -0.08691, ...]
+
+  block id=2  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 2 行
+      L00   K_cache[ 0] 第 2 行   |   V_cache[ 0] 第 2 行
+      L01   K_cache[ 1] 第 2 行   |   V_cache[ 1] 第 2 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 2 行   |   V_cache[15] 第 2 行
+
+    第 0 层, block id=2 对应张量第 2 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-6.594, -1.328, -1.93, -1.258, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.006317, +0.03174, +0.01025, -0.0007324, ...]
+
+  block id=3  (有效槽位 68/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 3 行
+      L00   K_cache[ 0] 第 3 行   |   V_cache[ 0] 第 3 行
+      L01   K_cache[ 1] 第 3 行   |   V_cache[ 1] 第 3 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 3 行   |   V_cache[15] 第 3 行
+
+    第 0 层, block id=3 对应张量第 3 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.5898, +0.5508, +2.047, -0.8789, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.02698, -0.004303, +0.0354, -0.01855, ...]
+
+
+---- worker PP0_TP1  [kv_pp0tp1.pt | 组内 16 层张量 | torch.bfloat16 | npu:1] ----
+  block id=1  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 1 行
+      L00   K_cache[ 0] 第 1 行   |   V_cache[ 0] 第 1 行
+      L01   K_cache[ 1] 第 1 行   |   V_cache[ 1] 第 1 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 1 行   |   V_cache[15] 第 1 行
+
+    第 0 层, block id=1 对应张量第 1 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.008057, +0.1035, +0.02747, +0.003387, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.0009766, +0.000576, -0.0008163, +0.0006714, ...]
+
+  block id=2  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 2 行
+      L00   K_cache[ 0] 第 2 行   |   V_cache[ 0] 第 2 行
+      L01   K_cache[ 1] 第 2 行   |   V_cache[ 1] 第 2 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 2 行   |   V_cache[15] 第 2 行
+
+    第 0 层, block id=2 对应张量第 2 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.9766, +0.6758, -0.5586, -0.3164, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.01331, -0.02441, -0.003403, -0.02979, ...]
+
+  block id=3  (有效槽位 68/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 3 行
+      L00   K_cache[ 0] 第 3 行   |   V_cache[ 0] 第 3 行
+      L01   K_cache[ 1] 第 3 行   |   V_cache[ 1] 第 3 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 3 行   |   V_cache[15] 第 3 行
+
+    第 0 层, block id=3 对应张量第 3 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.2812, -0.7422, +0.1113, -0.2334, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.0001068, +0.0001402, -0.001076, +0.0003395, ...]
+
+
+---- worker PP1_TP0  [kv_pp1tp0.pt | 组内 16 层张量 | torch.bfloat16 | npu:2] ----
+  block id=1  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 1 行
+      L00   K_cache[ 0] 第 1 行   |   V_cache[ 0] 第 1 行
+      L01   K_cache[ 1] 第 1 行   |   V_cache[ 1] 第 1 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 1 行   |   V_cache[15] 第 1 行
+
+    第 0 层, block id=1 对应张量第 1 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.01624, +0.003906, -0.01404, +0.003571, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.00293, +0.000412, -0.003296, -0.004303, ...]
+
+  block id=2  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 2 行
+      L00   K_cache[ 0] 第 2 行   |   V_cache[ 0] 第 2 行
+      L01   K_cache[ 1] 第 2 行   |   V_cache[ 1] 第 2 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 2 行   |   V_cache[15] 第 2 行
+
+    第 0 层, block id=2 对应张量第 2 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.1641, -1.109, -1.016, +1.117, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.1914, -0.2871, +0.1875, -0.1064, ...]
+
+  block id=3  (有效槽位 68/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 3 行
+      L00   K_cache[ 0] 第 3 行   |   V_cache[ 0] 第 3 行
+      L01   K_cache[ 1] 第 3 行   |   V_cache[ 1] 第 3 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 3 行   |   V_cache[15] 第 3 行
+
+    第 0 层, block id=3 对应张量第 3 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.0835, +0.6328, +0.003998, +0.2217, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.1543, -0.4551, -0.1768, +0.1348, ...]
+
+
+---- worker PP1_TP1  [kv_pp1tp1.pt | 组内 16 层张量 | torch.bfloat16 | npu:3] ----
+  block id=1  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 1 行
+      L00   K_cache[ 0] 第 1 行   |   V_cache[ 0] 第 1 行
+      L01   K_cache[ 1] 第 1 行   |   V_cache[ 1] 第 1 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 1 行   |   V_cache[15] 第 1 行
+
+    第 0 层, block id=1 对应张量第 1 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.000721, -0.002731, -0.002029, -0.001625, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.008545, +0.005676, +0.00135, -0.008423, ...]
+
+  block id=2  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 2 行
+      L00   K_cache[ 0] 第 2 行   |   V_cache[ 0] 第 2 行
+      L01   K_cache[ 1] 第 2 行   |   V_cache[ 1] 第 2 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 2 行   |   V_cache[15] 第 2 行
+
+    第 0 层, block id=2 对应张量第 2 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.9766, -0.3711, +1.594, -0.2373, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.08447, -0.04614, +0.02368, +0.2617, ...]
+
+  block id=3  (有效槽位 68/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 3 行
+      L00   K_cache[ 0] 第 3 行   |   V_cache[ 0] 第 3 行
+      L01   K_cache[ 1] 第 3 行   |   V_cache[ 1] 第 3 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 3 行   |   V_cache[15] 第 3 行
+
+    第 0 层, block id=3 对应张量第 3 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.9102, -0.1338, -0.9258, +0.3906, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.09375, -0.3066, -0.1494, +0.06494, ...]
+
+
+==============================================================================
+[2/2] 开始加载请求 req2_9eb8d7fa  (cmpl-863603840a5003dc-0-9eb8d7fa) 的 kvcache 物理张量
+==============================================================================
+  request_id : cmpl-863603840a5003dc-0-9eb8d7fa
+  tag=TERM  prompt=486 tok  written=520 tok  dev=npu:0
+  该请求使用了 block id [1, 2, 4, 5, 6]  (num_blocks=5, block_size=128)
+  块有效槽位 cov=[128, 128, 128, 128, 8]  (kv_heads=4, head_dim=128, 含未写槽位原样归档)
+
+---- worker PP0_TP0  [kv_pp0tp0.pt | 组内 16 层张量 | torch.bfloat16 | npu:0] ----
+  block id=1  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 1 行
+      L00   K_cache[ 0] 第 1 行   |   V_cache[ 0] 第 1 行
+      L01   K_cache[ 1] 第 1 行   |   V_cache[ 1] 第 1 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 1 行   |   V_cache[15] 第 1 行
+
+    第 0 层, block id=1 对应张量第 1 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.5078, +0.9336, +0.9219, -0.6758, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.01538, +0.0008049, +0.03345, -0.08691, ...]
+
+  block id=2  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 2 行
+      L00   K_cache[ 0] 第 2 行   |   V_cache[ 0] 第 2 行
+      L01   K_cache[ 1] 第 2 行   |   V_cache[ 1] 第 2 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 2 行   |   V_cache[15] 第 2 行
+
+    第 0 层, block id=2 对应张量第 2 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-6.594, -1.328, -1.93, -1.258, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.006317, +0.03174, +0.01025, -0.0007324, ...]
+
+  block id=4  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 4 行
+      L00   K_cache[ 0] 第 4 行   |   V_cache[ 0] 第 4 行
+      L01   K_cache[ 1] 第 4 行   |   V_cache[ 1] 第 4 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 4 行   |   V_cache[15] 第 4 行
+
+    第 0 层, block id=4 对应张量第 4 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.5898, +0.5508, +2.047, -0.8789, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.02698, -0.004303, +0.0354, -0.01855, ...]
+
+  block id=5  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 5 行
+      L00   K_cache[ 0] 第 5 行   |   V_cache[ 0] 第 5 行
+      L01   K_cache[ 1] 第 5 行   |   V_cache[ 1] 第 5 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 5 行   |   V_cache[15] 第 5 行
+
+    第 0 层, block id=5 对应张量第 5 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+3.609, +3, -0.9141, -1.68, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.01648, +0.02515, +0.001633, -0.05029, ...]
+
+  block id=6  (有效槽位 8/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 6 行
+      L00   K_cache[ 0] 第 6 行   |   V_cache[ 0] 第 6 行
+      L01   K_cache[ 1] 第 6 行   |   V_cache[ 1] 第 6 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 6 行   |   V_cache[15] 第 6 行
+
+    第 0 层, block id=6 对应张量第 6 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-7.594, -3.656, -0.1504, -0.8398, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.06396, -0.006165, -0.02283, -0.07861, ...]
+
+
+---- worker PP0_TP1  [kv_pp0tp1.pt | 组内 16 层张量 | torch.bfloat16 | npu:1] ----
+  block id=1  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 1 行
+      L00   K_cache[ 0] 第 1 行   |   V_cache[ 0] 第 1 行
+      L01   K_cache[ 1] 第 1 行   |   V_cache[ 1] 第 1 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 1 行   |   V_cache[15] 第 1 行
+
+    第 0 层, block id=1 对应张量第 1 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.008057, +0.1035, +0.02747, +0.003387, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.0009766, +0.000576, -0.0008163, +0.0006714, ...]
+
+  block id=2  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 2 行
+      L00   K_cache[ 0] 第 2 行   |   V_cache[ 0] 第 2 行
+      L01   K_cache[ 1] 第 2 行   |   V_cache[ 1] 第 2 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 2 行   |   V_cache[15] 第 2 行
+
+    第 0 层, block id=2 对应张量第 2 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.9766, +0.6758, -0.5586, -0.3164, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.01331, -0.02441, -0.003403, -0.02979, ...]
+
+  block id=4  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 4 行
+      L00   K_cache[ 0] 第 4 行   |   V_cache[ 0] 第 4 行
+      L01   K_cache[ 1] 第 4 行   |   V_cache[ 1] 第 4 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 4 行   |   V_cache[15] 第 4 行
+
+    第 0 层, block id=4 对应张量第 4 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.2812, -0.7422, +0.1113, -0.2334, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.0001068, +0.0001402, -0.001076, +0.0003395, ...]
+
+  block id=5  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 5 行
+      L00   K_cache[ 0] 第 5 行   |   V_cache[ 0] 第 5 行
+      L01   K_cache[ 1] 第 5 行   |   V_cache[ 1] 第 5 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 5 行   |   V_cache[15] 第 5 行
+
+    第 0 层, block id=5 对应张量第 5 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.6406, +0.457, +0.21, +0.1309, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.05127, -0.01904, -0.009827, -0.04883, ...]
+
+  block id=6  (有效槽位 8/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 6 行
+      L00   K_cache[ 0] 第 6 行   |   V_cache[ 0] 第 6 行
+      L01   K_cache[ 1] 第 6 行   |   V_cache[ 1] 第 6 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 6 行   |   V_cache[15] 第 6 行
+
+    第 0 层, block id=6 对应张量第 6 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+2.5, -1.523, +0.3906, -1.188, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.01904, +0.04248, +0.03711, -0.02893, ...]
+
+
+---- worker PP1_TP0  [kv_pp1tp0.pt | 组内 16 层张量 | torch.bfloat16 | npu:2] ----
+  block id=1  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 1 行
+      L00   K_cache[ 0] 第 1 行   |   V_cache[ 0] 第 1 行
+      L01   K_cache[ 1] 第 1 行   |   V_cache[ 1] 第 1 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 1 行   |   V_cache[15] 第 1 行
+
+    第 0 层, block id=1 对应张量第 1 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.01624, +0.003906, -0.01404, +0.003571, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.00293, +0.000412, -0.003296, -0.004303, ...]
+
+  block id=2  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 2 行
+      L00   K_cache[ 0] 第 2 行   |   V_cache[ 0] 第 2 行
+      L01   K_cache[ 1] 第 2 行   |   V_cache[ 1] 第 2 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 2 行   |   V_cache[15] 第 2 行
+
+    第 0 层, block id=2 对应张量第 2 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.1641, -1.109, -1.016, +1.117, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.1914, -0.2871, +0.1875, -0.1064, ...]
+
+  block id=4  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 4 行
+      L00   K_cache[ 0] 第 4 行   |   V_cache[ 0] 第 4 行
+      L01   K_cache[ 1] 第 4 行   |   V_cache[ 1] 第 4 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 4 行   |   V_cache[15] 第 4 行
+
+    第 0 层, block id=4 对应张量第 4 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.08008, +0.6328, +0.002579, +0.2236, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.1533, -0.4531, -0.1768, +0.127, ...]
+
+  block id=5  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 5 行
+      L00   K_cache[ 0] 第 5 行   |   V_cache[ 0] 第 5 行
+      L01   K_cache[ 1] 第 5 行   |   V_cache[ 1] 第 5 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 5 行   |   V_cache[15] 第 5 行
+
+    第 0 层, block id=5 对应张量第 5 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.5977, -0.4629, -0.5352, +0.7891, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.08008, +0.5352, +0.2832, +0.07812, ...]
+
+  block id=6  (有效槽位 8/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 6 行
+      L00   K_cache[ 0] 第 6 行   |   V_cache[ 0] 第 6 行
+      L01   K_cache[ 1] 第 6 行   |   V_cache[ 1] 第 6 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 6 行   |   V_cache[15] 第 6 行
+
+    第 0 层, block id=6 对应张量第 6 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-1.359, +0.09961, +1.281, +0.4688, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.1055, +0.08545, -0.2451, +0.1338, ...]
+
+
+---- worker PP1_TP1  [kv_pp1tp1.pt | 组内 16 层张量 | torch.bfloat16 | npu:3] ----
+  block id=1  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 1 行
+      L00   K_cache[ 0] 第 1 行   |   V_cache[ 0] 第 1 行
+      L01   K_cache[ 1] 第 1 行   |   V_cache[ 1] 第 1 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 1 行   |   V_cache[15] 第 1 行
+
+    第 0 层, block id=1 对应张量第 1 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.000721, -0.002731, -0.002029, -0.001625, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.008545, +0.005676, +0.00135, -0.008423, ...]
+
+  block id=2  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 2 行
+      L00   K_cache[ 0] 第 2 行   |   V_cache[ 0] 第 2 行
+      L01   K_cache[ 1] 第 2 行   |   V_cache[ 1] 第 2 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 2 行   |   V_cache[15] 第 2 行
+
+    第 0 层, block id=2 对应张量第 2 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-0.9766, -0.3711, +1.594, -0.2373, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.08447, -0.04614, +0.02368, +0.2617, ...]
+
+  block id=4  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 4 行
+      L00   K_cache[ 0] 第 4 行   |   V_cache[ 0] 第 4 行
+      L01   K_cache[ 1] 第 4 行   |   V_cache[ 1] 第 4 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 4 行   |   V_cache[15] 第 4 行
+
+    第 0 层, block id=4 对应张量第 4 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.9062, -0.1338, -0.9258, +0.3867, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.09521, -0.3086, -0.1484, +0.06348, ...]
+
+  block id=5  (有效槽位 128/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 5 行
+      L00   K_cache[ 0] 第 5 行   |   V_cache[ 0] 第 5 行
+      L01   K_cache[ 1] 第 5 行   |   V_cache[ 1] 第 5 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 5 行   |   V_cache[15] 第 5 行
+
+    第 0 层, block id=5 对应张量第 5 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [-1.32, -0.1191, +1.516, -0.4727, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [+0.2695, -0.126, -0.3848, +0.09131, ...]
+
+  block id=6  (有效槽位 8/128)
+    块-行映射 · 1 个 block 竖跨 16 层(group_size=16): 每层 K/V 张量(dim0) 各占第 6 行
+      L00   K_cache[ 0] 第 6 行   |   V_cache[ 0] 第 6 行
+      L01   K_cache[ 1] 第 6 行   |   V_cache[ 1] 第 6 行
+      ...   (L02~L14 共 13 层与 L00 同构, 略)
+      L15   K_cache[15] 第 6 行   |   V_cache[15] 第 6 行
+
+    第 0 层, block id=6 对应张量第 6 行, 张量信息如下 (其余 15 层同构):
+      k cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        k tensor  = [+0.165, -1.109, -0.6445, +0.4688, ...]
+      v cache  shape=(128, 4, 128)  dtype=torch.bfloat16
+        v tensor  = [-0.2041, -0.05762, -0.543, +0.2832, ...]
+
+
+==============================================================================
+[END] 报告完毕 —— tensor 预览为首 token 首 head 前 4 值(第 0 层); 完整张量请 torch.load(<归档路径>)['K'/'V']

@@ -1,0 +1,138 @@
+# [KVC] 打点位置总览 (v2.5 归档版(一请求一子目录+块-行映射): 98 个 logger 调用点 / 8 文件; grep '[KVC]' = 174 行 = vllm 155 + vllm-ascend 19, 注释行计入)
+# 每条日志自动携带: INFO 时间 [文件:行号] [KVC][layer] message; 行号口径 = logger 调用行, 与运行日志实测一致
+# 横幅体系: ================ 一次性初始化 / ======== 阶段横幅对(始终成对) / --- S 子步标记
+# 设计要点:
+#   1) 分配横幅在方法装配后即打: 总横幅 -> 进入 -> S1 子步横幅 -> 两次外层容量探问(L4) -> S1 汇总值, S1 语义日志全部自洽
+#   2) S1~S4 四个子步无条件打印: 无新块步也打全(需分配 0 / 无前缀无需 touch / 无需分配新块 / 满块缓存维护), 结构完整闭合
+#   3) 阶段前缀全显: 每条下钻消息开头标注所属阶段(S1/S2/S3/S4/前缀查找/入队/释放/分配/提交), 单条日志可定位
+#   4) 横幅先行原则: 子步横幅先于其下钻执行(S1 探问前打横幅、S3 在 allocate_new_blocks 调用前打), 下钻日志全部落在横幅后
+#   5) 调度提交独立包裹: KVCacheManager.cache_blocks(独立于 allocate_slots 的 async_scheduler 提交路径)单列横幅对
+#   6) KVS 物理归档(v2.5, 替代 v1 打印版): 请求结束(TERM, 含首步即终态)各 worker 把该请求覆盖的全部物理块整块
+#      (含未写槽位, cpu().clone() 位级快照)交后台 daemon 线程 torch.save 落盘, 一个请求一个子目录 req{seq}_{rid尾8}/kv_pp{p}tp{t}.pt(schema kvt4-raw, meta.group_size=组内层数(块-行映射), 逐层逐块粒度全由
+#      meta + 查看报告(scripts/analysis/inspect_kv_tensors.py -> logs/analysis/inspect_kv_tensors.out)承载, 逐层打印已移除); 日志仅横幅两行(开始=同步声明身份 /
+#      完成=后台落盘回执); LATE=兜底告警不归档(块或已被复用, 非证据级)。env 开关: KVC_SAVE_KV=1 启用(默认关,
+#      零侵入); KVC_SAVE_DIR 输出目录(默认 log/tensors, 相对 worker cwd)
+# 行号基准: 容器部署源码(/vllm-workspace, =log 实测); vllm 7 文件两侧同号, model_runner_v1.py 分歧点(:3699)之上一致,
+#   之下容器 = 本地 - 2(实测复核: KVS 区 2441~2639 两侧同号, L1 区容器 4336/4498/4936/4987 = 本地 - 2)
+# 注: model_runner_v1.py 行号为 v2.5(一请求一子目录+块-行映射)版; 10-03 实验日志的 KVS 横幅行号(2573/2623)与本表一致
+
+## /vllm-workspace/vllm/v1/request.py
+  :184  "[KVC][ENQ] " + "=" * 8 ...   (入队开始横幅)
+  :187  f"[KVC][ENQ] Request(request_id={self.request_id}) 入队: "
+  :193  "[KVC][ENQ] " + "=" * 8 ...   (入队完成横幅)
+
+## /vllm-workspace/vllm/v1/core/kv_cache_utils.py
+  :217  f"[KVC][L2] FreeKVCacheBlockQueue.__init__完成：num_free_blocks={self.num_free_blocks}, "
+  :335  f"[KVC][L2] 释放 FreeKVCacheBlockQueue.append(block_id={block.block_id}), "
+  :361  f"[KVC][L2] 释放 FreeKVCacheBlockQueue.prepend_n(blocks={[b.block_id for b in blocks]}), "
+  :391  f"[KVC][L2] 释放 FreeKVCacheBlockQueue.append_n(blocks={[b.block_id for b in blocks]}), "
+  :612  f"[KVC][ENQ] 入队 hash_block_tokens: parent="
+
+## /vllm-workspace/vllm/v1/core/block_pool.py
+  :62   f"[KVC][L2] BlockHashToBlockMap.__init__完成：底容器 size={len(self._cache)}, "
+  :75   f"[KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: ... HIT"
+  :82   f"[KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: ... HIT(多块dict)"
+  :89   f"[KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: ... MISS"
+  :113  f"[KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=..."
+  :123  f"[KVC][L2] S3 BlockHashToBlockMap.pop: key=BlockHashWithGroupId(hash=..."
+  :214  f"[KVC][L2] BlockPool.__init__完成：num_gpu_blocks={self.num_gpu_blocks}, "
+  :247  f"[KVC][L2] 前缀查找 BlockPool.get_cached_block: MISS BlockHash={block_hash.hex()[:12]} "
+  :254  f"[KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash={block_hash.hex()[:12]} "
+  :296  f"[KVC][L2] S4 BlockPool.cache_full_blocks: 早退 (num_cached_blocks={num_cached_blocks} ..."
+  :345  f"[KVC][L2] S4 BlockPool.cache_full_blocks: req={request.request_id} 新满块 {len(_inserted)} 块 ..."
+  :416  f"[KVC][L2] S3 BlockPool.get_new_blocks({num_blocks}): popleft_n -> block_ids={[b.block_id for b in ret]}..."
+  :463  f"[KVC][L2] S3 BlockPool._maybe_evict_cached_block: 驱逐缓存块 block_id={block.block_id} "
+  :496  f"[KVC][L2] S2 BlockPool.touch: blocks={[(b.block_id, b.ref_cnt) for b in blocks if not b.is_null]} "
+  :521  f"[KVC][L2] 释放 BlockPool.free_blocks: blocks={...} (ref_cnt 已 -1), 归零回收 ..."
+
+## /vllm-workspace/vllm/v1/core/kv_cache_manager.py
+  :143  "[KVC][L5] "                          (逻辑侧初始化开始横幅)
+  :178  f"[KVC][L5] KVCacheManager.__init__完成：coordinator={type(self.coordinator).__name__}, "
+  :186  "[KVC][L5] "                          (逻辑侧初始化完成横幅)
+  :222  "[KVC][L5] "                          (前缀查找横幅)
+  :229  f"[KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks: req=... 跳过..."
+  :249  f"[KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks: req=... "
+  :265  f"[KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks 返回: "
+  :270  "[KVC][L5] "                          (前缀查找完成横幅)
+  :393  "[KVC][L5] ======== 分配 S1~S4 ======"  (方法装配后即打)
+  :399  f"[KVC][L5] 分配 KVCacheManager.allocate_slots 进入: "
+  :409  f"[KVC][L5] 分配布局: |<comp>=... |<new_comp>=... "  (五段量化行, PD 场景看 ext_comp 抵扣)
+  :417  "[KVC][L5] --- S1: 容量检查 ---"        (子步横幅先行: 两次外层容量探问(L4 全部落在其后)
+  :462  f"[KVC][L5] S1 get_num_blocks_to_allocate: 需分配 N 块 vs 可用 M 块"  (汇总值收尾)
+  :469  f"[KVC][L5] S1 容量不足: ... -> return None 等待下轮调度"
+  :473  "[KVC][L5] ======== 分配未完成(容量不足) ======"  (关闭横幅, 保持横幅对)
+  :482  "[KVC][L5] --- S2: touch 命中块 ---"
+  :484  f"[KVC][L5] S2 allocate_new_computed_blocks: req=..., "
+  :496  "[KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---"
+  :500  "[KVC][L5] --- S3: 新块分配 ---"        (有块, 横幅先于 allocate_new_blocks 执行)
+  :502  "[KVC][L5] --- S3: 无需分配新块 ---"     (无块)
+  :511  f"[KVC][L5] S3 allocate_new_blocks: ... -> 新块 [...]"
+  :516  f"[KVC][L5] S3 块未满, 无需分配新块 (req=..., num_new_tokens=...)"
+  :524  "[KVC][L5] --- S4: 满块入缓存(延迟/禁缓存, 本步跳过) ---"  (早退路径补横幅对)
+  :525  "[KVC][L5] ======== 分配完成 ========"   (早退路径补横幅对)
+  :538  "[KVC][L5] --- S4: 满块入缓存 ---"      (无条件)
+  :544  f"[KVC][L5] S4 cache_blocks: req=..., num_tokens_to_cache=..."
+  :548  f"[KVC][L5] 分配 KVCacheManager.allocate_slots 返回: "
+  :554  "[KVC][L5] ======== 分配完成 ========"
+  :566  "[KVC][L5] ======== 释放 ======== "
+  :568  f"[KVC][L5] 释放 KVCacheManager.free: req=..., 释放前持有 block_table=..."
+  :691  "[KVC][L5] ======== 调度提交(非分配 S4) ======"  (async_scheduler 每步输出后的独立提交路径)
+  :692  f"[KVC][L5] 提交 cache_blocks: req=..., num_computed_tokens=... (async 步末输出路径)"
+  :698  "[KVC][L5] ======== 提交完成 ========"
+
+## /vllm-workspace/vllm/v1/core/kv_cache_coordinator.py
+  :188  f"[KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=..., "
+  :220  f"[KVC][L4] S2 KVCacheCoordinator.allocate_new_computed_blocks: req=..., "
+  :261  f"[KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=..., "
+  :284  f"[KVC][L4] S4 KVCacheCoordinator.cache_blocks: req={request.request_id}, "
+  :299  f"[KVC][L4] 释放 KVCacheCoordinator.free: req={request_id} 已逐组下放第3层释放"
+  :302  "[KVC][L4] "                          (释放完成横幅)
+  :462  f"[KVC][L4] UnitaryKVCacheCoordinator.__init__完成：单组直通, "
+  :477  f"[KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit: "
+  :495  f"[KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: "
+
+## /vllm-workspace/vllm/v1/core/single_type_kv_cache_manager.py
+  :95   f"[KVC][L3] {type(self).__name__}.__init__完成："
+  :243  f"[KVC][L3] S2 SingleTypeKVCacheManager.allocate_new_computed_blocks: "
+  :303  f"[KVC][L3] S3 SingleTypeKVCacheManager.allocate_new_blocks: req={request_id}, "
+  :357  f"[KVC][L3] S4 SingleTypeKVCacheManager.cache_blocks: req={request.request_id}, "
+  :405  f"[KVC][L3] 释放 SingleTypeKVCacheManager.free: req={request_id}, "
+  :586  f"[KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit: block_size={block_size}, "
+  :599  f"[KVC][L3] 前缀查找   第 {len(computed_blocks[0]) + 1} 块 HIT: "
+  :607  f"[KVC][L3] 前缀查找   第 {len(computed_blocks[0]) + 1} 块 MISS: "
+  :623  f"[KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit 返回: "
+
+## /vllm-workspace/vllm/v1/engine/core.py
+  :245  "[KVC][CFG] "                         (编排开始横幅, 紧跟 get_kv_cache_specs() 调用)
+  :246  "[KVC][CFG] --- ①: 算规格 ---"         (子步横幅)
+  :257  f"[KVC][CFG] ① 算规格 get_kv_cache_specs: "
+  :259  "[KVC][CFG] --- ②: 测预算 ---"         (子步横幅, 先于 profile_run)
+  :280  f"[KVC][CFG] determine_available_memory: 各 worker 可用 KV 显存 = "
+  :284  "[KVC][CFG] --- ③: 做编排 ---"         (子步横幅, 先于 get_kv_cache_configs)
+  :294  f"[KVC][CFG] worker{_w_idx} KVCacheConfig: num_blocks={_cfg.num_blocks}, "
+  :299  f"[KVC][CFG]   [{_w_idx}] KVCacheGroupSpec(group_id={_g_idx}): "
+  :304  f"[KVC][CFG]   [{_w_idx}]   kv_cache_spec={repr(_g.kv_cache_spec)}"
+  :308  f"[KVC][CFG]   [{_w_idx}]   page_size_bytes={_spec.page_size_bytes} "
+  :314  f"[KVC][CFG]   [{_w_idx}] KVCacheTensor: size={_t.size} bytes "
+  :331  f"[KVC][CFG] 最终 scheduler KVCacheConfig: num_blocks={scheduler_kv_cache_config.num_blocks} "
+  :336  "[KVC][CFG] "                         (编排完成横幅)
+
+## /vllm-workspace/vllm-ascend/vllm_ascend/worker/model_runner_v1.py   (08 v2.5 归档版(一请求一子目录+块-行映射); 表为容器行号, 本地 L1 区 = +2)
+  :2441  f"[KVC][KVS] 物理KV原样归档已启用: KVC_SAVE_KV=1, 输出目录=%s "  (每 worker armed 一次)
+  :2454  f"[KVC][KVS] LATE req=%s 已结束但未见 TERM(final 推算偏移?), "  (兜底告警, 不归档)
+  :2507  f"[KVC][KVS] _kvc_rel_snapshot exception: %s (%s)"
+  :2573  f"[KVC][KVS] ======== 开始保存物理tensor worker=PP%d_TP%d dev=%s "  (横幅 1/2, 同步声明身份)
+  :2623  f"[KVC][KVS] ======== 完成保存物理tensor worker=PP%d_TP%d dev=%s "  (横幅 2/2, 后台落盘回执)
+  :2631  f"[KVC][KVS] ARCHIVE-FAIL worker=PP%d_TP%d dev=%s seq=%d "  (落盘失败仅记录)
+  :2639  f"[KVC][KVS] %s 归档异常(忽略): %s (%s)"  (TERM/LATE 入口保护)
+  :4336  "[KVC][L1] 物理侧 KV Cache 分配开始" 横幅
+  :4498  f"[KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: K/V 分开两张 int8 张量 (2M 对齐)"
+  :4936  f"[KVC][L1] vllm-ascend _reshape_kv_cache_tensors: K_cache shape=(num_blocks, bsz, kv_heads, head_dim)"
+  :4987  "[KVC][L1] 物理侧 KV Cache 分配完成" 横幅
+
+# total 98 logger 调用点; grep '[KVC]' per file = (5 10 29 58 17 18 18)+19 = 174 行(含注释)
+# 调用点分布: request 3 / utils 5 / block_pool 15 / kv_cache_manager 33 / coordinator 9 / single_type 9 / core 13 / model_runner_v1 11 = 98
+# model_runner_v1 的 19 行 = 11 调用点 + 8 注释行(hook 归档点/方法块头/职责与横幅说明/L1 区 4 条)
+# 实测(10-03 实验 llama-3-8b, PP2xTP2 4 worker): KVS 启用横幅 x4 worker; TERM 归档横幅对 x2 请求
+#   (尾八 bdcae133/ac12cf48, 324 tokens -> 3 块, 2 满块入哈希表, meta.group_size=16); .pt schema kvt4-raw:
+#   {K: [层][block_id -> tensor], V: 同构, meta: 身份/覆盖/布局/组内层数(group_size)}, 离线查看 scripts/analysis/inspect_kv_tensors.py(报告 logs/analysis/inspect_kv_tensors.out)
