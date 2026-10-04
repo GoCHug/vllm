@@ -108,7 +108,8 @@ itask create --name gggtest --image $IMAGE \
 |---|---|
 | `kvc/`（本区） | 单机 PP2×TP2，物理 KVCache 观测（v1 打印→v2 归档→v2.3 横幅式→v2.4 请求子目录→v2.5 块-行映射） |
 | `kvc_offline/` | v3 原样归档 + C0~C3 检查器 |
-| `kvc_1p1d/` | PD 分离（1P1D）KVCache 打印+归档+P→D 传输正确性（kvc_pd/kvc_pd_offline 材料已并入该区后删除；`kvc_pd_prefix/` 仍在位） |
+| `kvc_1p1d/` | PD 分离（1P1D）KVCache 打印+归档+P→D 传输正确性（kvc_pd/kvc_pd_offline 材料已并入该区后删除） |
+| `kvc_1p1d_prefix/` | 1P1D prefix 开关四象限矩阵（PCM 六打点 + 铁律核验；由 kvc_pd_prefix 重构改名而来，两轮权威/交叉历史实测迁于该区 logs/legacy/） |
 
 ## 7. 补丁要点速记（08 v2.5）
 

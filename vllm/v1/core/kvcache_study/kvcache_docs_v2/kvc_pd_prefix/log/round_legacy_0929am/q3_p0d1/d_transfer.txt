@@ -1,2 +1,0 @@
-(EngineCore pid=10547) INFO 09-29 08:14:33 [mooncake_connector.py:981] KV cache transfer for request cmpl-ed01071a-f9d0-400b-ba03-aae66f10d216-0-9c2b91cf took 838.01 ms. local_ip 10.239.217.10 local_device_id 0 remote_session_id 10.239.217.10:15095
-(EngineCore pid=10547) INFO 09-29 08:14:41 [mooncake_connector.py:981] KV cache transfer for request cmpl-1307c591-9162-4e5f-86c7-4796df04cc10-0-942b67b0 took 1.09 ms. local_ip 10.239.217.10 local_device_id 0 remote_session_id 10.239.217.10:15095

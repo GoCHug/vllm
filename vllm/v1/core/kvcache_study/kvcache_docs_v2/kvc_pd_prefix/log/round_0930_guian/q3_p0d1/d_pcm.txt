@@ -1,9 +1,0 @@
-(EngineCore pid=4354) INFO 09-30 03:29:04 [mooncake_connector.py:2113] [PCM] CFG role=kv_consumer enable_prefix_caching=True block_size=128 ptp=1 dtp=1 tp=1 rank=0
-(EngineCore pid=4354) INFO 09-30 03:29:15 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-8cb43666-7b54-4ff8-bf91-9629ed52d0b0-0-b2957f96 prompt=324 local_hit=0 do_rp=True do_rd=False
-(EngineCore pid=4354) INFO 09-30 03:29:15 [mooncake_connector.py:1871] [PCM] ALLOC req=cmpl-8cb43666-7b54-4ff8-bf91-9629ed52d0b0-0-b2957f96 external=324 recv_blocks=[[1, 2, 3]] all_blocks=([1, 2, 3],)
-(EngineCore pid=4354) INFO 09-30 03:29:15 [mooncake_connector.py:790] [PCM] XFER-entry req=cmpl-8cb43666-7b54-4ff8-bf91-9629ed52d0b0-0-8ce0eece recv_groups=[3] pull_groups=[3]
-(EngineCore pid=4354) INFO 09-30 03:29:15 [mooncake_connector.py:992] [PCM] XFER-end req=cmpl-8cb43666-7b54-4ff8-bf91-9629ed52d0b0-0-8ce0eece segments=64 bytes=50331648 (48.0 MiB) eff_GBps=0.19 pull_local=([1, 2, 3],) pull_remote=([1, 2, 3],)
-(EngineCore pid=4354) INFO 09-30 03:29:23 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-48532154-ebc5-4a83-9756-8698b2a5ba18-0-a1ec2478 prompt=486 local_hit=256 do_rp=True do_rd=False
-(EngineCore pid=4354) INFO 09-30 03:29:23 [mooncake_connector.py:1871] [PCM] ALLOC req=cmpl-48532154-ebc5-4a83-9756-8698b2a5ba18-0-a1ec2478 external=230 recv_blocks=[[4, 5]] all_blocks=([1, 2, 4, 5],)
-(EngineCore pid=4354) INFO 09-30 03:29:23 [mooncake_connector.py:790] [PCM] XFER-entry req=cmpl-48532154-ebc5-4a83-9756-8698b2a5ba18-0-b2d3c331 recv_groups=[2] pull_groups=[2]
-(EngineCore pid=4354) INFO 09-30 03:29:23 [mooncake_connector.py:992] [PCM] XFER-end req=cmpl-48532154-ebc5-4a83-9756-8698b2a5ba18-0-b2d3c331 segments=64 bytes=33554432 (32.0 MiB) eff_GBps=30.19 pull_local=([4, 5],) pull_remote=([6, 7],)
