@@ -1,0 +1,5 @@
+(EngineCore pid=40037) INFO 10-04 09:45:29 [mooncake_connector.py:2113] [PCM] CFG role=kv_producer enable_prefix_caching=True block_size=128 ptp=1 dtp=1 tp=1 rank=0
+(EngineCore pid=40037) INFO 10-04 09:46:23 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-2d08b9a7-2730-4b2f-9b54-a949d69e2326-0-94c12006 prompt=324 local_hit=0 do_rp=False do_rd=True
+(EngineCore pid=40037) INFO 10-04 09:46:23 [mooncake_connector.py:1948] [PCM] PFINISH req=cmpl-2d08b9a7-2730-4b2f-9b54-a949d69e2326-0-94c12006 prompt=324 prompt_blocks=3 report_blocks=[3] delay_free=True
+(EngineCore pid=40037) INFO 10-04 09:46:32 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-9a21697b-1e17-4198-80cc-2210badf738f-0-823e1ab3 prompt=486 local_hit=256 do_rp=False do_rd=True
+(EngineCore pid=40037) INFO 10-04 09:46:32 [mooncake_connector.py:1948] [PCM] PFINISH req=cmpl-9a21697b-1e17-4198-80cc-2210badf738f-0-823e1ab3 prompt=486 prompt_blocks=4 report_blocks=[4] delay_free=True

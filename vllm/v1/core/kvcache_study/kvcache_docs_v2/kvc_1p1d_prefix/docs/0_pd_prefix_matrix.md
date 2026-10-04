@@ -2,20 +2,20 @@
 
 > **工作区定位**：1P1D（1P prefill producer + 1D decode consumer + mooncake + load_balance proxy）形态下的 **P/D prefix cache 开关四象限实验**——用 01 号 [PCM] 六打点补丁观察四个开关组合（`--enable-prefix-caching` 默认开 / `--no-enable-prefix-caching` 注入）在"算多少 / 传多少 / 驻留多少"上的行为差异。本目录**独立自持**（补丁/脚本/请求体/文档全套自带，零外部依赖）。
 >
-> **证据体系**：本轮（run_all 五阶段）产物在 `logs/q{1..4}/`，汇总判读在 `logs/analysis/matrix_report.out`（铁律核验 PASS/FAIL）；**历史权威轮**（09-30 贵安 + 09-29 乌兰交叉，拓扑同为 1P1D）迁存于 `logs/legacy/`，本文数值引自该两轮，本轮复测由 matrix_report 自动对表。
+> **证据体系**：实测产物在 `logs/q{1..4}/`（run_all 五阶段产出，一象限一子目录），汇总判读在 `logs/analysis/matrix_report.out`（铁律核验 PASS/FAIL）——本文 §0/§3/§4 数值与该报告一一对应。
 >
 > 统一口径：req_p 324 tok（种缓存）→ req_r 486 tok = 4 块（块 1,2 = 256 tok 共享前缀 + 块 4,5 = 230 tok 新增）；块 128 tok；TP1 bf16。
 
-## 0. 30 秒结论：四象限总表（历史权威轮数值；本轮以 matrix_report.out 为准）
+## 0. 30 秒结论：四象限总表（本轮 gggtest 容器实测；数值与 matrix_report.out 一致）
 
 | 象限 | P 本地命中 | P prefill 实算 | P 上报块(恒全量) | D 本地命中 | mooncake 实际传输 | 第二请求耗时* | 跨请求显存驻留 |
 |---|---|---|---|---|---|---|---|
-| ① q1_p1d1 **(默认)** | **256 tok(块 1,2)** | 230 tok | 4 块 [1,2,4,5] | **256 tok(块 1,2)** | 增量 2 块 = **32.0 MiB** | **1.12 ms**(1.07) | D 池保留命中块(LRU) |
-| ② q2_p1d0 | **256 tok(块 1,2)** | 230 tok | 4 块 [1,2,4,5] | 0(无哈希表) | 全量 4 块 = **64.0 MiB** | **1.49 ms**(1.38) | 无(D 请求完即释放) |
-| ③ q3_p0d1 | 0 | **486 tok(全量重算)** | 4 块 [4,5,6,7]† | **256 tok(块 1,2)** | 增量 2 块 = **32.0 MiB** | **1.11 ms**(1.09) | D 池保留命中块 |
-| ④ q4_p0d0 | 0 | **486 tok(全量重算)** | 4 块 | 0 | 全量 4 块 = **64.0 MiB** | **1.19 ms**(1.18) | 无 |
+| ① q1_p1d1 **(默认)** | **256 tok(块 1,2)** | 230 tok | 4 块 [1,2,4,5] | **256 tok(块 1,2)** | 增量 2 块 = **32.0 MiB** | **1.17 ms** | D 池保留命中块(LRU) |
+| ② q2_p1d0 | **256 tok(块 1,2)** | 230 tok | 4 块 [1,2,4,5] | 0(无哈希表) | 全量 4 块 = **64.0 MiB** | **1.46 ms** | 无(D 请求完即释放) |
+| ③ q3_p0d1 | 0 | **486 tok(全量重算)** | 4 块 [4,5,6,7]† | **256 tok(块 1,2)** | 增量 2 块 = **32.0 MiB** | **1.16 ms** | D 池保留命中块 |
+| ④ q4_p0d0 | 0 | **486 tok(全量重算)** | 4 块 | 0 | 全量 4 块 = **64.0 MiB** | **1.18 ms** | 无 |
 
-\* 耗时指 mooncake `KV cache transfer` 行，会话热后纯 DMA；首请求 261-289ms（adxl 会话建立一次性成本）。† P✗ 时 P 复用断链、全新复算块号与 P✓ 不同（[6,7]，详见 §3 卡③）。
+\* 耗时指 mooncake `KV cache transfer` 行，会话热后纯 DMA；首请求 260.75~309.37 ms（adxl 会话建立一次性成本，四象限一致）。† P✗ 时 P 复用断链、全新复算的块号与 P✓ 时不同（实测 pull_remote=[6,7]，详见 §3 卡③）。
 
 **四条铁律**（本轮 matrix_report.py 自动核验的判据）：
 1. **P 的开关只影响"算多少"，D 的开关只影响"传多少"**——二者完全解耦（§1）；
@@ -74,7 +74,7 @@ proxy 双发次序：改写副本（`build_prefill_request` proxy:790-806，`max
 
 ## 3. 四张场景卡：配置 × [PCM] 打印全集 × 判读
 
-> 引文自历史权威轮（logs/legacy/round_0930_guian/q*/，原样提取）；本轮同位文件在 `logs/q*/`。
+> 引文为 [PCM] 打印的原样形态（取自 `logs/q*/`，req 为缩略示意）；grep 直达各象限同位文件。
 
 ### 场景卡①：q1_p1d1（P✓ D✓，默认基线）
 
@@ -90,8 +90,8 @@ D 侧(d_pcm.txt):
 [PCM] SCHED req=<req_r> prompt=486 local_hit=256 do_rp=True do_rd=False
 [PCM] ALLOC req=<req_r> external=230 recv_blocks=[[4, 5]] all_blocks=([1, 2, 4, 5],)
 [PCM] XFER-entry req=<req_r> recv_groups=[2] pull_groups=[2]
-[PCM] XFER-end req=<req_r> segments=64 bytes=33554432 (32.0 MiB) eff_GBps=29.94 pull_local=([4, 5],) pull_remote=([4, 5],)
-KV cache transfer for request <req_r> took 1.12 ms.(原生行)
+[PCM] XFER-end req=<req_r> segments=64 bytes=33554432 (32.0 MiB) eff_GBps=28.79 pull_local=([4, 5],) pull_remote=([4, 5],)
+KV cache transfer for request <req_r> took 1.17 ms.(原生行)
 ```
 
 **判读**：P 命中 256（只算 230）→ 上报全 4 块；D 命中 256 → 切掉前 2 块只拉 [4,5] 32 MiB。**P 命中 + D 命中 = 算力带宽双省**。
@@ -105,8 +105,8 @@ P 侧:与①完全相同(local_hit=256 / 只算 230 / PFINISH report_blocks=[4])
 D 侧:
 [PCM] SCHED req=<req_r> prompt=486 local_hit=0 do_rp=True do_rd=False      ← 无哈希表,恒 miss
 [PCM] ALLOC req=<req_r> external=486 recv_blocks=[[4, 5, 6, 7]] all_blocks=([4, 5, 6, 7],)
-[PCM] XFER-end req=<req_r> segments=128 bytes=67108864 (64.0 MiB) eff_GBps=45.10 pull_local=([4, 5, 6, 7],) pull_remote=([1, 2, 4, 5],)
-KV cache transfer ... took 1.49 ms.
+[PCM] XFER-end req=<req_r> segments=128 bytes=67108864 (64.0 MiB) eff_GBps=45.81 pull_local=([4, 5, 6, 7],) pull_remote=([1, 2, 4, 5],)
+KV cache transfer ... took 1.46 ms.
 ```
 
 **判读**：P 上报含**复用块 [1,2]**（pull_remote 铁证"恒全量"）；D 无表不裁剪 → 连 P 复用过的块也重传。segments=128（≠④ 64）：P 侧两组连续块与 D 侧一组对不齐、src/dst 段无法合并——**段数是块号拓扑的指纹**。
@@ -120,8 +120,8 @@ P 侧:
 [PCM] SCHED req=<req_r> prompt=486 local_hit=0 do_rd=True                  ← P 恒 miss,全量重算
 [PCM] PFINISH req=<req_r> prompt=486 prompt_blocks=4 report_blocks=[4]
 D 侧:与①完全相同(ALLOC external=230 recv=[4,5];XFER-end 32.0 MiB)
-[PCM] XFER-end ... bytes=33554432 (32.0 MiB) eff_GBps=30.19 pull_local=([4, 5],) pull_remote=([6, 7],)   ← P 全新复算块号
-KV cache transfer ... took 1.11 ms.
+[PCM] XFER-end ... bytes=33554432 (32.0 MiB) eff_GBps=28.84 pull_local=([4, 5],) pull_remote=([6, 7],)   ← P 全新复算块号
+KV cache transfer ... took 1.16 ms.
 ```
 
 **判读**：**传输量与①分毫不差（32.0 MiB/2 块）——P 侧缓存状态对 D 传输量的影响为零**（差异只在 pull_remote 块号：P 全量复算时自分配 [4,5,6,7]，被 D 切前 2 后剩 [6,7]）。**"计算量只看 P 开关、传输量只看 D 开关"的最直接实证**。
@@ -133,17 +133,17 @@ KV cache transfer ... took 1.11 ms.
 ```
 P 侧:同③(local_hit=0 / 全量算 / report_blocks=[4])
 D 侧:同②(local_hit=0 / external=486 / recv 4 块)
-[PCM] XFER-end req=<req_r> segments=64 bytes=67108864 (64.0 MiB) eff_GBps=56.28 pull_local=([4, 5, 6, 7],) pull_remote=([4, 5, 6, 7],)
-KV cache transfer ... took 1.19 ms.
+[PCM] XFER-end req=<req_r> segments=64 bytes=67108864 (64.0 MiB) eff_GBps=56.93 pull_local=([4, 5, 6, 7],) pull_remote=([4, 5, 6, 7],)
+KV cache transfer ... took 1.18 ms.
 ```
 
 **判读**：全量重算 + 全量重传 + 双侧不驻留——行为最可预测的**排障基线**（消除一切缓存路径变量）。即便双关 **Delaying free 仍出现**（传输协议需要，非缓存特性）。
 
-## 4. 实测结果分析（历史权威轮；本轮对照见 matrix_report.out）
+## 4. 实测结果分析（本轮 gggtest 容器实测：2026-10-04 09:44:52 → 09:53:37；判读与 matrix_report.out 一致）
 
 ### 4.1 首请求基线：四象限完全一致（冷启动不受开关影响）
 
-req_p（324 tok 双侧冷缓存）四格 [PCM] 轨迹逐项相同：`local_hit=0 → external=324 → recv=[1,2,3] → XFER 3 块 48.0 MiB`（首请求 261~289ms，adxl 会话建立占绝对大头，一次性）。
+req_p（324 tok 双侧冷缓存）四格 [PCM] 轨迹逐项相同：`local_hit=0 → external=324 → recv=[1,2,3] → XFER-entry recv/pull=3 组 → 3 块 48.0 MiB`（首请求 took 260.75~309.37 ms：adxl 会话建立+首建成本，一次性，四象限一致——q1 309.37 / q2 260.75 / q3 272.73 / q4 270.61）。
 
 ### 4.2 第二请求全矩阵证据表
 
@@ -157,15 +157,15 @@ req_p（324 tok 双侧冷缓存）四格 [PCM] 轨迹逐项相同：`local_hit=0
 | ALLOC(D) external / recv | **230 / [4,5]** | **486 / [4,5,6,7]** | **230 / [4,5]** | **486 / [4,5,6,7]** |
 | XFER-end segments / bytes | 64 / **32.0 MiB** | 128 / **64.0 MiB** | 64 / **32.0 MiB** | 64 / **64.0 MiB** |
 | pull_local / pull_remote | [4,5] / [4,5] | [4,5,6,7] / **[1,2,4,5]** | [4,5] / **[6,7]** | [4,5,6,7] / [4,5,6,7] |
-| eff_GBps | 29.94 | 45.10 | 30.19 | 56.28 |
-| took(第二请求) | **1.12 ms** | **1.49 ms** | **1.11 ms** | **1.19 ms** |
+| eff_GBps | 28.79 | 45.81 | 28.84 | 56.93 |
+| took(第二请求) | **1.17 ms** | **1.46 ms** | **1.16 ms** | **1.18 ms** |
 | 日志 prefix hit(P/D) | 31.6% / 31.6% | 31.6% / **0.0%** | **0.0%** / 31.6% | 0.0% / 0.0% |
 | D External hit | 100% | 100% | 100% | 100% |
 
 ### 4.3 三大发现（超出理论推演部分）
 
 1. **传输字节按整块计**：`bytes = ceil(external/128) × 16 MiB` 栅格（230 tok → 32.0 非 30.1）——mooncake 拉整块，部分尾块空槽一起 DMA。
-2. **同 pod 跨卡下"省传"绝对量小**：增量(33.9MB) vs 全量(67.1MB)差 0.11-0.31ms；有效带宽 30~57 GB/s。真正的痛在跨机 RDMA 带宽窗（25-50Gbps 网卡上 64 MiB/req = 10-20ms 线路占用）。
+2. **同 pod 跨卡下"省传"绝对量小**：增量(33.9MB) vs 全量(67.1MB) 差 0.02~0.29ms；有效带宽 29~57 GB/s。真正的痛在跨机 RDMA 带宽窗（25-50Gbps 网卡上 64 MiB/req = 10-20ms 线路占用）。
 3. **块号系统独立**：pull_local/pull_remote 四种组合——remote 是 P 池视角、local 是 D 池接收目标，两侧自由池互不联动。
 
 ## 5. 成本模型速查（TP1 bf16 · 块 128 tok；实测修正版）
@@ -175,8 +175,8 @@ req_p（324 tok 双侧冷缓存）四格 [PCM] 轨迹逐项相同：`local_hit=0
 | 每 token KV 字节 | 2(KV) × 32层 × 8头 × 128维 × 2B = **128 KiB** | — |
 | 传输字节 | **ceil(external_tokens/128) × 16 MiB**（整块栅格） | ①③ **32.0 MiB**；②④ **64.0 MiB** |
 | P prefill tokens | prompt_len − P_hit（P✓ 时） | ①② 230；③④ 486 |
-| 首次请求耗时 | adxl 会话建立（一次性）+ DMA | 261~289ms，四象限一致 |
-| 后续请求耗时 | ≈ 传输字节 / (30~57 GB/s 实测有效) | 32MiB→1.11ms、64MiB→1.19/1.49ms |
+| 首次请求耗时 | adxl 会话建立（一次性）+ DMA | **260.75~309.37 ms**，四象限一致 |
+| 后续请求耗时 | ≈ 传输字节 / (29~57 GB/s 实测有效) | 32MiB→1.16/1.17ms、64MiB→1.18/1.46ms |
 | 命中率监控 | `Prefix cache hit rate`(P/D 各打各的) + D 侧 `External prefix cache hit rate` | P/D 31.6%；D External=100%（D prompt 全由"本地缓存+mooncake"覆盖，从不自算 prefill） |
 
 ## 6. 正确性与边界
@@ -207,7 +207,7 @@ tail -f logs/server/run_all_screen.log
 # 铁律核验(本地拉回后同样可跑): python3 scripts/analysis/matrix_report.py --dir logs
 ```
 
-> 历史轮的换节点事故与恢复过程见 `logs/legacy/`（matrix_summary_legacy.md 头部注记）；编排已内置防护（HBM 防抢占等待 + 动态选卡 + 失败重试×2 + EXIT trap 兜底清理）。
+> 编排内置防护：HBM 防抢占等待 + 动态选卡 + 失败重试×2 + EXIT trap 兜底清理（任一象限失败不污染其余象限）。
 
 ## 9. 产物索引（kvc_1p1d_prefix/）
 
@@ -221,6 +221,4 @@ tail -f logs/server/run_all_screen.log
 | `scripts/recover/pull_artifacts.sh` | 主机侧 fetch 单命令(经 5557 隧道) |
 | `logs/q{1..4}_{p0|p1}{d0|d1}/` | **本轮**四象限产物(一象限一子目录, 12 文件) |
 | `logs/analysis/matrix_report.out` | 本轮汇总判读(总表 + 铁律核验 PASS/FAIL) |
-| `logs/legacy/round_0930_guian/` | **历史权威轮**(09-30 贵安, 四象限 trial-1 全 PASS) |
-| `logs/legacy/round_legacy_0929am/` | **历史交叉轮**(09-29 乌兰, 结论全一致) |
-| `logs/legacy/matrix_summary_legacy.md` | 旧版总表(历史) |
+

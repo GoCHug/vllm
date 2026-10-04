@@ -2,9 +2,9 @@
 
 > 本工作区为 **PD 分离 1P1D 形态下的 P/D prefix cache 开关矩阵实验**：1P(prefill producer 卡0/:8100) + 1D(decode consumer 卡1/:8200) + mooncake + load_balance proxy(:8000)。四象限 = P 开关 × D 开关（`--enable-prefix-caching` 默认开 / `--no-enable-prefix-caching` 注入），用 01 号 [PCM] 六打点补丁观察每个组合在"**算多少 / 传多少 / 驻留多少**"上的差异。
 >
-> **本区完全独立**：补丁/脚本/请求体/文档全套自带，零外部依赖（不依赖 ../kvc、../kvc_1p1d、../kvc_pd_prefix 任何文件；01 号补丁目标 mooncake_connector.py 与其他工作区补丁不重叠，可叠加）。
+> **本区完全独立**：补丁/脚本/请求体/文档全套自带，零外部依赖（不依赖 ../kvc、../kvc_1p1d 等任何工作区文件；01 号补丁目标 mooncake_connector.py 与其他工作区补丁不重叠，可叠加）。
 >
-> **核心文档**：`docs/0_pd_prefix_matrix.md`（机制 / 四张场景卡 / 实测 / 成本模型 / 选型一站式）。**历史权威数据**：`logs/legacy/`（09-30 贵安 + 09-29 乌兰交叉）；**本轮实测**：`logs/q{1..4}/` + 汇总 `logs/analysis/matrix_report.out`（铁律核验）。
+> **核心文档**：`docs/0_pd_prefix_matrix.md`（机制 / 四张场景卡 / 实测 / 成本模型 / 选型一站式）。**实测产物**：`logs/q{1..4}/`（四象限各一子目录）+ 汇总判读 `logs/analysis/matrix_report.out`（铁律核验）。
 
 ## 0. 30 秒结论（四条铁律）
 
@@ -53,9 +53,8 @@ kvc_1p1d_prefix/
     │                                      d_transfer.txt, {p,d}_hitrate.txt,
     │                                      p_delayfree.txt, q_summary.md
     ├── server/                            matrix_screen.log / run_all_screen.log
-    ├── analysis/                          matrix_report.out(汇总判读)
-    └── legacy/                            历史权威轮(09-30 贵安 round_0930_guian +
-                                           09-29 乌兰 round_legacy_0929am 交叉 + 旧总表)
+    └── analysis/                          matrix_report.out(汇总判读: 四象限对照总表 +
+                                           铁律核验 PASS/FAIL)
 ```
 
 ## 快速上手（容器内）
@@ -104,6 +103,4 @@ python3 scripts/analysis/matrix_report.py --dir logs   # 汇总复核
 |---|---|
 | `../kvc/` | 单机 PP2×TP2 KVCache 观测区（本区 [PCM] 六打点方法论与其同族，但补丁目标不同文件、互不依赖） |
 | `../kvc_1p1d/` | 1P1D KVCache 打印+物理归档+P→D 传输正确性（Tx 区逐位检查为本区"四格正确性全等"背书；两区补丁可叠加） |
-| 本区（由 kvc_pd_prefix 重构而来） | 1P1D prefix 开关四象限：**传输正确性之外的另一维——算力/带宽/内存的行为矩阵** |
-
-> 原 kvc_pd_prefix/（09-30 贵安权威轮 + 09-29 乌兰交叉轮）已重构为本区：四象限方法论保留、拓扑锚定 1P1D、目录结构与 kvc 家族对齐（scripts 五子目录 + logs 产物区 + docs 文档区）、历史实测数据迁存 logs/legacy/。
+| 本区 | 1P1D prefix 开关四象限：**传输正确性之外的另一维——算力/带宽/内存的行为矩阵** |

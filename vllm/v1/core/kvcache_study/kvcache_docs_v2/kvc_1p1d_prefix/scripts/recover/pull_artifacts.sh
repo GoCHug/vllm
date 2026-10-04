@@ -43,5 +43,4 @@ echo "  [SUM] $n/4 象限就位"
 
 echo "[DONE] 产物已回收 logs/{q1~q4,server,analysis}"
 echo "       汇总复核: python3 scripts/analysis/matrix_report.py --dir logs -> logs/analysis/matrix_report.out"
-echo "       历史轮对照: logs/legacy/round_0930_guian(权威) / round_legacy_0929am(交叉)"
 [ "$n" = "4" ] || exit 1

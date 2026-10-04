@@ -27,7 +27,7 @@ def grab(pattern, text, default="?"):
 
 
 def read_side(qdir, prefix):
-    """读一侧证据文本: 全量日志优先(llama.log), 缺失时回退抽取件拼装(legacy 轮形态)"""
+    """读一侧证据文本: 全量日志优先(llama.log), 缺失时回退抽取件拼装({p,d}_pcm/transfer/hitrate.txt)"""
     log = qdir / f"{prefix}_llama.log"
     if log.exists():
         return log.read_text(errors="ignore")
@@ -154,8 +154,8 @@ def main():
         L.append("| " + " | ".join(str(x) for x in row) + " |")
 
     L.append("")
-    L.append("> 注: hit% 为 Prometheus 末次采样值(10s 窗口可能错过末次命中——如权威轮 q1 的 P 侧实际"
-             " 31.6% 被窗口错过仍显示 0.0%; 命中权威判据 = SCHED local_hit / (324+486))。")
+    L.append("> 注: hit% 为 Prometheus 末次采样值(10s 窗口可能错过末次命中——P✓ 象限的 P 侧末次 31.6% "
+             "可能被窗口错过显示 0.0%; 命中权威判据 = SCHED local_hit / (324+486))。")
 
     L.append("")
     L.append("[表] 铁律核验(核心判据) ——")

@@ -1,0 +1,12 @@
+[q2_p1d0] P(pc=on) D(pc=off) —— 2026-10-04 09:48:51
+CFG(P):      (EngineCore pid=41714) INFO 10-04 09:47:38 [mooncake_connector.py:2113] [PCM] CFG role=kv_producer enable_prefix_caching=True block_size=128 ptp=1 dtp=1 tp=1 rank=0
+CFG(D):      (EngineCore pid=42285) INFO 10-04 09:48:22 [mooncake_connector.py:2113] [PCM] CFG role=kv_consumer enable_prefix_caching=False block_size=128 ptp=1 dtp=1 tp=1 rank=0
+SCHED(P)末:  (EngineCore pid=41714) INFO 10-04 09:48:42 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 prompt=486 local_hit=256 do_rp=False do_rd=True
+SCHED(D)末:  (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:1830] [PCM] SCHED req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-b2610fcd prompt=486 local_hit=0 do_rp=True do_rd=False
+ALLOC(D)末:  (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:1871] [PCM] ALLOC req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-b2610fcd external=486 recv_blocks=[[4, 5, 6, 7]] all_blocks=([4, 5, 6, 7],)
+PFINISH 末:  (EngineCore pid=41714) INFO 10-04 09:48:42 [mooncake_connector.py:1948] [PCM] PFINISH req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 prompt=486 prompt_blocks=4 report_blocks=[4] delay_free=True
+XFERentry末: (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:790] [PCM] XFER-entry req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 recv_groups=[4] pull_groups=[4]
+XFERend末:   (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:992] [PCM] XFER-end req=cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 segments=128 bytes=67108864 (64.0 MiB) eff_GBps=45.81 pull_local=([4, 5, 6, 7],) pull_remote=([1, 2, 4, 5],)
+transfer:    (EngineCore pid=42285) INFO 10-04 09:48:42 [mooncake_connector.py:981] KV cache transfer for request cmpl-e8ce714c-6406-406a-bf3a-dae364a313b8-0-ba07a146 took 1.46 ms. local_ip 172.16.210.237 local_device_id 0 remote_session_id 172.16.210.237:16671
+hitrate(P):  (APIServer pid=41583) INFO 10-04 09:48:47 [loggers.py:271] Engine 000: Avg prompt throughput: 23.0 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 31.6%, External prefix cache hit rate: 0.0%
+hitrate(D):  (APIServer pid=42154) INFO 10-04 09:48:48 [loggers.py:271] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 3.5 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%, External prefix cache hit rate: 100.0%
