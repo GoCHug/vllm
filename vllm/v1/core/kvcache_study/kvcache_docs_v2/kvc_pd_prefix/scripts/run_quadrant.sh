@@ -13,12 +13,11 @@
 #   d_transfer.txt                             mooncake 传输耗时行(原生)
 #   p_hitrate.txt / d_hitrate.txt              Prometheus 命中率行(原生)
 #   q_summary.md                               本象限一行式快照
-# 前提: 10 号 PCM 补丁已应用; 4 卡空闲(无 vllm 进程); ../kvc_pd/log/req_*.json 就位
+# 前提: 10 号 PCM 补丁已应用; 4 卡空闲(无 vllm 进程); 本区 log/req_*.json 就位(源自 kvc_1p1d, 原 kvc_pd 已删)
 # ==============================================================================
 set -uo pipefail   # 不用 -e: 单步失败仍要保证收尾清理
 BASE="$(cd "$(dirname "$0")/.." && pwd)"       # kvc_pd_prefix/ 根
-KVC_PD="$(cd "$BASE/../kvc_pd" && pwd)"        # 平级 kvc_pd/(复用其请求体)
-REQS="$KVC_PD/log"
+REQS="$BASE/log"                              # 请求体已自持(原 kvc_pd/log, 2026-10-04 迁入)
 PROXY=/vllm-workspace/vllm-ascend/examples/disaggregated_prefill_v1/load_balance_proxy_server_example.py
 
 Q="$1"; PPC="$2"; DPC="$3"
@@ -122,7 +121,7 @@ grep "Delaying free" "$QDIR/p_llama.log" > "$QDIR/p_delayfree.txt" 2>/dev/null |
 } > "$QDIR/q_summary.md" 2>/dev/null
 cat "$QDIR/q_summary.md"
 
-# ---------- 4. 停全套(保清理, 与 kvc_pd/scripts/stop_pd.sh 同模式) ----------
+# ---------- 4. 停全套(保清理, 沿用原 kvc_pd/scripts/stop_pd.sh 模式, 该区已删) ----------
 pkill -f "load_balance_proxy_server_example" 2>/dev/null; sleep 2
 pkill -f "v[l]lm serve" 2>/dev/null; sleep 6
 REMAIN=$(pgrep -f "v[l]lm serve" | wc -l | tr -d " ")
