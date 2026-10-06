@@ -90,15 +90,131 @@ vLLM V1 调度器有三条核心设计（源码注释，`scheduler.py:342-351`�
 ```
 SchedulerInterface（interface.py · ABC，定义 schedule/update_from_output 等契约）
 └── Scheduler（scheduler.py · 唯一完整实现）
-    └── AsyncScheduler（async_scheduler.py · 仅覆写 2 个方法）
+    └── AsyncScheduler（async_scheduler.py · 67 行，覆写 __init__ + 2 个内部方法，
+                        不覆写 schedule()）
 ```
 
-`SchedulerConfig.get_scheduler_cls()`（`config/scheduler.py:168-176`）按是否开启异步调度选择二者之一，EngineCore 只依赖抽象接口，不感知具体子类。
+`SchedulerConfig.get_scheduler_cls()`（`config/scheduler.py:168-188`）按是否开启异步调度选择二者之一，EngineCore 只依赖抽象接口，不感知具体子类。选择逻辑的源码详解见 [§2.4](#24-调度类的选择get_scheduler_cls-源码详解)。
 
 ```
 RequestQueue（request_queue.py · ABC）
 ├── FCFSRequestQueue(deque[Request], RequestQueue)   # 策略 fcfs（默认）
 └── PriorityRequestQueue(RequestQueue)               # 策略 priority，内部最小堆
+```
+
+> 注意区分两个独立的选择维度：**调度器类**（Scheduler vs AsyncScheduler，由 `async_scheduling` 决定）解决"调度与执行是否并行"；**队列策略**（fcfs vs priority，由 `policy` 字段决定，[`config/scheduler.py:109`](file:///c:/Users/89517/Desktop/github/vllm-npu/vllm/vllm/config/scheduler.py#L109)）解决"等待中的请求按什么顺序出队"。两者可以任意组合。
+
+### 2.4 调度类的选择：`get_scheduler_cls()` 源码详解
+
+#### 2.4.1 涉及的两个配置字段
+
+选择逻辑只依赖 `SchedulerConfig` 的两个字段（[`config/scheduler.py:127-149`](file:///c:/Users/89517/Desktop/github/vllm-npu/vllm/vllm/config/scheduler.py#L127-L149)）：
+
+```python
+    # scheduler class or path. "vllm.v1.core.sched.scheduler.Scheduler"
+    # (default) or "mod.custom_class".
+    scheduler_cls: str | type[object] | None = None     # 第 127 行：自定义调度器，None 表示用官方内置类
+    """...Can be a class directly or the path to a class of
+    form "mod.custom_class"."""
+
+    async_scheduling: bool | None = None                # 第 146 行：三态开关
+    """If set to False, disable async scheduling. Async scheduling helps to
+    avoid gaps in GPU utilization, leading to better latency and throughput."""
+```
+
+- `scheduler_cls`：**用户显式指定**调度器类。可以直接传一个类对象，也可以传 `"模块.类名"` 形式的字符串。默认 `None`，表示"不自定义，由 vLLM 自己按 async_scheduling 选"。
+- `async_scheduling`：**三态**而不是简单布尔——`True`（强制开）、`False`（强制关）、`None`（默认，让 vLLM 按环境自动决定）。
+
+#### 2.4.2 `get_scheduler_cls()` 逐行注释（`config/scheduler.py:168-188`）
+
+```python
+    def get_scheduler_cls(self) -> type["SchedulerInterface"]:
+        if self.scheduler_cls is None:                          # 第 169 行：用户没有自定义 → 走内置二选一
+            if self.async_scheduling:                           # 第 170 行：注意此时必然已是确定的 bool（见 2.4.3）
+                from vllm.v1.core.sched.async_scheduler import AsyncScheduler
+                                                               # 第 171 行：★函数内延迟导入
+                return AsyncScheduler                           # 第 173 行：返回类对象（注意是类，不是实例）
+            from vllm.v1.core.sched.scheduler import Scheduler  # 第 174 行：同样延迟导入
+            return Scheduler                                   # 第 176 行
+
+        # —— 以下是用户自定义 scheduler_cls 的分支 ——
+        # This warning can be removed once the Scheduler interface is
+        # finalized and we can maintain support for scheduler classes that
+        # implement it
+        logger.warning_once(                                   # 第 181 行：自定义接口不稳定的一次性告警
+            "Using custom scheduler class %s. This scheduler interface is "
+            "not public and compatibility may not be maintained.",
+            self.scheduler_cls,  # type: ignore[arg-type]
+        )
+        if not isinstance(self.scheduler_cls, str):            # 第 186 行：直接传了类对象
+            return cast(type["SchedulerInterface"], self.scheduler_cls)  # 第 187 行：原样返回
+        return resolve_obj_by_qualname(self.scheduler_cls)     # 第 188 行：字符串 → import 模块取属性
+```
+
+三个实现细节：
+
+1. **返回的是类对象，不是实例**。调用方 EngineCore 拿到类后自己 `Scheduler(...)` 构造（[`engine/core.py:136,149`](file:///c:/Users/89517/Desktop/github/vllm-npu/vllm/vllm/v1/engine/core.py#L136)，见 §3 的装配代码）。
+2. **函数内延迟导入**（171、174 行的 import 写在方法体内）：`config/` 是配置层，若在模块顶部 import `vllm.v1.core.sched.*`，会形成 config → core 的反向依赖并可能引入循环引用；延迟到真正选类时才导入，保持配置层独立。
+3. **字符串路径解析**（188 行）：`resolve_obj_by_qualname("mod.custom_class")` 等价于先 `import mod` 再取其 `custom_class` 属性，让用户能用 `--scheduler-cls my_pkg.MyScheduler` 这种零代码侵入方式替换调度器。
+
+#### 2.4.3 `async_scheduling` 的 `None` 是怎么变成 bool 的
+
+`get_scheduler_cls()` 第 170 行直接把 `self.async_scheduling` 当布尔用，所以调用它之前 `None` 必须已被消掉。消掉的位置在配置校验期 [`config/vllm.py:933-997`](file:///c:/Users/89517/Desktop/github/vllm-npu/vllm/vllm/config/vllm.py#L933-L997)，逻辑分两种情形：
+
+**情形一：用户显式开了（值为 True）**（933-956 行）——遇到任何不兼容直接**报错**：
+
+- 投机解码方法不是 EAGLE / MTP / NGram-GPU / draft_model → ValueError；
+- 开了 `disable_padded_drafter_batch` → ValueError；
+- 分布式执行器不支持异步调度（`executor_class.supports_async_scheduling()` 返回 False）→ ValueError。
+
+**情形二：值为 None（自动决策）**（957-997 行）——遇到不兼容只**警告并降级为 False**，兼容才置 True。自动关闭的四个条件依次是：
+
+| 顺序 | 条件 | 关闭原因（源码措辞） |
+|---|---|---|
+| 1 | runner_type == `"pooling"`（959-968 行） | 当前异步实现对池化模型有负向性能影响 |
+| 2 | 投机方法不在 EAGLE / NGram-GPU 白名单（969-979 行） | 该投机方法不支持异步调度 |
+| 3 | `disable_padded_drafter_batch=True`（980-988 行） | 两者不兼容 |
+| 4 | 执行器后端不支持（989-995 行） | 如部分分布式 backend |
+| 兜底 | 以上都不命中（996-997 行） | **置 True**：现代 vLLM 默认异步调度 |
+
+也就是说：**默认（用户什么都不配）在普通生成模型 + 支持的执行器上，跑的是 AsyncScheduler**；显式 `--async-scheduling False` 才会强制用同步 Scheduler。决策完成后会打一条 info 日志 "Asynchronous scheduling is enabled/disabled."（999-1002 行），排查时可以直接搜这条日志确认实际生效的类。
+
+#### 2.4.4 选择结果：两个类到底差在哪
+
+AsyncScheduler 只有 67 行（[`async_scheduler.py`](file:///c:/Users/89517/Desktop/github/vllm-npu/vllm/vllm/v1/core/sched/async_scheduler.py)），**不覆写 `schedule()`**——上一节讲的整套两阶段调度流程（running 续算、抢占、waiting 准入）两个类完全相同。它只覆写构造函数和 2 个"调度边界回调"：
+
+| 方法 | 覆写内容 | 解决的问题 |
+|---|---|---|
+| `__init__`（13-17 行） | 调父类构造，额外准备投机占位符列表 `[-1]*num_spec_tokens`、记录 `pp_size` | 异步模式的复用数据 |
+| `_update_after_schedule`（19-41 行） | 父类推进完 `num_computed_tokens` 后，给每个本步调度的非 prefill 请求**预占输出位置**：`num_output_placeholders += 1 + 草稿数`、填入草稿占位符、设置 PP 节拍 `next_decode_eligible_step = current_step + pp_size` | 调度与模型执行并行后，token 还没算回来，调度器需要先按"将要产出 N 个 token"安排下一步 |
+| `_update_request_with_output`（43-66 行） | worker 的真实输出回来时：核销占位符计数（减到负数会断言失败）、丢弃 reset 期间的过期帧、对仍 RUNNING 的请求补做 `cache_blocks` | 把"预占的账"与"真实结果"对齐 |
+
+理解方式：Scheduler 是"调度一步、执行一步、看到结果再调度下一步"的串行节奏；AsyncScheduler 通过这两个回调把节奏改成"调度时先按预测记账、结果回来后再核销"，从而让下一步调度与当前步 GPU 执行重叠（这就是 Request 上 `num_output_placeholders`、`async_tokens_to_discard`、`next_decode_eligible_step` 三个字段存在的原因，见 [`request.py:141-146`](file:///c:/Users/89517/Desktop/github/vllm-npu/vllm/vllm/v1/request.py#L141-L146)）。
+
+#### 2.4.5 完整选择流程
+
+```mermaid
+flowchart TD
+    A["配置校验期 config/vllm.py:933"] --> B{"scheduler_cls 已指定？"}
+    B -- "是（类对象或字符串路径）" --> C["get_scheduler_cls 走自定义分支 L181-188<br/>打接口不稳定告警 → 原样返回类 / qualname 导入"]
+    B -- "否（None）" --> D{"async_scheduling 当前值"}
+    D -- "True（用户显式开启）" --> E{"执行器与投机配置兼容？"}
+    E -- "不兼容" --> F["ValueError 直接拒绝启动 L943/949/954"]
+    E -- "兼容" --> G["校验期保持 True"]
+    D -- "None（默认自动）" --> H{"pooling / 非白名单投机 /<br/>padded_drafter / 执行器不支持？"}
+    H -- "命中任一" --> I["警告并置 False L968-995"]
+    H -- "都不命中" --> J["置 True（默认开启）L997"]
+    D -- "False（用户显式关闭）" --> K["校验期保持 False"]
+    G --> L["EngineCore 启动：core.py:136 调 get_scheduler_cls()"]
+    I --> L
+    J --> L
+    K --> L
+    L --> M{"async_scheduling？"}
+    M -- "True" --> N["返回 AsyncScheduler（函数内延迟导入 L171）"]
+    M -- "False" --> O["返回 Scheduler（延迟导入 L174）"]
+    N --> P["core.py:149 统一以 SchedulerInterface 类型构造实例<br/>EngineCore 后续只调接口，不区分子类"]
+    O --> P
+    C --> P
 ```
 
 ---
@@ -111,8 +227,9 @@ Scheduler 在 **KV Cache 五层全部建好之后**才创建。回顾 KV Cache �
 
 ```python
 kv_cache_config = self._initialize_kv_caches(vllm_config)   # KV 五层先就绪（core.py:132）
+Scheduler = vllm_config.scheduler_config.get_scheduler_cls()  # core.py:136：选 Scheduler 还是 AsyncScheduler（见 §2.4）
 scheduler_block_size, hash_block_size = resolve_kv_cache_block_sizes(...)
-self.scheduler = Scheduler(                                 # engine/core.py:149-157
+self.scheduler = Scheduler(                                 # engine/core.py:149-157：统一构造，子类构造签名相同
     vllm_config=vllm_config,
     kv_cache_config=kv_cache_config,
     structured_output_manager=self.structured_output_manager,
