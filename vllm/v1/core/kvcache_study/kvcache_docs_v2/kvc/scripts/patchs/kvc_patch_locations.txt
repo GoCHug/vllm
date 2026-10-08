@@ -14,7 +14,7 @@
 #      零侵入); KVC_SAVE_DIR 输出目录(默认 log/tensors, 相对 worker cwd)
 # 行号基准: 容器部署源码(/vllm-workspace, =log 实测); vllm 7 文件两侧同号, model_runner_v1.py 分歧点(:3699)之上一致,
 #   之下容器 = 本地 - 2(实测复核: KVS 区 2441~2639 两侧同号, L1 区容器 4336/4498/4936/4987 = 本地 - 2)
-# 注: model_runner_v1.py 行号为 v2.5(一请求一子目录+块-行映射)版; 10-03 实验日志的 KVS 横幅行号(2573/2623)与本表一致
+# 注: model_runner_v1.py 行号为 v2.5(一请求一子目录+块-行映射)版; 10-08 实验日志的 KVS 横幅行号(2573/2623)与本表一致
 
 ## /vllm-workspace/vllm/v1/request.py
   :184  "[KVC][ENQ] " + "=" * 8 ...   (入队开始横幅)
@@ -133,6 +133,6 @@
 # total 98 logger 调用点; grep '[KVC]' per file = (5 10 29 58 17 18 18)+19 = 174 行(含注释)
 # 调用点分布: request 3 / utils 5 / block_pool 15 / kv_cache_manager 33 / coordinator 9 / single_type 9 / core 13 / model_runner_v1 11 = 98
 # model_runner_v1 的 19 行 = 11 调用点 + 8 注释行(hook 归档点/方法块头/职责与横幅说明/L1 区 4 条)
-# 实测(10-03 实验 llama-3-8b, PP2xTP2 4 worker): KVS 启用横幅 x4 worker; TERM 归档横幅对 x2 请求
-#   (尾八 bdcae133/ac12cf48, 324 tokens -> 3 块, 2 满块入哈希表, meta.group_size=16); .pt schema kvt4-raw:
+# 实测(10-08 实验 llama-3-8b, PP2xTP2 4 worker): KVS 启用横幅 x4 worker; TERM 归档横幅对 x2 请求
+#   (尾八 8e22e700/8d83db92, 324 tokens -> 3 块, 2 满块入哈希表, meta.group_size=16); .pt schema kvt4-raw:
 #   {K: [层][block_id -> tensor], V: 同构, meta: 身份/覆盖/布局/组内层数(group_size)}, 离线查看 scripts/analysis/inspect_kv_tensors.py(报告 logs/analysis/inspect_kv_tensors.out)

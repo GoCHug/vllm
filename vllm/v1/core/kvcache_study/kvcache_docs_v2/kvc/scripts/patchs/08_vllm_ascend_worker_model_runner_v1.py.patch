@@ -181,16 +181,16 @@ index 4c8e11e9d..2a59386e7 100644
 +            fname = os.path.join(req_dir, "kv_pp{}tp{}.pt".format(pp_rank, tp_rank))
 +            path = os.path.join(base_dir, fname)
 +
-+            # 开始横幅(同步): 声明保存对象 —— 谁(worker/dev)、存什么(K/V 池)、
-+            # 形状(每块 shape)、哪些块(blk/cov)、存到哪(文件名)
++            # 开始横幅(同步): 声明保存对象 —— 谁(worker/dev)、保存文件(先行说明)、
++            # 张量内容(K/V 双池, 每块 shape、层×块、blk/cov)
 +            logger.info(
 +                "[KVC][KVS] ======== 开始保存物理tensor worker=PP%d_TP%d dev=%s "
-+                "%s seq=%d req尾8=%s: K_cache/V_cache(双独立张量池, 每块 "
-+                "shape=(%d,%d,%d) %s, 含未写槽位) %d 层 × %d 块 blk=%s cov=%s -> %s ========",
-+                pp_rank, tp_rank, dev, tag, seq, rid8,
++                "%s seq=%d req尾8=%s: 保存文件=%s, 张量内容=K_cache/V_cache(双独立"
++                "张量池, 每块 shape=(%d,%d,%d) %s, 含未写槽位) %d 层 × %d 块 blk=%s cov=%s ========",
++                pp_rank, tp_rank, dev, tag, seq, rid8, fname,
 +                bsz, kv_heads, head_dim, str(kt0.dtype),
 +                len(layers), len(blocks), [int(b) for b in blocks],
-+                [int(c) for c in covs], fname)
++                [int(c) for c in covs])
 +
 +            # 位级快照: 每层每块整块 (block_size, kv_heads, head_dim), 不 cat 不
 +            # 切片, 未写槽位一并保留 —— 同步 clone 后即脱离 NPU 池存储

@@ -107,5 +107,5 @@ kvp_line=$(grep -c "def _kvc_kv_dump" "$VLLM_ASCEND_DIR/${ASCEND_FILES[0]}" || t
 echo "== Phase 4: 归档开关提示 =="
 echo "  kvc 实验的 TERM 归档由 env 控制:"
 echo "    KVC_SAVE_KV=1                    # 开启( scripts/server/start.sh 已自动导出 )"
-echo "    KVC_SAVE_DIR=<目录>              # 输出目录(默认 log/tensors; start.sh 用 <工作区>/tensors)"
+echo "    KVC_SAVE_DIR=<目录>              # 输出目录(默认 log/tensors; start.sh 用相对路径 kvc/tensors)"
 echo "[DONE] 8 个补丁已应用并验证(08 为 v2.5 块-行映射归档版)。"

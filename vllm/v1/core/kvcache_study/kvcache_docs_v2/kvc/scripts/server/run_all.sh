@@ -5,7 +5,7 @@
 # 拓扑: 单机 PP2×TP2（占满 4 卡, 直发 :8000）
 # 六阶段:
 #   [1/6] patch:   apply_patches.sh（kvc 01~07 管理侧打印 + 08 v2.5 物理KV原样归档, 请求子目录 + 块-行映射）
-#   [2/6] 起服务:  server/start.sh（自动 export KVC_SAVE_KV=1 + KVC_SAVE_DIR=<工作区>/tensors）
+#   [2/6] 起服务:  server/start.sh（自动 export KVC_SAVE_KV=1 + KVC_SAVE_DIR=kvc/tensors 相对路径）
 #                  → 就绪（500s 超时; 四 worker 物理池横幅×4）
 #   [3/6] 发请求:  curl/curl_p_r.sh（P/R 双请求 + 打屏留痕 + 三段 [KVC] 轨迹 + 等归档）
 #   [4/6] 验归档:  tensors/req{seq}_{rid尾8}/kv_pp{p}tp{t}.pt 共 8 个（4 worker × P/R）
@@ -87,7 +87,7 @@ ls -laR tensors/ 2>/dev/null || true
 echo "===== [5/6] 容器内初检 ====="
 echo "-- 归档查看报告（逐请求逐 worker 逐 block 的 K/V shape/dtype/tensor 预览） --"
 python3 scripts/analysis/inspect_kv_tensors.py --dir tensors || echo "[WARN] 报告生成异常"
-echo "-- 前缀复用关系检查（pairwise: 命中关系 + 重算段 ULP 一致性） --"
+echo "-- 前缀复用关系检查（pairwise 命中关系） --"
 python3 scripts/analysis/inspect_prefix.py --dir tensors || echo "[WARN] 前缀检查生成异常"
 
 echo "===== [6/6] 打包产物 (kvc_bundle.tar.gz = logs/ + tensors/, 供主机侧 fetch) ====="
