@@ -46,16 +46,14 @@ kvc/
     └── 0_kvcache_e2e_record.md        E2E 实验全记录
 ```
 
-## 2. 环境快照（本轮实测，2026-10-08 03:37）
+## 2. 环境快照
 
 | 项 | 值 |
 |---|---|
 | Pod / 卡 | gggtest（a3, 4×hpu910a3）@ gpuxdn010030015012.guian02 |
 | 模型 / 基线 | Meta-Llama-3-8B bf16（32 层, kv_heads 8→4/TP2, block_size 128）；vllm @0fc695f + vllm-ascend @5cb98c（v0.23.0，git 干净打补丁） |
-| 服务 | `vllm serve --enforce-eager -tp2 -pp2`（单实例占 4 卡）；就绪 ~50s；APIServer 13648 / EngineCore 13755 / worker 13852~13855 = npu:0~3 |
+| 服务 | `vllm serve --enforce-eager -tp2 -pp2`（单实例占 4 卡），就绪 ~50s |
 | KV 池 | num_blocks=13291；每 worker 每层 K/V 分离 `(13291,128,4,128)` bf16 |
-| 归档开关 | `KVC_SAVE_KV=1`（默认关零侵入）+ `KVC_SAVE_DIR=kvc/tensors`（相对路径, start.sh 自导出） |
-| 节奏 | 03:37:53 run_all 启动 → 50s 就绪 → P 03:38:49（TERM 归档×4）→ 7s → R 03:38:56（TERM 归档×4）→ 03:39:26 产物就绪并打包 → 主机 fetch |
 
 ## 3. 离线查看快速上手（本地，torch CPU 即可）
 
