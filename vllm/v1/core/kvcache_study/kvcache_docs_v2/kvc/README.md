@@ -27,23 +27,23 @@
 
 ```
 kvc/
-├── README.md                          本文件
-├── scripts/                           操作脚本 + 补丁 + 请求体（五子目录, 前四目录与 logs/ 一一对应）
-│   ├── server/                        服务生命周期 + 一键编排（start.sh / stop.sh / run_all.sh：补丁→服务→curl→验归档→双初检→打包）
-│   ├── patchs/                        补丁与应用/回滚（01~07 管理侧 155 行 + 08 v2.5 块-行映射归档 19 行 + apply/revert_patches.sh + 98 调用点清单）
-│   ├── curl/                          P/R 请求（curl_p_r.sh 发送 + gen_cn_requests.py 生成 + req_p/req_r.json 请求体）
-│   ├── analysis/                      离线检查双脚本（inspect_kv_tensors.py 查看器 v2.5 + inspect_prefix.py 前缀复用关系检查 -> logs/analysis/*.out）
-│   └── recover/pull_artifacts.sh      产物回收（主机侧 fetch 单命令；打包已并入 run_all [6/6]）
-├── logs/                              本轮（v2.5，03:37）产物 · 四子目录, 与 scripts/ 前四目录一一对应
-│   ├── server/                        llama-3-8b.log（服务全量 1186 行）+ run_all_screen.log（一键留痕）
-│   ├── patchs/                        kvc_startup / kvc_p / kvc_r / kvs_archive_lines.log（patch 打印日志拆解轨迹 172/61/719/20 行）
-│   ├── curl/                          resp_p / resp_r.json + curl_screen.log（响应与打屏；请求体在 scripts/curl/）
-│   └── analysis/                      inspect_kv_tensors.out / inspect_prefix.out（查看报告 + 前缀复用关系 pairwise 检查）
-├── tensors/                           物理 tensor 归档（本轮 rid 尾8 P=8e22e700 / R=8d83db92）
-│   └── req{seq}_{rid尾8}/kv_pp{pp}tp{tp}.pt × 2 目录 × 4 worker       一请求一子目录（12/20 MiB）
+├── README.md                          本文件：工作区速览与复现指引
+├── scripts/                           操作脚本 + 补丁 + 请求体
+│   ├── server/                        服务起停与一键编排（start/stop/run_all.sh）
+│   ├── patchs/                        01~08 调试补丁 + apply/revert 脚本
+│   ├── curl/                          请求体生成与 P/R 发送（curl_p_r.sh）
+│   ├── analysis/                      归档查看器 + 前缀复用检查器
+│   └── recover/                       主机侧产物回收（pull_artifacts.sh fetch）
+├── logs/                              实验产物（子目录与 scripts/ 前四目录对应）
+│   ├── server/                        服务全量日志 + run_all 编排留痕
+│   ├── patchs/                        [KVC]/[KVS] 打印轨迹拆解
+│   ├── curl/                          响应体 + curl 打屏记录
+│   └── analysis/                      两个检查器的输出报告
+├── tensors/                           物理 KV 归档（.pt）
+│   ├── view_pt.py                     .pt 张量查看脚本
+│   └── req{seq}_{rid尾8}/             一请求一子目录，每 worker 一份 kv_pp?tp?.pt
 └── docs/                              分析文档
-    └── 0_kvcache_e2e_record.md                          E2E 全记录（用例设计 + 启动期/P/R 生命周期
-                                                          + v2.5 归档互证/六项验证，原 docs 1/2 合并）
+    └── 0_kvcache_e2e_record.md        E2E 实验全记录
 ```
 
 ## 2. 环境快照（本轮实测，2026-10-08 03:37）
