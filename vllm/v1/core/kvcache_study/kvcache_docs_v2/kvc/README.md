@@ -32,13 +32,13 @@ kvc/
 │   ├── server/                        服务生命周期 + 一键编排（start.sh / stop.sh / run_all.sh：补丁→服务→curl→验归档→双初检→打包）
 │   ├── patchs/                        补丁与应用/回滚（01~07 管理侧 155 行 + 08 v2.5 块-行映射归档 19 行 + apply/revert_patches.sh + 98 调用点清单）
 │   ├── curl/                          P/R 请求（curl_p_r.sh 发送 + gen_cn_requests.py 生成 + req_p/req_r.json 请求体）
-│   ├── analysis/                      离线检查双脚本（inspect_kv_tensors.py 查看器 v2.5 + inspect_prefix.py 前缀复用重算一致性检查 -> logs/analysis/*.out）
+│   ├── analysis/                      离线检查双脚本（inspect_kv_tensors.py 查看器 v2.5 + inspect_prefix.py 前缀复用关系检查 -> logs/analysis/*.out）
 │   └── recover/pull_artifacts.sh      产物回收（主机侧 fetch 单命令；打包已并入 run_all [6/6]）
 ├── logs/                              本轮（v2.5，15:16）产物 · 四子目录, 与 scripts/ 前四目录一一对应
 │   ├── server/                        llama-3-8b.log（服务全量 1182 行）+ run_all_screen.log（一键留痕）
 │   ├── patchs/                        kvc_startup / kvc_p / kvc_r / kvs_archive_lines.log（patch 打印日志拆解轨迹 172/61/719/20 行）
 │   ├── curl/                          resp_p / resp_r.json + curl_screen.log（响应与打屏；请求体在 scripts/curl/）
-│   └── analysis/                      inspect_kv_tensors.out / inspect_prefix.out（查看报告 + 前缀复用重算一致性检查）
+│   └── analysis/                      inspect_kv_tensors.out / inspect_prefix.out（查看报告 + 前缀复用关系 pairwise 检查）
 ├── tensors/                           物理 tensor 归档（本轮 rid 尾8 P=bdd8c88d / R=9eb8d7fa）
 │   └── req{seq}_{rid尾8}/kv_pp{pp}tp{tp}.pt × 2 目录 × 4 worker       一请求一子目录（12/20 MiB）
 └── docs/                              分析文档
@@ -63,7 +63,7 @@ kvc/
 cd kvc
 python3 scripts/analysis/inspect_kv_tensors.py --dir tensors                 # 归档查看报告 -> logs/analysis/inspect_kv_tensors.out
 python3 scripts/analysis/inspect_kv_tensors.py --dir tensors --preview 8     # tensor 预览前 8 值（默认 4）
-python3 scripts/analysis/inspect_prefix.py --dir tensors                    # 前缀复用重算一致性检查 -> logs/analysis/inspect_prefix.out
+python3 scripts/analysis/inspect_prefix.py --dir tensors                    # 前缀复用关系检查 -> logs/analysis/inspect_prefix.out
 ```
 
 ## 4. 复现（本地源码仓用本地路径；容器内传环境变量或用 run_all 一键）

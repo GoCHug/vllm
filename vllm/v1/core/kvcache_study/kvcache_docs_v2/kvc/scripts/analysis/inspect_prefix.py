@@ -10,10 +10,6 @@
 #   2. 按 seq 排序, 两两判定 "前缀复用关系":
 #      —— 晚请求 block_table 与早请求 block_table 的公共头部块 k 个
 #         (早请求种块, 晚请求命中 -> prefix cache 复用; k=0 视为无关系跳过)
-#   3. 对每一对(早 -> 晚)做重算一致性检查:
-#      A) 重算一致性(ULP): 若早请求第 k 块为部分块(尾块)且晚请求第 k 块为
-#         对应重算新块, 比较同 token 段 [0:cov早] 的位翻转与 Pearson
-#         —— 分层统计(L0 与末层): L0 仅 ULP 级, 深层呈残差流放大
 #
 # 输出: logs/analysis/inspect_prefix.out（报告式, 逐对一节 + 汇总）
 # 用法:
@@ -38,18 +34,6 @@ def load_bundle(path):
     return b
 
 
-def sig16(t):
-    return t.view(torch.int16)
-
-
-def pearson(a, b):
-    a = a.float().flatten()
-    b = b.float().flatten()
-    a = a - a.mean()
-    b = b - b.mean()
-    return (a @ b / (a.norm() * b.norm())).item()
-
-
 class Req:
     """一个请求的全部 worker 归档 + meta。"""
 
@@ -67,15 +51,6 @@ class Req:
         self.cov = list(m.get("cov", []))
         self.bs = m.get("block_size", 128)
         self.layers = m.get("layers", len(m.get("layer_ids", [])))
-        self._cache = {}
-
-    def b(self, f):
-        if f not in self._cache:
-            self._cache[f] = load_bundle(f)
-        return self._cache[f]
-
-    def block(self, f, kv, layer, blk):
-        return self.b(f)[kv][layer].get(int(blk))
 
 
 def shared_head(a, b):
@@ -143,31 +118,6 @@ def report(args) -> int:
         say(f"  共享表头块: {shared} (k={k}, 命中 tokens ≈ {hit})")
         say(f"  早请求: {a.rid}  块表={a.table}  cov={a.cov}")
         say(f"  晚请求: {b.rid}  块表={b.table}  cov={b.cov}")
-
-        # ---- A: 重算一致性(ULP, 同 token 段) ----
-        # 早请求第 k 块(部分块) vs 晚请求第 k 块(重算新块), 比较 [:cov_k]
-        if k < len(a.table) and k < len(b.table):
-            ca = a.cov[k] if k < len(a.cov) else a.bs
-            blk_a, blk_b = a.table[k], b.table[k]
-            if ca < a.bs and int(blk_a) != int(blk_b):
-                say(f"  A) 重算一致性(同 token 段前 {ca} 槽): 早 req b{blk_a} vs 晚 req b{blk_b}:")
-                for lay in (0, a.layers - 1):
-                    for kv in ("K", "V"):
-                        ta = a.block(a.files[0], kv, lay, blk_a)
-                        tb = b.block(b.files[0], kv, lay, blk_b)
-                        if ta is None or tb is None:
-                            continue
-                        x, y = ta[:ca], tb[:ca]
-                        neq = int((sig16(x) != sig16(y)).sum())
-                        pr = pearson(x, y)
-                        n = x.numel()
-                        note = "仅 ULP 级" if neq / n < 0.002 else "深层残差流放大属正常"
-                        say(f"     L{lay:02d} {kv}: 位翻转 {neq}/{n} ({neq / n:.2%}), "
-                            f"Pearson={pr:.6f} ({note})")
-            else:
-                say("  A) 无重叠重算段(早请求第 k 块非部分块或块号相同), 跳过")
-        else:
-            say("  A) 单块请求或长短不足, 跳过")
         say()
 
     # ---------- 汇总 ----------
@@ -175,8 +125,7 @@ def report(args) -> int:
     if not pairs:
         say("[DONE] 无前缀复用关系对; 归档请求如上。")
     else:
-        say(f"[DONE] 前缀复用关系对 {len(pairs)} 个; A 重算一致性统计如上" 
-            "(信息性: L00 仅 ULP 级 / 深层残差流放大属正常)。")
+        say(f"[DONE] 前缀复用关系对 {len(pairs)} 个。")
     say("=" * W)
 
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

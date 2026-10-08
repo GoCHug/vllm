@@ -558,12 +558,11 @@ INFO 10-03 15:17:40 [model_runner_v1.py:2623] [KVC][KVS] ======== 完成保存�
 
 **时序细节**（与 P 的差异，kvc_r.log 行号）：4 卡开始横幅 :701~704 仍先于最后一步调度提交（:705~708）与释放横幅 :709（同步快照先行）；完成横幅 4 条（:716~719）全部落在释放完成（:715）**之后**——R 的 flush 42.9~47.9 ms 由后台线程执行，EngineCore 已先行归还块，落盘早晚互不影响（数据在开始横幅前的同步 clone 已位级脱离物理池）。
 
-**离线互证**（logs/analysis/inspect_prefix.out + logs/analysis/inspect_kv_tensors.out）——重算一致性统计（A）：
+**离线互证**（logs/analysis/inspect_prefix.out + logs/analysis/inspect_kv_tensors.out）：
 
 | 验证项 | 结果 | 原始输出 |
 |---|---|---|
 | 横幅 vs meta / 字节对账 | 开始横幅 worker/blk/cov/group_size = .pt meta **8/8**（group_size=16）；完成横幅字节数 = 实际文件 **8/8** | 实验轮内对账（[4/6] 归档 8/8 + fetch 后横幅 vs meta/字节复核） |
-| 重算一致性（ULP 级） | 同 token 段 P.b3[:68]（324-tok prefill）vs R.b4[:68]（486-tok prefill）：L00 仅 K 2/34816、V 18/34816 元素位翻转（Pearson=1.000001）——**多轮独立重跑完全一致（位级确定性）**；L15 经 0~14 层残差流放大呈大面积位级漂移（77%/88%），Pearson 0.999970/0.999887——bf16 数值敏感性的自然现象，非数据错误 | inspect_prefix.out A |
 | 首块首 token 跨证 | K 前 3 值 [0.5078, 0.9336, 0.9219] 多轮独立重跑逐位一致——位级确定性互证 | inspect_kv_tensors.out |
 
 ### 5.6 结束释放（五块逆序释放与计数自检）
@@ -601,7 +600,7 @@ INFO 10-03 15:17:40 [kv_cache_coordinator.py:302] [KVC][L4] ======== 释放完�
 | `logs/patchs/kvs_archive_lines.log`（20 行） | [KVS] 横幅留痕（4 启用 + 8 开始 + 8 完成） |
 | `logs/curl/curl_screen.log` + `req_*.json` / `resp_*.json` | curl 命令与响应打屏（用例设计见 §1.2） |
 | `logs/analysis/inspect_kv_tensors.out` | 归档查看报告（块-行映射查看器：逐请求 × worker × block 的块-行映射网格（1 block 竖跨 group_size 层逐层列行号）+ 第 0 层张量 shape/dtype/预览示例） |
-| `logs/analysis/inspect_prefix.out` | 前缀复用关系 pairwise 列表 + 重算一致性检查（A：L00 仅 ULP 级 / 深层残差流放大属正常）；横幅 vs meta/字节对账在实验轮内完成（[4/6] + fetch 复核） |
+| `logs/analysis/inspect_prefix.out` | 前缀复用关系 pairwise 列表（共享表头块/命中 tokens/早→晚块表对照）；横幅 vs meta/字节对账在实验轮内完成（[4/6] + fetch 复核） |
 | `logs/server/run_all_screen.log` | 容器侧一键编排留痕（patch → serve → curl → 初检 → [6/6] 打包） |
 | `tensors/req{seq}_{rid尾8}/kv_pp?tp?.pt` **× 8**（一请求一子目录 × 4 worker）| 物理 KV 归档（P 12.0 MiB + R 20.0 MiB 每 worker，meta.group_size=16；fetch 后 8/8 就位核对） |
 
