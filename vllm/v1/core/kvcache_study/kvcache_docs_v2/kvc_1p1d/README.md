@@ -15,14 +15,13 @@ kvc_1p1d/
 │   ├── curl/                          请求: curl_pd.sh(proxy 双发+六段轨迹) + gen_pd_requests.py + req_{p,r}.json
 │   ├── analysis/                      离线五检查器: inspect_kv_tensors_{p,d} / inspect_prefix_{p,d} / inspect_p2d
 │   └── recover/pull_artifacts.sh      产物回收(fetch 单模式)
-├── logs/                               四子目录(与 scripts/ 前四目录一一对应)
+├── logs/                               本轮产物(与 scripts/ 前四目录对应)
 │   ├── server/                        p_llama / d_llama / proxy / run_all_screen.log
 │   ├── patchs/                        kvc_{p,d}_{startup,reqp,reqr}.log + kvs_{p,d}_archive_lines.log
 │   ├── curl/                          resp_{p,r}.json + curl_{p,r}_screen.txt
 │   └── analysis/                      inspect_kv_tensors_{p,d}.out / inspect_prefix_{p,d}.out / inspect_p2d.out
-├── tensors/                           物理 KV 归档(P/D 首层分目录, 同 seq 跨侧配对)
-│   ├── P/req{seq}_{rid尾8}/kv_pp0tp0.pt
-│   └── D/req{seq}_{rid尾8}/kv_pp0tp0.pt
+├── tensors/                           物理 KV 归档(一请求一目录, 请求内分 P/D)
+│   └── req{seq}/{P,D}/kv_pp0tp0.pt
 └── docs/                              0_pd_request_lifecycle.md + 0_kvcache_e2e_record.md
 ```
 
@@ -65,7 +64,7 @@ bash scripts/recover/pull_artifacts.sh fetch                     # 经 5557 隧�
 | 检查器 | 功能 |
 |---|---|
 | `bash scripts/analysis/inspect_kv_tensors_{p,d}.py` | P/D 侧归档查看报告（逐请求逐 block 的块-行映射网格 + 第 0 层 shape/dtype/tensor 预览） |
-| `python3 scripts/analysis/inspect_prefix_{p,d}.py --dir tensors/{P,D}` | 侧内前缀复用关系（早请求种块 → 晚请求命中共享表头块 pairwise 检查） |
+| `python3 scripts/analysis/inspect_prefix_{p,d}.py --dir tensors` | 侧内前缀复用关系（早请求种块 → 晚请求命中共享表头块 pairwise 检查） |
 | `python3 scripts/analysis/inspect_p2d.py --dir tensors` | **P→D 传输正确性**（seq 配对 → Tx 区逐位 torch.equal + 重算槽/decode 段语义归因 → verdict） |
 
 产物路径：`logs/analysis/inspect_*_{p,d,p2d}.out`（与 scripts/analysis/ 按名一一对应）。

@@ -1,9 +1,9 @@
-INFO:     Started server process [62914]
+INFO:     Started server process [4036]
 INFO:     Waiting for application startup.
-2026-10-04 05:48:27,169 INFO [load_balance_proxy_server_example] Initialized 1 prefill clients and 1 decode clients in worker 62914.
+2026-10-09 06:55:37,936 INFO [load_balance_proxy_server_example] Initialized 1 prefill clients and 1 decode clients in worker 4036.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://localhost:8000 (Press CTRL+C to quit)
-INFO:     ::1:53810 - "GET /healthcheck HTTP/1.1" 200 OK
-INFO:     ::1:53814 - "GET /healthcheck HTTP/1.1" 200 OK
-INFO:     ::1:53830 - "POST /v1/completions HTTP/1.1" 200 OK
-INFO:     ::1:46416 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     ::1:48296 - "GET /healthcheck HTTP/1.1" 200 OK
+INFO:     ::1:48310 - "GET /healthcheck HTTP/1.1" 200 OK
+INFO:     ::1:48318 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     ::1:33610 - "POST /v1/completions HTTP/1.1" 200 OK

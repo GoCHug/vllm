@@ -1,60 +1,60 @@
-INFO 10-04 05:48:38 [request.py:184] [KVC][ENQ] ======== 入队 ========
-INFO 10-04 05:48:38 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=3e70bebd55d2
-INFO 10-04 05:48:38 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=3e70bebd55d2, tokens=128 -> BlockHash=b9ae9c20621b
-INFO 10-04 05:48:38 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=b9ae9c20621b, tokens=128 -> BlockHash=c5e168beb751
-INFO 10-04 05:48:38 [request.py:187] [KVC][ENQ] Request(request_id=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c) 入队: num_prompt_tokens=486, max_tokens=1, 满块链式哈希 BlockHash × 3: ['3e70bebd55d2', 'b9ae9c20621b', 'c5e168beb751']
-INFO 10-04 05:48:38 [request.py:193] [KVC][ENQ] ======== 入队完成 ========
-INFO 10-04 05:48:38 [kv_cache_manager.py:222] [KVC][L5] ======== 前缀查找 ========
-INFO 10-04 05:48:38 [kv_cache_coordinator.py:477] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit: 满块hash数=3, max_cache_hit_length=485, 下钻 single_type_managers[0]
-INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:586] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit: block_size=128, max_length=485, 最多查 3 个hash, groups=[0], spec=FullAttentionSpec
-INFO 10-04 05:48:38 [block_pool.py:75] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=3e70bebd55d2, group_id=0) -> HIT KVCacheBlock(block_id=1)
-INFO 10-04 05:48:38 [block_pool.py:254] [KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash=3e70bebd55d2 groups=[0] -> blocks=[1]
-INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:599] [KVC][L3] 前缀查找   第 1 块 HIT: BlockHash=3e70bebd55d2 -> cached blocks=[1]
-INFO 10-04 05:48:38 [block_pool.py:75] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=b9ae9c20621b, group_id=0) -> HIT KVCacheBlock(block_id=2)
-INFO 10-04 05:48:38 [block_pool.py:254] [KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash=b9ae9c20621b groups=[0] -> blocks=[2]
-INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:599] [KVC][L3] 前缀查找   第 2 块 HIT: BlockHash=b9ae9c20621b -> cached blocks=[2]
-INFO 10-04 05:48:38 [block_pool.py:89] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=c5e168beb751, group_id=0) -> MISS
-INFO 10-04 05:48:38 [block_pool.py:247] [KVC][L2] 前缀查找 BlockPool.get_cached_block: MISS BlockHash=c5e168beb751 (group_id=0 未命中) -> None
-INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:607] [KVC][L3] 前缀查找   第 3 块 MISS: BlockHash=c5e168beb751 -> break
-INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:623] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit 返回: computed_blocks=[[1, 2]]
-INFO 10-04 05:48:38 [kv_cache_coordinator.py:495] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: hit_blocks=[[1, 2]], hit_length=256
-INFO 10-04 05:48:38 [kv_cache_manager.py:249] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c num_tokens=486, max_cache_hit_length=485, hit_length=256, hit_blocks=[[1, 2]]
-INFO 10-04 05:48:38 [kv_cache_manager.py:265] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks 返回: KVCacheBlocks(blocks=([1, 2],)), num_computed_tokens=256
-INFO 10-04 05:48:38 [kv_cache_manager.py:270] [KVC][L5] ======== 前缀查找完成 ========
-INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
-INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_new_tokens=230(new), num_new_computed_tokens=256(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=0(comp), request.num_tokens=486, delay_cache_blocks=False
-INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=0 |<new_comp>=256 |<ext_comp>=0(P传D) |<new>=230 |<lookahead>=0| num_local_computed_tokens=256 total_computed_tokens=256 to_be_computed=230
-INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
-INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens=486 -> 需分配 4 块(含touch需腾挪的块)
-INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 4 块 vs 可用 2160 块 (free=2160 - reserved=0)
-INFO 10-04 05:48:38 [kv_cache_manager.py:482] [KVC][L5] --- S2: touch 命中块 ---
-INFO 10-04 05:48:38 [kv_cache_manager.py:484] [KVC][L5] S2 allocate_new_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, new_computed_blocks=[[1, 2]]
-INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:243] [KVC][L3] S2 SingleTypeKVCacheManager.allocate_new_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, touch 命中块 [1, 2], 此前请求持有块数=0
-INFO 10-04 05:48:38 [block_pool.py:496] [KVC][L2] S2 BlockPool.touch: blocks=[(1, 1), (2, 1)] (ref_cnt 已 +1)
-INFO 10-04 05:48:38 [kv_cache_coordinator.py:220] [KVC][L4] S2 KVCacheCoordinator.allocate_new_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, group=0, new_computed_blocks=[1, 2], num_local_computed_tokens=256
-INFO 10-04 05:48:38 [kv_cache_manager.py:500] [KVC][L5] --- S3: 新块分配 ---
-INFO 10-04 05:48:38 [block_pool.py:416] [KVC][L2] S3 BlockPool.get_new_blocks(2): popleft_n -> block_ids=[4, 5], 剩余 num_free_blocks=2156
-INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:303] [KVC][L3] S3 SingleTypeKVCacheManager.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens=486, block_size=128, 需 4 块 - 已有 2 = 新分配 2 块 [4, 5], 持有 req_blocks=[1, 2, 4, 5]
-INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens=486 -> [[4, 5]]
-INFO 10-04 05:48:38 [kv_cache_manager.py:511] [KVC][L5] S3 allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens_need_slot=486 -> 新块 [4, 5]
-INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
-INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:357] [KVC][L3] S4 SingleTypeKVCacheManager.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens=486, block_size=128, 已缓存 2 块 -> 满块数 3
-INFO 10-04 05:48:38 [block_pool.py:113] [KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=c5e168beb751, group_id=0) <- KVCacheBlock(block_id=4), map size=3
-INFO 10-04 05:48:38 [block_pool.py:345] [KVC][L2] S4 BlockPool.cache_full_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c 新满块 1 块 block_ids=[4] 入 BlockHashToBlockMap (num_cached_blocks 2 -> 3, group_id=0, map size=3)
-INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_computed_tokens=486
-INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens_to_cache=486
-INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([4, 5],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c 当前完整 block_table=([1, 2, 4, 5],)
-INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
-INFO 10-04 05:48:38 [model_runner_v1.py:2586] [KVC][KVS] ======== 开始保存物理tensor side=P worker=PP0_TP0 dev=npu:0 TERM seq=2 req尾8=996fd16c: K_cache/V_cache(双独立张量池, 每块 shape=(128,8,128) torch.bfloat16, 含未写槽位) 32 层 × 4 块 blk=[1, 2, 4, 5] cov=[128, 128, 128, 102] -> P/req2_996fd16c/kv_pp0tp0.pt ========
-INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
-INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_computed_tokens=486 (async 步末输出路径: 本步已算 token 提交入缓存)
-INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_computed_tokens=486
-INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
-INFO 10-04 05:48:38 [kv_cache_manager.py:566] [KVC][L5] ======== 释放 ========
-INFO 10-04 05:48:38 [kv_cache_manager.py:568] [KVC][L5] 释放 KVCacheManager.free: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, 释放前持有 block_table=([1, 2, 4, 5],)
-INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:405] [KVC][L3] 释放 SingleTypeKVCacheManager.free: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, 持有 blocks=[1, 2, 4, 5] (reversed 后释放)
-INFO 10-04 05:48:38 [block_pool.py:521] [KVC][L2] 释放 BlockPool.free_blocks: blocks=[(5, 0), (4, 0), (2, 0), (1, 0)] (ref_cnt 已 -1), 归零回收 4 块 [5, 4, 2, 1], append_n -> 队尾(LRU保护)
-INFO 10-04 05:48:38 [kv_cache_utils.py:391] [KVC][L2] 释放 FreeKVCacheBlockQueue.append_n(blocks=[5, 4, 2, 1]), num_free_blocks=2160
-INFO 10-04 05:48:38 [kv_cache_coordinator.py:299] [KVC][L4] 释放 KVCacheCoordinator.free: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c 已逐组下放第3层释放
-INFO 10-04 05:48:38 [kv_cache_coordinator.py:302] [KVC][L4] ======== 释放完成 ========
-INFO 10-04 05:48:38 [model_runner_v1.py:2637] [KVC][KVS] ======== 完成保存物理tensor side=P worker=PP0_TP0 dev=npu:0 seq=2 req尾8=996fd16c: P/req2_996fd16c/kv_pp0tp0.pt (K_cache/V_cache, 32 层 × 4 块, 67181963 B = 64.1 MiB) 落盘 89.3 ms ========
+INFO 10-09 06:55:49 [request.py:184] [KVC][ENQ] ======== 入队 ========
+INFO 10-09 06:55:49 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=be4042233213
+INFO 10-09 06:55:49 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=be4042233213, tokens=128 -> BlockHash=c6534205b988
+INFO 10-09 06:55:49 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=c6534205b988, tokens=128 -> BlockHash=c70b01f27731
+INFO 10-09 06:55:49 [request.py:187] [KVC][ENQ] Request(request_id=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385) 入队: num_prompt_tokens=486, max_tokens=1, 满块链式哈希 BlockHash × 3: ['be4042233213', 'c6534205b988', 'c70b01f27731']
+INFO 10-09 06:55:49 [request.py:193] [KVC][ENQ] ======== 入队完成 ========
+INFO 10-09 06:55:49 [kv_cache_manager.py:222] [KVC][L5] ======== 前缀查找 ========
+INFO 10-09 06:55:49 [kv_cache_coordinator.py:477] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit: 满块hash数=3, max_cache_hit_length=485, 下钻 single_type_managers[0]
+INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:586] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit: block_size=128, max_length=485, 最多查 3 个hash, groups=[0], spec=FullAttentionSpec
+INFO 10-09 06:55:49 [block_pool.py:75] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=be4042233213, group_id=0) -> HIT KVCacheBlock(block_id=1)
+INFO 10-09 06:55:49 [block_pool.py:254] [KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash=be4042233213 groups=[0] -> blocks=[1]
+INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:599] [KVC][L3] 前缀查找   第 1 块 HIT: BlockHash=be4042233213 -> cached blocks=[1]
+INFO 10-09 06:55:49 [block_pool.py:75] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=c6534205b988, group_id=0) -> HIT KVCacheBlock(block_id=2)
+INFO 10-09 06:55:49 [block_pool.py:254] [KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash=c6534205b988 groups=[0] -> blocks=[2]
+INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:599] [KVC][L3] 前缀查找   第 2 块 HIT: BlockHash=c6534205b988 -> cached blocks=[2]
+INFO 10-09 06:55:49 [block_pool.py:89] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=c70b01f27731, group_id=0) -> MISS
+INFO 10-09 06:55:49 [block_pool.py:247] [KVC][L2] 前缀查找 BlockPool.get_cached_block: MISS BlockHash=c70b01f27731 (group_id=0 未命中) -> None
+INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:607] [KVC][L3] 前缀查找   第 3 块 MISS: BlockHash=c70b01f27731 -> break
+INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:623] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit 返回: computed_blocks=[[1, 2]]
+INFO 10-09 06:55:49 [kv_cache_coordinator.py:495] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: hit_blocks=[[1, 2]], hit_length=256
+INFO 10-09 06:55:49 [kv_cache_manager.py:249] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385 num_tokens=486, max_cache_hit_length=485, hit_length=256, hit_blocks=[[1, 2]]
+INFO 10-09 06:55:49 [kv_cache_manager.py:265] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks 返回: KVCacheBlocks(blocks=([1, 2],)), num_computed_tokens=256
+INFO 10-09 06:55:49 [kv_cache_manager.py:270] [KVC][L5] ======== 前缀查找完成 ========
+INFO 10-09 06:55:49 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+INFO 10-09 06:55:49 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_new_tokens=230(new), num_new_computed_tokens=256(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=0(comp), request.num_tokens=486, delay_cache_blocks=False
+INFO 10-09 06:55:49 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=0 |<new_comp>=256 |<ext_comp>=0(P传D) |<new>=230 |<lookahead>=0| num_local_computed_tokens=256 total_computed_tokens=256 to_be_computed=230
+INFO 10-09 06:55:49 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+INFO 10-09 06:55:49 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens=486 -> 需分配 4 块(含touch需腾挪的块)
+INFO 10-09 06:55:49 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 4 块 vs 可用 2160 块 (free=2160 - reserved=0)
+INFO 10-09 06:55:49 [kv_cache_manager.py:482] [KVC][L5] --- S2: touch 命中块 ---
+INFO 10-09 06:55:49 [kv_cache_manager.py:484] [KVC][L5] S2 allocate_new_computed_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, new_computed_blocks=[[1, 2]]
+INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:243] [KVC][L3] S2 SingleTypeKVCacheManager.allocate_new_computed_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, touch 命中块 [1, 2], 此前请求持有块数=0
+INFO 10-09 06:55:49 [block_pool.py:496] [KVC][L2] S2 BlockPool.touch: blocks=[(1, 1), (2, 1)] (ref_cnt 已 +1)
+INFO 10-09 06:55:49 [kv_cache_coordinator.py:220] [KVC][L4] S2 KVCacheCoordinator.allocate_new_computed_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, group=0, new_computed_blocks=[1, 2], num_local_computed_tokens=256
+INFO 10-09 06:55:49 [kv_cache_manager.py:500] [KVC][L5] --- S3: 新块分配 ---
+INFO 10-09 06:55:49 [block_pool.py:416] [KVC][L2] S3 BlockPool.get_new_blocks(2): popleft_n -> block_ids=[4, 5], 剩余 num_free_blocks=2156
+INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:303] [KVC][L3] S3 SingleTypeKVCacheManager.allocate_new_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens=486, block_size=128, 需 4 块 - 已有 2 = 新分配 2 块 [4, 5], 持有 req_blocks=[1, 2, 4, 5]
+INFO 10-09 06:55:49 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens=486 -> [[4, 5]]
+INFO 10-09 06:55:49 [kv_cache_manager.py:511] [KVC][L5] S3 allocate_new_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens_need_slot=486 -> 新块 [4, 5]
+INFO 10-09 06:55:49 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:357] [KVC][L3] S4 SingleTypeKVCacheManager.cache_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens=486, block_size=128, 已缓存 2 块 -> 满块数 3
+INFO 10-09 06:55:49 [block_pool.py:113] [KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=c70b01f27731, group_id=0) <- KVCacheBlock(block_id=4), map size=3
+INFO 10-09 06:55:49 [block_pool.py:345] [KVC][L2] S4 BlockPool.cache_full_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385 新满块 1 块 block_ids=[4] 入 BlockHashToBlockMap (num_cached_blocks 2 -> 3, group_id=0, map size=3)
+INFO 10-09 06:55:49 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_computed_tokens=486
+INFO 10-09 06:55:49 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens_to_cache=486
+INFO 10-09 06:55:49 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([4, 5],)), req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385 当前完整 block_table=([1, 2, 4, 5],)
+INFO 10-09 06:55:49 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+INFO 10-09 06:55:49 [model_runner_v1.py:2585] [KVC][KVS] ======== 开始保存物理tensor side=P worker=PP0_TP0 dev=npu:0 TERM seq=2 req尾8=825ca385: 保存文件=req2/P/kv_pp0tp0.pt, 张量内容=K_cache/V_cache(双独立张量池, 每块 shape=(128,8,128) torch.bfloat16, 含未写槽位) 32 层 × 4 块 blk=[1, 2, 4, 5] cov=[128, 128, 128, 102] ========
+INFO 10-09 06:55:49 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+INFO 10-09 06:55:49 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_computed_tokens=486 (async 步末输出路径: 本步已算 token 提交入缓存)
+INFO 10-09 06:55:49 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_computed_tokens=486
+INFO 10-09 06:55:49 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+INFO 10-09 06:55:49 [kv_cache_manager.py:566] [KVC][L5] ======== 释放 ========
+INFO 10-09 06:55:49 [kv_cache_manager.py:568] [KVC][L5] 释放 KVCacheManager.free: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, 释放前持有 block_table=([1, 2, 4, 5],)
+INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:405] [KVC][L3] 释放 SingleTypeKVCacheManager.free: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, 持有 blocks=[1, 2, 4, 5] (reversed 后释放)
+INFO 10-09 06:55:49 [block_pool.py:521] [KVC][L2] 释放 BlockPool.free_blocks: blocks=[(5, 0), (4, 0), (2, 0), (1, 0)] (ref_cnt 已 -1), 归零回收 4 块 [5, 4, 2, 1], append_n -> 队尾(LRU保护)
+INFO 10-09 06:55:49 [kv_cache_utils.py:391] [KVC][L2] 释放 FreeKVCacheBlockQueue.append_n(blocks=[5, 4, 2, 1]), num_free_blocks=2160
+INFO 10-09 06:55:49 [kv_cache_coordinator.py:299] [KVC][L4] 释放 KVCacheCoordinator.free: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385 已逐组下放第3层释放
+INFO 10-09 06:55:49 [kv_cache_coordinator.py:302] [KVC][L4] ======== 释放完成 ========
+INFO 10-09 06:55:49 [model_runner_v1.py:2637] [KVC][KVS] ======== 完成保存物理tensor side=P worker=PP0_TP0 dev=npu:0 seq=2 req尾8=825ca385: req2/P/kv_pp0tp0.pt (K_cache/V_cache, 32 层 × 4 块, 67181963 B = 64.1 MiB) 落盘 88.8 ms ========

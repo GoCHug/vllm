@@ -5,7 +5,7 @@
 # 08 号补丁为 1P1D PD 分离版(block 结构 kvt4-raw + 角色感知):
 #   请求结束(TERM)把该请求在本实例的全部物理 KV 块整块(含未写槽位,
 #   .cpu().clone() 位级快照)原样 torch.save 归档为 .pt —— P/D 各自独立目录
-#   {KVC_SAVE_DIR}/{side}/req{seq}_{rid尾8}/kv_pp{tp}.pt。
+#   {KVC_SAVE_DIR}/req{seq}/{side}/kv_pp{tp}.pt。
 #   side 取 kv_role(producer→P / consumer→D); 同 seq 跨侧 = 同一业务请求。
 #   env 开关: KVC_SAVE_KV=1 启用(默认关, 零侵入); KVC_SAVE_DIR 输出目录。
 #

@@ -1,21 +1,22 @@
+diff --git a/vllm_ascend/worker/model_runner_v1.py b/vllm_ascend/worker/model_runner_v1.py
+index 4c8e11e9d..a3e77b554 100644
 --- a/vllm_ascend/worker/model_runner_v1.py
 +++ b/vllm_ascend/worker/model_runner_v1.py
-@@ -2333,6 +2333,10 @@
-                         self.pcp_manager.get_restore_hidden_states(aux_hidden_states_pcp)
+@@ -2334,6 +2334,10 @@ class NPUModelRunner(GPUModelRunner):
                          for aux_hidden_states_pcp in aux_hidden_states
                      ]
-+
+ 
 +            # [KVC][KVS] 归档点: 本步前向完成, 该批 KV 已全部落卡 —— free() 在
 +            # EngineCore 进程而张量驻留各 worker, 故以"最后一次写卡"为等价时点。
 +            self._kvc_rel_snapshot(scheduler_output)
- 
++
              if not self.broadcast_pp_output:
                  # Common case.
-@@ -2399,7 +2403,256 @@
-         if deferred_state_corrections_fn:
+                 if not get_pp_group().is_last_rank:
+@@ -2400,6 +2404,255 @@ class NPUModelRunner(GPUModelRunner):
              deferred_state_corrections_fn()
          return None
-+
+ 
 +    # --------------------------------------------------------------------------
 +    # [KVC][KVS] 请求结束物理 KV tensor 原样归档(08 号补丁, 1P1D PD 分离版)。
 +    #
@@ -30,9 +31,9 @@
 +    #                    cpu().clone() 位级快照(含未写槽位) → 后台线程 torch.save
 +    #                    落盘; 日志仅横幅两行(开始/完成), 逐层逐块粒度由 .pt 的
 +    #                    meta + 离线查看器 scripts/inspect_kv_tensors.py 承载。
-+    # 归档布局: {KVC_SAVE_DIR}/{side}/req{seq}_{rid尾8}/kv_pp{p}tp{t}.pt ——
-+    #          P/D 各自顶层子目录(先按 kv_role 判 side), 同 seq 跨侧 = 同一
-+    #          业务请求(rid 尾8 因 proxy 改写两侧不同, seq 为配对键)。
++    # 归档布局: {KVC_SAVE_DIR}/req{seq}/{side}/kv_pp{p}tp{t}.pt —— 一个业务
++    #          请求一个子目录, 请求内按 side(P/D) 分目录; seq 为 P/D 共同
++    #          配对键(rid 尾8 因 proxy 改写两侧不同, 只入横幅与 meta)。
 +    # 块-行映射: block id 即组内每张 K/V 张量(dim0)的统一行号 —— 1 个 block =
 +    #          组内张量各一行(meta.group_size 记组内层数, 本 worker 分片 = 16)。
 +    # 开关: KVC_SAVE_KV=1 启用(默认关, 零侵入); KVC_SAVE_DIR 输出目录(默认
@@ -121,7 +122,7 @@
 +                        traceback.format_exc().strip().splitlines()[-1])
 +
 +    # [KVC][KVS] _kvc_kv_save: 终值归档执行(仅 TERM 触发, LATE 只告警不归档)。
-+    # [KVC][KVS] 1P1D 版: side 顶层子目录 + meta.side/p_tok; TP1 下 pp/tp 兜底 0,
++    # [KVC][KVS] 1P1D 版: 请求目录内 side 子目录 + meta.side/p_tok; TP1 下 pp/tp 兜底 0,
 +    # seq 每实例独立递增, P/D 同 seq 即同一业务请求(proxy 双发); 其余见上方法块头注释。
 +    def _kvc_kv_save(self, rid: str, st: dict, tag: str) -> None:
 +        """TERM 归档: 本 worker 各层该请求全部物理块整块落盘(含未写槽位)。"""
@@ -159,7 +160,7 @@
 +                tp_rank = int(get_tp_group().rank_in_group)
 +            except Exception:
 +                tp_rank = 0
- 
++
 +            # 归档序号(每 worker 独立递增: seq=1 即本 worker第 1 个结束请求)
 +            _seq_map = getattr(self, "_kvc_kvs_seq", None) or {}
 +            seq = int(_seq_map.get((pp_rank, tp_rank), 0)) + 1
@@ -174,8 +175,8 @@
 +            covs = [min(bsz, max(0, written - e * bsz)) for e in range(len(blocks))]
 +            dev = str(kt0.device)
 +            rid8 = rid.split("-")[-1][:8]
-+            # 1P1D: 实例角色(P/D) —— kv_transfer_config.kv_role 决定归档顶层
-+            # 子目录; 普通实例(无 kv_role)落 X, 不参与 P/D 配对
++            # 1P1D: 实例角色(P/D) —— kv_transfer_config.kv_role 决定请求目录
++            # 内的归档子目录; 普通实例(无 kv_role)落 X, 不参与 P/D 配对
 +            _kv_role = ""
 +            try:
 +                _kv_role = str(getattr(self.vllm_config.kv_transfer_config,
@@ -185,24 +186,24 @@
 +            side = ("P" if "producer" in _kv_role
 +                    else "D" if "consumer" in _kv_role else "X")
 +            base_dir = os.environ.get("KVC_SAVE_DIR", "log/tensors")
-+            side_dir = os.path.join(base_dir, side)          # P/D 顶层子目录
-+            req_dir = "req{}_{}".format(seq, rid8)   # 一个请求一个子目录
-+            out_dir = os.path.join(side_dir, req_dir)
++            req_dir = "req{}".format(seq)   # 请求顶层目录(rid尾8 两侧不同, 只入横幅/meta)
++            out_dir = os.path.join(base_dir, req_dir, side)   # 请求内按 side 分 P/D
 +            os.makedirs(out_dir, exist_ok=True)
-+            fname = os.path.join(side, req_dir,
++            fname = os.path.join(req_dir, side,
 +                                 "kv_pp{}tp{}.pt".format(pp_rank, tp_rank))
 +            path = os.path.join(base_dir, fname)
 +
-+            # 开始横幅(同步): 声明保存对象 —— 谁(side/worker/dev)、存什么(K/V 池)、
-+            # 形状(每块 shape)、哪些块(blk/cov)、存到哪(文件名)
++            # 开始横幅(同步): 声明保存对象 —— 谁(side/worker/dev)、保存文件(先行说明)、
++            # 张量内容(K/V 双池, 每块 shape、层×块、blk/cov)
 +            logger.info(
 +                "[KVC][KVS] ======== 开始保存物理tensor side=%s worker=PP%d_TP%d dev=%s "
-+                "%s seq=%d req尾8=%s: K_cache/V_cache(双独立张量池, 每块 "
-+                "shape=(%d,%d,%d) %s, 含未写槽位) %d 层 × %d 块 blk=%s cov=%s -> %s ========",
-+                side, pp_rank, tp_rank, dev, tag, seq, rid8,
++                "%s seq=%d req尾8=%s: 保存文件=%s, 张量内容=K_cache/V_cache(双独立"
++                "张量池, 每块 shape=(%d,%d,%d) %s, 含未写槽位) %d 层 × %d 块 "
++                "blk=%s cov=%s ========",
++                side, pp_rank, tp_rank, dev, tag, seq, rid8, fname,
 +                bsz, kv_heads, head_dim, str(kt0.dtype),
 +                len(layers), len(blocks), [int(b) for b in blocks],
-+                [int(c) for c in covs], fname)
++                [int(c) for c in covs])
 +
 +            # 位级快照: 每层每块整块 (block_size, kv_heads, head_dim), 不 cat 不
 +            # 切片, 未写槽位一并保留 —— 同步 clone 后即脱离 NPU 池存储
@@ -268,7 +269,7 @@
      @torch.inference_mode()
      def sample_tokens(
          self, grammar_output: "GrammarOutput | None"
-@@ -4095,6 +4348,8 @@
+@@ -4095,6 +4348,8 @@ class NPUModelRunner(GPUModelRunner):
              dict[str, tuple(torch.Tensor, torch.Tensor)] A map between layer names
              to their corresponding memory buffer for K cache and V cache.
          """
@@ -277,12 +278,10 @@
          # init kv cache tensors
          kv_cache_raw_tensors: dict[str, torch.Tensor | torch.Tensor | None | None] = {}
          # prefill disaggregation need the addr of cache tensor be aligned with 2M
-@@ -4253,7 +4508,20 @@
-                     if v_tensor_size is not None:
-                         v_tensor = self._allocate_int8_cache_tensor(
+@@ -4255,6 +4510,19 @@ class NPUModelRunner(GPUModelRunner):
                              v_tensor_size,
-+                            alignment,
-+                        )
+                             alignment,
+                         )
 +                        # [KVC][L1] 每层 K/V 两张独立 int8 池(2MiB 对齐, 与 dtype 解耦)
 +                        logger.info(
 +                            "[KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: "
@@ -293,12 +292,13 @@
 +                            kv_cache_tensor.size / 1024**2,
 +                            k_tensor_size / 1024**2,
 +                            v_tensor_size / 1024**2,
-                             alignment,
++                            alignment,
 +                            self.device,
-                         )
++                        )
  
                      if self.use_sparse and dsa_k_tensor_size is not None:
-@@ -4679,6 +4947,20 @@
+                         if current_sparse_li_c8:
+@@ -4679,6 +4947,20 @@ class NPUModelRunner(GPUModelRunner):
                      elif self.use_sparse and current_sparse_sfa_c8:
                          kv_caches[layer_name] = (k_cache,)
                      else:
@@ -319,7 +319,7 @@
                          kv_caches[layer_name] = (k_cache, v_cache)
                  elif isinstance(current_kv_cache_spec, MambaSpec):
                      raw_tensor = kv_cache_raw_tensors[layer_name]
-@@ -4717,6 +4999,8 @@
+@@ -4717,6 +4999,8 @@ class NPUModelRunner(GPUModelRunner):
                  else:
                      raise ValueError("Unknown KV cache spec type.")
  

@@ -8,7 +8,7 @@
 #   4) 横幅先行原则: 子步横幅先于其下钻执行(S1 探问前打横幅、S3 在 allocate_new_blocks 调用前打), 下钻日志全部落在横幅后
 #   5) 调度提交独立包裹: KVCacheManager.cache_blocks(独立于 allocate_slots 的 async_scheduler 提交路径)单列横幅对
 #   6) KVS 物理归档(v2.5, 替代 v1 打印版): 请求结束(TERM, 含首步即终态)各 worker 把该请求覆盖的全部物理块整块
-#      (含未写槽位, cpu().clone() 位级快照)交后台 daemon 线程 torch.save 落盘, 一个请求一个子目录 req{seq}_{rid尾8}/kv_pp{p}tp{t}.pt(schema kvt4-raw, meta.group_size=组内层数(块-行映射), 逐层逐块粒度全由
+#      (含未写槽位, cpu().clone() 位级快照)交后台 daemon 线程 torch.save 落盘, 一个请求一个子目录 req{seq}/{side}/kv_pp{p}tp{t}.pt(schema kvt4-raw(顶层=业务请求, 请求内分 P/D), meta.group_size=组内层数(块-行映射), 逐层逐块粒度全由
 #      meta + 查看报告(scripts/analysis/inspect_kv_tensors.py -> logs/analysis/inspect_kv_tensors.out)承载, 逐层打印已移除); 日志仅横幅两行(开始=同步声明身份 /
 #      完成=后台落盘回执); LATE=兜底告警不归档(块或已被复用, 非证据级)。env 开关: KVC_SAVE_KV=1 启用(默认关,
 #      零侵入); KVC_SAVE_DIR 输出目录(默认 log/tensors, 相对 worker cwd)

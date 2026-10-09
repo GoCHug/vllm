@@ -9,7 +9,7 @@
 #   [3/8] D 侧:    start_d.sh → 就绪
 #   [4/8] proxy:   start_proxy.sh(:8000 → P:8100/D:8200) → healthcheck
 #   [5/8] 发请求:  curl_pd.sh(P->8s->R; 双侧 [KVC] 六段轨迹 + [KVS] 留痕落 logs/patchs/)
-#   [6/8] 验归档:  tensors/{P,D}/req{seq}_{rid尾8}/kv_pp0tp0.pt 共 4 个(P×2 + D×2)
+#   [6/8] 验归档:  tensors/req{seq}/{P,D}/kv_pp0tp0.pt 共 4 个(P×2 + D×2)
 #   [7/8] 容器内初检: analysis/ 5 个检查器 —— inspect_kv_tensors_{p,d}.py(查看器)
 #                  + inspect_prefix_{p,d}.py(侧内前缀复用/重算一致性)
 #                  + inspect_p2d.py(P→D 传输正确性: Tx 区逐位) -> logs/analysis/*.out
@@ -20,7 +20,7 @@
 #   patchs/  kvc_{p,d}_{startup,reqp,reqr}.log + kvs_{p,d}_archive_lines.log([KVC]/[KVS] 拆解轨迹)
 #   curl/    resp_{p,r}.json + curl_{p,r}_screen.txt
 #   analysis/  inspect_kv_tensors_{p,d}.out / inspect_prefix_{p,d}.out / inspect_p2d.out
-# tensors/  P/req{seq}_{rid尾8}/ + D/req{seq}_{rid尾8}/ —— 同 seq 跨侧配对(rid 尾8 两侧不同)
+# tensors/  req{seq}/{P,D}/ —— 一请求一目录(顶层=业务请求, 请求内分 P/D;rid 尾8 两侧不同, 只入横幅/meta)
 #
 # 注: apply/revert 补丁脚本默认仓库路径为本地 macOS 路径(开箱即用于本地);
 #     容器内由本脚本自动导出容器路径。
@@ -42,12 +42,12 @@ echo "===== [run_all] $(date '+%F %T') kvc_1p1d PD 分离(1P+1D) KVCache 实验�
 # 清上一轮产物(保留 logs/server/run_all_screen.log —— 本轮正被 nohup 写入)
 rm -f logs/server/p_llama.log logs/server/d_llama.log logs/server/proxy.log \
       logs/patchs/* logs/curl/* logs/analysis/* 2>/dev/null
-rm -rf tensors/P tensors/D 2>/dev/null
+rm -rf tensors/req* tensors/P tensors/D 2>/dev/null
 
 echo "===== [1/8] 打补丁（kvc 01~07 管理侧 + 08 PD 归档版 v2 块结构） ====="
 bash scripts/patchs/apply_patches.sh || { echo "[FATAL] 补丁应用失败"; exit 1; }
 
-echo "===== [2/8] 启动 P 侧 (卡0/8100/producer, TERM 归档 -> tensors/P/) ====="
+echo "===== [2/8] 启动 P 侧 (卡0/8100/producer, TERM 归档 -> tensors/req{seq}/P/) ====="
 bash scripts/server/start_p.sh
 for i in $(seq 1 30); do
   sleep 10
@@ -63,7 +63,7 @@ for i in $(seq 1 30); do
   [ "$i" = 30 ] && { echo "[FATAL] P 侧 300s 未就绪"; tail -30 logs/server/p_llama.log; exit 1; }
 done
 
-echo "===== [3/8] 启动 D 侧 (卡1/8200/consumer, TERM 归档 -> tensors/D/) ====="
+echo "===== [3/8] 启动 D 侧 (卡1/8200/consumer, TERM 归档 -> tensors/req{seq}/D/) ====="
 bash scripts/server/start_d.sh
 for i in $(seq 1 30); do
   sleep 10
@@ -92,32 +92,32 @@ done
 echo "===== [5/8] 发送 P/R 双请求 + 提取双侧 [KVC] 轨迹 ====="
 bash scripts/curl/curl_pd.sh || echo "[WARN] 请求发送返回非零, 继续检查归档"
 
-echo "===== [6/8] 检查归档落盘 (expect: tensors/{P,D}/req{seq}_{rid尾8}/kv_pp0tp0.pt × 4) ====="
+echo "===== [6/8] 检查归档落盘 (expect: tensors/req{seq}/{P,D}/kv_pp0tp0.pt × 4) ====="
 for i in $(seq 1 12); do
-  NP=$(ls tensors/P/req*/kv_*.pt 2>/dev/null | wc -l | tr -d " ")
-  ND=$(ls tensors/D/req*/kv_*.pt 2>/dev/null | wc -l | tr -d " ")
+  NP=$(ls tensors/req*/P/kv_*.pt 2>/dev/null | wc -l | tr -d " ")
+  ND=$(ls tensors/req*/D/kv_*.pt 2>/dev/null | wc -l | tr -d " ")
   [ "$NP" -ge 2 ] && [ "$ND" -ge 2 ] && break
   echo "  ... 等待归档 flush (P $NP/2, D $ND/2), 10s 后重试"
   sleep 10
 done
-NP=$(ls tensors/P/req*/kv_*.pt 2>/dev/null | wc -l | tr -d " ")
-ND=$(ls tensors/D/req*/kv_*.pt 2>/dev/null | wc -l | tr -d " ")
+NP=$(ls tensors/req*/P/kv_*.pt 2>/dev/null | wc -l | tr -d " ")
+ND=$(ls tensors/req*/D/kv_*.pt 2>/dev/null | wc -l | tr -d " ")
 if [ "$NP" -lt 2 ] || [ "$ND" -lt 2 ]; then
   echo "[WARN] 归档 P $NP/2 / D $ND/2 —— [KVS] 行为检查: "
   grep "\[KVS\]" logs/server/p_llama.log 2>/dev/null | tail -5 || true
   grep "\[KVS\]" logs/server/d_llama.log 2>/dev/null | tail -5 || true
 else
-  echo "[OK] 双侧归档就位 (P×$NP + D×$ND, 一请求一 side 子目录)"
+  echo "[OK] 双侧归档就位 (P×$NP + D×$ND, 一请求一目录内分 P/D)"
 fi
 ls -laR tensors/ 2>/dev/null || true
 
 echo "===== [7/8] 容器内初检（analysis/ 五个检查器） ====="
 echo "-- P 侧 & D 侧归档查看报告（逐请求逐 block 的 K/V shape/dtype/tensor 预览） --"
-python3 scripts/analysis/inspect_kv_tensors_p.py --dir tensors/P 2>/dev/null || echo "[WARN] P 查看器异常"
-python3 scripts/analysis/inspect_kv_tensors_d.py --dir tensors/D 2>/dev/null || echo "[WARN] D 查看器异常"
+python3 scripts/analysis/inspect_kv_tensors_p.py --dir tensors 2>/dev/null || echo "[WARN] P 查看器异常"
+python3 scripts/analysis/inspect_kv_tensors_d.py --dir tensors 2>/dev/null || echo "[WARN] D 查看器异常"
 echo "-- P 侧 & D 侧前缀复用关系（pairwise: 共享表头块 + 重算一致性） --"
-python3 scripts/analysis/inspect_prefix_p.py --dir tensors/P 2>/dev/null || echo "[WARN] P 前缀检查异常"
-python3 scripts/analysis/inspect_prefix_d.py --dir tensors/D 2>/dev/null || echo "[WARN] D 前缀检查异常"
+python3 scripts/analysis/inspect_prefix_p.py --dir tensors 2>/dev/null || echo "[WARN] P 前缀检查异常"
+python3 scripts/analysis/inspect_prefix_d.py --dir tensors 2>/dev/null || echo "[WARN] D 前缀检查异常"
 echo "-- P→D 传输正确性（Tx 区逐位 torch.equal + 对端段归因） --"
 python3 scripts/analysis/inspect_p2d.py --dir tensors 2>/dev/null || echo "[WARN] p2d 检查异常"
 

@@ -3,12 +3,14 @@
 # ==============================================================================
 # inspect_kv_tensors_p.py —— kvc_1p1d P 侧(prefill producer) KV 归档离线查看器
 #
-# 输入: --dir tensors/P  (08 号 PD 归档版, P 侧根目录, 一请求一子目录布局);
+# 输入: --dir tensors  (08 号 PD 归档版, 根目录下一请求一目录 req{seq}/, 请求内分 P/D;
+#       本查看器只读请求下的 P/ 子目录)、P 侧语义不变
 #       P 侧语义: TERM 时 P 实例把该请求全部物理块整块归档(w_tok=p_tok,
 #       纯 prefill, 无 decode 槽) —— P→D 传输源头证据(供 inspect_p2d.py 比对)。
 #   tensors/
-#     req{seq}_{rid尾8}/     <- 一个请求一个目录
-#       kv_pp{p}tp{t}.pt     <- 每 worker 一份(PP2xTP2 下 4 份)
+#     req{seq}/              <- 一个业务请求一个目录
+#       P/kv_pp{p}tp{t}.pt   <- P 侧归档(TP1 下 1 份)
+#       D/kv_pp{p}tp{t}.pt   <- 对侧归档(本查看器不读)
 #
 # .pt bundle 结构(schema=kvt4-raw):
 #   K / V: [层序 list, 每层 dict{块号: (block_size, kv_heads, head_dim) 整块张量}]
@@ -27,7 +29,7 @@
 #   (tensor 预览 = 该块首 token 首 head 的前 N 维, --preview 可调; 完整张量请 torch.load)
 #
 # 用法:
-#   python3 scripts/analysis/inspect_kv_tensors_p.py --dir tensors/P                # 报告 -> logs/analysis/inspect_kv_tensors_p.out
+#   python3 scripts/analysis/inspect_kv_tensors_p.py --dir tensors                # 报告 -> logs/analysis/inspect_kv_tensors_p.out
 #   python3 scripts/analysis/inspect_kv_tensors_p.py --dir tensors --out xx.out     # 指定 out 产物
 #   python3 scripts/analysis/inspect_kv_tensors_p.py --dir tensors --preview 8       # tensor 预览前 8 值
 # ==============================================================================
@@ -91,15 +93,15 @@ def report(args) -> int:
         print(f"[ERROR] 归档目录不存在: {root}")
         return 2
 
-    # 请求目录(req{seq}_{rid尾8}); 同时侦测旧版平铺归档并提示
-    req_dirs = sorted([d for d in root.iterdir()
-                       if d.is_dir() and d.name.startswith("req")])
+    # 请求侧目录(req{seq}/P); 同时侦测旧版平铺归档并提示
+    req_dirs = sorted([d / "P" for d in root.iterdir()
+                       if d.is_dir() and d.name.startswith("req") and (d / "P").is_dir()])
     old_flat = sorted(glob.glob(str(root / "kv_*.pt")))
     if old_flat:
         print(f"[WARN] 跳过 {len(old_flat)} 个旧版平铺归档(v2.3 及以前布局), "
               f"如需查看请升级到请求子目录布局(v2.4)")
     if not req_dirs:
-        print(f"[ERROR] {root} 下无请求子目录(req*): {root}")
+        print(f"[ERROR] {root} 下无请求(req*/P): {root}")
         return 2
 
     # out 产物: 默认 logs/analysis/inspect_kv_tensors.out(相对 cwd), 建父目录
@@ -152,7 +154,7 @@ def report(args) -> int:
         f"生成: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     say("=" * W)
     for rd in req_dirs:
-        say(f"  {rd.name}/  ({len(list(rd.glob('kv_*.pt')))} 个 worker 归档)")
+        say(f"  {rd.parent.name}/{rd.name}/  ({len(list(rd.glob('kv_*.pt')))} 个 worker 归档)")
     say()
 
     # ---------------- 逐请求报告 ----------------
@@ -160,7 +162,7 @@ def report(args) -> int:
         try:
             files = sorted(rd.glob("kv_pp*.pt"))
             if not files:
-                say(f"[WARN] {rd.name}/ 下无 kv_*.pt, 跳过")
+                say(f"[WARN] {rd.parent.name}/{rd.name}/ 下无 kv_*.pt, 跳过")
                 say()
                 continue
             m0 = load_bundle(files[0])["meta"]
@@ -170,7 +172,7 @@ def report(args) -> int:
             continue
 
         say("=" * W)
-        say(f"[{i}/{len(req_dirs)}] 开始加载请求 {rid_label(m0, rd.name)} 的 kvcache 物理张量")
+        say(f"[{i}/{len(req_dirs)}] 开始加载请求 {rid_label(m0, f"{rd.parent.name}/{rd.name}")} 的 kvcache 物理张量")
         say("=" * W)
         bt = m0.get("block_table", [])
         say(f"  request_id : {m0.get('request_id')}")
@@ -204,8 +206,8 @@ def report(args) -> int:
 def main():
     ap = argparse.ArgumentParser(
         description="kvc_1p1d P 侧 KV 归档离线查看器(PD 归档版, 简洁报告版)")
-    ap.add_argument("--dir", default="tensors/P",
-                    help="P 侧归档根目录(默认 tensors/P, 含 req*/ 子目录)")
+    ap.add_argument("--dir", default="tensors",
+                    help="归档根目录(默认 tensors, 含 req*/P 子目录)")
     ap.add_argument("--out", default="logs/analysis/inspect_kv_tensors_p.out",
                     help="输出 out 产物路径(默认 logs/analysis/inspect_kv_tensors.out)")
     ap.add_argument("--preview", type=int, default=4,

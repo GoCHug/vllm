@@ -3,12 +3,12 @@
 # ==============================================================================
 # inspect_p2d.py —— kvc_1p1d P→D KVCache 传输正确性检查器(离线, 逐位级)
 #
-# 输入: --dir tensors   (根目录, 含 P/ 与 D/ 两个 side 子目录)
-#   tensors/P/req{seq}_{rid尾8}/kv_pp0tp0.pt   P(prefill producer) 侧归档
-#   tensors/D/req{seq}_{rid尾8}/kv_pp0tp0.pt   D(decode consumer)  侧归档
+# 输入: --dir tensors   (根目录, 一请求一目录 req{seq}/, 请求内分 P/D)
+#   tensors/req{seq}/P/kv_pp0tp0.pt   P(prefill producer) 侧归档
+#   tensors/req{seq}/D/kv_pp0tp0.pt   D(decode consumer)  侧归档
 #
 # 配对: 按 seq(P/D 各自独立递增, proxy 双发保证完成序一致)。
-#   rid 尾8 两侧不同(proxy 改写 request_id) —— seq 为配对键, p_tok 相等性做哨兵。
+#   rid 尾8 两侧不同(proxy 改写 request_id) —— seq 即目录名, 配对天然成立, p_tok 相等性做哨兵。
 #
 # 检查(每对一节, 逐层逐池):
 #   A) 结构对齐  : side/p_tok/层数/heads/dim 一致; 重建 token-major 长度 = w_tok
@@ -86,17 +86,14 @@ def report(args) -> int:
         print(f"[ERROR] 归档根目录不存在: {root}")
         return 2
 
-    p_root, d_root = root / "P", root / "D"
-    for r, tag in ((p_root, "P"), (d_root, "D")):
-        if not r.is_dir():
-            print(f"[ERROR] 缺 {tag} 侧子目录: {r}")
-            return 2
-    p_reqs = sorted([d for d in p_root.iterdir()
-                     if d.is_dir() and d.name.startswith("req")], key=lambda d: seq_of(d.name) or 0)
-    d_reqs = sorted([d for d in d_root.iterdir()
-                     if d.is_dir() and d.name.startswith("req")], key=lambda d: seq_of(d.name) or 0)
-    p_map = {seq_of(d.name): d for d in p_reqs}
-    d_map = {seq_of(d.name): d for d in d_reqs}
+    p_reqs = sorted([d / "P" for d in root.iterdir()
+                     if d.is_dir() and d.name.startswith("req") and (d / "P").is_dir()],
+                     key=lambda d: seq_of(d.parent.name) or 0)
+    d_reqs = sorted([d / "D" for d in root.iterdir()
+                     if d.is_dir() and d.name.startswith("req") and (d / "D").is_dir()],
+                     key=lambda d: seq_of(d.parent.name) or 0)
+    p_map = {seq_of(d.parent.name): d for d in p_reqs}
+    d_map = {seq_of(d.parent.name): d for d in d_reqs}
 
     out_path = Path(args.out)
     if out_path.parent and str(out_path.parent) not in ("", "."):
@@ -113,18 +110,18 @@ def report(args) -> int:
         f"生成: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     say("=" * W)
     for d in p_reqs:
-        say(f"  P/{d.name}/")
+        say(f"  {d.parent.name}/{d.name}/")
     for d in d_reqs:
-        say(f"  D/{d.name}/")
+        say(f"  {d.parent.name}/{d.name}/")
     say()
 
     pairs = sorted(set(p_map) & set(d_map))
     only_p = sorted(set(p_map) - set(d_map))
     only_d = sorted(set(d_map) - set(p_map))
     for s in only_p:
-        say(f"  [WARN] seq={s} 仅 P 侧有归档({p_map[s].name}), 无法配对")
+        say(f"  [WARN] seq={s} 仅 P 侧有归档({p_map[s].parent.name}/{p_map[s].name}), 无法配对")
     for s in only_d:
-        say(f"  [WARN] seq={s} 仅 D 侧有归档({d_map[s].name}), 无法配对")
+        say(f"  [WARN] seq={s} 仅 D 侧有归档({d_map[s].parent.name}/{d_map[s].name}), 无法配对")
     if not pairs:
         say("[ERROR] 无可配对请求(P/D 侧 seq 无交集)")
     say()
@@ -141,7 +138,7 @@ def report(args) -> int:
         mp, md = bp["meta"], bd["meta"]
 
         say("=" * W)
-        say(f"[{idx}/{len(pairs)}] seq={s}: P/{p_map[s].name}  --传输-->  D/{d_map[s].name}")
+        say(f"[{idx}/{len(pairs)}] seq={s}: {p_map[s].parent.name}/{p_map[s].name}  --传输-->  {d_map[s].parent.name}/{d_map[s].name}")
         say("=" * W)
 
         # ---- A) 结构对齐 ----

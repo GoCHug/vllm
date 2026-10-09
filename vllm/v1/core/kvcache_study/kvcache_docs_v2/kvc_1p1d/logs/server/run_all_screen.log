@@ -1,4 +1,4 @@
-===== [run_all] 2026-10-04 05:46:56 kvc_1p1d PD 分离(1P+1D) KVCache 实验开始 =====
+===== [run_all] 2026-10-09 06:54:06 kvc_1p1d PD 分离(1P+1D) KVCache 实验开始 =====
 ===== [1/8] 打补丁（kvc 01~07 管理侧 + 08 PD 归档版 v2 块结构） =====
 == Phase 0: 已应用检测 ==
   ok: 源码为干净状态
@@ -37,15 +37,15 @@
     KVC_SAVE_KV=1                    # 开启( scripts/server/start_p.sh 与 start_d.sh 已自动导出 )
     KVC_SAVE_DIR=<目录>              # 输出目录(默认 log/tensors; start 脚本用 <工作区>/tensors)
 [DONE] 8 个补丁已应用并验证(08 为 1P1D PD 分离归档版)。
-===== [2/8] 启动 P 侧 (卡0/8100/producer, TERM 归档 -> tensors/P/) =====
+===== [2/8] 启动 P 侧 (卡0/8100/producer, TERM 归档 -> tensors/req{seq}/P/) =====
 P 侧已后台启动 (卡0=物理 npu:0 / localhost:8100 / kv_producer rank0 port20001) -> logs/server/p_llama.log
-  TERM 归档 -> /a3_inference/itask/workdir/wsl02075301/kvc_1p1d/tensors/P/req{seq}_{rid尾8}/kv_pp0tp0.pt (KVC_SAVE_KV=1)
+  TERM 归档 -> /a3_inference/itask/workdir/wsl02075301/kvc_1p1d/tensors/req{seq}/P/kv_pp0tp0.pt (KVC_SAVE_KV=1)
 就绪标志: grep 'Application startup complete' logs/server/p_llama.log
 [OK] P 侧就绪 (等待 50s)
   [KVS] 归档启用横幅: 0/1
-===== [3/8] 启动 D 侧 (卡1/8200/consumer, TERM 归档 -> tensors/D/) =====
+===== [3/8] 启动 D 侧 (卡1/8200/consumer, TERM 归档 -> tensors/req{seq}/D/) =====
 D 侧已后台启动 (卡1=物理 npu:1 / localhost:8200 / kv_consumer rank1 port20002) -> logs/server/d_llama.log
-  TERM 归档 -> /a3_inference/itask/workdir/wsl02075301/kvc_1p1d/tensors/D/req{seq}_{rid尾8}/kv_pp0tp0.pt (KVC_SAVE_KV=1)
+  TERM 归档 -> /a3_inference/itask/workdir/wsl02075301/kvc_1p1d/tensors/req{seq}/D/kv_pp0tp0.pt (KVC_SAVE_KV=1)
 就绪标志: grep 'Application startup complete' logs/server/d_llama.log
 [OK] D 侧就绪 (等待 40s)
   [KVS] 归档启用横幅: 0/1
@@ -56,10 +56,10 @@ proxy 已后台启动 (localhost:8000 -> P:8100 / D:8200) -> logs/server/proxy.l
 ===== [5/8] 发送 P/R 双请求 + 提取双侧 [KVC] 轨迹 =====
 proxy healthcheck: {"status":"ok","prefill_instances":1,"decode_instances":1,"request_num":0}
 $ curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json" -d @scripts/curl/req_p.json
-{"id":"cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9","object":"text_completion","created":1791092909,"model":"/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model","choices":[{"index":0,"text":"为了","logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null,"prompt_logprobs":null,"prompt_token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":"vllm-0.23.0-7aa5cc9f","usage":{"prompt_tokens":324,"total_tokens":325,"completion_tokens":1,"prompt_tokens_details":null},"kv_transfer_params":null}
+{"id":"cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef","object":"text_completion","created":1791528940,"model":"/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model","choices":[{"index":0,"text":"为了","logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null,"prompt_logprobs":null,"prompt_token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":"vllm-0.23.0-7aa5cc9f","usage":{"prompt_tokens":324,"total_tokens":325,"completion_tokens":1,"prompt_tokens_details":null},"kv_transfer_params":null}
 [P done] (P 分界行号 p_llama.log:291 / d_llama.log:289)
 $ curl -s http://localhost:8000/v1/completions -H "Content-Type: application/json" -d @scripts/curl/req_r.json
-{"id":"cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06","object":"text_completion","created":1791092918,"model":"/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model","choices":[{"index":0,"text":"://www.zhihu.com/question/404201526\n1. 什么是前缀缓存？\n2. 前缀缓存的工作原","logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null,"prompt_logprobs":null,"prompt_token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":"vllm-0.23.0-7aa5cc9f","usage":{"prompt_tokens":486,"total_tokens":521,"completion_tokens":35,"prompt_tokens_details":null},"kv_transfer_params":null}
+{"id":"cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1","object":"text_completion","created":1791528949,"model":"/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model","choices":[{"index":0,"text":"://www.zhihu.com/question/404201526\n1. 什么是前缀缓存？\n2. 前缀缓存的工作原","logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null,"prompt_logprobs":null,"prompt_token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":"vllm-0.23.0-7aa5cc9f","usage":{"prompt_tokens":486,"total_tokens":521,"completion_tokens":35,"prompt_tokens_details":null},"kv_transfer_params":null}
 [R done] (R 分界行号 p_llama.log:345 / d_llama.log:365)
 == [KVC] 双侧轨迹提取完成(六段 + 双侧 [KVS] 留痕) ==
     87 logs/patchs/kvc_p_startup.log
@@ -71,65 +71,65 @@ $ curl -s http://localhost:8000/v1/completions -H "Content-Type: application/jso
      5 logs/patchs/kvs_p_archive_lines.log
      5 logs/patchs/kvs_d_archive_lines.log
   1096 total
-===== [6/8] 检查归档落盘 (expect: tensors/{P,D}/req{seq}_{rid尾8}/kv_pp0tp0.pt × 4) =====
-[OK] 双侧归档就位 (P×2 + D×2, 一请求一 side 子目录)
+===== [6/8] 检查归档落盘 (expect: tensors/req{seq}/{P,D}/kv_pp0tp0.pt × 4) =====
+[OK] 双侧归档就位 (P×2 + D×2, 一请求一目录内分 P/D)
 tensors/:
 total 16
-drwxr-xr-x 4 root root   38 Oct  4 05:48 .
-drwxr-xr-x 6  502 games 161 Oct  4 05:46 ..
-drwxr-xr-x 4 root root   62 Oct  4 05:48 D
-drwxr-xr-x 4 root root   62 Oct  4 05:48 P
+drwxr-xr-x 4 root root   44 Oct  9 06:55 .
+drwxr-xr-x 6  502 games 121 Oct  9 06:54 ..
+drwxr-xr-x 4 root root   38 Oct  9 06:55 req1
+drwxr-xr-x 4 root root   38 Oct  9 06:55 req2
 
-tensors/D:
+tensors/req1:
 total 16
-drwxr-xr-x 4 root root 62 Oct  4 05:48 .
-drwxr-xr-x 4 root root 38 Oct  4 05:48 ..
-drwxr-xr-x 2 root root 30 Oct  4 05:48 req1_a1e4c4d0
-drwxr-xr-x 2 root root 30 Oct  4 05:48 req2_af900b85
+drwxr-xr-x 4 root root 38 Oct  9 06:55 .
+drwxr-xr-x 4 root root 44 Oct  9 06:55 ..
+drwxr-xr-x 2 root root 30 Oct  9 06:55 D
+drwxr-xr-x 2 root root 30 Oct  9 06:55 P
 
-tensors/D/req1_a1e4c4d0:
+tensors/req1/D:
 total 49216
-drwxr-xr-x 2 root root       30 Oct  4 05:48 .
-drwxr-xr-x 4 root root       62 Oct  4 05:48 ..
--rw-r--r-- 1 root root 50386955 Oct  4 05:48 kv_pp0tp0.pt
+drwxr-xr-x 2 root root       30 Oct  9 06:55 .
+drwxr-xr-x 4 root root       38 Oct  9 06:55 ..
+-rw-r--r-- 1 root root 50386955 Oct  9 06:55 kv_pp0tp0.pt
 
-tensors/D/req2_af900b85:
+tensors/req1/P:
+total 49216
+drwxr-xr-x 2 root root       30 Oct  9 06:55 .
+drwxr-xr-x 4 root root       38 Oct  9 06:55 ..
+-rw-r--r-- 1 root root 50386955 Oct  9 06:55 kv_pp0tp0.pt
+
+tensors/req2:
+total 16
+drwxr-xr-x 4 root root 38 Oct  9 06:55 .
+drwxr-xr-x 4 root root 44 Oct  9 06:55 ..
+drwxr-xr-x 2 root root 30 Oct  9 06:55 D
+drwxr-xr-x 2 root root 30 Oct  9 06:55 P
+
+tensors/req2/D:
 total 82020
-drwxr-xr-x 2 root root       30 Oct  4 05:48 .
-drwxr-xr-x 4 root root       62 Oct  4 05:48 ..
--rw-r--r-- 1 root root 83976971 Oct  4 05:48 kv_pp0tp0.pt
+drwxr-xr-x 2 root root       30 Oct  9 06:55 .
+drwxr-xr-x 4 root root       38 Oct  9 06:55 ..
+-rw-r--r-- 1 root root 83976971 Oct  9 06:55 kv_pp0tp0.pt
 
-tensors/P:
-total 16
-drwxr-xr-x 4 root root 62 Oct  4 05:48 .
-drwxr-xr-x 4 root root 38 Oct  4 05:48 ..
-drwxr-xr-x 2 root root 30 Oct  4 05:48 req1_b1c1ae5b
-drwxr-xr-x 2 root root 30 Oct  4 05:48 req2_996fd16c
-
-tensors/P/req1_b1c1ae5b:
-total 49216
-drwxr-xr-x 2 root root       30 Oct  4 05:48 .
-drwxr-xr-x 4 root root       62 Oct  4 05:48 ..
--rw-r--r-- 1 root root 50386955 Oct  4 05:48 kv_pp0tp0.pt
-
-tensors/P/req2_996fd16c:
+tensors/req2/P:
 total 65616
-drwxr-xr-x 2 root root       30 Oct  4 05:48 .
-drwxr-xr-x 4 root root       62 Oct  4 05:48 ..
--rw-r--r-- 1 root root 67181963 Oct  4 05:48 kv_pp0tp0.pt
+drwxr-xr-x 2 root root       30 Oct  9 06:55 .
+drwxr-xr-x 4 root root       38 Oct  9 06:55 ..
+-rw-r--r-- 1 root root 67181963 Oct  9 06:55 kv_pp0tp0.pt
 ===== [7/8] 容器内初检（analysis/ 五个检查器） =====
 -- P 侧 & D 侧归档查看报告（逐请求逐 block 的 K/V shape/dtype/tensor 预览） --
 ==============================================================================
 kvc_1p1d P 侧(prefill/producer)物理 KV 张量离线查看报告(08 PD 归档版)
-归档目录: tensors/P | 请求: 2 个 | 生成: 2026-10-04 05:48:53
+归档目录: tensors | 请求: 2 个 | 生成: 2026-10-09 06:56:04
 ==============================================================================
-  req1_b1c1ae5b/  (1 个 worker 归档)
-  req2_996fd16c/  (1 个 worker 归档)
+  req1/P/  (1 个 worker 归档)
+  req2/P/  (1 个 worker 归档)
 
 ==============================================================================
-[1/2] 开始加载请求 req1_b1c1ae5b  (cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b) 的 kvcache 物理张量
+[1/2] 开始加载请求 req1/P  (cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab) 的 kvcache 物理张量
 ==============================================================================
-  request_id : cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b
+  request_id : cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab
   tag=TERM  prompt=324 tok  written=324 tok  dev=npu:0
   该请求使用了 block id [1, 2, 3]  (num_blocks=3, block_size=128)
   块有效槽位 cov=[128, 128, 68]  (kv_heads=8, head_dim=128, 含未写槽位原样归档)
@@ -176,9 +176,9 @@ kvc_1p1d P 侧(prefill/producer)物理 KV 张量离线查看报告(08 PD 归档�
 
 
 ==============================================================================
-[2/2] 开始加载请求 req2_996fd16c  (cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c) 的 kvcache 物理张量
+[2/2] 开始加载请求 req2/P  (cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385) 的 kvcache 物理张量
 ==============================================================================
-  request_id : cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c
+  request_id : cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385
   tag=TERM  prompt=486 tok  written=486 tok  dev=npu:0
   该请求使用了 block id [1, 2, 4, 5]  (num_blocks=4, block_size=128)
   块有效槽位 cov=[128, 128, 128, 102]  (kv_heads=8, head_dim=128, 含未写槽位原样归档)
@@ -242,15 +242,15 @@ kvc_1p1d P 侧(prefill/producer)物理 KV 张量离线查看报告(08 PD 归档�
 [DONE] 报告已落盘: logs/analysis/inspect_kv_tensors_p.out
 ==============================================================================
 kvc_1p1d D 侧(decode/consumer)物理 KV 张量离线查看报告(08 PD 归档版)
-归档目录: tensors/D | 请求: 2 个 | 生成: 2026-10-04 05:48:59
+归档目录: tensors | 请求: 2 个 | 生成: 2026-10-09 06:56:10
 ==============================================================================
-  req1_a1e4c4d0/  (1 个 worker 归档)
-  req2_af900b85/  (1 个 worker 归档)
+  req1/D/  (1 个 worker 归档)
+  req2/D/  (1 个 worker 归档)
 
 ==============================================================================
-[1/2] 开始加载请求 req1_a1e4c4d0  (cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-a1e4c4d0) 的 kvcache 物理张量
+[1/2] 开始加载请求 req1/D  (cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-99a17d4b) 的 kvcache 物理张量
 ==============================================================================
-  request_id : cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-a1e4c4d0
+  request_id : cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-99a17d4b
   tag=TERM  prompt=324 tok  written=324 tok  dev=npu:0
   该请求使用了 block id [1, 2, 3]  (num_blocks=3, block_size=128)
   块有效槽位 cov=[128, 128, 68]  (kv_heads=8, head_dim=128, 含未写槽位原样归档)
@@ -297,9 +297,9 @@ kvc_1p1d D 侧(decode/consumer)物理 KV 张量离线查看报告(08 PD 归档�
 
 
 ==============================================================================
-[2/2] 开始加载请求 req2_af900b85  (cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85) 的 kvcache 物理张量
+[2/2] 开始加载请求 req2/D  (cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-b7201627) 的 kvcache 物理张量
 ==============================================================================
-  request_id : cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85
+  request_id : cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-b7201627
   tag=TERM  prompt=486 tok  written=520 tok  dev=npu:0
   该请求使用了 block id [1, 2, 4, 5, 6]  (num_blocks=5, block_size=128)
   块有效槽位 cov=[128, 128, 128, 128, 8]  (kv_heads=8, head_dim=128, 含未写槽位原样归档)
@@ -377,17 +377,17 @@ kvc_1p1d D 侧(decode/consumer)物理 KV 张量离线查看报告(08 PD 归档�
 -- P 侧 & D 侧前缀复用关系（pairwise: 共享表头块 + 重算一致性） --
 ============================================================================
 kvc_1p1d P 侧前缀复用关系检查(08 PD 归档 · pairwise)
-归档目录: tensors/P | 请求: 2 个 | 生成: 2026-10-04 05:49:04
+归档目录: tensors | 请求: 2 个 | 生成: 2026-10-09 06:56:15
 ============================================================================
-  req1_b1c1ae5b/  seq=1  块表=[1, 2, 3]  cov=[128, 128, 68]
-  req2_996fd16c/  seq=2  块表=[1, 2, 4, 5]  cov=[128, 128, 128, 102]
+  req1/P/  seq=1  块表=[1, 2, 3]  cov=[128, 128, 68]
+  req2/P/  seq=2  块表=[1, 2, 4, 5]  cov=[128, 128, 128, 102]
 
 ============================================================================
-[1/1] 前缀复用: req1_b1c1ae5b(seq=1) --种块--> req2_996fd16c(seq=2) 命中共享表头块
+[1/1] 前缀复用: req1/P(seq=1) --种块--> req2/P(seq=2) 命中共享表头块
 ============================================================================
   共享表头块: [1, 2] (k=2, 命中 tokens ≈ 256)
-  早请求: cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b  块表=[1, 2, 3]  cov=[128, 128, 68]
-  晚请求: cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c  块表=[1, 2, 4, 5]  cov=[128, 128, 128, 102]
+  早请求: cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab  块表=[1, 2, 3]  cov=[128, 128, 68]
+  晚请求: cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385  块表=[1, 2, 4, 5]  cov=[128, 128, 128, 102]
   A) 重算一致性(同 token 段前 68 槽): 早 req b3 vs 晚 req b4:
      L00 K: 位翻转 1/69632 (0.00%), Pearson=0.999977 (仅 ULP 级)
      L00 V: 位翻转 35/69632 (0.05%), Pearson=0.999989 (仅 ULP 级)
@@ -400,17 +400,17 @@ kvc_1p1d P 侧前缀复用关系检查(08 PD 归档 · pairwise)
 [DONE] 报告已落盘: logs/analysis/inspect_prefix_p.out
 ============================================================================
 kvc_1p1d D 侧前缀复用关系检查(08 PD 归档 · pairwise)
-归档目录: tensors/D | 请求: 2 个 | 生成: 2026-10-04 05:49:09
+归档目录: tensors | 请求: 2 个 | 生成: 2026-10-09 06:56:21
 ============================================================================
-  req1_a1e4c4d0/  seq=1  块表=[1, 2, 3]  cov=[128, 128, 68]
-  req2_af900b85/  seq=2  块表=[1, 2, 4, 5, 6]  cov=[128, 128, 128, 128, 8]
+  req1/D/  seq=1  块表=[1, 2, 3]  cov=[128, 128, 68]
+  req2/D/  seq=2  块表=[1, 2, 4, 5, 6]  cov=[128, 128, 128, 128, 8]
 
 ============================================================================
-[1/1] 前缀复用: req1_a1e4c4d0(seq=1) --种块--> req2_af900b85(seq=2) 命中共享表头块
+[1/1] 前缀复用: req1/D(seq=1) --种块--> req2/D(seq=2) 命中共享表头块
 ============================================================================
   共享表头块: [1, 2] (k=2, 命中 tokens ≈ 256)
-  早请求: cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-a1e4c4d0  块表=[1, 2, 3]  cov=[128, 128, 68]
-  晚请求: cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-af900b85  块表=[1, 2, 4, 5, 6]  cov=[128, 128, 128, 128, 8]
+  早请求: cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-99a17d4b  块表=[1, 2, 3]  cov=[128, 128, 68]
+  晚请求: cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-b7201627  块表=[1, 2, 4, 5, 6]  cov=[128, 128, 128, 128, 8]
   A) 重算一致性(同 token 段前 68 槽): 早 req b3 vs 晚 req b4:
      L00 K: 位翻转 1/69632 (0.00%), Pearson=0.999977 (仅 ULP 级)
      L00 V: 位翻转 35/69632 (0.05%), Pearson=0.999989 (仅 ULP 级)
@@ -424,16 +424,16 @@ kvc_1p1d D 侧前缀复用关系检查(08 PD 归档 · pairwise)
 -- P→D 传输正确性（Tx 区逐位 torch.equal + 对端段归因） --
 ==============================================================================
 kvc_1p1d P→D KVCache 传输正确性检查(块结构 kvt4-raw · seq 配对)
-归档根: tensors | P 侧 2 个 / D 侧 2 个 | 生成: 2026-10-04 05:49:14
+归档根: tensors | P 侧 2 个 / D 侧 2 个 | 生成: 2026-10-09 06:56:26
 ==============================================================================
-  P/req1_b1c1ae5b/
-  P/req2_996fd16c/
-  D/req1_a1e4c4d0/
-  D/req2_af900b85/
+  req1/P/
+  req2/P/
+  req1/D/
+  req2/D/
 
 
 ==============================================================================
-[1/2] seq=1: P/req1_b1c1ae5b  --传输-->  D/req1_a1e4c4d0
+[1/2] seq=1: req1/P  --传输-->  req1/D
 ==============================================================================
   A) 结构: side P/D ✓  p_tok=324(哨兵等)  层×heads×dim=32×8×128  w_tok P=324(纯prefill) / D=324(迁移+补算)
      块表: P [1, 2, 3] cov=[128, 128, 68]
@@ -446,7 +446,7 @@ kvc_1p1d P→D KVCache 传输正确性检查(块结构 kvt4-raw · seq 配对)
   ==> 本对 verdict: PASS
 
 ==============================================================================
-[2/2] seq=2: P/req2_996fd16c  --传输-->  D/req2_af900b85
+[2/2] seq=2: req2/P  --传输-->  req2/D
 ==============================================================================
   A) 结构: side P/D ✓  p_tok=486(哨兵等)  层×heads×dim=32×8×128  w_tok P=486(纯prefill) / D=520(迁移485 + bootstrap+decode 34)
      块表: P [1, 2, 4, 5] cov=[128, 128, 128, 102]

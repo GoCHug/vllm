@@ -6,7 +6,8 @@
 # 命中 = D 池内块复用; A 重算一致性判读同 P 侧(两次传输副本对比)。
 # 注: D 侧块表是否共享头块取决于引擎缓存策略, 无关系对时如实报告。
 #
-# 输入: --dir tensors  (与 inspect_kv_tensors.py 同输入: 一请求一子目录布局)
+# 输入: --dir tensors  (08 号 PD 归档版, 根目录下 req{seq}/{P,D}/ 一请求一目录布局;
+#       本检查器只扫请求下的 D/ 子目录)
 #
 # 逻辑:
 #   1. 枚举全部请求归档, 读 meta(seq/request_id/block_table/cov/...)
@@ -20,8 +21,7 @@
 #
 # 输出: logs/analysis/inspect_prefix.out（报告式, 逐对一节 + 汇总）
 # 用法:
-#   python3 scripts/analysis/inspect_prefix_d.py --dir tensors/D   # -> logs/analysis/inspect_prefix_d.out
-#   python3 scripts/analysis/inspect_prefix.py --dir tensors --out xx.out
+#   python3 scripts/analysis/inspect_prefix_d.py --dir tensors   # -> logs/analysis/inspect_prefix_d.out
 # ==============================================================================
 import argparse
 import sys
@@ -64,7 +64,7 @@ class Req:
         m = load_bundle(self.files[0])["meta"]
         self.meta = m
         self.seq = m["seq"]
-        self.rid = str(m.get("request_id", d.name))
+        self.rid = str(m.get("request_id", d.parent.name))
         self.round = m.get("p_tok", 0)      # 归档时的 region/kv 表长
         self.table = list(m.get("block_table", []))
         self.cov = list(m.get("cov", []))
@@ -96,7 +96,7 @@ def report(args) -> int:
     if not root.is_dir():
         print(f"[ERROR] 归档目录不存在: {root}")
         return 2
-    req_dirs = sorted([d for d in root.iterdir()
+    req_dirs = sorted([d / "D" for d in root.iterdir()
                        if d.is_dir() and d.name.startswith("req")],
                       key=lambda d: d.name)
     try:
@@ -105,7 +105,7 @@ def report(args) -> int:
         print(f"[ERROR] 归档加载失败: {e}")
         return 2
     if len(reqs) < 1:
-        print(f"[ERROR] {root} 下无请求子目录(req*)")
+        print(f"[ERROR] {root} 下无请求(req*/D)")
         return 2
     reqs.sort(key=lambda r: r.seq)
 
@@ -123,7 +123,7 @@ def report(args) -> int:
     say(f"归档目录: {root} | 请求: {len(reqs)} 个 | 生成: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     say("=" * W)
     for r in reqs:
-        say(f"  {r.dir.name}/  seq={r.seq}  块表={r.table}  cov={r.cov}")
+        say(f"  {r.dir.parent.name}/{r.dir.name}/  seq={r.seq}  块表={r.table}  cov={r.cov}")
     say()
 
     # ---------- 两两判定前缀复用关系 ----------
@@ -140,8 +140,8 @@ def report(args) -> int:
         hit = k * a.bs
         shared = a.table[:k]
         say("=" * W)
-        say(f"[{idx}/{len(pairs)}] 前缀复用: {a.dir.name}(seq={a.seq}) --种块--> "
-            f"{b.dir.name}(seq={b.seq}) 命中共享表头块")
+        say(f"[{idx}/{len(pairs)}] 前缀复用: {a.dir.parent.name}/{a.dir.name}(seq={a.seq}) --种块--> "
+            f"{b.dir.parent.name}/{b.dir.name}(seq={b.seq}) 命中共享表头块")
         say("=" * W)
         say(f"  共享表头块: {shared} (k={k}, 命中 tokens ≈ {hit})")
         say(f"  早请求: {a.rid}  块表={a.table}  cov={a.cov}")
@@ -191,8 +191,8 @@ def report(args) -> int:
 def main():
     ap = argparse.ArgumentParser(
         description="kvc_1p1d D 侧前缀复用关系检查器(PD 归档版 pairwise)")
-    ap.add_argument("--dir", default="tensors/D",
-                    help="D 侧归档根目录(默认 tensors/D, 含 req*/ 子目录)")
+    ap.add_argument("--dir", default="tensors",
+                    help="归档根目录(默认 tensors, 含 req*/D 子目录)")
     ap.add_argument("--out", default="logs/analysis/inspect_prefix_d.out",
                     help="输出 out 产物路径(默认 logs/analysis/inspect_prefix.out)")
     args = ap.parse_args()

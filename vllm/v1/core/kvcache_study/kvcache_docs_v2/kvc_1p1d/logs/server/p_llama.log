@@ -1,414 +1,414 @@
-[W1004 05:46:57.336305764 FunctionLoader.cpp:48] Warning: LD_PRELOAD detected, FunctionLoader prefers RTLD_DEFAULT for symbol resolution. (function operator())
-INFO 10-04 05:47:01 [__init__.py:44] Available plugins for group vllm.platform_plugins:
-INFO 10-04 05:47:01 [__init__.py:46] - ascend -> vllm_ascend:register
-INFO 10-04 05:47:01 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
-INFO 10-04 05:47:01 [__init__.py:238] Platform plugin ascend is activated
-INFO 10-04 05:47:01 [platform.py:62] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
-2026-10-04 05:47:06,829 - 61868 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.23.0+empty: default 1
-INFO 10-04 05:47:07 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `netloader`
-INFO 10-04 05:47:07 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
-(APIServer pid=61868) INFO 10-04 05:47:07 [api_utils.py:339] 
-(APIServer pid=61868) INFO 10-04 05:47:07 [api_utils.py:339]        █     █     █▄   ▄█
-(APIServer pid=61868) INFO 10-04 05:47:07 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.23.0
-(APIServer pid=61868) INFO 10-04 05:47:07 [api_utils.py:339]   █▄█▀ █     █     █     █  model   /home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model
-(APIServer pid=61868) INFO 10-04 05:47:07 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
-(APIServer pid=61868) INFO 10-04 05:47:07 [api_utils.py:339] 
-(APIServer pid=61868) INFO 10-04 05:47:07 [api_utils.py:273] non-default args: {'model_tag': '/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model', 'host': 'localhost', 'port': 8100, 'model': '/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model', 'seed': 1024, 'max_model_len': 8192, 'enforce_eager': True, 'gpu_memory_utilization': 0.8, 'kv_transfer_config': KVTransferConfig(kv_connector='MooncakeConnectorV1', engine_id='8a6eee85-fe47-4c26-9763-73c0692dd621', kv_buffer_device='npu', kv_buffer_size=1000000000.0, kv_role='kv_producer', kv_rank=0, kv_parallel_size=1, kv_ip='127.0.0.1', kv_port=20001, kv_connector_extra_config={'prefill': {'dp_size': 1, 'tp_size': 1}, 'decode': {'dp_size': 1, 'tp_size': 1}}, kv_connector_module_path=None, enable_permute_local_kv=False, kv_load_failure_policy='fail')}
-(APIServer pid=61868) WARNING 10-04 05:47:07 [envs.py:2088] Unknown vLLM environment variable detected: VLLM_DIR
-(APIServer pid=61868) WARNING 10-04 05:47:07 [envs.py:2088] Unknown vLLM environment variable detected: VLLM_ASCEND_DIR
-(APIServer pid=61868) INFO 10-04 05:47:07 [model.py:611] Resolved architecture: LlamaForCausalLM
-(APIServer pid=61868) INFO 10-04 05:47:07 [model.py:1745] Using max model len 8192
-(APIServer pid=61868) INFO 10-04 05:47:07 [vllm.py:999] Asynchronous scheduling is enabled.
-(APIServer pid=61868) WARNING 10-04 05:47:07 [vllm.py:1055] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
-(APIServer pid=61868) WARNING 10-04 05:47:07 [vllm.py:1097] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
-(APIServer pid=61868) INFO 10-04 05:47:07 [kernel.py:270] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
-(APIServer pid=61868) INFO 10-04 05:47:07 [vllm.py:1273] Cudagraph is disabled under eager mode
-(APIServer pid=61868) INFO 10-04 05:47:07 [utils.py:174] No quantization signature detected from model files for "/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model". The model will be loaded as float. To force a quantization method, pass "--quantization <method>" explicitly.
-(APIServer pid=61868) WARNING 10-04 05:47:07 [platform.py:1067] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True, action: resetting to False.
-(APIServer pid=61868) INFO 10-04 05:47:07 [platform.py:1277] The timeout interval of the HCCL operator is 1836s. Timeout in seconds for execute_model RPC calls in multiprocessing must be greater than 1836s, Set VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3000
-(APIServer pid=61868) INFO 10-04 05:47:07 [ascend_config.py:893] Dynamic EPLB is False
-(APIServer pid=61868) INFO 10-04 05:47:07 [ascend_config.py:894] The number of redundant experts is 0
-(APIServer pid=61868) INFO 10-04 05:47:07 [platform.py:528] Compilation disabled, using eager mode by default
-(APIServer pid=61868) INFO 10-04 05:47:07 [utils.py:1404] Block size is set to 128 if prefix cache or chunked prefill is enabled.
-(APIServer pid=61868) INFO 10-04 05:47:07 [platform.py:790] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
-(APIServer pid=61868) INFO 10-04 05:47:07 [compilation.py:321] Enabled custom fusions: norm_quant, act_quant
-[W1004 05:47:10.992841908 FunctionLoader.cpp:48] Warning: LD_PRELOAD detected, FunctionLoader prefers RTLD_DEFAULT for symbol resolution. (function operator())
-INFO 10-04 05:47:13 [__init__.py:44] Available plugins for group vllm.platform_plugins:
-INFO 10-04 05:47:13 [__init__.py:46] - ascend -> vllm_ascend:register
-INFO 10-04 05:47:13 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
-INFO 10-04 05:47:13 [__init__.py:238] Platform plugin ascend is activated
-INFO 10-04 05:47:13 [platform.py:62] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
-(EngineCore pid=61991) 2026-10-04 05:47:19,806 - 61991 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.23.0+empty: default 1
-(EngineCore pid=61991) INFO 10-04 05:47:19 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `netloader`
-(EngineCore pid=61991) INFO 10-04 05:47:19 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
-(EngineCore pid=61991) INFO 10-04 05:47:19 [core.py:113] Initializing a V1 LLM engine (v0.23.0) with config: model='/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model', speculative_config=None, tokenizer='/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=8192, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=True, quantization=None, quantization_config=None, enforce_eager=True, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=npu, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False), seed=1024, served_model_name=/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'vllm_ascend.compilation.compiler_interface.AscendCompiler', 'custom_ops': ['all'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [2048], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'size_asserts': False, 'alignment_asserts': False, 'scalar_asserts': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.NONE: 0>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False}, 'max_cudagraph_capture_size': 0, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': True, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native']), enable_flashinfer_autotune=True, moe_backend='auto', linear_backend='auto')
-(EngineCore pid=61991) `Qwen2VLImageProcessorFast` is deprecated. The `Fast` suffix for image processors has been removed; use `Qwen2VLImageProcessor` instead.
-(EngineCore pid=61991) INFO 10-04 05:47:20 [ascend_config.py:893] Dynamic EPLB is False
-(EngineCore pid=61991) INFO 10-04 05:47:20 [ascend_config.py:894] The number of redundant experts is 0
-(EngineCore pid=61991) INFO 10-04 05:47:22 [parallel_state.py:1568] world_size=1 rank=0 local_rank=0 distributed_init_method=tcp://172.16.210.236:38465 backend=hccl
+[W1009 06:54:08.196983338 FunctionLoader.cpp:48] Warning: LD_PRELOAD detected, FunctionLoader prefers RTLD_DEFAULT for symbol resolution. (function operator())
+INFO 10-09 06:54:12 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-09 06:54:12 [__init__.py:46] - ascend -> vllm_ascend:register
+INFO 10-09 06:54:12 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 10-09 06:54:12 [__init__.py:238] Platform plugin ascend is activated
+INFO 10-09 06:54:12 [platform.py:62] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+2026-10-09 06:54:18,564 - 2988 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.23.0+empty: default 1
+INFO 10-09 06:54:19 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `netloader`
+INFO 10-09 06:54:19 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+(APIServer pid=2988) INFO 10-09 06:54:19 [api_utils.py:339] 
+(APIServer pid=2988) INFO 10-09 06:54:19 [api_utils.py:339]        █     █     █▄   ▄█
+(APIServer pid=2988) INFO 10-09 06:54:19 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.23.0
+(APIServer pid=2988) INFO 10-09 06:54:19 [api_utils.py:339]   █▄█▀ █     █     █     █  model   /home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model
+(APIServer pid=2988) INFO 10-09 06:54:19 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=2988) INFO 10-09 06:54:19 [api_utils.py:339] 
+(APIServer pid=2988) INFO 10-09 06:54:19 [api_utils.py:273] non-default args: {'model_tag': '/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model', 'host': 'localhost', 'port': 8100, 'model': '/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model', 'seed': 1024, 'max_model_len': 8192, 'enforce_eager': True, 'gpu_memory_utilization': 0.8, 'kv_transfer_config': KVTransferConfig(kv_connector='MooncakeConnectorV1', engine_id='d342fa45-beb7-4d81-8cff-8ea073a3edfb', kv_buffer_device='npu', kv_buffer_size=1000000000.0, kv_role='kv_producer', kv_rank=0, kv_parallel_size=1, kv_ip='127.0.0.1', kv_port=20001, kv_connector_extra_config={'prefill': {'dp_size': 1, 'tp_size': 1}, 'decode': {'dp_size': 1, 'tp_size': 1}}, kv_connector_module_path=None, enable_permute_local_kv=False, kv_load_failure_policy='fail')}
+(APIServer pid=2988) WARNING 10-09 06:54:19 [envs.py:2088] Unknown vLLM environment variable detected: VLLM_DIR
+(APIServer pid=2988) WARNING 10-09 06:54:19 [envs.py:2088] Unknown vLLM environment variable detected: VLLM_ASCEND_DIR
+(APIServer pid=2988) INFO 10-09 06:54:19 [model.py:611] Resolved architecture: LlamaForCausalLM
+(APIServer pid=2988) INFO 10-09 06:54:19 [model.py:1745] Using max model len 8192
+(APIServer pid=2988) INFO 10-09 06:54:19 [vllm.py:999] Asynchronous scheduling is enabled.
+(APIServer pid=2988) WARNING 10-09 06:54:19 [vllm.py:1055] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+(APIServer pid=2988) WARNING 10-09 06:54:19 [vllm.py:1097] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(APIServer pid=2988) INFO 10-09 06:54:19 [kernel.py:270] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(APIServer pid=2988) INFO 10-09 06:54:19 [vllm.py:1273] Cudagraph is disabled under eager mode
+(APIServer pid=2988) INFO 10-09 06:54:19 [utils.py:174] No quantization signature detected from model files for "/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model". The model will be loaded as float. To force a quantization method, pass "--quantization <method>" explicitly.
+(APIServer pid=2988) WARNING 10-09 06:54:19 [platform.py:1067] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True, action: resetting to False.
+(APIServer pid=2988) INFO 10-09 06:54:19 [platform.py:1277] The timeout interval of the HCCL operator is 1836s. Timeout in seconds for execute_model RPC calls in multiprocessing must be greater than 1836s, Set VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3000
+(APIServer pid=2988) INFO 10-09 06:54:19 [ascend_config.py:893] Dynamic EPLB is False
+(APIServer pid=2988) INFO 10-09 06:54:19 [ascend_config.py:894] The number of redundant experts is 0
+(APIServer pid=2988) INFO 10-09 06:54:19 [platform.py:528] Compilation disabled, using eager mode by default
+(APIServer pid=2988) INFO 10-09 06:54:19 [utils.py:1404] Block size is set to 128 if prefix cache or chunked prefill is enabled.
+(APIServer pid=2988) INFO 10-09 06:54:19 [platform.py:790] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(APIServer pid=2988) INFO 10-09 06:54:19 [compilation.py:321] Enabled custom fusions: norm_quant, act_quant
+[W1009 06:54:22.470929696 FunctionLoader.cpp:48] Warning: LD_PRELOAD detected, FunctionLoader prefers RTLD_DEFAULT for symbol resolution. (function operator())
+INFO 10-09 06:54:26 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-09 06:54:26 [__init__.py:46] - ascend -> vllm_ascend:register
+INFO 10-09 06:54:26 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 10-09 06:54:26 [__init__.py:238] Platform plugin ascend is activated
+INFO 10-09 06:54:26 [platform.py:62] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+(EngineCore pid=3117) 2026-10-09 06:54:32,723 - 3117 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.23.0+empty: default 1
+(EngineCore pid=3117) INFO 10-09 06:54:32 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `netloader`
+(EngineCore pid=3117) INFO 10-09 06:54:32 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+(EngineCore pid=3117) INFO 10-09 06:54:32 [core.py:113] Initializing a V1 LLM engine (v0.23.0) with config: model='/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model', speculative_config=None, tokenizer='/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=8192, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=True, quantization=None, quantization_config=None, enforce_eager=True, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=npu, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False), seed=1024, served_model_name=/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'vllm_ascend.compilation.compiler_interface.AscendCompiler', 'custom_ops': ['all'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [2048], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'size_asserts': False, 'alignment_asserts': False, 'scalar_asserts': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.NONE: 0>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False}, 'max_cudagraph_capture_size': 0, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': True, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native']), enable_flashinfer_autotune=True, moe_backend='auto', linear_backend='auto')
+(EngineCore pid=3117) `Qwen2VLImageProcessorFast` is deprecated. The `Fast` suffix for image processors has been removed; use `Qwen2VLImageProcessor` instead.
+(EngineCore pid=3117) INFO 10-09 06:54:34 [ascend_config.py:893] Dynamic EPLB is False
+(EngineCore pid=3117) INFO 10-09 06:54:34 [ascend_config.py:894] The number of redundant experts is 0
+(EngineCore pid=3117) INFO 10-09 06:54:42 [parallel_state.py:1568] world_size=1 rank=0 local_rank=0 distributed_init_method=tcp://172.16.210.228:37441 backend=hccl
 [Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
 [Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
 [Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
 [Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
 [Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
 [Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
-(EngineCore pid=61991) INFO 10-04 05:47:22 [parallel_state.py:1903] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A, EPLB rank N/A
+(EngineCore pid=3117) INFO 10-09 06:54:43 [parallel_state.py:1903] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A, EPLB rank N/A
 [Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
-[rank0]:[W1004 05:47:22.696410111 NPUCachingAllocator.cpp:202] Warning: The current CANN and HDK(driver) versions require processing for 32 padding size, with memory allocation. (function operator())
-(EngineCore pid=61991) INFO 10-04 05:47:22 [model_runner_v1.py:3971] Starting to load model /home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model...
-(EngineCore pid=61991) INFO 10-04 05:47:23 [weight_utils.py:922] Filesystem type for checkpoints: EXT4. Checkpoint size: 14.96 GiB. Available RAM: 2720.17 GiB.
-(EngineCore pid=61991) INFO 10-04 05:47:23 [weight_utils.py:945] Auto-prefetch is disabled because the filesystem (EXT4) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
-(EngineCore pid=61991) 
+[rank0]:[W1009 06:54:43.592528276 NPUCachingAllocator.cpp:202] Warning: The current CANN and HDK(driver) versions require processing for 32 padding size, with memory allocation. (function operator())
+(EngineCore pid=3117) INFO 10-09 06:54:43 [model_runner_v1.py:3971] Starting to load model /home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model...
+(EngineCore pid=3117) INFO 10-09 06:54:44 [weight_utils.py:922] Filesystem type for checkpoints: EXT4. Checkpoint size: 14.96 GiB. Available RAM: 2717.65 GiB.
+(EngineCore pid=3117) INFO 10-09 06:54:44 [weight_utils.py:945] Auto-prefetch is disabled because the filesystem (EXT4) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+(EngineCore pid=3117) 
 Loading safetensors checkpoint shards:   0% Completed | 0/4 [00:00<?, ?it/s]
-(EngineCore pid=61991) 
-Loading safetensors checkpoint shards:  25% Completed | 1/4 [00:00<00:00,  7.81it/s]
-(EngineCore pid=61991) 
-Loading safetensors checkpoint shards:  50% Completed | 2/4 [00:00<00:00,  6.36it/s]
-(EngineCore pid=61991) 
-Loading safetensors checkpoint shards:  75% Completed | 3/4 [00:00<00:00,  6.05it/s]
-(EngineCore pid=61991) 
-Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:00<00:00,  7.02it/s]
-(EngineCore pid=61991) 
-(EngineCore pid=61991) INFO 10-04 05:47:24 [default_loader.py:397] Loading weights took 0.58 seconds
-(EngineCore pid=61991) INFO 10-04 05:47:25 [model_runner_v1.py:4047] Loading model weights took 14.9635 GB
-(EngineCore pid=61991) INFO 10-04 05:47:25 [model_runner_v1.py:4074] Model runner load_model total time: 2.72 seconds
-(EngineCore pid=61991) INFO 10-04 05:47:25 [core.py:245] [KVC][CFG] ================ 配置侧 KVCache 编排开始 ================
-(EngineCore pid=61991) INFO 10-04 05:47:25 [core.py:246] [KVC][CFG] --- ①: 算规格 ---
-(EngineCore pid=61991) INFO 10-04 05:47:25 [core.py:257] [KVC][CFG] ① 算规格 get_kv_cache_specs: worker0=32×FullAttentionSpec(首 model.layers.0.self_attn.attn, 末 model.layers.31.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:25 [core.py:259] [KVC][CFG] --- ②: 测预算 ---
-(EngineCore pid=61991) INFO 10-04 05:47:27 [worker.py:593] Available KV cache memory: 33.78 GiB
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:280] [KVC][CFG] determine_available_memory: 各 worker 可用 KV 显存 = ['33.78GiB']
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:284] [KVC][CFG] --- ③: 做编排 ---
-(EngineCore pid=61991) INFO 10-04 05:47:27 [kv_cache_utils.py:1771] GPU KV cache size: 276,608 tokens
-(EngineCore pid=61991) INFO 10-04 05:47:27 [kv_cache_utils.py:1772] Maximum concurrency for 8,192 tokens per request: 33.77x
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:294] [KVC][CFG] worker0 KVCacheConfig: num_blocks=2161, groups数=1, tensors数=32
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:299] [KVC][CFG]   [0] KVCacheGroupSpec(group_id=0): layers=32 (首层 model.layers.0.self_attn.attn, 末层 model.layers.31.self_attn.attn), is_eagle_group=False
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:304] [KVC][CFG]   [0]   kv_cache_spec=FullAttentionSpec(block_size=128, num_kv_heads=8, head_size=128, dtype=torch.bfloat16, kv_quant_mode=<KVQuantMode.NONE: 0>, page_size_padded=None, head_size_v=128, sliding_window=None, attention_chunk_size=None)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:308] [KVC][CFG]   [0]   page_size_bytes=524288 (512.0KB/层/块), storage_block_size=128
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.0.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.1.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.2.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.3.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.4.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.5.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.6.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.7.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.8.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.9.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.10.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.11.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.12.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.13.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.14.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.15.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.16.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.17.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.18.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.19.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.20.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.21.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.22.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.23.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.24.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.25.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.26.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.27.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.28.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.29.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.30.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.31.self_attn.attn)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:331] [KVC][CFG] 最终 scheduler KVCacheConfig: num_blocks=2161 (跨 worker min 对齐), cache_config.num_gpu_blocks=2161, block_size=128
-(EngineCore pid=61991) INFO 10-04 05:47:27 [core.py:336] [KVC][CFG] ================ 配置侧 KVCache 编排完成 ================
-(EngineCore pid=61991) INFO 10-04 05:47:27 [factory.py:62] Creating v1 connector with name: MooncakeConnector and engine_id: 8a6eee85-fe47-4c26-9763-73c0692dd621-2d8a2f4f63324bdd9e27c15ee0518f85
+(EngineCore pid=3117) 
+Loading safetensors checkpoint shards:  25% Completed | 1/4 [00:00<00:00,  7.96it/s]
+(EngineCore pid=3117) 
+Loading safetensors checkpoint shards:  50% Completed | 2/4 [00:00<00:00,  6.43it/s]
+(EngineCore pid=3117) 
+Loading safetensors checkpoint shards:  75% Completed | 3/4 [00:00<00:00,  5.98it/s]
+(EngineCore pid=3117) 
+Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:00<00:00,  6.92it/s]
+(EngineCore pid=3117) 
+(EngineCore pid=3117) INFO 10-09 06:54:44 [default_loader.py:397] Loading weights took 0.59 seconds
+(EngineCore pid=3117) INFO 10-09 06:54:45 [model_runner_v1.py:4047] Loading model weights took 14.9635 GB
+(EngineCore pid=3117) INFO 10-09 06:54:45 [model_runner_v1.py:4074] Model runner load_model total time: 2.22 seconds
+(EngineCore pid=3117) INFO 10-09 06:54:45 [core.py:245] [KVC][CFG] ================ 配置侧 KVCache 编排开始 ================
+(EngineCore pid=3117) INFO 10-09 06:54:45 [core.py:246] [KVC][CFG] --- ①: 算规格 ---
+(EngineCore pid=3117) INFO 10-09 06:54:45 [core.py:257] [KVC][CFG] ① 算规格 get_kv_cache_specs: worker0=32×FullAttentionSpec(首 model.layers.0.self_attn.attn, 末 model.layers.31.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:45 [core.py:259] [KVC][CFG] --- ②: 测预算 ---
+(EngineCore pid=3117) INFO 10-09 06:54:46 [worker.py:593] Available KV cache memory: 33.78 GiB
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:280] [KVC][CFG] determine_available_memory: 各 worker 可用 KV 显存 = ['33.78GiB']
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:284] [KVC][CFG] --- ③: 做编排 ---
+(EngineCore pid=3117) INFO 10-09 06:54:46 [kv_cache_utils.py:1771] GPU KV cache size: 276,608 tokens
+(EngineCore pid=3117) INFO 10-09 06:54:46 [kv_cache_utils.py:1772] Maximum concurrency for 8,192 tokens per request: 33.77x
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:294] [KVC][CFG] worker0 KVCacheConfig: num_blocks=2161, groups数=1, tensors数=32
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:299] [KVC][CFG]   [0] KVCacheGroupSpec(group_id=0): layers=32 (首层 model.layers.0.self_attn.attn, 末层 model.layers.31.self_attn.attn), is_eagle_group=False
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:304] [KVC][CFG]   [0]   kv_cache_spec=FullAttentionSpec(block_size=128, num_kv_heads=8, head_size=128, dtype=torch.bfloat16, kv_quant_mode=<KVQuantMode.NONE: 0>, page_size_padded=None, head_size_v=128, sliding_window=None, attention_chunk_size=None)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:308] [KVC][CFG]   [0]   page_size_bytes=524288 (512.0KB/层/块), storage_block_size=128
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.0.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.1.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.2.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.3.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.4.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.5.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.6.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.7.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.8.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.9.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.10.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.11.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.12.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.13.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.14.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.15.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.16.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.17.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.18.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.19.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.20.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.21.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.22.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.23.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.24.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.25.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.26.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.27.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.28.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.29.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.30.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:314] [KVC][CFG]   [0] KVCacheTensor: size=1132986368 bytes (1080.50MiB), shared_by=1 层 (model.layers.31.self_attn.attn)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:331] [KVC][CFG] 最终 scheduler KVCacheConfig: num_blocks=2161 (跨 worker min 对齐), cache_config.num_gpu_blocks=2161, block_size=128
+(EngineCore pid=3117) INFO 10-09 06:54:46 [core.py:336] [KVC][CFG] ================ 配置侧 KVCache 编排完成 ================
+(EngineCore pid=3117) INFO 10-09 06:54:46 [factory.py:62] Creating v1 connector with name: MooncakeConnector and engine_id: d342fa45-beb7-4d81-8cff-8ea073a3edfb-c36ae8af9d344e1b8877d97deb0fac1d
 WARNING: Logging before InitGoogleLogging() is written to STDERR
-W1004 05:47:27.235831 61991 transfer_engine_py.cpp:96] Using default malloc/free for protocol: ascend
-I1004 05:47:27.235890 61991 transfer_engine_impl.cpp:811] Metrics reporting is disabled (set MC_TE_METRIC=1 to enable)
-I1004 05:47:27.235899 61991 transfer_engine_impl.cpp:115] Transfer Engine parseHostNameWithPort. server_name: 172.16.210.236 port: 12001
-I1004 05:47:27.235926 61991 transfer_engine_impl.cpp:182] Transfer Engine RPC using P2P handshake, listening on 172.16.210.236:15760
-I1004 05:47:27.236086 61991 ascend_direct_transport.cpp:83] install AscendDirectTransport for: 172.16.210.236:15760
-I1004 05:47:27.236114 61991 utils.cpp:82] Find available between 20200 and 20300
-I1004 05:47:27.236147 61991 transfer_executor_base.cpp:80] Set transfer timeout to:33064
-I1004 05:47:27.240440 61991 transfer_executor_base.cpp:227] Success to initialize adxl engine:172.16.210.236:20264, pid:61991
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4350] [KVC][L1] ================ 物理侧 KV Cache 分配开始 ================
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.0.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.1.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.2.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.3.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.4.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.5.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.6.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.7.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.8.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.9.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:27 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.10.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.11.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.12.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.13.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.14.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.15.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.16.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.17.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.18.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.19.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.20.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.21.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.22.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.23.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.24.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.25.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.26.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.27.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:28 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.28.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:29 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.29.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:29 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.30.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:29 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.31.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
-(EngineCore pid=61991) INFO 10-04 05:47:29 [model_runner_v1.py:4950] [KVC][L1] vllm-ascend _reshape_kv_cache_tensors: model.layers.0.self_attn.attn (本组 32 层同形) -> K_cache shape=(2161, 128, 8, 128) dtype=torch.bfloat16 / V_cache shape=(2161, 128, 8, 128) dtype=torch.bfloat16, device=npu:0 (K/V 分离布局)
-(EngineCore pid=61991) INFO 10-04 05:47:29 [model_runner_v1.py:5001] [KVC][L1] ================ 物理侧 KV Cache 分配完成 ================
-(EngineCore pid=61991) INFO 10-04 05:47:29 [mooncake_connector.py:2341] num_blocks: 2161
-I1004 05:47:29.149847 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d6bf200000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.149881 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d6e1000000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.149899 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d702e00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.149916 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d724c00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.149932 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d746a00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.149947 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d768800000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.149962 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d78a600000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.149979 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d7ac400000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.149994 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d7ce400000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150012 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d7f0200000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150027 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d812000000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150043 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d833e00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150058 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d855c00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150074 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d877a00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150090 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d899800000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150106 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d8bb800000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150121 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d8dd600000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150141 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d8ff400000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150156 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d921200000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150172 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d943000000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150188 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d964e00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150202 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d986c00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150218 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d9a8a00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150235 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d9caa00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150251 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d9ec800000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150267 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12da0e600000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150282 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12da30400000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150296 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12da52200000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150313 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12da74000000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150331 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12da95e00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150348 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dab7e00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150363 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dad9c00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150379 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dafba00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150396 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12db1d800000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150413 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12db3f600000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150429 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12db61400000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150444 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12db83200000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150460 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dba5000000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150475 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dbc7000000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150493 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dbe8e00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150508 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dc0ac00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150523 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dc2ca00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150539 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dc4e800000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150555 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dc70600000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150570 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dc92400000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150588 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dcb4400000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150606 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dcd6200000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150621 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dcf8000000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150636 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dd19e00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150651 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dd3bc00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150667 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dd5da00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150694 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dd7f800000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150712 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dda1600000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150727 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12ddc3600000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150743 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dde5400000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150758 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12de07200000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150775 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12de29000000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150791 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12de4ae00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150808 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12de6cc00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150827 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12de8ea00000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150844 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12deb0800000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150861 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12ded2800000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150876 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12def4600000, length:566493184, mem type:device, engine index:0
-I1004 05:47:29.150892 61991 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12df16400000, length:566493184, mem type:device, engine index:0
-(EngineCore pid=61991) INFO 10-04 05:47:29 [mooncake_connector.py:301] KVCacheSendingThread started listening on path: tcp://172.16.210.236:20001. Thread: tp_rank=0, pp_rank=0, pcp_rank=0
-(EngineCore pid=61991) INFO 10-04 05:47:32 [worker.py:771] Free memory on device (60.87/61.27 GiB) on startup. Desired GPU memory utilization is (0.8, 49.02 GiB). Actual usage: 14.96 GiB for weights, 0.24 GiB for peak activation, 0.03 GiB for non-torch memory, 0.0 GiB for NPU graph memory. Replace gpu_memory_utilization with `--kv-cache-memory=36113709056` (33.63 GiB) to fit into requested memory, or `--kv-cache-memory=48837163008` (45.48 GiB) to fully utilize NPU free memory. Current KV cache memory: 33.78 GiB.
-(EngineCore pid=61991) INFO 10-04 05:47:33 [cpu_binding.py:542] [cpu_bind_mode] mode=global_slice rank=0 visible_npus=[0]
-(EngineCore pid=61991) INFO 10-04 05:47:33 [cpu_binding.py:626] The CPU allocation plan is as follows:
-(EngineCore pid=61991) INFO 10-04 05:47:33 [cpu_binding.py:641] NPU0: main=[2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77]  acl=[78]  release=[[79]]
-(EngineCore pid=61991) INFO 10-04 05:47:33 [cpu_binding.py:667] [migrate] NPU:0 -> NUMA [0]
-(EngineCore pid=61991) INFO 10-04 05:47:34 [core.py:369] init engine (profile, create kv cache, warmup model) took 9.59 s
-(EngineCore pid=61991) INFO 10-04 05:47:35 [factory.py:62] Creating v1 connector with name: MooncakeConnector and engine_id: 8a6eee85-fe47-4c26-9763-73c0692dd621-2d8a2f4f63324bdd9e27c15ee0518f85
-(EngineCore pid=61991) INFO 10-04 05:47:35 [mooncake_connector.py:1637] Initializing Mooncake Scheduler 8a6eee85-fe47-4c26-9763-73c0692dd621-2d8a2f4f63324bdd9e27c15ee0518f85
-(EngineCore pid=61991) INFO 10-04 05:47:35 [kv_cache_manager.py:143] [KVC][L5] ================ 逻辑侧初始化开始 ================
-(EngineCore pid=61991) INFO 10-04 05:47:35 [kv_cache_utils.py:217] [KVC][L2] FreeKVCacheBlockQueue.__init__完成：num_free_blocks=2161, 伪头尾哨兵 fake_free_list_head/tail(block_id=-1), 类型=FreeKVCacheBlockQueue
-(EngineCore pid=61991) INFO 10-04 05:47:35 [block_pool.py:62] [KVC][L2] BlockHashToBlockMap.__init__完成：底容器 size=0, value=KVCacheBlock | dict[block_id→KVCacheBlock](不去重 append-only)
-(EngineCore pid=61991) INFO 10-04 05:47:35 [block_pool.py:214] [KVC][L2] BlockPool.__init__完成：num_gpu_blocks=2161, 创建 KVCacheBlock × 2161 (block_id=0..2160), free_block_queue=FreeKVCacheBlockQueue(num_free_blocks=2160), cached_block_hash_to_block=BlockHashToBlockMap(size=0), null_block=KVCacheBlock(block_id=0, is_null=True), enable_caching=True, hash_block_size=128
-(EngineCore pid=61991) INFO 10-04 05:47:35 [single_type_kv_cache_manager.py:95] [KVC][L3] FullAttentionManager.__init__完成：spec=FullAttentionSpec(block_size=128), scheduler_block_size=128, group_id=0, enable_caching=True, dcp×pcp=1×1, block_pool(num_gpu_blocks=2161)
-(EngineCore pid=61991) INFO 10-04 05:47:35 [kv_cache_coordinator.py:462] [KVC][L4] UnitaryKVCacheCoordinator.__init__完成：单组直通, managers=['FullAttentionManager'], kv_cache_spec=FullAttentionSpec(block_size=128, page_size_bytes=524288), coordinator_block_size=128
-(EngineCore pid=61991) INFO 10-04 05:47:35 [kv_cache_manager.py:178] [KVC][L5] KVCacheManager.__init__完成：coordinator=UnitaryKVCacheCoordinator, num_kv_cache_groups=1, managers=['FullAttentionManager'], block_pool(num_gpu_blocks=2161), enable_caching=True, max_model_len=8192, empty_kv_cache_blocks=KVCacheBlocks([],)
-(EngineCore pid=61991) INFO 10-04 05:47:35 [kv_cache_manager.py:186] [KVC][L5] ================ 逻辑侧初始化完成 ================
-(EngineCore pid=61991) WARNING 10-04 05:47:35 [patch_balance_schedule.py:81] Automatic scheduler preemption is disabled on this PD-disaggregated prefill node.
-(EngineCore pid=61991) INFO 10-04 05:47:35 [mooncake_connector.py:1962] MooncakeConnector set_xfer_handshake_metadata: worker_count=1, updated={'0': {'host': '172.16.210.236', 'engine_id': '8a6eee85-fe47-4c26-9763-73c0692dd621-2d8a2f4f63324bdd9e27c15ee0518f85', 'handshake_port': 20001}}, multi_nodes_meta_mapping={'0': {'host': '172.16.210.236', 'engine_id': '8a6eee85-fe47-4c26-9763-73c0692dd621-2d8a2f4f63324bdd9e27c15ee0518f85', 'handshake_port': 20001}}
-(EngineCore pid=61991) INFO 10-04 05:47:35 [vllm.py:999] Asynchronous scheduling is enabled.
-(EngineCore pid=61991) WARNING 10-04 05:47:35 [vllm.py:1055] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
-(EngineCore pid=61991) WARNING 10-04 05:47:35 [vllm.py:1097] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
-(EngineCore pid=61991) INFO 10-04 05:47:35 [kernel.py:270] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
-(EngineCore pid=61991) INFO 10-04 05:47:35 [vllm.py:1273] Cudagraph is disabled under eager mode
-(EngineCore pid=61991) INFO 10-04 05:47:35 [utils.py:174] No quantization signature detected from model files for "/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model". The model will be loaded as float. To force a quantization method, pass "--quantization <method>" explicitly.
-(EngineCore pid=61991) INFO 10-04 05:47:35 [platform.py:1277] The timeout interval of the HCCL operator is 1836s. Timeout in seconds for execute_model RPC calls in multiprocessing must be greater than 1836s, Set VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3000
-(EngineCore pid=61991) INFO 10-04 05:47:35 [platform.py:528] Compilation disabled, using eager mode by default
-(EngineCore pid=61991) INFO 10-04 05:47:35 [platform.py:790] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
-(EngineCore pid=61991) INFO 10-04 05:47:35 [compilation.py:321] Enabled custom fusions: norm_quant, act_quant
-(APIServer pid=61868) INFO 10-04 05:47:35 [api_server.py:579] Supported tasks: ['generate']
-(APIServer pid=61868) WARNING 10-04 05:47:35 [model.py:1502] Default vLLM sampling parameters have been overridden by the model's `generation_config.json`: `{'temperature': 0.6, 'top_p': 0.9}`. If this is not intended, please relaunch vLLM instance with `--generation-config vllm`.
-(APIServer pid=61868) INFO 10-04 05:47:36 [hf.py:548] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
-(APIServer pid=61868) INFO 10-04 05:47:36 [api_server.py:583] Starting vLLM server on http://localhost:8100
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:37] Available routes are:
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /openapi.json, Methods: GET, HEAD
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /docs, Methods: GET, HEAD
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: GET, HEAD
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /redoc, Methods: GET, HEAD
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /load, Methods: GET
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /version, Methods: GET
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /health, Methods: GET
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /metrics, Methods: GET
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /tokenize, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /detokenize, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/models, Methods: GET
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /ping, Methods: GET
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /ping, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /invocations, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/chat/completions/batch, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/responses, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/completions, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/messages, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/messages/count_tokens, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /generative_scoring, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
-(APIServer pid=61868) INFO 10-04 05:47:36 [launcher.py:46] Route: /v1/completions/render, Methods: POST
-(APIServer pid=61868) INFO:     Started server process [61868]
-(APIServer pid=61868) INFO:     Waiting for application startup.
-(APIServer pid=61868) INFO:     Application startup complete.
-(EngineCore pid=61991) INFO 10-04 05:48:29 [request.py:184] [KVC][ENQ] ======== 入队 ========
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=3e70bebd55d2
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=3e70bebd55d2, tokens=128 -> BlockHash=b9ae9c20621b
-(EngineCore pid=61991) INFO 10-04 05:48:29 [request.py:187] [KVC][ENQ] Request(request_id=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b) 入队: num_prompt_tokens=324, max_tokens=1, 满块链式哈希 BlockHash × 2: ['3e70bebd55d2', 'b9ae9c20621b']
-(EngineCore pid=61991) INFO 10-04 05:48:29 [request.py:193] [KVC][ENQ] ======== 入队完成 ========
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:222] [KVC][L5] ======== 前缀查找 ========
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_coordinator.py:477] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit: 满块hash数=2, max_cache_hit_length=323, 下钻 single_type_managers[0]
-(EngineCore pid=61991) INFO 10-04 05:48:29 [single_type_kv_cache_manager.py:586] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit: block_size=128, max_length=323, 最多查 2 个hash, groups=[0], spec=FullAttentionSpec
-(EngineCore pid=61991) INFO 10-04 05:48:29 [block_pool.py:89] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=3e70bebd55d2, group_id=0) -> MISS
-(EngineCore pid=61991) INFO 10-04 05:48:29 [block_pool.py:247] [KVC][L2] 前缀查找 BlockPool.get_cached_block: MISS BlockHash=3e70bebd55d2 (group_id=0 未命中) -> None
-(EngineCore pid=61991) INFO 10-04 05:48:29 [single_type_kv_cache_manager.py:607] [KVC][L3] 前缀查找   第 1 块 MISS: BlockHash=3e70bebd55d2 -> break
-(EngineCore pid=61991) INFO 10-04 05:48:29 [single_type_kv_cache_manager.py:623] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit 返回: computed_blocks=[[]]
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_coordinator.py:495] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: hit_blocks=[[]], hit_length=0
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:249] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b num_tokens=324, max_cache_hit_length=323, hit_length=0, hit_blocks=[[]]
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:265] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks 返回: KVCacheBlocks(blocks=([],)), num_computed_tokens=0
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:270] [KVC][L5] ======== 前缀查找完成 ========
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, num_new_tokens=324(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=0(comp), request.num_tokens=324, delay_cache_blocks=False
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=0 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=324 |<lookahead>=0| num_local_computed_tokens=0 total_computed_tokens=0 to_be_computed=324
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, num_tokens=324 -> 需分配 3 块(含touch需腾挪的块)
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 3 块 vs 可用 2160 块 (free=2160 - reserved=0)
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:500] [KVC][L5] --- S3: 新块分配 ---
-(EngineCore pid=61991) INFO 10-04 05:48:29 [block_pool.py:416] [KVC][L2] S3 BlockPool.get_new_blocks(3): popleft_n -> block_ids=[1, 2, 3], 剩余 num_free_blocks=2157
-(EngineCore pid=61991) INFO 10-04 05:48:29 [single_type_kv_cache_manager.py:303] [KVC][L3] S3 SingleTypeKVCacheManager.allocate_new_blocks: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, num_tokens=324, block_size=128, 需 3 块 - 已有 0 = 新分配 3 块 [1, 2, 3], 持有 req_blocks=[1, 2, 3]
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, num_tokens=324 -> [[1, 2, 3]]
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:511] [KVC][L5] S3 allocate_new_blocks: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, num_tokens_need_slot=324 -> 新块 [1, 2, 3]
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
-(EngineCore pid=61991) INFO 10-04 05:48:29 [single_type_kv_cache_manager.py:357] [KVC][L3] S4 SingleTypeKVCacheManager.cache_blocks: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, num_tokens=324, block_size=128, 已缓存 0 块 -> 满块数 2
-(EngineCore pid=61991) INFO 10-04 05:48:29 [block_pool.py:113] [KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=3e70bebd55d2, group_id=0) <- KVCacheBlock(block_id=1), map size=1
-(EngineCore pid=61991) INFO 10-04 05:48:29 [block_pool.py:113] [KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=b9ae9c20621b, group_id=0) <- KVCacheBlock(block_id=2), map size=2
-(EngineCore pid=61991) INFO 10-04 05:48:29 [block_pool.py:345] [KVC][L2] S4 BlockPool.cache_full_blocks: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b 新满块 2 块 block_ids=[1, 2] 入 BlockHashToBlockMap (num_cached_blocks 0 -> 2, group_id=0, map size=2)
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, num_computed_tokens=324
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, num_tokens_to_cache=324
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([1, 2, 3],)), req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b 当前完整 block_table=([1, 2, 3],)
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
-(EngineCore pid=61991) INFO 10-04 05:48:29 [model_runner_v1.py:2442] [KVC][KVS] 物理KV原样归档已启用: KVC_SAVE_KV=1, 输出目录=/a3_inference/itask/workdir/wsl02075301/kvc_1p1d/tensors (相对 worker cwd)
-(EngineCore pid=61991) INFO 10-04 05:48:29 [model_runner_v1.py:2586] [KVC][KVS] ======== 开始保存物理tensor side=P worker=PP0_TP0 dev=npu:0 TERM seq=1 req尾8=b1c1ae5b: K_cache/V_cache(双独立张量池, 每块 shape=(128,8,128) torch.bfloat16, 含未写槽位) 32 层 × 3 块 blk=[1, 2, 3] cov=[128, 128, 68] -> P/req1_b1c1ae5b/kv_pp0tp0.pt ========
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, num_computed_tokens=324 (async 步末输出路径: 本步已算 token 提交入缓存)
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, num_computed_tokens=324
-(EngineCore pid=61991) INFO 10-04 05:48:29 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
-(EngineCore pid=61991) INFO 10-04 05:48:29 [mooncake_connector.py:1910] Delaying free of 3 blocks for request cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b
-(APIServer pid=61868) INFO:     127.0.0.1:54856 - "POST /v1/completions HTTP/1.1" 200 OK
-(EngineCore pid=61991) INFO 10-04 05:48:29 [model_runner_v1.py:2637] [KVC][KVS] ======== 完成保存物理tensor side=P worker=PP0_TP0 dev=npu:0 seq=1 req尾8=b1c1ae5b: P/req1_b1c1ae5b/kv_pp0tp0.pt (K_cache/V_cache, 32 层 × 3 块, 50386955 B = 48.1 MiB) 落盘 79.7 ms ========
-(EngineCore pid=61991) INFO 10-04 05:48:30 [kv_cache_manager.py:566] [KVC][L5] ======== 释放 ========
-(EngineCore pid=61991) INFO 10-04 05:48:30 [kv_cache_manager.py:568] [KVC][L5] 释放 KVCacheManager.free: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, 释放前持有 block_table=([1, 2, 3],)
-(EngineCore pid=61991) INFO 10-04 05:48:30 [single_type_kv_cache_manager.py:405] [KVC][L3] 释放 SingleTypeKVCacheManager.free: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b, 持有 blocks=[1, 2, 3] (reversed 后释放)
-(EngineCore pid=61991) INFO 10-04 05:48:30 [block_pool.py:521] [KVC][L2] 释放 BlockPool.free_blocks: blocks=[(3, 0), (2, 0), (1, 0)] (ref_cnt 已 -1), 归零回收 3 块 [3, 2, 1], append_n -> 队尾(LRU保护)
-(EngineCore pid=61991) INFO 10-04 05:48:30 [kv_cache_utils.py:391] [KVC][L2] 释放 FreeKVCacheBlockQueue.append_n(blocks=[3, 2, 1]), num_free_blocks=2160
-(EngineCore pid=61991) INFO 10-04 05:48:30 [kv_cache_coordinator.py:299] [KVC][L4] 释放 KVCacheCoordinator.free: req=cmpl-232c3b37-0ea9-4c6f-9a2e-b0bc9f55c1d9-0-b1c1ae5b 已逐组下放第3层释放
-(EngineCore pid=61991) INFO 10-04 05:48:30 [kv_cache_coordinator.py:302] [KVC][L4] ======== 释放完成 ========
-(APIServer pid=61868) INFO 10-04 05:48:36 [loggers.py:271] Engine 000: Avg prompt throughput: 32.4 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%, External prefix cache hit rate: 0.0%
-(EngineCore pid=61991) INFO 10-04 05:48:38 [request.py:184] [KVC][ENQ] ======== 入队 ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=3e70bebd55d2
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=3e70bebd55d2, tokens=128 -> BlockHash=b9ae9c20621b
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=b9ae9c20621b, tokens=128 -> BlockHash=c5e168beb751
-(EngineCore pid=61991) INFO 10-04 05:48:38 [request.py:187] [KVC][ENQ] Request(request_id=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c) 入队: num_prompt_tokens=486, max_tokens=1, 满块链式哈希 BlockHash × 3: ['3e70bebd55d2', 'b9ae9c20621b', 'c5e168beb751']
-(EngineCore pid=61991) INFO 10-04 05:48:38 [request.py:193] [KVC][ENQ] ======== 入队完成 ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:222] [KVC][L5] ======== 前缀查找 ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_coordinator.py:477] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit: 满块hash数=3, max_cache_hit_length=485, 下钻 single_type_managers[0]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:586] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit: block_size=128, max_length=485, 最多查 3 个hash, groups=[0], spec=FullAttentionSpec
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:75] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=3e70bebd55d2, group_id=0) -> HIT KVCacheBlock(block_id=1)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:254] [KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash=3e70bebd55d2 groups=[0] -> blocks=[1]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:599] [KVC][L3] 前缀查找   第 1 块 HIT: BlockHash=3e70bebd55d2 -> cached blocks=[1]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:75] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=b9ae9c20621b, group_id=0) -> HIT KVCacheBlock(block_id=2)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:254] [KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash=b9ae9c20621b groups=[0] -> blocks=[2]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:599] [KVC][L3] 前缀查找   第 2 块 HIT: BlockHash=b9ae9c20621b -> cached blocks=[2]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:89] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=c5e168beb751, group_id=0) -> MISS
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:247] [KVC][L2] 前缀查找 BlockPool.get_cached_block: MISS BlockHash=c5e168beb751 (group_id=0 未命中) -> None
-(EngineCore pid=61991) INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:607] [KVC][L3] 前缀查找   第 3 块 MISS: BlockHash=c5e168beb751 -> break
-(EngineCore pid=61991) INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:623] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit 返回: computed_blocks=[[1, 2]]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_coordinator.py:495] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: hit_blocks=[[1, 2]], hit_length=256
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:249] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c num_tokens=486, max_cache_hit_length=485, hit_length=256, hit_blocks=[[1, 2]]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:265] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks 返回: KVCacheBlocks(blocks=([1, 2],)), num_computed_tokens=256
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:270] [KVC][L5] ======== 前缀查找完成 ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_new_tokens=230(new), num_new_computed_tokens=256(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=0(comp), request.num_tokens=486, delay_cache_blocks=False
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=0 |<new_comp>=256 |<ext_comp>=0(P传D) |<new>=230 |<lookahead>=0| num_local_computed_tokens=256 total_computed_tokens=256 to_be_computed=230
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens=486 -> 需分配 4 块(含touch需腾挪的块)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 4 块 vs 可用 2160 块 (free=2160 - reserved=0)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:482] [KVC][L5] --- S2: touch 命中块 ---
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:484] [KVC][L5] S2 allocate_new_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, new_computed_blocks=[[1, 2]]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:243] [KVC][L3] S2 SingleTypeKVCacheManager.allocate_new_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, touch 命中块 [1, 2], 此前请求持有块数=0
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:496] [KVC][L2] S2 BlockPool.touch: blocks=[(1, 1), (2, 1)] (ref_cnt 已 +1)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_coordinator.py:220] [KVC][L4] S2 KVCacheCoordinator.allocate_new_computed_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, group=0, new_computed_blocks=[1, 2], num_local_computed_tokens=256
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:500] [KVC][L5] --- S3: 新块分配 ---
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:416] [KVC][L2] S3 BlockPool.get_new_blocks(2): popleft_n -> block_ids=[4, 5], 剩余 num_free_blocks=2156
-(EngineCore pid=61991) INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:303] [KVC][L3] S3 SingleTypeKVCacheManager.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens=486, block_size=128, 需 4 块 - 已有 2 = 新分配 2 块 [4, 5], 持有 req_blocks=[1, 2, 4, 5]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens=486 -> [[4, 5]]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:511] [KVC][L5] S3 allocate_new_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens_need_slot=486 -> 新块 [4, 5]
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
-(EngineCore pid=61991) INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:357] [KVC][L3] S4 SingleTypeKVCacheManager.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens=486, block_size=128, 已缓存 2 块 -> 满块数 3
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:113] [KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=c5e168beb751, group_id=0) <- KVCacheBlock(block_id=4), map size=3
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:345] [KVC][L2] S4 BlockPool.cache_full_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c 新满块 1 块 block_ids=[4] 入 BlockHashToBlockMap (num_cached_blocks 2 -> 3, group_id=0, map size=3)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_computed_tokens=486
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_tokens_to_cache=486
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([4, 5],)), req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c 当前完整 block_table=([1, 2, 4, 5],)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [model_runner_v1.py:2586] [KVC][KVS] ======== 开始保存物理tensor side=P worker=PP0_TP0 dev=npu:0 TERM seq=2 req尾8=996fd16c: K_cache/V_cache(双独立张量池, 每块 shape=(128,8,128) torch.bfloat16, 含未写槽位) 32 层 × 4 块 blk=[1, 2, 4, 5] cov=[128, 128, 128, 102] -> P/req2_996fd16c/kv_pp0tp0.pt ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_computed_tokens=486 (async 步末输出路径: 本步已算 token 提交入缓存)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, num_computed_tokens=486
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [mooncake_connector.py:1910] Delaying free of 4 blocks for request cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c
-(APIServer pid=61868) INFO:     127.0.0.1:45732 - "POST /v1/completions HTTP/1.1" 200 OK
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:566] [KVC][L5] ======== 释放 ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_manager.py:568] [KVC][L5] 释放 KVCacheManager.free: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, 释放前持有 block_table=([1, 2, 4, 5],)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [single_type_kv_cache_manager.py:405] [KVC][L3] 释放 SingleTypeKVCacheManager.free: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c, 持有 blocks=[1, 2, 4, 5] (reversed 后释放)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [block_pool.py:521] [KVC][L2] 释放 BlockPool.free_blocks: blocks=[(5, 0), (4, 0), (2, 0), (1, 0)] (ref_cnt 已 -1), 归零回收 4 块 [5, 4, 2, 1], append_n -> 队尾(LRU保护)
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_utils.py:391] [KVC][L2] 释放 FreeKVCacheBlockQueue.append_n(blocks=[5, 4, 2, 1]), num_free_blocks=2160
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_coordinator.py:299] [KVC][L4] 释放 KVCacheCoordinator.free: req=cmpl-2b8504c2-fa91-4815-a5c0-40e90f7bfb06-0-996fd16c 已逐组下放第3层释放
-(EngineCore pid=61991) INFO 10-04 05:48:38 [kv_cache_coordinator.py:302] [KVC][L4] ======== 释放完成 ========
-(EngineCore pid=61991) INFO 10-04 05:48:38 [model_runner_v1.py:2637] [KVC][KVS] ======== 完成保存物理tensor side=P worker=PP0_TP0 dev=npu:0 seq=2 req尾8=996fd16c: P/req2_996fd16c/kv_pp0tp0.pt (K_cache/V_cache, 32 层 × 4 块, 67181963 B = 64.1 MiB) 落盘 89.3 ms ========
-(APIServer pid=61868) INFO 10-04 05:48:46 [loggers.py:271] Engine 000: Avg prompt throughput: 23.0 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 31.6%, External prefix cache hit rate: 0.0%
-(APIServer pid=61868) INFO 10-04 05:48:56 [loggers.py:271] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 31.6%, External prefix cache hit rate: 0.0%
+W1009 06:54:46.831954  3117 transfer_engine_py.cpp:96] Using default malloc/free for protocol: ascend
+I1009 06:54:46.832011  3117 transfer_engine_impl.cpp:811] Metrics reporting is disabled (set MC_TE_METRIC=1 to enable)
+I1009 06:54:46.832018  3117 transfer_engine_impl.cpp:115] Transfer Engine parseHostNameWithPort. server_name: 172.16.210.228 port: 12001
+I1009 06:54:46.832041  3117 transfer_engine_impl.cpp:182] Transfer Engine RPC using P2P handshake, listening on 172.16.210.228:16710
+I1009 06:54:46.832137  3117 ascend_direct_transport.cpp:83] install AscendDirectTransport for: 172.16.210.228:16710
+I1009 06:54:46.832160  3117 utils.cpp:82] Find available between 20400 and 20500
+I1009 06:54:46.832188  3117 transfer_executor_base.cpp:80] Set transfer timeout to:33064
+I1009 06:54:46.836083  3117 transfer_executor_base.cpp:227] Success to initialize adxl engine:172.16.210.228:20490, pid:3117
+(EngineCore pid=3117) INFO 10-09 06:54:46 [model_runner_v1.py:4350] [KVC][L1] ================ 物理侧 KV Cache 分配开始 ================
+(EngineCore pid=3117) INFO 10-09 06:54:46 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.0.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.1.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:46 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.2.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.3.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.4.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.5.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.6.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.7.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.8.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.9.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.10.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.11.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.12.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.13.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.14.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.15.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.16.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.17.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.18.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.19.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:47 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.20.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.21.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.22.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.23.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.24.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.25.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.26.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.27.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.28.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.29.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.30.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4512] [KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: model.layers.31.self_attn.attn: KVCacheTensor(size=1132986368 bytes = 1080.50MiB) -> K int8 540.25MiB + V int8 540.25MiB (alignment=2097152, device=npu:0)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:4950] [KVC][L1] vllm-ascend _reshape_kv_cache_tensors: model.layers.0.self_attn.attn (本组 32 层同形) -> K_cache shape=(2161, 128, 8, 128) dtype=torch.bfloat16 / V_cache shape=(2161, 128, 8, 128) dtype=torch.bfloat16, device=npu:0 (K/V 分离布局)
+(EngineCore pid=3117) INFO 10-09 06:54:48 [model_runner_v1.py:5001] [KVC][L1] ================ 物理侧 KV Cache 分配完成 ================
+(EngineCore pid=3117) INFO 10-09 06:54:48 [mooncake_connector.py:2341] num_blocks: 2161
+I1009 06:54:48.588058  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d6bf200000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588112  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d6e1000000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588130  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d702e00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588147  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d724c00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588163  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d746a00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588179  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d768800000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588195  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d78a600000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588212  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d7ac400000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588225  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d7ce400000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588241  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d7f0200000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588258  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d812000000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588272  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d833e00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588285  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d855c00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588299  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d877a00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588315  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d899800000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588330  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d8bb800000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588343  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d8dd600000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588362  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d8ff400000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588378  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d921200000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588393  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d943000000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588407  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d964e00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588421  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d986c00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588435  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d9a8a00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588449  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d9caa00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588462  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12d9ec800000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588474  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12da0e600000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588488  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12da30400000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588501  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12da52200000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588514  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12da74000000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588527  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12da95e00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588543  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dab7e00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588559  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dad9c00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588573  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dafba00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588590  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12db1d800000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588608  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12db3f600000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588624  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12db61400000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588637  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12db83200000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588651  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dba5000000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588665  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dbc7000000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588680  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dbe8e00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588693  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dc0ac00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588706  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dc2ca00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588719  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dc4e800000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588733  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dc70600000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588748  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dc92400000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588761  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dcb4400000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588775  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dcd6200000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588788  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dcf8000000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588802  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dd19e00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588815  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dd3bc00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588829  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dd5da00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588842  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dd7f800000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588856  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dda1600000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588869  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12ddc3600000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588883  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12dde5400000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588897  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12de07200000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588912  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12de29000000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588925  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12de4ae00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588939  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12de6cc00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588954  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12de8ea00000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588970  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12deb0800000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588984  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12ded2800000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.588999  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12def4600000, length:566493184, mem type:device, engine index:0
+I1009 06:54:48.589012  3117 transfer_executor_base.cpp:452] TransferExecutor register mem addr:0x12df16400000, length:566493184, mem type:device, engine index:0
+(EngineCore pid=3117) INFO 10-09 06:54:48 [mooncake_connector.py:301] KVCacheSendingThread started listening on path: tcp://172.16.210.228:20001. Thread: tp_rank=0, pp_rank=0, pcp_rank=0
+(EngineCore pid=3117) INFO 10-09 06:54:51 [worker.py:771] Free memory on device (60.86/61.27 GiB) on startup. Desired GPU memory utilization is (0.8, 49.02 GiB). Actual usage: 14.96 GiB for weights, 0.24 GiB for peak activation, 0.03 GiB for non-torch memory, 0.0 GiB for NPU graph memory. Replace gpu_memory_utilization with `--kv-cache-memory=36114536448` (33.63 GiB) to fit into requested memory, or `--kv-cache-memory=48835164160` (45.48 GiB) to fully utilize NPU free memory. Current KV cache memory: 33.78 GiB.
+(EngineCore pid=3117) INFO 10-09 06:54:53 [cpu_binding.py:542] [cpu_bind_mode] mode=global_slice rank=0 visible_npus=[0]
+(EngineCore pid=3117) INFO 10-09 06:54:53 [cpu_binding.py:626] The CPU allocation plan is as follows:
+(EngineCore pid=3117) INFO 10-09 06:54:53 [cpu_binding.py:641] NPU0: main=[2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77]  acl=[78]  release=[[79]]
+(EngineCore pid=3117) INFO 10-09 06:54:53 [cpu_binding.py:667] [migrate] NPU:0 -> NUMA [0]
+(EngineCore pid=3117) INFO 10-09 06:54:53 [core.py:369] init engine (profile, create kv cache, warmup model) took 8.44 s
+(EngineCore pid=3117) INFO 10-09 06:54:54 [factory.py:62] Creating v1 connector with name: MooncakeConnector and engine_id: d342fa45-beb7-4d81-8cff-8ea073a3edfb-c36ae8af9d344e1b8877d97deb0fac1d
+(EngineCore pid=3117) INFO 10-09 06:54:54 [mooncake_connector.py:1637] Initializing Mooncake Scheduler d342fa45-beb7-4d81-8cff-8ea073a3edfb-c36ae8af9d344e1b8877d97deb0fac1d
+(EngineCore pid=3117) INFO 10-09 06:54:54 [kv_cache_manager.py:143] [KVC][L5] ================ 逻辑侧初始化开始 ================
+(EngineCore pid=3117) INFO 10-09 06:54:54 [kv_cache_utils.py:217] [KVC][L2] FreeKVCacheBlockQueue.__init__完成：num_free_blocks=2161, 伪头尾哨兵 fake_free_list_head/tail(block_id=-1), 类型=FreeKVCacheBlockQueue
+(EngineCore pid=3117) INFO 10-09 06:54:54 [block_pool.py:62] [KVC][L2] BlockHashToBlockMap.__init__完成：底容器 size=0, value=KVCacheBlock | dict[block_id→KVCacheBlock](不去重 append-only)
+(EngineCore pid=3117) INFO 10-09 06:54:54 [block_pool.py:214] [KVC][L2] BlockPool.__init__完成：num_gpu_blocks=2161, 创建 KVCacheBlock × 2161 (block_id=0..2160), free_block_queue=FreeKVCacheBlockQueue(num_free_blocks=2160), cached_block_hash_to_block=BlockHashToBlockMap(size=0), null_block=KVCacheBlock(block_id=0, is_null=True), enable_caching=True, hash_block_size=128
+(EngineCore pid=3117) INFO 10-09 06:54:54 [single_type_kv_cache_manager.py:95] [KVC][L3] FullAttentionManager.__init__完成：spec=FullAttentionSpec(block_size=128), scheduler_block_size=128, group_id=0, enable_caching=True, dcp×pcp=1×1, block_pool(num_gpu_blocks=2161)
+(EngineCore pid=3117) INFO 10-09 06:54:54 [kv_cache_coordinator.py:462] [KVC][L4] UnitaryKVCacheCoordinator.__init__完成：单组直通, managers=['FullAttentionManager'], kv_cache_spec=FullAttentionSpec(block_size=128, page_size_bytes=524288), coordinator_block_size=128
+(EngineCore pid=3117) INFO 10-09 06:54:54 [kv_cache_manager.py:178] [KVC][L5] KVCacheManager.__init__完成：coordinator=UnitaryKVCacheCoordinator, num_kv_cache_groups=1, managers=['FullAttentionManager'], block_pool(num_gpu_blocks=2161), enable_caching=True, max_model_len=8192, empty_kv_cache_blocks=KVCacheBlocks([],)
+(EngineCore pid=3117) INFO 10-09 06:54:54 [kv_cache_manager.py:186] [KVC][L5] ================ 逻辑侧初始化完成 ================
+(EngineCore pid=3117) WARNING 10-09 06:54:54 [patch_balance_schedule.py:81] Automatic scheduler preemption is disabled on this PD-disaggregated prefill node.
+(EngineCore pid=3117) INFO 10-09 06:54:54 [mooncake_connector.py:1962] MooncakeConnector set_xfer_handshake_metadata: worker_count=1, updated={'0': {'host': '172.16.210.228', 'engine_id': 'd342fa45-beb7-4d81-8cff-8ea073a3edfb-c36ae8af9d344e1b8877d97deb0fac1d', 'handshake_port': 20001}}, multi_nodes_meta_mapping={'0': {'host': '172.16.210.228', 'engine_id': 'd342fa45-beb7-4d81-8cff-8ea073a3edfb-c36ae8af9d344e1b8877d97deb0fac1d', 'handshake_port': 20001}}
+(EngineCore pid=3117) INFO 10-09 06:54:54 [vllm.py:999] Asynchronous scheduling is enabled.
+(EngineCore pid=3117) WARNING 10-09 06:54:54 [vllm.py:1055] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+(EngineCore pid=3117) WARNING 10-09 06:54:54 [vllm.py:1097] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(EngineCore pid=3117) INFO 10-09 06:54:54 [kernel.py:270] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(EngineCore pid=3117) INFO 10-09 06:54:54 [vllm.py:1273] Cudagraph is disabled under eager mode
+(EngineCore pid=3117) INFO 10-09 06:54:54 [utils.py:174] No quantization signature detected from model files for "/home/admin/model-csi/models/modelhub_74000048_meta-llama-3-8b-148700128_20260921221233/model". The model will be loaded as float. To force a quantization method, pass "--quantization <method>" explicitly.
+(EngineCore pid=3117) INFO 10-09 06:54:54 [platform.py:1277] The timeout interval of the HCCL operator is 1836s. Timeout in seconds for execute_model RPC calls in multiprocessing must be greater than 1836s, Set VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3000
+(EngineCore pid=3117) INFO 10-09 06:54:54 [platform.py:528] Compilation disabled, using eager mode by default
+(EngineCore pid=3117) INFO 10-09 06:54:54 [platform.py:790] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(EngineCore pid=3117) INFO 10-09 06:54:54 [compilation.py:321] Enabled custom fusions: norm_quant, act_quant
+(APIServer pid=2988) INFO 10-09 06:54:54 [api_server.py:579] Supported tasks: ['generate']
+(APIServer pid=2988) WARNING 10-09 06:54:55 [model.py:1502] Default vLLM sampling parameters have been overridden by the model's `generation_config.json`: `{'temperature': 0.6, 'top_p': 0.9}`. If this is not intended, please relaunch vLLM instance with `--generation-config vllm`.
+(APIServer pid=2988) INFO 10-09 06:54:55 [hf.py:548] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+(APIServer pid=2988) INFO 10-09 06:54:55 [api_server.py:583] Starting vLLM server on http://localhost:8100
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:37] Available routes are:
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /openapi.json, Methods: HEAD, GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /docs, Methods: HEAD, GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: HEAD, GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /redoc, Methods: HEAD, GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /load, Methods: GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /version, Methods: GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /health, Methods: GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /metrics, Methods: GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /tokenize, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /detokenize, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/models, Methods: GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /ping, Methods: GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /ping, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /invocations, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/chat/completions/batch, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/responses, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/completions, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/messages, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/messages/count_tokens, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /generative_scoring, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
+(APIServer pid=2988) INFO 10-09 06:54:55 [launcher.py:46] Route: /v1/completions/render, Methods: POST
+(APIServer pid=2988) INFO:     Started server process [2988]
+(APIServer pid=2988) INFO:     Waiting for application startup.
+(APIServer pid=2988) INFO:     Application startup complete.
+(EngineCore pid=3117) INFO 10-09 06:55:40 [request.py:184] [KVC][ENQ] ======== 入队 ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=be4042233213
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=be4042233213, tokens=128 -> BlockHash=c6534205b988
+(EngineCore pid=3117) INFO 10-09 06:55:40 [request.py:187] [KVC][ENQ] Request(request_id=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab) 入队: num_prompt_tokens=324, max_tokens=1, 满块链式哈希 BlockHash × 2: ['be4042233213', 'c6534205b988']
+(EngineCore pid=3117) INFO 10-09 06:55:40 [request.py:193] [KVC][ENQ] ======== 入队完成 ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:222] [KVC][L5] ======== 前缀查找 ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_coordinator.py:477] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit: 满块hash数=2, max_cache_hit_length=323, 下钻 single_type_managers[0]
+(EngineCore pid=3117) INFO 10-09 06:55:40 [single_type_kv_cache_manager.py:586] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit: block_size=128, max_length=323, 最多查 2 个hash, groups=[0], spec=FullAttentionSpec
+(EngineCore pid=3117) INFO 10-09 06:55:40 [block_pool.py:89] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=be4042233213, group_id=0) -> MISS
+(EngineCore pid=3117) INFO 10-09 06:55:40 [block_pool.py:247] [KVC][L2] 前缀查找 BlockPool.get_cached_block: MISS BlockHash=be4042233213 (group_id=0 未命中) -> None
+(EngineCore pid=3117) INFO 10-09 06:55:40 [single_type_kv_cache_manager.py:607] [KVC][L3] 前缀查找   第 1 块 MISS: BlockHash=be4042233213 -> break
+(EngineCore pid=3117) INFO 10-09 06:55:40 [single_type_kv_cache_manager.py:623] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit 返回: computed_blocks=[[]]
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_coordinator.py:495] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: hit_blocks=[[]], hit_length=0
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:249] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab num_tokens=324, max_cache_hit_length=323, hit_length=0, hit_blocks=[[]]
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:265] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks 返回: KVCacheBlocks(blocks=([],)), num_computed_tokens=0
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:270] [KVC][L5] ======== 前缀查找完成 ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, num_new_tokens=324(new), num_new_computed_tokens=0(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=0(comp), request.num_tokens=324, delay_cache_blocks=False
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=0 |<new_comp>=0 |<ext_comp>=0(P传D) |<new>=324 |<lookahead>=0| num_local_computed_tokens=0 total_computed_tokens=0 to_be_computed=324
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, num_tokens=324 -> 需分配 3 块(含touch需腾挪的块)
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 3 块 vs 可用 2160 块 (free=2160 - reserved=0)
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:496] [KVC][L5] --- S2: 无前缀缓冲, 无需 touch ---
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:500] [KVC][L5] --- S3: 新块分配 ---
+(EngineCore pid=3117) INFO 10-09 06:55:40 [block_pool.py:416] [KVC][L2] S3 BlockPool.get_new_blocks(3): popleft_n -> block_ids=[1, 2, 3], 剩余 num_free_blocks=2157
+(EngineCore pid=3117) INFO 10-09 06:55:40 [single_type_kv_cache_manager.py:303] [KVC][L3] S3 SingleTypeKVCacheManager.allocate_new_blocks: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, num_tokens=324, block_size=128, 需 3 块 - 已有 0 = 新分配 3 块 [1, 2, 3], 持有 req_blocks=[1, 2, 3]
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, num_tokens=324 -> [[1, 2, 3]]
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:511] [KVC][L5] S3 allocate_new_blocks: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, num_tokens_need_slot=324 -> 新块 [1, 2, 3]
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+(EngineCore pid=3117) INFO 10-09 06:55:40 [single_type_kv_cache_manager.py:357] [KVC][L3] S4 SingleTypeKVCacheManager.cache_blocks: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, num_tokens=324, block_size=128, 已缓存 0 块 -> 满块数 2
+(EngineCore pid=3117) INFO 10-09 06:55:40 [block_pool.py:113] [KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=be4042233213, group_id=0) <- KVCacheBlock(block_id=1), map size=1
+(EngineCore pid=3117) INFO 10-09 06:55:40 [block_pool.py:113] [KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=c6534205b988, group_id=0) <- KVCacheBlock(block_id=2), map size=2
+(EngineCore pid=3117) INFO 10-09 06:55:40 [block_pool.py:345] [KVC][L2] S4 BlockPool.cache_full_blocks: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab 新满块 2 块 block_ids=[1, 2] 入 BlockHashToBlockMap (num_cached_blocks 0 -> 2, group_id=0, map size=2)
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, num_computed_tokens=324
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, num_tokens_to_cache=324
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([1, 2, 3],)), req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab 当前完整 block_table=([1, 2, 3],)
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [model_runner_v1.py:2442] [KVC][KVS] 物理KV原样归档已启用: KVC_SAVE_KV=1, 输出目录=/a3_inference/itask/workdir/wsl02075301/kvc_1p1d/tensors (相对 worker cwd)
+(EngineCore pid=3117) INFO 10-09 06:55:40 [model_runner_v1.py:2585] [KVC][KVS] ======== 开始保存物理tensor side=P worker=PP0_TP0 dev=npu:0 TERM seq=1 req尾8=be399eab: 保存文件=req1/P/kv_pp0tp0.pt, 张量内容=K_cache/V_cache(双独立张量池, 每块 shape=(128,8,128) torch.bfloat16, 含未写槽位) 32 层 × 3 块 blk=[1, 2, 3] cov=[128, 128, 68] ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, num_computed_tokens=324 (async 步末输出路径: 本步已算 token 提交入缓存)
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, num_computed_tokens=324
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [mooncake_connector.py:1910] Delaying free of 3 blocks for request cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab
+(APIServer pid=2988) INFO:     127.0.0.1:36336 - "POST /v1/completions HTTP/1.1" 200 OK
+(EngineCore pid=3117) INFO 10-09 06:55:40 [model_runner_v1.py:2637] [KVC][KVS] ======== 完成保存物理tensor side=P worker=PP0_TP0 dev=npu:0 seq=1 req尾8=be399eab: req1/P/kv_pp0tp0.pt (K_cache/V_cache, 32 层 × 3 块, 50386955 B = 48.1 MiB) 落盘 88.0 ms ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:566] [KVC][L5] ======== 释放 ========
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_manager.py:568] [KVC][L5] 释放 KVCacheManager.free: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, 释放前持有 block_table=([1, 2, 3],)
+(EngineCore pid=3117) INFO 10-09 06:55:40 [single_type_kv_cache_manager.py:405] [KVC][L3] 释放 SingleTypeKVCacheManager.free: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab, 持有 blocks=[1, 2, 3] (reversed 后释放)
+(EngineCore pid=3117) INFO 10-09 06:55:40 [block_pool.py:521] [KVC][L2] 释放 BlockPool.free_blocks: blocks=[(3, 0), (2, 0), (1, 0)] (ref_cnt 已 -1), 归零回收 3 块 [3, 2, 1], append_n -> 队尾(LRU保护)
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_utils.py:391] [KVC][L2] 释放 FreeKVCacheBlockQueue.append_n(blocks=[3, 2, 1]), num_free_blocks=2160
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_coordinator.py:299] [KVC][L4] 释放 KVCacheCoordinator.free: req=cmpl-789241fc-19ab-4bb3-8375-99b2fff650ef-0-be399eab 已逐组下放第3层释放
+(EngineCore pid=3117) INFO 10-09 06:55:40 [kv_cache_coordinator.py:302] [KVC][L4] ======== 释放完成 ========
+(APIServer pid=2988) INFO 10-09 06:55:45 [loggers.py:271] Engine 000: Avg prompt throughput: 32.4 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%, External prefix cache hit rate: 0.0%
+(EngineCore pid=3117) INFO 10-09 06:55:49 [request.py:184] [KVC][ENQ] ======== 入队 ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=be4042233213
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=be4042233213, tokens=128 -> BlockHash=c6534205b988
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_utils.py:612] [KVC][ENQ] 入队 hash_block_tokens: parent=c6534205b988, tokens=128 -> BlockHash=c70b01f27731
+(EngineCore pid=3117) INFO 10-09 06:55:49 [request.py:187] [KVC][ENQ] Request(request_id=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385) 入队: num_prompt_tokens=486, max_tokens=1, 满块链式哈希 BlockHash × 3: ['be4042233213', 'c6534205b988', 'c70b01f27731']
+(EngineCore pid=3117) INFO 10-09 06:55:49 [request.py:193] [KVC][ENQ] ======== 入队完成 ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:222] [KVC][L5] ======== 前缀查找 ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_coordinator.py:477] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit: 满块hash数=3, max_cache_hit_length=485, 下钻 single_type_managers[0]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:586] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit: block_size=128, max_length=485, 最多查 3 个hash, groups=[0], spec=FullAttentionSpec
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:75] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=be4042233213, group_id=0) -> HIT KVCacheBlock(block_id=1)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:254] [KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash=be4042233213 groups=[0] -> blocks=[1]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:599] [KVC][L3] 前缀查找   第 1 块 HIT: BlockHash=be4042233213 -> cached blocks=[1]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:75] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=c6534205b988, group_id=0) -> HIT KVCacheBlock(block_id=2)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:254] [KVC][L2] 前缀查找 BlockPool.get_cached_block: HIT BlockHash=c6534205b988 groups=[0] -> blocks=[2]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:599] [KVC][L3] 前缀查找   第 2 块 HIT: BlockHash=c6534205b988 -> cached blocks=[2]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:89] [KVC][L2] 前缀查找 BlockHashToBlockMap.get_one_block: key=BlockHashWithGroupId(hash=c70b01f27731, group_id=0) -> MISS
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:247] [KVC][L2] 前缀查找 BlockPool.get_cached_block: MISS BlockHash=c70b01f27731 (group_id=0 未命中) -> None
+(EngineCore pid=3117) INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:607] [KVC][L3] 前缀查找   第 3 块 MISS: BlockHash=c70b01f27731 -> break
+(EngineCore pid=3117) INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:623] [KVC][L3] 前缀查找 FullAttentionManager.find_longest_cache_hit 返回: computed_blocks=[[1, 2]]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_coordinator.py:495] [KVC][L4] 前缀查找 UnitaryKVCacheCoordinator.find_longest_cache_hit 返回: hit_blocks=[[1, 2]], hit_length=256
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:249] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385 num_tokens=486, max_cache_hit_length=485, hit_length=256, hit_blocks=[[1, 2]]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:265] [KVC][L5] 前缀查找 KVCacheManager.get_computed_blocks 返回: KVCacheBlocks(blocks=([1, 2],)), num_computed_tokens=256
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:270] [KVC][L5] ======== 前缀查找完成 ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:393] [KVC][L5] ======== 分配 S1~S4 ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:399] [KVC][L5] 分配 KVCacheManager.allocate_slots 进入: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_new_tokens=230(new), num_new_computed_tokens=256(new_comp), num_external_computed_tokens=0(ext_comp=P传D_KV), num_encoder_tokens=0, num_lookahead_tokens=0, request.num_computed_tokens=0(comp), request.num_tokens=486, delay_cache_blocks=False
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:409] [KVC][L5] 分配布局: |<comp>=0 |<new_comp>=256 |<ext_comp>=0(P传D) |<new>=230 |<lookahead>=0| num_local_computed_tokens=256 total_computed_tokens=256 to_be_computed=230
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:417] [KVC][L5] --- S1: 容量检查---
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_coordinator.py:188] [KVC][L4] S1 KVCacheCoordinator.get_num_blocks_to_allocate: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens=486 -> 需分配 4 块(含touch需腾挪的块)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:462] [KVC][L5] S1 get_num_blocks_to_allocate: 需分配 4 块 vs 可用 2160 块 (free=2160 - reserved=0)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:482] [KVC][L5] --- S2: touch 命中块 ---
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:484] [KVC][L5] S2 allocate_new_computed_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, new_computed_blocks=[[1, 2]]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:243] [KVC][L3] S2 SingleTypeKVCacheManager.allocate_new_computed_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, touch 命中块 [1, 2], 此前请求持有块数=0
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:496] [KVC][L2] S2 BlockPool.touch: blocks=[(1, 1), (2, 1)] (ref_cnt 已 +1)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_coordinator.py:220] [KVC][L4] S2 KVCacheCoordinator.allocate_new_computed_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, group=0, new_computed_blocks=[1, 2], num_local_computed_tokens=256
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:500] [KVC][L5] --- S3: 新块分配 ---
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:416] [KVC][L2] S3 BlockPool.get_new_blocks(2): popleft_n -> block_ids=[4, 5], 剩余 num_free_blocks=2156
+(EngineCore pid=3117) INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:303] [KVC][L3] S3 SingleTypeKVCacheManager.allocate_new_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens=486, block_size=128, 需 4 块 - 已有 2 = 新分配 2 块 [4, 5], 持有 req_blocks=[1, 2, 4, 5]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_coordinator.py:261] [KVC][L4] S3 KVCacheCoordinator.allocate_new_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens=486 -> [[4, 5]]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:511] [KVC][L5] S3 allocate_new_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens_need_slot=486 -> 新块 [4, 5]
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:538] [KVC][L5] --- S4: 满块入缓存 ---
+(EngineCore pid=3117) INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:357] [KVC][L3] S4 SingleTypeKVCacheManager.cache_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens=486, block_size=128, 已缓存 2 块 -> 满块数 3
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:113] [KVC][L2] S4 BlockHashToBlockMap.insert: key=BlockHashWithGroupId(hash=c70b01f27731, group_id=0) <- KVCacheBlock(block_id=4), map size=3
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:345] [KVC][L2] S4 BlockPool.cache_full_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385 新满块 1 块 block_ids=[4] 入 BlockHashToBlockMap (num_cached_blocks 2 -> 3, group_id=0, map size=3)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_computed_tokens=486
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:544] [KVC][L5] S4 cache_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_tokens_to_cache=486
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:548] [KVC][L5] 分配 KVCacheManager.allocate_slots 返回: KVCacheBlocks(blocks=([4, 5],)), req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385 当前完整 block_table=([1, 2, 4, 5],)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:554] [KVC][L5] ======== 分配完成 ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [model_runner_v1.py:2585] [KVC][KVS] ======== 开始保存物理tensor side=P worker=PP0_TP0 dev=npu:0 TERM seq=2 req尾8=825ca385: 保存文件=req2/P/kv_pp0tp0.pt, 张量内容=K_cache/V_cache(双独立张量池, 每块 shape=(128,8,128) torch.bfloat16, 含未写槽位) 32 层 × 4 块 blk=[1, 2, 4, 5] cov=[128, 128, 128, 102] ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:691] [KVC][L5] ======== 调度提交(非分配 S4) ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:692] [KVC][L5] 提交 cache_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_computed_tokens=486 (async 步末输出路径: 本步已算 token 提交入缓存)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_coordinator.py:284] [KVC][L4] S4 KVCacheCoordinator.cache_blocks: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, num_computed_tokens=486
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:698] [KVC][L5] ======== 提交完成 ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [mooncake_connector.py:1910] Delaying free of 4 blocks for request cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385
+(APIServer pid=2988) INFO:     127.0.0.1:33174 - "POST /v1/completions HTTP/1.1" 200 OK
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:566] [KVC][L5] ======== 释放 ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_manager.py:568] [KVC][L5] 释放 KVCacheManager.free: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, 释放前持有 block_table=([1, 2, 4, 5],)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [single_type_kv_cache_manager.py:405] [KVC][L3] 释放 SingleTypeKVCacheManager.free: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385, 持有 blocks=[1, 2, 4, 5] (reversed 后释放)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [block_pool.py:521] [KVC][L2] 释放 BlockPool.free_blocks: blocks=[(5, 0), (4, 0), (2, 0), (1, 0)] (ref_cnt 已 -1), 归零回收 4 块 [5, 4, 2, 1], append_n -> 队尾(LRU保护)
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_utils.py:391] [KVC][L2] 释放 FreeKVCacheBlockQueue.append_n(blocks=[5, 4, 2, 1]), num_free_blocks=2160
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_coordinator.py:299] [KVC][L4] 释放 KVCacheCoordinator.free: req=cmpl-44580313-9ad9-4629-9d73-e09b3e3761e1-0-825ca385 已逐组下放第3层释放
+(EngineCore pid=3117) INFO 10-09 06:55:49 [kv_cache_coordinator.py:302] [KVC][L4] ======== 释放完成 ========
+(EngineCore pid=3117) INFO 10-09 06:55:49 [model_runner_v1.py:2637] [KVC][KVS] ======== 完成保存物理tensor side=P worker=PP0_TP0 dev=npu:0 seq=2 req尾8=825ca385: req2/P/kv_pp0tp0.pt (K_cache/V_cache, 32 层 × 4 块, 67181963 B = 64.1 MiB) 落盘 88.8 ms ========
+(APIServer pid=2988) INFO 10-09 06:55:55 [loggers.py:271] Engine 000: Avg prompt throughput: 23.0 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 31.6%, External prefix cache hit rate: 0.0%
+(APIServer pid=2988) INFO 10-09 06:56:05 [loggers.py:271] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 31.6%, External prefix cache hit rate: 0.0%
