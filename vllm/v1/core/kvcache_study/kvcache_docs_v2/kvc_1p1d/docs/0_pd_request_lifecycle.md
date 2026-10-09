@@ -65,13 +65,11 @@ logs/server/p_llama.log:404  (APIServer)  INFO: 127.0.0.1:45732 - "POST /v1/comp
 ### 阶段④a D 载入 + 增量传输（05:48:38）
 
 ```
-(历史 PCM 轮旗标证据: P 侧 [PCM] SCHED ... do_rp=False do_rd=True / D 侧对偶 do_rp=True do_rd=False
- —— 每实例只扮演一半角色: P=供给方(交 KV), D=拉取方)
 logs/patchs/kvc_d_reqr.log   [L5] 分配 进入: num_new_tokens=0, num_new_computed_tokens=256, num_external_computed_tokens=230(ext_comp=P传D_KV), num_tokens=486   ← 载入步: 不算 token 只备块
 logs/server/d_llama.log:412  (EngineCore) 05:48:38 [mooncake_connector.py:973] KV cache transfer for request cmpl-2b8504c2-...-996fd16c took 0.96 ms. local_ip 172.16.210.236 local_device_id 0 remote_session_id 172.16.210.236:15760
 ```
 
-讲解：`do_rp/do_rd` 互补旗标是 [PCM] 轮打的（fingerprint 轮无此行，两轮 workload 相同）——每实例只扮演一半角色。载入步 `num_new_tokens=0 / num_new_computed_tokens=256`：external = 486−256，**传输量由 D 侧前缀命中决定**；`took 0.96 ms` = 只对 D miss 的块 4、5 发起 DMA——对比 req_p 首传 271.28 ms（logs/server/d_llama.log:330，含 adxl 会话建立），会话已热 + 量减半。
+讲解：**每实例只扮演一半角色**（P=供给方交 KV，D=拉取方）——P 侧证据在阶段③（TERM 归档后 `Delaying free of 4 blocks`：上报块清单并延迟释放=交出），D 侧在本阶段两行（`ext_comp=P传D_KV` 载入步=接收，`KV cache transfer` DMA 行=拉取）。载入步 `num_new_tokens=0 / num_new_computed_tokens=256`：external = 486−256，**传输量由 D 侧前缀命中决定**；`took 0.96 ms` = 只对 D miss 的块 4、5 发起 DMA——对比 req_p 首传 271.28 ms（logs/server/d_llama.log:330，含 adxl 会话建立），会话已热 + 量减半。
 
 ### 阶段④b D 补算 + decode 34 步（05:48:38→39）
 
