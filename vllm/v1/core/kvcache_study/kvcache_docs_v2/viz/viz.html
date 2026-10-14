@@ -514,7 +514,7 @@ function flowDraw(){
   const blks=(st.state.blocks||[]).filter(b=>!b.null);
   $("#flowPool").innerHTML=`<div class="flp-blkrow">${blks.map(b=>{
     const owned=!!b.req;
-    const fill=(b.cov==null)?(owned?128:0):(b.cov||0);
+    const fill = owned ? (b.cov==null?128:(b.cov||0)) : (b.shared ? (b.cov||128) : 0);
     const t=`块 ${b.id}${owned?` · ${b.req} 持有`:" · 已归还空闲池"} · cov=${b.cov==null?"写入中…":b.cov+"/128"}${b.shared?" · 满块入哈希表⭑":""}`;
     return `<div class="blk" style="min-width:108px;max-width:170px" title="${esc(t)}">
       <span class="num" style="font-size:10px">${b.shared?"⭑":""}${owned?esc(b.req):"·"}${b.id}</span>

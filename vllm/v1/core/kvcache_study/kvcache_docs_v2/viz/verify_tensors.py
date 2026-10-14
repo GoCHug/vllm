@@ -23,6 +23,9 @@
   C. kvc_1p1d_prefix(无 tensors 归档 —— PCM 六打点即实验证据)
      - 从 logs/q*_p?d?/ 原始文本独立重解四象限关键量 + 铁律 A/B1/B2/C/D
      - viz_data 对账: 象限字段与铁律判定
+  D. kvcFlow(kvc 全流程状态机回放)
+     - 把 P/R 归档步的块表/cov 与 .pt meta 逐位对账(与 A 节双路互证)
+     - 空闲队列守恒(首末 13290) / 哈希表终态 / touch·popleft 计数演进
 """
 import base64
 import json
@@ -479,6 +482,46 @@ def section_matrix():
     print("         传输正确性维度由 B 节 kvc_1p1d 的 Tx 逐位核验背书。")
 
 
+# ================================================================ D. kvcFlow
+def section_flow():
+    sep("D. kvc 全流程(kvcFlow) —— 状态机回放快照 vs .pt ground truth 对账")
+    mf = MAN["scenarios"].get("kvcFlow")
+    if not mf:
+        ck("manifest 含 kvcFlow", False, "缺 scenarios.kvcFlow")
+        return
+    steps = mf["runtime"]["steps"]
+    ck("manifest 含 kvcFlow(runtime steps=%d, 期望 17)" % len(steps),
+       len(steps) == 17)
+    ck("空闲队列守恒: 首末步 free 均 13290",
+       steps[0]["state"]["free"] == steps[-1]["state"]["free"] == 13290)
+    arcP = next(x for x in steps if x["req"] == "P" and x["phase"] == "archive")
+    arcR = next(x for x in steps if x["req"] == "R" and x["phase"] == "archive")
+    for tag, arc, ptdir in (("P", arcP, "req1_8e22e700"),
+                            ("R", arcR, "req2_8d83db92")):
+        b = load_pt(BASE / "kvc" / "tensors" / ptdir / "kv_pp0tp0.pt")
+        bt = [int(x) for x in plain(b["meta"]["block_table"])]
+        cv = [int(x) for x in plain(b["meta"]["cov"])]
+        bs = {x["id"]: x["cov"] for x in arc["state"]["blocks"]}
+        ck(f"{tag} 归档步块表/cov 与 .pt meta 逐位一致(块表 {bt})",
+           [bs[i] for i in bt] == cv,
+           f"flow={[bs.get(i) for i in bt]} vs pt={cv}")
+    ck("R block_table 演进到位 [1, 2, 4, 5, 6]",
+       arcR["state"]["btab"]["R"] == [1, 2, 4, 5, 6])
+    ck("哈希表终态 3 项 blk[1,2,4](P 种 h1/h2 + R 满块 h3)",
+       [(m["blk"], m["by"]) for m in steps[-1]["state"]["map"]]
+       == [(1, "P"), (2, "P"), (4, "R")])
+    ts = next(x for x in steps if x["phase"] == "touch")
+    ax = next(x for x in steps if x["req"] == "R" and x["phase"] == "alloc"
+              and x["title"].endswith("队头出队)"))
+    ck("touch 后 free=13288 / R 首次 popleft 后=13286(与日志剩余数一致)",
+       ts["state"]["free"] == 13288 and ax["state"]["free"] == 13286)
+    ck("startup 编排数字(num_blocks=13291 · page=256.0KB/层块)",
+       mf["startup"]["numBlocks"] == 13291
+       and float(mf["startup"]["pageKb"]) == 256.0)
+    print("  [note] kvcFlow 由 kvc/logs/patchs/{kvc_startup,kvc_p,kvc_r}.log 回放导出,")
+    print("         本节把回放末态与 .pt meta 对账 —— 与 A 节 .pt 同源双路互证。")
+
+
 # ================================================================ main
 def main():
     t0 = time.time()
@@ -487,6 +530,7 @@ def main():
     section_kvc()
     section_p1d()
     section_matrix()
+    section_flow()
     sep(f"汇总: PASS {NP_[0]} / FAIL {NF_[0]}  |  耗时 {time.time() - t0:.1f}s")
     if NF_[0]:
         print("存在 FAIL —— 可视化结论与 tensors 事实不一致, 需排查!")
