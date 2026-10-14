@@ -507,9 +507,19 @@ def section_flow():
            f"flow={[bs.get(i) for i in bt]} vs pt={cv}")
     ck("R block_table 演进到位 [1, 2, 4, 5, 6]",
        arcR["state"]["btab"]["R"] == [1, 2, 4, 5, 6])
-    ck("哈希表终态 3 项 blk[1,2,4](P 种 h1/h2 + R 满块 h3)",
-       [(m["blk"], m["by"]) for m in steps[-1]["state"]["map"]]
-       == [(1, "P"), (2, "P"), (4, "R")])
+    # 哈希表终态: 独立重数两份日志的全部 insert 行(prefill 满块 + decode 补满块)
+    ins_expect = []
+    for fname, nm in (("kvc_p.log", "P"), ("kvc_r.log", "R")):
+        txt = (BASE / "kvc" / "logs" / "patchs" / fname).read_text(errors="ignore")
+        for mi in re.finditer(r"insert: key=BlockHashWithGroupId\(hash=(\w+), group_id=\d+\)"
+                              r" <- KVCacheBlock\(block_id=(\d+)\), map size", txt):
+            h, b = mi.group(1), int(mi.group(2))
+            if not any(x[2] == h for x in ins_expect):
+                ins_expect.append((b, nm, h))
+    got_map = [(m["blk"], m["by"], m["h"]) for m in steps[-1]["state"]["map"]]
+    ck(f"哈希表终态与日志全部 insert 行逐一对应({len(ins_expect)} 项, "
+       "含 decode 补满块入表: blk5/h4)",
+       got_map == ins_expect, f"got={got_map} want={ins_expect}")
     ts = next(x for x in steps if x["phase"] == "touch")
     ax = next(x for x in steps if x["req"] == "R" and x["phase"] == "alloc"
               and x["title"].endswith("队头出队)"))
