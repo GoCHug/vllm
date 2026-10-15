@@ -2,14 +2,14 @@
 
 > 这份文档回答一个问题：**vLLM 用什么数据类型来组织管理 KV Cache？**
 >
-> 对照五层架构，全部类型按"处于配置生成、物理存储、运行时管理哪一环节"分为**三侧**（配置侧 4 个类型 + 逻辑侧 5 个类型；物理侧为 `torch.Tensor`，无本文要讲的自定义类型）：
+> 对照五层架构，全部类型按"处于配置生成、物理存储、运行时管理哪一环节"分为**三侧**（配置侧 4 个类型 + 物理侧 1 个张量类型 + 逻辑侧 5 个类型）：
 > · **配置侧**：启动期在引擎进程一次性生成、运行期全程只读的 4 个类型，链路为 `KVCacheSpec` → `KVCacheGroupSpec` → `KVCacheTensor` → `KVCacheConfig`，描述 KV cache 的存储格式、层分组与容量编排，回答"KV cache 应该长什么样"。
-> · **物理侧（第 1 层）**：worker 进程据 `KVCacheConfig.kv_cache_tensors` 申请的物理张量 `kv_caches[layer]`。本文只描述它与配置侧、逻辑侧的衔接关系，不展开张量本身。
+> · **物理侧（第 1 层）**：worker 进程据 `KVCacheConfig.kv_cache_tensors` 申请的物理张量 `kv_caches[layer]`，类型就是 `torch.Tensor`——一维 int8 字节池经零拷贝 view/permute 成后端逻辑 shape，是三侧中唯一真正占用显存、存放真实 K/V 的类型（中篇详述）。
 > · **逻辑侧（第 2～5 层）**：每个调度步都在读写的 5 个类型，但只记录块号、引用计数与哈希值，**绝不触碰显存**，负责块的分配、回收、前缀命中与驱逐，回答"此刻哪些块归谁用"。
 >
 > 三侧的唯一交接点是配置侧产出的 `KVCacheConfig`：`kv_cache_tensors` 下发物理侧创建张量，`num_blocks` 下发逻辑侧创建逻辑块；逻辑侧的 `block_id` 从 0 顺序编号，恰好一一对应物理张量的行号。
 >
-> **本文结构**：总览（类型一览 + 全景图）→ 上篇 · 配置侧 → 下篇 · 逻辑侧 → 总结。
+> **本文结构**：总览（类型一览 + 全景图）→ 上篇 · 配置侧 → 中篇 · 物理侧 → 下篇 · 逻辑侧 → 总结。
 
 ---
 
@@ -26,6 +26,12 @@
 | 3 | `KVCacheTensor` | 描述每层物理张量如何申请的元数据（非张量本身）：字节数 + 关联层名 | 物理显存申请（int8 字节池）的直接依据 |
 | 4 | `KVCacheConfig` | 编排的最终产物：`num_blocks` + 张量元数据列表 + 分组 | 配置侧出口：`num_blocks` 流入 `BlockPool`，tensors 流入 worker，groups 流入 manager |
 
+**物理侧（1 个类型：`torch.Tensor` 物理张量）**
+
+| # | 类型 | 一句话定义 | 在链路中的角色 |
+|---|---|---|---|
+| 1 | `torch.Tensor` 物理张量 `kv_caches[layer]`（第1层） | 每层一张（NPU 为 K/V 各一张）真正驻留设备显存的 K/V 张量：按 `KVCacheTensor.size` 申请一维 int8 字节池，再零拷贝 view 成后端逻辑 shape，第 0 维即块行号 | 三侧中唯一存真实 K/V 的类型；attention 算子以 `block_table` 为 fancy index 沿第 0 维 gather 行来读写 |
+
 **逻辑侧（5 个类型）**
 
 | # | 类型 | 一句话定义 | 在链路中的角色 |
@@ -38,7 +44,7 @@
 
 ---
 
-## 2. 全景图：配置侧生成配置，下发物理侧与逻辑侧，逻辑侧运行时管理
+## 2. 全景图：配置侧生成配置 → 下发两侧各自初始化 → 运行期逻辑侧决策、物理侧执行
 
 ```text
 ═══ 阶段一 · 配置侧：配置生成（引擎进程，启动期一次完成，此后只读）════
@@ -57,27 +63,45 @@
  ④ KVCacheConfig（每 Worker 一份，配置侧出口）
       = num_blocks + kv_cache_tensors + kv_cache_groups
 
-═══ 阶段二 · 配置下发：同一份 KVCacheConfig 分送两侧 ═══════════════
+═══ 阶段二 · 配置下发与初始化：同一份 KVCacheConfig 分送两侧，各自建对象 ═
 
-  ▶ 物理侧（worker · 第1层）——据 kv_cache_tensors 建张量：
-      torch.zeros(size, dtype=int8) → reshape 成 kv_caches[layer]（shared_by 层共用）；block_id 对应张量行号
+  ▶ 物理侧（worker · 第1层）——据 kv_cache_tensors 建张量（类型 = torch.Tensor）：
+      torch.zeros(size, int8) 一维字节池（shared_by 层名指向同一对象）
+        → view(dtype) + view/permute 成后端逻辑 shape（全程零拷贝）
+        → bind：dict[层名] 按层号排序进 kv_caches: list[Tensor]，并绑到各 attention 层
+      第 0 维 = block 维，block_id 对应张量行号
 
-  ▶ 逻辑侧（引擎 · 第2层）——据 num_blocks 建块：
-      BlockPool 建 KVCacheBlock × num_blocks（block_id=0..n-1）
-      group_id 打包进 BlockHashWithGroupId 作为哈希 key
+  ▶ 逻辑侧（引擎 · 第2～5层）——据 num_blocks / kv_cache_groups 建逻辑层：
+      第5层 KVCacheManager
+      ├─▶ 第4层 UnitaryKVCacheCoordinator
+      │      ├─ 第2层 BlockPool(num_blocks)（全模型唯一）
+      │      │      ├─ ② new KVCacheBlock × num_blocks，block_id = 0..n-1（仅元数据，无显存）
+      │      │      ├─ ③ FreeKVCacheBlockQueue：全部块串成空闲链表
+      │      │      │      └─ 弹出 block_id=0 作 null_block 占位 → 实际可分配 n-1 块
+      │      │      └─ ④ BlockHashToBlockMap：建为空表（运行时才填入 哈希→块）
+      │      └─ 第3层 FullAttentionManager × 每组 1 个（共享同一个 BlockPool）
+      └─ 预建 ⑤ KVCacheBlocks 空集合单例（空结果一律复用，不反复 new）
+      （① BlockHash 无启动期对象：请求入队时才逐块计算 —— 见阶段三）
 
-═══ 阶段三 · 逻辑侧：运行时管理（第2～5层，只碰元数据不碰显存）═════
+═══ 阶段三 · 运行时管理：逻辑侧做分配决策，物理侧读写张量（每调度步）═════
+  初始状态：n-1 个块全在空闲队列里，哈希映射表为空，物理张量全零
 
- ① BlockHash（块内容哈希，链式累加：H(bₙ)=fn(H(bₙ₋₁),tokens(bₙ))）
-      │ 打包 group_id → BlockHashWithGroupId
+ ▶ 逻辑侧（引擎 · 第2～5层，只改元数据，不碰显存）：
+ ① BlockHash（请求入队时逐块预计算，链式累加：H(bₙ)=fn(H(bₙ₋₁),tokens(bₙ))）
+      │ 打包 group_id → BlockHashWithGroupId，查 ④ 映射表判定命中（首次必 miss）
       ▼
  ② KVCacheBlock（block_id + ref_cnt + 哈希，不含显存）
       ├─ 空闲(ref_cnt=0) ▶ ③ FreeKVCacheBlockQueue（双向链表 LRU：分配摘头、释放回队，O(1) 摘除）
-      ├─ 满块缓存 ──────▶ ④ BlockHashToBlockMap（哈希→块映射表）
-      └─ 分配/命中后 ───▶ ⑤ KVCacheBlocks（块引用按组汇聚：blocks[组下标][块序号]，只装引用）
-                          │ 返回给 Scheduler，Scheduler 调它的 get_block_ids()
-                          ▼ 抽出 block_id 下发 Worker 组装 block_table
-                            （逻辑侧到此为止，后续由 attention 算子使用）
+      ├─ 写满且缓存 ────▶ ④ BlockHashToBlockMap（哈希→块映射表，随运行逐渐填入）
+      └─ 分配/命中后 ───▶ ⑤ KVCacheBlocks（blocks[组下标][块序号]，只装块引用
+                          │ 空结果复用阶段二预建的单例）；返回给 Scheduler
+                          ▼ get_block_ids() 抽出 block_id（请求结束则逆序归还、ref_cnt--）
+  ─ ─ ─ ─ ─ ─ ─ ─ 进程边界：只有整数 block_id 列表随 SchedulerOutput 跨过去 ─ ─ ─ ─ ─ ─
+
+ ▶ 物理侧（worker · 第1层 torch.Tensor，唯一动张量的环节）：
+      新块清零 → attention 算子以 block_table 为 fancy index，沿第 0 维 gather 物理行
+               → 读历史 K/V 做注意力、写本步新 token 的 K/V 到 kv_caches[layer]
+                 （不参与任何分配决策，结束后张量内容保留，等待被同一 block_id 再次索引）
 ```
 
 ---
@@ -280,6 +304,144 @@ class KVCacheConfig:
 | `kv_cache_groups` | coordinator `single_type_managers`、每请求 block_ids 结构、`BlockHashWithGroupId` 的 group_id | 每组一个 manager；组下标身份贯穿调度与缓存 key |
 
 > 也存在特例：attention-free 模型（无 KV 层）返回 `num_blocks=1` 的最小 config（kv_cache_utils.py:1266），只为满足 `BlockPool` 必须有一个 null block。
+
+---
+
+# 中篇 · 物理侧：第 1 层的物理张量
+
+> 物理侧没有自定义管理类，唯一的类型就是设备上的 `torch.Tensor`。本章只讲它的类型形态：容器、dtype、shape 与平台变体。张量如何申请、reshape、bind 见 [`2_start_init.md`](./2_start_init.md) §2.4；运行期由谁读写见 [`0_kvcache_arch.md`](./0_kvcache_arch.md) §5。
+
+## 1. 类型本体：一块 storage，三种视图
+
+`kv_caches[layer]` 是每层一个、驻留设备显存、存放真实 K/V 的 `torch.Tensor`。与另外两侧的同名概念严格区分：
+
+- 配置侧 `KVCacheTensor`：只有 `size`/`shared_by` 两个字段的**元数据**，不是张量；
+- 逻辑侧 `KVCacheBlock`：只有 `block_id`/`ref_cnt` 等元数据，不含显存；
+- 物理侧 `torch.Tensor`：真正的 K/V 数据本体。
+
+同一块显存在启动期以**三种视图**被引用，只有第 ① 种是真实存储分配，后两种共享同一块 storage：
+
+| 视图 | dtype 与 shape | 容器类型 |
+|------|----------------|----------|
+| ① 字节池 | `int8`，一维 `[size_bytes]`；`shared_by` 的多个层名指向同一对象 | `dict[str, Tensor]`（键=层名） |
+| ② 逻辑视图 | `view(spec.dtype)` 后按后端 shape 解释（可能非连续，stride 不同而已） | 同上 `dict[str, Tensor]` |
+| ③ 运行期形态 | 与 ② 同一 storage，仅容器重排 | `list[Tensor]`，按**层号**排序，即 `GPUModelRunner.kv_caches` |
+
+> 下文及运行期提到的 `kv_caches[layer]` 均指形态 ③；每层元素是 ② 那样的逻辑视图。
+
+形态 ③ 的具体类型随三个维度变化：硬件平台（§2）决定每层元素是单个张量还是 K/V 两张量；attention 后端（§3）决定 K/V 在张量内部的摆放 shape；注意力类型（§4：FullAttention / MLA / GDN）决定块内存的是 token K/V、压缩 latent 还是递归状态。三者都不改变外层容器与第 0 维契约。
+
+## 2. 硬件平台差异：GPU 单张量 vs NPU 双张量
+
+| 对比项 | GPU（主线） | NPU（vllm-ascend） |
+|--------|-------------|--------------------|
+| 每层类型 | 单个 `torch.Tensor`：K/V 共用同一块 storage，靠张量内部维度区分 | **二元组** `(k_cache, v_cache)`：K、V 各一张独立 `Tensor` |
+| 字节池分配 | 每层一次 `torch.zeros`（int8），K/V 连续存放 | K、V **两次独立** `torch.zeros`（int8），两块存储不连续 |
+| 单张 K/V 张量 shape | 随后端而定，见 §3 | 固定 4D `(num_blocks, num_kv_heads, block_size, head_dim)`，无 K/V 拼接维 |
+| dtype 转换 | `view(dtype)` 后按后端做 view/permute（可能非连续） | `view(dtype)` 后纯 `view`，无 permute |
+| 第 0 维 | `num_blocks` 块行号 | K 池、V 池各自一套同序号块行号 |
+
+类型签名对照：
+
+```python
+# GPU：外层 list，每层一个 Tensor（K/V 在内）
+kv_caches: list[torch.Tensor]
+kv_caches[layer]                 # Tensor，dtype = spec.dtype（fp16/bf16/fp8…）
+
+# NPU：外层 list，每层一个二元组
+kv_caches: list[tuple[torch.Tensor, torch.Tensor]]
+kv_caches[layer]                 # (k_cache, v_cache)
+```
+
+平台差异被挡在物理侧内部：两种平台都是 int8 字节池起步、外层都按层号组织、`block_id == 第 0 维行号`，逻辑侧与同一份 `KVCacheConfig` 对此完全无感。
+
+## 3. attention 后端差异：K/V 在张量内怎么摆
+
+本节针对 GPU 单张量形态。attention 后端只规定 K/V 的摆放位置，**第 0 维永远是块维、行号永远是 `block_id`**：
+
+| 后端 | shape | K/V 位置 |
+|------|-------|----------|
+| CPU / 通用（HND 布局） | `(num_blocks, num_kv_heads, block_size, 2*head_dim)` | 拼在最后一维（前半 K、后半 V） |
+| FlashAttention / FlashInfer | `(num_blocks, 2, block_size, num_kv_heads, head_size)` | 独立第 2 维（0=K，1=V） |
+
+行数由字节数反推：`num_blocks = size_bytes // spec.page_size_bytes`（字段来源见上篇 §1.4）。后端的 stride-order permute 只改变 stride、不改 storage 与第 0 维语义。
+
+以主线 HND 布局逐维注解：
+
+```text
+kv_caches[layer]: Tensor  shape = (num_blocks, num_kv_heads, block_size, 2*head_dim)
+                            └─块行号   └─KV head     └─块内 token 位  └─K 前半 / V 后半
+
+kv_caches[layer][block_id]                            # 一个块的全部 K/V（物理行）
+kv_caches[layer][block_id, :, token_idx, :head_dim]   # 该 token 在各 head 上的 K
+kv_caches[layer][block_id, :, token_idx, head_dim:]   # 该 token 在各 head 上的 V
+```
+
+逻辑侧 `KVCacheBlock(0 … n−1)` 的 `block_id` 与行号一一对应，因此 `block_table: list[int]` 可直接作为第 0 维的 fancy index；FlashAttn 形态下索引的仍是第 0 维，只是读出的行内 K/V 排布不同。
+
+## 4. 不同 attention 类型差异：FullAttention / MLA / GDN
+
+§3 的后端差异是同一类型（FullAttention）在不同算子后端下的 K/V 摆放差异；本节换一个维度：三种注意力**类型**各自存什么、每层元素是什么类型。每类再按 GPU / NPU 分别列出（平台差异见 §2）。
+
+### 4.1 FullAttention（标准注意力，主线）
+
+- **Spec**：`FullAttentionSpec`；块内按 token 存 K/V，每块 `block_size` 个 token。
+- **GPU**：每层**单个 `Tensor`**（K/V 在同一块 storage），shape 随后端见 §3：HND 4D 或 FlashAttn 5D。
+- **NPU**：每层**二元组 `(k_cache, v_cache)`**，各一张 4D 张量：
+
+```python
+kv_caches[layer] == (k_cache, v_cache)
+k_cache.shape = v_cache.shape = (num_blocks, block_size, num_kv_heads, head_dim)
+# 后端逻辑 shape 为 (2, num_blocks, block_size, num_kv_heads, head_dim)，
+# 物理上拆成两次独立 int8 分配（AscendAttentionBackend，attention_v1.py:112）
+```
+
+### 4.2 MLA（多头潜空间压缩，DeepSeek-V2/V3）
+
+- **Spec**：`MLAAttentionSpec`（`FullAttentionSpec` 子类）；K/V 被压缩进潜空间，`num_kv_heads=1`，每 token 一份拼接 latent：nope 部分宽 `kv_lora_rank`（512）+ RoPE 部分宽 `qk_rope_head_dim`（64），V3 bf16 合计 576 维（fp8 打包 V3.2 为 656 字节）。
+- **GPU**：每层**单个 3D `Tensor`**，nope 与 RoPE 沿末维连续拼接：
+
+```python
+kv_caches[layer].shape = (num_blocks, block_size, latent_width)   # 如 V3 bf16：(n, 64, 576)
+# FlashMLA / FlashInfer-MLA 后端 get_kv_cache_shape 均返回此 3D 形状
+```
+
+- **NPU**：潜空间被**沿末维拆成 nope / rope 两张独立 4D 张量**（为支持 prefill 分离，两次独立 int8 分配）：
+
+```python
+kv_caches[layer] == (nope_cache, rope_cache)
+nope_cache.shape = (num_blocks, block_size, 1, kv_lora_rank)       # k_cache
+rope_cache.shape = (num_blocks, block_size, 1, qk_rope_head_dim)  # v_cache
+# AscendMLABackend（mla_v1.py:106）；拆分维由模型层 kv_lora_rank / qk_rope_head_dim 决定
+```
+
+> 无论单张量还是双张量，第 0 维仍是 `num_blocks` 块行号；稀疏 MLA（DSA/SFA）还会额外挂 indexer/scale 张量，属扩展场景，不在主线展开。
+
+### 4.3 GDN（Gated DeltaNet，Qwen3-Next 等线性注意力）
+
+- **Spec**：`MambaSpec`（**不是** `AttentionSpec`）。不逐 token 存 K/V——每步就地更新递归状态，块内存的是"处理到块边界时的累积状态"；`page_size_bytes = 各状态字节和`，与 `block_size` 无关。
+- **GPU 与 NPU 类型一致**：每层**单个扁平 int8 张量**（即便 NPU 也不走 K/V 双分路径，分配分支按 `linear_attn` 层名命中单张量路径），reshape 后是**状态视图列表**，每张视图第 0 维都是块行号：
+
+```python
+# 物理扁平缓冲：(num_blocks, 1, 1, page_size_bytes) int8
+# 按 spec.shapes 逐段切片 view(dtype) → state 视图列表
+kv_caches[layer] == [conv_state, temporal_state]      # GDN 为 2 个状态
+# Qwen3-Next 示例（8 K/V heads、128 维、conv_kernel=4、bf16）：
+conv_state.shape     = (num_blocks, 3072, 3)          # 最近 conv_kernel-1 个 token 的卷积滑窗
+temporal_state.shape = (num_blocks, 8, 128, 128)      # 门控 delta-rule 递归矩阵
+```
+
+GPU 与 NPU 的区别只在更新状态的算子（NPU 为 `npu_causal_conv1d_custom` / `npu_recurrent_gated_delta_rule`），张量类型与 shape 完全相同。
+
+### 4.4 三类对照速查
+
+| 类型 | Spec | 块内存什么 | GPU 每层类型 | NPU 每层类型 |
+|------|------|-----------|--------------|--------------|
+| FullAttention | `FullAttentionSpec` | `block_size` 个 token 各自的 K/V | 单个 4D/5D `Tensor`（§3） | `(k, v)` 两张 4D |
+| MLA | `MLAAttentionSpec` | `block_size` 个 token 的压缩 latent（nope+RoPE） | 单个 3D `(n, bs, latent宽)` | `(nope, rope)` 两张 4D |
+| GDN | `MambaSpec` | 块边界处的累积递归状态（与 bs 无关） | 单扁平缓冲 → state 视图列表 | 同 GPU（单缓冲 → state 视图列表） |
+
+三类共同契约：外层都按层组织、第 0 维都是 `num_blocks` 块行号，`block_id` 索引方式不变——差异全部封装在物理侧，逻辑侧的块管理逻辑对三种类型无感。
 
 ---
 
@@ -527,21 +689,21 @@ class KVCacheBlocks:
 └──────────────────────────┬──────────────────────────────┬─────────────┘
             kv_cache_tensors │              num_blocks/groups │
                             ▼                              ▼
-┌─ 物理侧（worker · 第1层）─────────┐  ┌─ 逻辑侧（引擎进程 · 第2～5层）──────────┐
-│  torch.zeros(size, int8)           │  │  BlockPool 建 KVCacheBlock × num_blocks  │
-│    → reshape → kv_caches[layer]    │  │    ├─ FreeKVCacheBlockQueue（空闲队列）   │
-│  block_id 索引第0维 = 张量行号      │  │    ├─ BlockHashToBlockMap（哈希映射表）   │
-│                                    │  │    │     key = BlockHash + group_id       │
-│                                    │  │    │       （BlockHash：块内容链式哈希）    │
-│  attention 算子按 block_table       │◀─┤    ├─ KVCacheBlocks 返回 Scheduler        │
-│    索引物理张量、读写 K/V           │  │    │     → get_block_ids() → block_table │
-└────────────────────────────────────┘  └──────────────────────────────────────────┘
-              block_table 由逻辑侧产出、回流入物理侧，两侧无对象持有关系
+┌─ 物理侧（worker · 第1层 · torch.Tensor）┐  ┌─ 逻辑侧（引擎进程 · 第2～5层）──────────┐
+│  ① int8 一维字节池 [size_bytes]          │  │  BlockPool 建 KVCacheBlock × num_blocks  │
+│  ② view(dtype)+view/permute（零拷贝）    │  │    ├─ FreeKVCacheBlockQueue（空闲队列）   │
+│  ③ list[Tensor]，每层一个（按层号）      │  │    ├─ BlockHashToBlockMap（哈希映射表）   │
+│     shape (num_blocks, heads, bs, 2·D)  │  │    │     key = BlockHash + group_id       │
+│     第0维 = block 维，block_id = 行号    │  │    │       （BlockHash：块内容链式哈希）    │
+│  NPU 变体：(k_cache, v_cache) 二元组     │◀─┤    ├─ KVCacheBlocks：blocks[组][块]        │
+│  Mamba 变体：state 视图列表              │  │    │     → get_block_ids() → block_table │
+└──────────────────────────────────────────┘  └──────────────────────────────────────────┘
+              block_table（list[int]）即第 0 维的 fancy index，两侧无对象持有关系
 ```
 
 **三侧关系：配置侧单向产出，物理侧与逻辑侧据同一份 `KVCacheConfig` 各自落地，运行期靠 `block_id` 对齐。**
 
 1. **配置侧（4 个类型）**：上篇 §1 每层格式 → §2 同规格归组 → §3 物理张量元数据 → §4 组装为 `KVCacheConfig`，生成后只读。四条单向数据边：`page_size_bytes → num_blocks`；`kv_cache_tensors → 物理侧`；`num_blocks → BlockPool`；`groups 下标 → group_id → 哈希 key`。
-2. **逻辑侧（5 个类型）**：下篇 §1 哈希 → §2 块 → §3/§4 块的两个存储位置（空闲队列 / 哈希映射表）→ §5 块集合返回 Scheduler。其中 §2+§3+§4 是 `BlockPool` 管理器的三大数据内件（管理器见架构文档），§5 是第 5 层门面对外接口；全程只装块引用、不搬显存。
-3. **物理侧**：worker 据 `kv_cache_tensors` 申请 int8 字节张量并 reshape 成 `kv_caches[layer]`，`block_id` 直接索引张量行号。真正读写 K/V 的是 attention 算子——它拿着 block_table（逻辑侧产出的 `block_id` 列表）索引物理张量，调度全程零显存拷贝。
+2. **物理侧（1 个类型）**：中篇所述的 `torch.Tensor`——存储上是一维 int8 字节池、`view(spec.dtype)` 后使用；形态沿三个维度变化：硬件平台上 GPU 每层一个单张量、NPU 为 `(k_cache, v_cache)` 二元组（MLA 为 nope/rope 双 4D，GDN 两平台都是单缓冲+state 视图列表）；attention 后端上 HND 为 4D、FlashAttn 为 5D；注意力类型上 FullAttention 存 token K/V、MLA 存 3D 压缩 latent、GDN 存递归状态；外层是按层号排列的 `list`，所有形态第 0 维均为块维，`block_id` 即行号，`block_table: list[int]` 可直接作第 0 维索引。申请/reshape/bind 的流程不属于本文，见启动篇 §2.4。
+3. **逻辑侧（5 个类型）**：下篇 §1 哈希 → §2 块 → §3/§4 块的两个存储位置（空闲队列 / 哈希映射表）→ §5 块集合返回 Scheduler。其中 §2+§3+§4 是 `BlockPool` 管理器的三大数据内件（管理器见架构文档），§5 是第 5 层门面对外接口；全程只装块引用、不搬显存。
 
