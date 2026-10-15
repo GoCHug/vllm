@@ -1,0 +1,7 @@
+# kv_visualizer 后端依赖
+# 服务面(fastapi 缺失时 serve 自动回退纯标准库版, 见 lib/server_stdlib.py)
+fastapi
+uvicorn
+# 导出/核验面(实验机通常已装)
+torch
+numpy

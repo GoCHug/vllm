@@ -1,0 +1,8 @@
+# 生成物(全部可重生成, 勿入库)
+frontend_vue/node_modules/
+frontend_vue/dist/
+backend_fastapi/viz_standalone.html
+__pycache__/
+*.pyc
+# kv_datasets_root/ 13 个 JSON 在 git HEAD 中已被跟踪(原 viz_data 改名而来), 默认继续随库;
+# 不想入库可自行加行: kv_datasets_root/
