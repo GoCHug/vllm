@@ -1,6 +1,4 @@
-# vLLM V1 KV Cache 管理机制（Full Attention 主线）
-
-> 以**纯 Full Attention 模型 Llama-3-8B（pp2tp2，4 卡环境）**为主线，系统梳理 vLLM V1 架构中 KV Cache 从显存申请、逻辑建池到调度使用的完整链路。
+# vLLM V1 KV Cache管理架构总览
 
 **章节顺序**：§1 为什么需要 → §2 五层架构静态总览 → §3 启动时五层如何静态装配 → §4 一条请求的动态生命周期。
 
