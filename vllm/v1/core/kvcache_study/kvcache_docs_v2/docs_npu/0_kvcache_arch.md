@@ -1,6 +1,6 @@
 # vLLM V1 KV Cache管理架构总览（NPU / vllm-ascend 视角）
 
-> 本篇是 [`docs_gpu/0_kvcache_arch.md`](../docs_gpu/0_kvcache_arch.md) 的 NPU 镜像版：主线换成 **vllm-ascend 插件在昇腾 NPU 上的实现**，GPU（上游 vLLM）只在对照处出现。配置侧编排与逻辑侧（第 2～5 层）全部跑在引擎进程、与平台完全无关，因此这部分内容与 GPU 版一致；**平台差异全部集中在物理侧（worker 进程的第 1 层）与三处 Worker/ModelRunner 重写**（① 算规格 / ② 测预算 / ④ 落张量），这也是本篇的叙述重点。
+> 主线是 **vllm-ascend 插件在昇腾 NPU 上的实现**。配置侧编排与逻辑侧（第 2～5 层）全部跑在引擎进程、平台无关；NPU 的平台特性全部集中在物理侧（worker 进程的第 1 层）与三处 Worker/ModelRunner 重写（① 算规格 / ② 测预算 / ④ 落张量，均由 `NPUWorker` / `NPUModelRunner` 承担），这也是本篇的叙述重点。
 
 **章节顺序**：§1 为什么需要 KV Cache → §2 为什么需要 KV Cache 管理 → §3 启动期三侧架构 / 运行期五层架构 → §4 启动时五层如何静态装配 → §5 一条请求的动态生命周期。
 
@@ -21,8 +21,7 @@
 
  prefill → 生成"我"：  [K/V 你] [K/V 是] [K/V 谁]
  生成"是"：            [K/V 你]† [K/V 是]† [K/V 谁]† [K/V 我]
- 生成"小"：            [K/V 你]† [K/V 是]† [K/V 谁]† [K/V 我]† [K/V 是]
- 生成"明"：            [K/V 你]† [K/V 是]† [K/V 谁]† [K/V 我]† [K/V 是]† [K/V 小]
+ 生成"小"：            [K/V 你]† [K/V 是]† [K/V 谁]† [K/V 我]† [K/V 是]† [K/V 小]
 
  prompt"你是谁"的 K/V 被重算 3 次，每步都从零算起；每步计算量 O(n)，n 步合计 O(n²)
 ```
@@ -47,7 +46,7 @@ KV Cache 把 attention 层已经算好的历史 K/V 保存在 **NPU 设备显存
               └──────────────────────────────┘
 ```
 
-与 GPU 版唯一的措辞差异：K/V 的物理载体从 CUDA 显存换成 NPU HBM；**NPU 上 K 与 V 各占一张独立张量**（详见 §3.2 第 1 层），但"缓存对象只有 K/V、逐 token 增量追加"的结论不变。
+K/V 的物理载体是 **NPU HBM**；**NPU 上 K 与 V 各占一张独立张量**（详见 §3.2 第 1 层），"缓存对象只有 K/V、逐 token 增量追加"的结论不变。
 
 ---
 
@@ -55,7 +54,7 @@ KV Cache 把 attention 层已经算好的历史 K/V 保存在 **NPU 设备显存
 
 KV Cache 的显存占用随序列长度与并发请求数增长，相同前缀在不同请求间还会重复出现；不加管理的话，显存会碎片化、无法跨请求共享、块的分配与回收也没有统一规则。vLLM V1（vllm-ascend 完整复用这套管理框架）的 KV Cache 管理围绕三条核心设计：
 
-1. **PagedAttention 分页管理**：把连续的 KV 序列切分成固定大小的 **block**（如每个 block 存 16 个 token），按块分配、回收和共享，彻底解决内存碎片问题。分页管理跑在引擎进程，NPU/GPU 完全同构。
+1. **PagedAttention 分页管理**：把连续的 KV 序列切分成固定大小的 **block**（如每个 block 存 16 个 token），按块分配、回收和共享，彻底解决内存碎片问题。分页管理跑在引擎进程、平台无关。
 2. **逻辑管理与物理存储分离**：`BlockPool` 只管逻辑块（`KVCacheBlock`，只含 `block_id` 和元数据）；物理显存（`torch.Tensor`）由 **`NPUModelRunner`** 一次性申请并 reshape。两者通过 `block_id` 关联，调度决策全程零显存拷贝。
 3. **前缀缓存 + 引用计数共享**：相同前缀的 block 通过链式哈希定位，多个请求共享同一块物理空间，用 `ref_cnt` 跟踪生命周期；LRU 空闲队列决定驱逐顺序，有哈希的缓存块尽量保留。
 
@@ -66,7 +65,7 @@ KV Cache 的显存占用随序列长度与并发请求数增长，相同前缀�
 
 vLLM V1 的 KV Cache 管理按运行位置与职责分为三侧。**配置侧**（引擎进程）在启动期依次 ① 算规格、② 测预算、③ 做编排，产出一份 `KVCacheConfig`；这份配置下发两侧：**物理侧**（worker 进程）执行 ④ 落张量，**逻辑侧**（引擎进程）执行 ⑤ 建逻辑层，创建 `KVCacheManager`。物理侧与逻辑侧之间没有对象引用，仅靠 `block_id == 物理张量行号` 桥接；三侧的完整装配链路见 §4。
 
-NPU 部署下三侧的角色分配：①② 的实现主体经 collective RPC 落在 **NPUWorker / NPUModelRunner**（vllm-ascend 插件重写）；③⑤ 跑在引擎进程，用的是**与 GPU 完全相同的上游代码**；④ 同样是 NPUWorker/NPUModelRunner 的重写实现。
+NPU 部署下三侧的角色分配：①② 的实现主体经 collective RPC 落在 **NPUWorker / NPUModelRunner**（vllm-ascend 插件重写）；③⑤ 跑在引擎进程，用的是**平台无关的上游代码**；④ 同样是 NPUWorker/NPUModelRunner 的重写实现。
 
 ```
            ┌────────────────────────────────────────────┐
@@ -98,44 +97,44 @@ NPU 部署下三侧的角色分配：①② 的实现主体经 collective RPC �
 ┌───────────────────────────────────────────────────────────────┐
 │  ▲ 运行期五层架构（Full Attention 视角 · 唯一 KV cache group）  │
 │  层号自下而上：第1层物理显存 … 第5层门面；下图自上而下排列           │
-├───────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────┤
 │  Scheduler（调度器 · 调用者）                                 │
 │  只通过第5层门面统一调用，不直接触碰 KV cache 内部结构             │
-├───────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────┤
 │  第5层 · 顶层门面   KVCacheManager                             │
 │     持有 1 个第4层；对 Scheduler 暴露统一 API                   │
-├───────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────┤
 │  第4层 · 协调器    KVCacheCoordinator                          │
 │             主线 UnitaryKVCacheCoordinator                     │
 │     · 持有 N 个第3层（每 spec group 1 个，主线 N=1）             │
 │     · 持有 1 个第2层 BlockPool（所有第3层共享）                   │
-├───────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────┤
 │  第3层 ×N · 单类型管理  SingleTypeKVCacheManager               │
 │             主线 N=1 FullAttentionManager                      │
 │     前缀查找(链式哈希)/分配释放/block_table 维护                  │
-├───────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────┤
 │  第2层 ×1 · 逻辑块池  BlockPool（唯一，所有第3层共享）             │
 │     逻辑块分配/释放/缓存哈希/LRU 驱逐（仅 block_id，无显存）       │
 │        ┌──────────────────┴───────────────┐                   │
 │    FreeKVCacheBlockQueue              BlockHashToBlockMap     │
 │     (LRU 空闲块队列)                 (链式哈希→block映射)      │
-├───────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────┤
 │  第1层 · 物理显存  NPUModelRunner.kv_caches[layer]             │
 │     每层一个 (k_cache, v_cache) 二元组，两张独立 torch.Tensor   │
 │     各 4D (num_blocks, block_size, num_kv_heads, head_dim)    │
 │     K 池、V 池各有一套同序号行：block_id == 各自的第0维行号       │
-└───────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────┘
 ```
 
-**NPU 第 1 层与 GPU 的差异**（本篇最重要的一张对照，详见类型篇中篇）：
+**NPU 第 1 层物理显存要点**（本篇最重要的速查，详见类型篇中篇）：
 
-| 对比项 | GPU（上游 vLLM） | NPU（vllm-ascend，本文主线） |
-|--------|-------------|--------------------|
-| 每层类型 | 单个 `torch.Tensor`（K/V 共用 storage） | **二元组 `(k_cache, v_cache)`**，K、V 各一张独立 `Tensor` |
-| 每层 4D shape | `(num_blocks, num_kv_heads, block_size, 2*head_dim)` 等，随后端而变 | 固定 `(num_blocks, block_size, num_kv_heads, head_dim)`，无 K/V 拼接维 |
-| 字节池申请 | 每层一次 `torch.zeros`（int8） | K、V **两次独立** `torch.zeros`（int8）；开 KV 传输（P/D 分离）时各多申请 2MiB 后对齐切片 |
-| reshape | `view(+permute)`，有布局翻转 | 纯 **`view`，无 permute**（丢掉描述符 dim0 的"2"，拆成两张） |
-| 写 KV 算子 | 单张量入参 | `DeviceOperator.reshape_and_cache(key, value, key_cache, value_cache, slots)` 双池入参（attention_v1.py:1444） |
+| 要点 | 值 |
+|--------|--------------------|
+| 每层类型 | **二元组 `(k_cache, v_cache)`**，K、V 各一张独立 `Tensor`（两块 storage 不连续） |
+| 每层 4D shape | 固定 `(num_blocks, block_size, num_kv_heads, head_dim)`，无 K/V 拼接维 |
+| 字节池申请 | K、V **两次独立** `torch.zeros`（int8）；开 KV 传输（P/D 分离）时各多申请 2MiB 后对齐切片 |
+| reshape | 纯 **`view`，无 permute**（丢掉描述符 dim0 的"2"，拆成两张） |
+| 写 KV 算子 | `DeviceOperator.reshape_and_cache(key, value, key_cache, value_cache, slots)` 双池入参（attention_v1.py:1444） |
 
 **五层分篇详解（自底向上）：**
 
@@ -176,7 +175,7 @@ Scheduler（调度器 · 调用者）
 | 文件 | 职责 | 所属层 |
 |------|------|------|
 | `vllm/vllm/v1/core/kv_cache_manager.py` | 顶层门面，对 Scheduler 暴露统一接口（`get_computed_blocks`/`allocate_slots`/`free` 等） | 第 5 层 · 顶层门面 |
-| `vllm/vllm/v1/core/kv_cache_coordinator.py` | 协调器：单组直通（Full Attention）或多组对齐（混合模型）；含工厂 `get_kv_cache_coordinator` | 第 4 层 · 协调器 |
+| `vllm/vllm/v1/core/kv_cache_coordinator.py` | 协调器：单组直通（Full Attention）或多组对齐（混合模型)；含工厂 `get_kv_cache_coordinator` | 第 4 层 · 协调器 |
 | `vllm/vllm/v1/core/single_type_kv_cache_manager.py` | `FullAttentionManager`：前缀查找、block 分配/释放；含工厂 `get_manager_for_kv_cache_spec` 与注册表 | 第 3 层 · 单类型管理 |
 | `vllm/vllm/v1/core/block_pool.py` | 逻辑 block 池：分配/释放/缓存哈希/LRU 驱逐 | 第 2 层 · 逻辑块池 |
 | `vllm/vllm/v1/core/kv_cache_utils.py` | `KVCacheBlock`、`BlockHash`、空闲队列、block hash 计算工具；容量规划 `get_num_blocks`/`get_kv_cache_configs` | 第 2/1 层 |
@@ -211,7 +210,7 @@ Scheduler（调度器 · 调用者）
                                                         对齐）→ view 成两张 4D → bind 到 attention 层
           第二个 RPC：compile_or_warm_up_model ──▶  _dummy_run 预热 + NPUGraph capture
                                                     （worker.py:706 → :732）
-⑤ 建逻辑层 Scheduler(...)（引擎进程，与 GPU 完全相同）
+⑤ 建逻辑层 Scheduler(...)（引擎进程，与平台无关）
           └ KVCacheManager → Coordinator → BlockPool + FullAttentionManager
 ```
 
@@ -237,7 +236,7 @@ Scheduler（调度器 · 调用者）
 
 | 步骤 | 产物 | 架构级结论 |
 |------|------|-----------|
-| ⑤ 建逻辑层 | 第 2～5 层全部对象 | 构造链路：`Scheduler → KVCacheManager → Coordinator → BlockPool + FullAttentionManager`——**与 GPU 完全相同的上游代码**，平台无感 |
+| ⑤ 建逻辑层 | 第 2～5 层全部对象 | 构造链路：`Scheduler → KVCacheManager → Coordinator → BlockPool + FullAttentionManager`——引擎进程内平台无关的上游代码 |
 
 逻辑侧只建元数据对象，逐条执行细节见 4.5 衔接点。
 
@@ -273,7 +272,7 @@ WAITING ──首次调度──▶ RUNNING ──每步 decode──▶ 生成�
 分配决策全部在逻辑侧沿五层编排链完成，产出整数 `block_id` 列表（`block_table`）；第 1 层物理张量不在这条链上——物理侧收到下发的 `block_table` 后，才由 Ascend attention 算子读写张量：
 
 ```
-逻辑侧（引擎进程 · 与 GPU 完全相同）：
+逻辑侧（引擎进程 · 平台无关）：
 Scheduler ─▶ 第5层 KVCacheManager ─▶ 第4层 Coordinator ─▶ 第3层 FullAttentionManager ─▶ 第2层 BlockPool
                        只改元数据（引用计数 / 哈希表 / 空闲队列），产出 block_table
                                              │ block_table 随 SchedulerOutput 下发
@@ -321,7 +320,7 @@ NPU 执行 ── 新块清零 → 算子读历史 K/V、写本步 1 个 token �
 
 ### 5.3 空间分工：决策在逻辑侧，执行在物理侧
 
-- **逻辑侧（第 2～5 层）承担全部分配决策**：前缀查找、分配 slot、释放只改引用计数、哈希表与空闲队列，全程不触碰物理张量——这部分在 NPU/GPU 上是**同一份代码**。
+- **逻辑侧（第 2～5 层）承担全部分配决策**：前缀查找、分配 slot、释放只改引用计数、哈希表与空闲队列，全程不触碰物理张量——这部分是**引擎进程内的同一份平台无关代码**。
 - **物理侧（第 1 层）只在设备执行时动张量**：worker 清零本轮新块后，`AscendAttentionBackendImpl` 的 `reshape_and_cache`（attention_v1.py:1430）把新 token 的 K/V 按 `slot_mapping` 分别写进 `key_cache`/`value_cache` 双池（`DeviceOperator.reshape_and_cache`，双池入参 :1444-1452；写完 `notify_kv_cache_written()` 通知 KV 传输层 :1453）；注意力计算核按 `block_table` 索引物理行读历史 K/V。NPU 特有的 `swap_blocks`/`copy_blocks`（:114-140）也按 `[0]`/`[1]` 双池操作。
 
 块的命运由此只由引用计数与空闲队列位置决定：前缀命中经 `touch`（计数加一、移出空闲队列）零拷贝共享给新请求；请求结束只减计数，仍被其他请求引用的块不回收；归零回收时，带哈希的块排到队尾受 LRU 保护、无哈希的块排到队首被优先复用——前缀缓存因此能跨请求持续积累，并被后续请求复用。
@@ -342,4 +341,4 @@ NPU 执行 ── 新块清零 → 算子读历史 K/V、写本步 1 个 token �
 | **投机解码 (EAGLE/MTP)** | EAGLE、Medusa | draft 层额外 group，需要 last-block drop 逻辑；**NPU 上 CacheOnly 层以 `HiddenStateCacheSpec` 单独成组**（model_runner_v1.py:5005-5025） | 第 4 层协调器与第 5 层门面 |
 | **P/D 分离 / KV 传输** | Mooncake、ADXL | prefill/decode 实例间搬 KV；**NPU 上这是 K/V 双池拆分与 2MiB 对齐的动机**（buffer 注册要求 dim0=num_blocks、地址对齐） | 第 1 层分配（model_runner_v1.py:4004/:4087-4088）、worker 侧 `register_kv_caches`（:3883-3884） |
 
-阅读建议：先对照 GPU 版吃透平台无关的五层主线（第 1 层物理显存 → 第 2 层块池 → 第 3 层单类型管理 → 第 4 层协调器 → 第 5 层门面），再回到本系列的 [`2_start_init.md`](./2_start_init.md) §3 精读 NPU 物理侧的 K/V 双池实现，最后按本表按需理解复杂场景。
+阅读建议：先吃透五层主线（第 1 层物理显存 → 第 2 层块池 → 第 3 层单类型管理 → 第 4 层协调器 → 第 5 层门面），再到本系列的 [`2_start_init.md`](./2_start_init.md) §3 精读 NPU 物理侧的 K/V 双池实现，最后按本表按需理解复杂场景。

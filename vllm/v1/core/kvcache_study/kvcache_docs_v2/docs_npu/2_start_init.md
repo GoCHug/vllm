@@ -1,6 +1,6 @@
 # vLLM-Ascend（NPU）系统启动期初始化
 
-> 本篇是 [`docs_gpu/2_start_init.md`](../docs_gpu/2_start_init.md) 的 NPU 镜像版，主线换成 **vllm-ascend 在昇腾 NPU 上的实现**（`NPUWorker` / `NPUModelRunner` / `AscendAttentionBackend`），GPU（上游 vLLM）只在对照节出现。③ 做编排与 ⑤ 建逻辑侧跑在引擎进程、与平台完全无关，两版内容一致。
+> 主线是 **vllm-ascend 在昇腾 NPU 上的实现**（`NPUWorker` / `NPUModelRunner` / `AscendAttentionBackend`）。③ 做编排与 ⑤ 建逻辑侧跑在引擎进程、平台完全无关。
 
 文中统一示例环境：**切分策略 pp2tp2，4 卡（Ascend NPU）环境**；三种 Attention 类型各配一个示例模型：
 
@@ -16,7 +16,7 @@
 |------|------|----------|
 | §1 | 启动期初始化总览 | 三侧五阶段 |
 | §2 | 配置侧详解 | ① 算规格 → ② 测预算 → ③ 做编排（①② 以 NPU 实现为主线） |
-| §3 | 物理侧详解 | ④ 落张量 · NPU 主线 / GPU 对照 |
+| §3 | 物理侧详解 | ④ 落张量（NPU 实现） |
 | §4 | 逻辑侧详解 | ⑤ 建逻辑层（平台无关） |
 | §5 | 三侧衔接 | `block_id == 张量行号`（NPU 恒 dim0） |
 | §6 | PP/TP 物理分布 | 切分策略下的 NPU 张量布局（含本仓库实测数字） |
@@ -58,20 +58,20 @@
 
 | 阶段 | 侧 | 职责 | 入口调用 | 输入 → 产出 |
 |------|------|----------|----------|-------------|
-| ① 算规格 | 配置侧 | 遍历全模型 Attention 层，采集 spec，推导单页字节量 `page_size_bytes`；同类层合并为 `KVCacheGroupSpec` | `ModelRunner.get_kv_cache_spec()`（NPU 由 `NPUModelRunner` 重写，dense 层产出与 GPU 同一个上游 spec） | `vllm_config` → `dict[layer, FullAttentionSpec]` |
+| ① 算规格 | 配置侧 | 遍历全模型 Attention 层，采集 spec，推导单页字节量 `page_size_bytes`；同类层合并为 `KVCacheGroupSpec` | `ModelRunner.get_kv_cache_spec()`（`NPUModelRunner` 重写，dense 层产出上游原 spec） | `vllm_config` → `dict[layer, FullAttentionSpec]` |
 | ② 测预算 | 配置侧 | profile dummy forward，量出 KV cache 可用显存（总显存 × 利用率 − 权重 − 激活；**NPU 公式无图项**，NPUGraph 推迟到 ④ 事后记账） | `ModelRunner.profile_run()` | 设备显存快照 → `available_memory: int` |
 | ③ 做编排 | 配置侧 | 合并全 worker spec → 分组 → 导出 `num_blocks`（`available // page_size // num_layers`）→ 预算校验 → 跨 worker `min(num_blocks)` 对齐 → 收口：生成 scheduler 版配置、回写 `num_gpu_blocks`（**平台无关，引擎进程**） | `get_kv_cache_configs()` | specs + budget → `list[KVCacheConfig]` + scheduler 版单份 |
 | ④ 落张量 | 物理侧 | dense 层 K/V **两次独立** `torch.int8` 字节池申请（开传输时 2MiB 对齐）→ 各自 `view`（无 permute）成两张 4D → bind（复用上游 `bind_kv_cache`）→ `_dummy_run` 编译 + **NPUGraph** capture，图内存实测后给出 `--kv-cache-memory` 建议 | `ModelRunner.initialize_kv_cache()` | `KVCacheConfig` → `kv_caches[layer] = (k_cache, v_cache)` |
-| ⑤ 建逻辑层 | 逻辑侧 | RPC 全部返回后引擎进程装配：推导 scheduler/hash 粒度 → 建 `Scheduler` → `KVCacheManager` → 工厂选 `UnitaryKVCacheCoordinator` → `BlockPool`（一次建 num_blocks 个逻辑块、摘 null_block）+ 每 group 一个 `FullAttentionManager`（注册表查表）——**与 GPU 完全相同** | `EngineCore.__init__`（core.py:145-157）+ `Scheduler.__init__` | scheduler 版 `KVCacheConfig` → 逻辑四层对象 |
+| ⑤ 建逻辑层 | 逻辑侧 | RPC 全部返回后引擎进程装配：推导 scheduler/hash 粒度 → 建 `Scheduler` → `KVCacheManager` → 工厂选 `UnitaryKVCacheCoordinator` → `BlockPool`（一次建 num_blocks 个逻辑块、摘 null_block）+ 每 group 一个 `FullAttentionManager`（注册表查表）——**引擎进程内平台无关** | `EngineCore.__init__`（core.py:145-157）+ `Scheduler.__init__` | scheduler 版 `KVCacheConfig` → 逻辑四层对象 |
 
 **小步编号约定**：三侧管线的①～⑤是**大阶段**（算规格/测预算/编排/落张量/建逻辑层）。§2.3 编排内部另有五个小子步也用①～⑤标注；文中引用写作"§2.3⑤"时指**编排内部第⑤小步（多 worker 对齐）**，不带节号的"⑤"一律指大阶段（建逻辑层）。
 
-> ①②④ 均有 GPU（上游 vllm）与 NPU（vllm-ascend）两套实现：本篇以 **NPU 为主线**（§2.1.1 / §2.2.1 / §3.1），GPU 对照分别为 §2.1.2 / §2.2.2 / §3.2，各主题末尾 `.3` 为逐项对比。③ 编排平台无关，⑤ 逻辑侧更是与平台完全无关（引擎进程内纯 Python 对象装配）。①③⑤ 跑在引擎进程，①②的实现主体经 collective RPC 落在各 NPU worker 进程执行。
+> ①②④ 的实现主体由 vllm-ascend 提供：①在 `NPUModelRunner`（§2.1.1）、②在 `NPUWorker`（§2.2.1）、④在 worker/model_runner（§3.1）。③ 编排平台无关，⑤ 逻辑侧更是与平台完全无关（引擎进程内纯 Python 对象装配）。①③⑤ 跑在引擎进程，①② 的实现主体经 collective RPC 落在各 NPU worker 进程执行。
 
 > **零拷贝调度的物理基础**：物理张量与逻辑块都就绪后，上层 `BlockPool` 只持有 `block_id`，所有调度决策（分配/释放/共享/驱逐）均不触碰物理显存——调度层与物理层完全解耦，`block_id` 是唯一的交互接口。
 ### 1.2 启动期三侧时序图（NPU 视角）
 
-`EngineCore.__init__` 内先调 `_initialize_kv_caches`（core.py:132，定义见 :236），由它完成配置侧①②③与物理侧④（:290），并返回 scheduler 版 `kv_cache_config`（:317）；随后引擎凭该 `kv_cache_config` 进行逻辑侧⑤初始化（core.py:145-157）。以主线 Llama-3-8B pp2tp2 为例（每 worker 16 层 / 4 KV 头；GPU 版用了假想 `num_blocks=4096`，本图沿用该参数化数字以便对照，**本仓库 NPU 实测数字见 §6**：`Available KV cache memory: 51.96 GiB`、`num_blocks=13291`、`block_size=128`）：
+`EngineCore.__init__` 内先调 `_initialize_kv_caches`（core.py:132，定义见 :236），由它完成配置侧①②③与物理侧④（:290），并返回 scheduler 版 `kv_cache_config`（:317）；随后引擎凭该 `kv_cache_config` 进行逻辑侧⑤初始化（core.py:145-157）。以主线 Llama-3-8B pp2tp2 为例（每 worker 16 层 / 4 KV 头；本图沿用参数化数字 `num_blocks=4096`，**本仓库 NPU 实测数字见 §6**：`Available KV cache memory: 51.96 GiB`、`num_blocks=13291`、`block_size=128`）：
 
 ```mermaid
 %%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
@@ -121,7 +121,7 @@ sequenceDiagram
     ModelExecutor-->>EngineCore: RPC 返回
     EngineCore-->>EngineCore: _initialize_kv_caches 返回 scheduler 版 kv_cache_config（:317）
 
-    Note over EngineCore,KVCacheManager: 逻辑侧 ⑤ 建逻辑层：引擎进程内，RPC 返回后（与 GPU 完全相同）
+    Note over EngineCore,KVCacheManager: 逻辑侧 ⑤ 建逻辑层：引擎进程内，RPC 返回后（平台无关）
     EngineCore->>EngineCore: resolve_kv_cache_block_sizes → (16, 16)（core.py:145）
     EngineCore->>Scheduler: Scheduler(vllm_config, kv_cache_config,<br/>block_size=16, hash_block_size=16)（core.py:149）
     Scheduler->>KVCacheManager: KVCacheManager(kv_cache_config, max_model_len, ...)（scheduler.py:231）
@@ -178,7 +178,7 @@ EngineCore.__init__                                     # engine/core.py:119 起
 │                └─ 4d 逐 size _dummy_run（:728）+ NPUGraph capture（:732）
 │                      + 图内存事后记账与 --kv-cache-memory 建议（:734-771）+ ATB 预热（:775-776）
 │
-└─ √ ⑤ §4 逻辑侧建逻辑层（引擎进程内，④ 的 RPC 全部返回后；与 GPU 完全相同）
+└─ √ ⑤ §4 逻辑侧建逻辑层（引擎进程内，④ 的 RPC 全部返回后；平台无关）
        ├─ resolve_kv_cache_block_sizes(kv_cache_config, vllm_config)  # core.py:145 → (16, 16)
        ├─ Scheduler(vllm_config, kv_cache_config, block_size=16, hash_block_size=16)  # core.py:149
        │     └─ KVCacheManager(kv_cache_config, max_model_len, ...)   # sched/scheduler.py:231
@@ -220,11 +220,11 @@ def register_all_kvcache_specs(vllm_config):
 
 ## 2. 配置侧：算规格 → 测预算 → 做编排（引擎进程发起）
 
-配置侧三步在 `EngineCore._initialize_kv_caches`（core.py:236-317）内依序执行：①②的实现主体经 collective RPC 落在各 worker 进程（NPU/GPU 两套），③ 做纯 Python 编排跑在引擎进程。三步全程不申请任何 KV 显存，产出**唯一的容量仲裁结果** `KVCacheConfig`：一份完整版 list（供④物理侧逐卡执行）+ 一份 scheduler 版（供⑤逻辑侧装配）。
+配置侧三步在 `EngineCore._initialize_kv_caches`（core.py:236-317）内依序执行：①②的实现主体经 collective RPC 落在各 worker 进程（vllm-ascend 的 `NPUWorker` / `NPUModelRunner`），③ 做纯 Python 编排跑在引擎进程。三步全程不申请任何 KV 显存，产出**唯一的容量仲裁结果** `KVCacheConfig`：一份完整版 list（供④物理侧逐卡执行）+ 一份 scheduler 版（供⑤逻辑侧装配）。
 
 ### 2.1 第 ① 步 · 算规格：各层产出 KVCacheSpec
 
-这一步遍历本 worker 模型里的每个 Attention 层，问出"你需要什么形状的 KV cache"。RPC 骨架平台无关（同一个 `ModelExecutor.get_kv_cache_specs()`，core.py:243），但 Worker / ModelRunner 的实现分 NPU（§2.1.1 主线）、GPU（§2.1.2 对照）两套；对纯 Full Attention 模型，两套最终产出的是**同一个上游 `FullAttentionSpec`**（对比见 §2.1.3）。
+这一步遍历本 worker 模型里的每个 Attention 层，问出"你需要什么形状的 KV cache"。RPC 骨架平台无关（同一个 `ModelExecutor.get_kv_cache_specs()`，core.py:243），Worker / ModelRunner 的实现由 vllm-ascend 提供（§2.1.1）；对纯 Full Attention 模型，最终产出的是**上游 `FullAttentionSpec` 原类**。
 #### 2.1.1 NPU 主线（vllm-ascend）：Worker 直接转发，Runner 有重写但 dense 层原样收 spec
 
 **调用链**：`EngineCore` → `ModelExecutor.get_kv_cache_specs()`（core.py:243）→ RPC 到各 worker（平台插件选到 `NPUWorker`）→ `NPUWorker.get_kv_cache_spec()`（vllm_ascend/worker/worker.py:891）——**一行转发，自身零逻辑**：
@@ -235,67 +235,21 @@ def get_kv_cache_spec(self) -> dict[str, KVCacheSpec]:
     return self.model_runner.get_kv_cache_spec()
 ```
 
-`NPUModelRunner.get_kv_cache_spec()`（vllm_ascend/worker/model_runner_v1.py:4909）**重写**了上游 Runner 的同名方法。遍历骨架（`AttentionLayerBase` → 逐层问 spec → kv_sharing 跳过）与 GPU 一致，多出的是 NPU 特有 spec 类型的分流：
+`NPUModelRunner.get_kv_cache_spec()`（vllm_ascend/worker/model_runner_v1.py:4909）**重写**了上游 Runner 的同名方法。遍历骨架（`AttentionLayerBase` → 逐层问 spec → kv_sharing 跳过）沿用上游，多出的是 NPU 特有 spec 类型的分流：
 
 | 层类型 | NPU 分支（model_runner_v1.py） | 产出 spec |
 |---|---|---|
-| decoder 普通 `Attention`（**Llama 走此路**） | :4943-4946 `if spec := attn_module.get_kv_cache_spec(...)` 后**原样存入** | 上游 **`FullAttentionSpec`**（模型层自产，与 GPU 完全相同） |
+| decoder 普通 `Attention`（**Llama 走此路**） | :4943-4946 `if spec := attn_module.get_kv_cache_spec(...)` 后**原样存入** | 上游 **`FullAttentionSpec`**（模型层自产） |
 | `MLAAttention`（DeepSeek 系） | :4948-5000 | **`AscendMLAAttentionSpec`**：非 sparse 路径取上游 spec 的 block_size/num_kv_heads/dtype，`head_size` 按 fa_quant 与否选 `head_size + qk_rope_head_dim` 或原值（:4987-4999）；sparse（DSA/SFA）路径另带 `sparse_head_dim`、`cache_sparse_sfa_c8`、`sfa_dcp_replicated_indexer_size` 等字段（:4949-4986） |
 | `MambaBase` | :5002-5003 先收集、:5027-5036 后统一处理 | 各 Mamba 自身 spec；并把同模型 attn 层的 `page_size_padded` 对齐到 mamba 页（:5034-5036 `object.__setattr__(..., "page_size_padded", ...)`） |
 | `CacheOnlyAttentionLayer`（extract_hidden_states） | :5005-5025 | **`HiddenStateCacheSpec`**（重建为可 pickle 的新对象，注释明言"keep the HiddenStateCacheSpec type so get_kv_cache_groups isolates this cache-only layer into its own group"，单独成组） |
 | `use_compress` 压缩 KV | :4939-4942 | 模块自身 spec 原样收 |
 
-另有两个与 GPU 对齐的边界行为：EC 传输 producer 直接返回 `{}`（:4918-4919，GPU 是"非 consumer 返回空"）；`kv_sharing_target_layer_name` 同样登记后跳过（:4928-4938）。
+另有两个边界行为：EC 传输 producer 直接返回 `{}`（:4918-4919）；`kv_sharing_target_layer_name` 同样登记后跳过（:4928-4938）。
 
-> **对 Llama 主线的结论**：NPU 这层重写对 dense 模型是"透明"的——每层拿到的仍是 attention 模块自产的 `FullAttentionSpec(block_size=16, num_kv_heads=4, head_size=128, dtype=bf16)`，所以 §2.3 的合并/分组/`page_size_bytes` 推导在两个平台上逐字节相同；NPU 与 GPU 的**物理差异（K/V 双池、2MiB 对齐）要到 §3 物理侧落张量时才出现**。
+> **对 Llama 主线的结论**：NPU 这层重写对 dense 模型是"透明"的——每层拿到的仍是 attention 模块自产的 `FullAttentionSpec(block_size=16, num_kv_heads=4, head_size=128, dtype=bf16)`，所以 §2.3 的合并/分组/`page_size_bytes` 推导与上游逻辑逐字节一致；**物理差异（K/V 双池、2MiB 对齐）要到 §3 物理侧落张量时才出现**。
 
-#### 2.1.2 GPU（上游 vLLM）对照
-
-**调用链**：RPC 方法名相同，平台插件选到 `GPUWorker`：`GPUWorker.get_kv_cache_spec()`（gpu_worker.py:547，仅一行转发）→ **`GPUModelRunner.get_kv_cache_spec()`（gpu_model_runner.py:7440）**：
-
-```python
-# gpu_model_runner.py:7440 GPUModelRunner 实例方法（用 self）
-def get_kv_cache_spec(self) -> dict[str, KVCacheSpec]:
-    kv_cache_spec: dict[str, KVCacheSpec] = {}
-    layer_type = cast(type[Any], AttentionLayerBase)
-    attn_layers = get_layers_from_vllm_config(self.vllm_config, layer_type)
-    for layer_name, attn_module in attn_layers.items():
-        if isinstance(attn_module, Attention) and (
-            kv_tgt_layer := attn_module.kv_sharing_target_layer_name
-        ):
-            self.shared_kv_cache_layers[layer_name] = kv_tgt_layer  # kv_sharing 复用目标层 KV，跳过
-            continue
-        if spec := attn_module.get_kv_cache_spec(self.vllm_config):  # 跳过无 KV 的 encoder-only
-            if isinstance(spec, AttentionSpec):
-                backend = attn_module.get_attn_backend()
-                with set_current_vllm_config(self.vllm_config):
-                    indexes = backend.indexes_kv_by_block_stride()
-                spec = replace(spec, indexes_kv_by_block_stride=indexes)
-            kv_cache_spec[layer_name] = spec
-    return kv_cache_spec
-```
-
-纯 Full Attention 模型产出 `FullAttentionSpec`——注意 spec 是**模型层自己产出的**（`Attention.get_kv_cache_spec()`，attention.py:603），与跑在 GPU 还是 NPU 无关：
-
-```python
-# model_executor/layers/attention/attention.py:603（decoder 普通分支）
-return FullAttentionSpec(block_size=block_size, num_kv_heads=self.num_kv_heads,
-                         head_size=self.head_size, head_size_v=self.head_size_v,
-                         dtype=self.kv_cache_torch_dtype, kv_quant_mode=quant_mode)
-```
-
-#### 2.1.3 NPU 与 GPU 对比
-
-| 维度 | NPU（vllm-ascend，主线） | GPU（上游 vLLM） |
-|---|---|---|
-| Worker 方法 | `NPUWorker.get_kv_cache_spec()`（worker.py:891），一行转发 | `GPUWorker.get_kv_cache_spec()`（gpu_worker.py:547），**同样一行转发** |
-| Runner 方法 | `NPUModelRunner.get_kv_cache_spec()`（model_runner_v1.py:4909），**重写** | `GPUModelRunner.get_kv_cache_spec()`（gpu_model_runner.py:7440） |
-| dense decoder 层产出 | **同一个 `FullAttentionSpec`**（模型层自产，runner 原样收，:4943-4946） | `FullAttentionSpec` |
-| 特有 spec 类型 | 额外分流 `AscendMLAAttentionSpec` / `HiddenStateCacheSpec` / mamba 页对齐 patch | 由各模型/后端自行返回（SlidingWindow、TQ、MLA 等） |
-| kv_sharing 跳过、encoder-only 跳过 | 有 | 有（相同语义） |
-| EC 传输空返回 | producer → `{}`（:4918-4919） | 非 consumer → `{}` |
-
-**※ 边注 · 扫描 `non_causal`（平台无关）**——specs 收集齐后，EngineCore 检查是否有层标记 `non_causal=True`（如 Prefix LM attention），这段在 EngineCore 进程内、GPU/NPU 都生效：
+**※ 边注 · 扫描 `non_causal`（平台无关）**——specs 收集齐后，EngineCore 检查是否有层标记 `non_causal=True`（如 Prefix LM attention），这段在 EngineCore 进程内生效：
 
 ```python
 # core.py:263（vllm-study 主线；releases/v0.23.0 尚无此检查）
@@ -309,11 +263,11 @@ if any(getattr(spec, "non_causal", False)
 > 非因果层与 chunked prefill / 前缀缓存依赖的"因果注意力"假设冲突，会破坏 prefill 正确性；纯 Full Attention 全因果，此分支不触发。注意这个开关会一路传导到⑤：`Scheduler.__init__` 里 `KVCacheManager(enable_caching=cache_config.enable_prefix_caching)`（§4.3）据此决定协调器走哪个分支。
 ### 2.2 第 ② 步 · 测预算：profile 量出可用显存
 
-这一步在每个 worker 上跑一次 dummy forward，量出权重+激活之外还剩多少字节给 KV cache。RPC 骨架相同（`ModelExecutor.determine_available_memory()`，core.py:257），但 Worker 实现分 NPU（§2.2.1 主线）/ GPU（§2.2.2 对照）两套，核心差异在**图内存何时记账**（对比见 §2.2.3）。
+这一步在每个 worker 上跑一次 dummy forward，量出权重+激活之外还剩多少字节给 KV cache。RPC 骨架相同（`ModelExecutor.determine_available_memory()`，core.py:257），Worker 实现即 `NPUWorker`（§2.2.1），核心特性在**图内存推迟记账**。
 
-#### 2.2.1 NPU 主线（vllm-ascend）：复用上游 profiling 工具，图内存推迟到 4d 记账
+#### 2.2.1 测预算实现（vllm-ascend）：复用上游 profiling 工具，图内存推迟到 4d 记账
 
-`NPUWorker.determine_available_memory()`（vllm_ascend/worker/worker.py:527）整体结构与 GPU 平行，多处直接复用上游：
+`NPUWorker.determine_available_memory()`（vllm_ascend/worker/worker.py:527）整体结构沿用上游框架，多处直接复用上游工具：
 
 1. **快路径 `--kv-cache-memory`**（worker.py:540-553）：用户显式指定 KV 字节数时，仍跑一次 `profile_run()`（触发编译），但跳过整个记账计算，直接返回用户指定值，并提示该值不受 `gpu_memory_utilization` 约束：
 
@@ -338,7 +292,7 @@ with memory_profiling(
     self.model_runner.profile_run()
 ```
 
-3. **同一次 dummy forward**：`NPUModelRunner.profile_run()`（model_runner_v1.py:3684）只在前后加 NPU 专属预热，核心调用 **`super().profile_run()`**（:3696）即 GPU 那套 max-token dummy forward：
+3. **同一次 dummy forward**：`NPUModelRunner.profile_run()`（model_runner_v1.py:3684）只在前后加 NPU 专属预热，核心调用 **`super().profile_run()`**（:3696）即上游那套 max-token dummy forward：
 
 ```python
 # model_runner_v1.py:3684-3697（节选）
@@ -355,7 +309,7 @@ def profile_run(self) -> None:
 
 Llama 无 MoE，实际走的就是 `super()` 路径。
 
-4. **torch 峰值改走 npu API**：`torch.npu.memory_stats(self.device)["allocated_bytes.all.peak"]`（worker.py:567，GPU 对应 `torch.accelerator.memory_stats`），同样取图捕获**之前**的预捕获值并覆写 `torch_peak_increase`（:571）——避免把图池重复计成激活。
+4. **torch 峰值改走 npu API**：`torch.npu.memory_stats(self.device)["allocated_bytes.all.peak"]`（worker.py:567），同样取图捕获**之前**的预捕获值并覆写 `torch_peak_increase`（:571）——避免把图池重复计成激活。
 
 **核心公式——没有图内存项**（worker.py:572-574 / :590）：
 
@@ -368,47 +322,14 @@ available_kv_cache_memory = requested_memory                （total × gpu_memo
 
 NPUGraph 此刻还没 capture（它发生在 4d `compile_or_warm_up_model()`，worker.py:732），自然无法在这一步预留。图内存改为**事后记账**：4d capture 拿到 `npugraph_memory_bytes` 后，worker.py:734-771 打印一条建议日志，把 `权重 + 峰值激活 + non-torch + NPUGraph + 150 MiB 余量`重算一遍，给出两种 `--kv-cache-memory` 建议值（贴 requested / 贴整机 free），供下次启动直接指定——这正是 NPU 上推荐用 `--kv-cache-memory` 而非只调利用率的原因。
 
-其余细节（对照 GPU）：
+其余细节：
 
-- 快照一致性断言 NPU 用严格大于（`init.free > profile 后 free`，worker.py:581，GPU 是 `≥`）；
-- 结果日志 NPU 用 `logger.info_once("Available KV cache memory: %.2f GiB", ..., scope="local")`（worker.py:593-595）——本仓库实验启动日志里的 `[worker.py:593] Available KV cache memory: 51.96 GiB` 即此行。
+- 快照一致性断言用严格大于（`init.free > profile 后 free`，worker.py:581）；
+- 结果日志用 `logger.info_once("Available KV cache memory: %.2f GiB", ..., scope="local")`（worker.py:593-595）——本仓库实验启动日志里的 `[worker.py:593] Available KV cache memory: 51.96 GiB` 即此行。
 
-#### 2.2.2 GPU（上游 vLLM）对照
-
-**调用链**：`EngineCore` → `ModelExecutor.determine_available_memory()`（core.py:257）→ RPC 到各 worker → `GPUWorker.determine_available_memory()`（gpu_worker.py:372）→ 内部 `self.model_runner.profile_run()`（dummy forward 量峰值）→ 写回 `self.available_kv_cache_memory_bytes`（gpu_worker.py:461）→ 返回每个 worker 的 `available_memory` 字节数 `list[int]`。
-
-**核心公式**：
-
-```
-requested_memory = total_memory × gpu_memory_utilization        (utils.py:405)
-
-available_kv_cache_memory = requested_memory
-                           − non_kv_cache_memory                (权重 + 激活 + 其他)
-                           − cudagraph_memory_estimate_applied  (CUDA graph 预留)
-```
-
-其中 `non_kv_cache_memory = non_torch_increase + torch_peak_increase + weights_memory`（gpu_worker.py:431-435）。
-
-图内存记账的两个细节：① `profile_cudagraph_memory()` 只在 `current_platform.is_cuda()` 且 cudagraph_mode ≠ NONE 时测量；② 测到的预估值**仅当环境变量 `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS` 打开才真的从预算里扣**，默认 `applied=0`。
-
-> 若显式设置 `cache_config.kv_cache_memory_bytes`（`--kv-cache-memory`），仍会跑一次 `profile_run()`（触发编译），但跳过整个记账计算，直接返回用户指定字节数——两平台同款快路径。
-
-#### 2.2.3 NPU 与 GPU 对比
-
-| 维度 | NPU（vllm-ascend，主线） | GPU（上游 vLLM） |
-|---|---|---|
-| Worker 方法 | `NPUWorker.determine_available_memory()`（worker.py:527），结构平行 | `GPUWorker.determine_available_memory()`（gpu_worker.py:372） |
-| requested 公式 | `total × gpu_memory_utilization` | 相同（utils.py:405） |
-| 显存快照/上下文 | **直接 import 复用同一工具**（worker.py:47，经 current_platform 落到 npu 统计） | `MemorySnapshot` + `memory_profiling`（vllm.utils.mem_utils） |
-| 峰值统计 API | `torch.npu.memory_stats`（worker.py:567，取预捕获值并覆写 :571） | `torch.accelerator.memory_stats` |
-| dummy forward | `NPUModelRunner.profile_run()`：EPLB/MC2/PCP 预热包一层后调 `super().profile_run()`（model_runner_v1.py:3684-3696） | `GPUModelRunner.profile_run()` |
-| 图内存何时扣 | **本步不扣**；NPUGraph 在 4d capture 后实测，经"建议 --kv-cache-memory"日志事后记账（worker.py:734-771；150 MiB 余量 :742） | profile 阶段测量 CUDAGraph 预估（env `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS` 打开才扣，默认不扣） |
-| `--kv-cache-memory` 快路径 | profile_run 编译后直接返回指定值（worker.py:540-553） | 相同 |
-| 快照一致性断言 | `init.free > 后 free`（worker.py:581，严格大于，PL 处 OOM 更早暴露） | `init.free ≥ 后 free`（:452） |
-| 结果日志 | `info_once` 每进程一次（worker.py:593，实验实测 51.96 GiB） | `Available KV cache memory ...`（info/debug） |
 ### 2.3 第 ③ 步 · 做编排：合并 / 分组 / num_blocks / 对齐 / 收口（平台无关）
 
-**调用链**：`EngineCore` → `get_kv_cache_configs()`（kv_cache_utils.py:1956），顶层入口，依次五步（PP 下含投影），最后在 EngineCore 侧收口生成 scheduler 版配置。**本节全部跑在引擎进程，与 NPU/GPU 无关**（①② 上报的 spec / 预算是什么，它就编排什么）。本节内部小步①～⑤指编排的五小子步（见 §1.1 编号约定）。
+**调用链**：`EngineCore` → `get_kv_cache_configs()`（kv_cache_utils.py:1956），顶层入口，依次五步（PP 下含投影），最后在 EngineCore 侧收口生成 scheduler 版配置。**本节全部跑在引擎进程**（①② 上报的 spec / 预算是什么，它就编排什么）。本节内部小步①～⑤指编排的五小子步（见 §1.1 编号约定）。
 
 **① 合并全 worker spec**
 
@@ -522,13 +443,13 @@ class KVCacheGroupSpec:
 ```
 ## 3. 物理侧：落张量 + 编译预热（NPU worker 进程）
 
-三侧中①算规格、②测预算、④落张量都有 NPU / GPU 两套 Worker / ModelRunner 实现（①②已展开，本节是④），只有③做编排跑在 EngineCore 进程内、平台无关。第④步与前两步一样分平台实现，但 RPC 骨架相同——`ModelExecutor.initialize_from_config()`（core.py:290 / abstract.py:118）内部**连续两个 `collective_rpc`**：先 `initialize_from_config` 完成 4a/4b/4c 落张量，再 `compile_or_warm_up_model` 完成 4d 编译预热。**NPU（vllm-ascend 插件）实现见 §3.1（主线），GPU（上游 vLLM）对照见 §3.2，逐项对比见 §3.3。**
+①算规格、②测预算、④落张量的实现主体都是 vllm-ascend 的 `NPUWorker` / `NPUModelRunner`（①②已展开，本节是④）；③做编排跑在 EngineCore 进程内、平台无关。第④步与前两步走相同的 RPC 骨架——`ModelExecutor.initialize_from_config()`（core.py:290 / abstract.py:118）内部**连续两个 `collective_rpc`**：先 `initialize_from_config` 完成 4a/4b/4c 落张量，再 `compile_or_warm_up_model` 完成 4d 编译预热。**实现见 §3.1。**
 
-### 3.1 NPU 主线（vllm-ascend）：K/V 双独立池，开传输时 2MiB 对齐
+### 3.1 NPU 实现：K/V 双独立池，开传输时 2MiB 对齐
 
-NPU 侧由 vllm-ascend 插件实现：`NPUWorker(WorkerBase)`（vllm_ascend/worker/worker.py:89）与 `NPUModelRunner(GPUModelRunner)`（vllm_ascend/worker/model_runner_v1.py:268）——**重写张量分配/reshape，但复用上游 RPC 框架、`KVCacheConfig` 编排与 `bind_kv_cache` 绑定**。
+物理侧由 vllm-ascend 插件实现：`NPUWorker(WorkerBase)`（vllm_ascend/worker/worker.py:89）与 `NPUModelRunner`（vllm_ascend/worker/model_runner_v1.py:268，继承上游基类）——**重写张量分配/reshape，但复用上游 RPC 框架、`KVCacheConfig` 编排与 `bind_kv_cache` 绑定**。
 
-**调用链**：RPC 方法名与 GPU 完全相同（平台插件选到 NPUWorker；`collective_rpc` 广播 `list[KVCacheConfig]`，各卡按 `global_rank` 取本 rank 的配置，worker_base.py:315-319）：
+**调用链**：平台插件选到 NPUWorker（`collective_rpc` 广播 `list[KVCacheConfig]`，各卡按 `global_rank` 取本 rank 的配置，worker_base.py:315-319）：
 
 1. `collective_rpc("initialize_from_config")` → **`NPUWorker.initialize_from_config()`（worker.py:907）**，先做两件 NPU 特有的事再委托 model_runner：
 
@@ -584,7 +505,7 @@ k_tensor_size = int(kv_cache_tensor.size // k_factor)          # :4227 整池字
 v_tensor_size = int(kv_cache_tensor.size // v_factor)          # :4228
 k_tensor = self._allocate_int8_cache_tensor(k_tensor_size, alignment)  # :4249 第一次独立 torch.zeros
 v_tensor = self._allocate_int8_cache_tensor(v_tensor_size, alignment)  # :4254 第二次独立 torch.zeros
-kv_cache_raw_tensors[layer_name] = (k_tensor, v_tensor)        # :4309 登记为二元组（GPU 是单 tensor）
+kv_cache_raw_tensors[layer_name] = (k_tensor, v_tensor)        # :4309 登记为二元组（K、V 两张独立张量）
 ```
 
 其中 `calc_split_factor`（vllm_ascend/utils.py:1611-1613）就是"总宽度 / 各自宽度"：
@@ -610,9 +531,9 @@ def _allocate_int8_cache_tensor(self, numel, alignment):
     return self._align_memory(raw, alignment)[:numel]                            # 地址对齐后切片
 ```
 
-同样先按 int8 字节申请、reshape 时再 `view(dtype)`，与 GPU 的"dtype 解耦"动机一致。例外分支（不走 K/V 双分、仍是单张量）：
+同样先按 int8 字节申请、reshape 时再 `view(dtype)`——同样是"dtype 与存储解耦"的动机。例外分支（不走 K/V 双分、仍是单张量）：
 
-- Mamba / linear_attn / attn-mamba hybrid / cache_only 层（:4118-4134）：按层名 `"linear_attn" in layer_name` 或 `is_hidden_state_cache_spec(...)` 命中单张量路径——GDN/线性注意力状态缓存与 GPU 同型；
+- Mamba / linear_attn / attn-mamba hybrid / cache_only 层（:4118-4134）：按层名 `"linear_attn" in layer_name` 或 `is_hidden_state_cache_spec(...)` 命中单张量路径——GDN/线性注意力状态缓存走单张量布局；
 - `use_compress` 压缩注意力（:4135-4146）：同组 self_attn 共享一张张量；
 - sparse MLA 还会额外分配 indexer/scale 张量（`_allocate_sparse_c8_indexer_tensors` 等，:4259-4276；登记形态为 2～4 元组，:4646-4680）——Llama dense 主线不涉及。
 
@@ -634,7 +555,7 @@ kv_caches[layer_name] = (k_cache, v_cache)                  # :4682 每层绑定
 要点：
 
 - Ascend dense 后端描述符 `(2, num_blocks, block_size, num_kv_heads, head_size)` 里的 **"2" 在 dim0、且不落成物理维**——它被拆成两张独立的 4 维张量 `(num_blocks, block_size, num_kv_heads, head_dim)`，每张的 dim0 即 `num_blocks`；
-- 全程只有 `view`（int8 → bf16 → 4D），**没有 GPU 的 `permute` 布局翻转**；
+- 全程只有 `view`（int8 → bf16 → 4D），**无 `permute` 布局翻转**；
 - MLA 分支（:4605-4629 / AscendMLABackend get_kv_cache_shape 返回 4D，mla_v1.py:98-106）：两张不等维——k_cache = nope_cache（`kv_lora_rank` 宽）、v_cache = rope_cache（`qk_rope_head_dim` 宽），仍是双池；
 - 跨层 KV 复用层在此挂共享引用（:3933-3935，`shared_kv_cache_layers`）；`deepseek_v4` 类型走专门排序装填（:3937-3948），主线不涉及。
 
@@ -686,53 +607,10 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
 
 至此 NPU 物理侧就绪。以本仓库 Llama-3-8B 实验为例（详见 §6）：每 worker 16 层 → **32 张张量（16 个 K 池 + 16 个 V 池）**，每张 `(13291, 128, 4, 128) bf16`，KVS 归档 .pt 即按 `"K"/"V"` 双独立张量池原样落盘。
 
-### 3.2 GPU（上游 vLLM）对照：单层单池，K/V 落在同一张量
-
-**调用链**：同名双 RPC，选到 `GPUWorker`：
-
-1. `collective_rpc("initialize_from_config")` → `GPUWorker.initialize_from_config()`（gpu_worker.py:563，先把对齐后的 `num_blocks` 写回本卡 `cache_config.num_gpu_blocks`）→ `GPUModelRunner.initialize_kv_cache()`（gpu_model_runner.py:7284）完成 4a/4b/4c；
-2. `collective_rpc("compile_or_warm_up_model")` → `GPUWorker.compile_or_warm_up_model()`（gpu_worker.py:592），完成 4d（CUDAGraph capture）。
-
-GPU 的 4a/4b/4c 概要（与 NPU 的差异点全部在 §3.3 表格展开）：
-
-```python
-# 4a：每层只有一次 int8 申请（gpu_model_runner.py:6999 节选）
-tensor = torch.zeros(kv_cache_tensor.size, dtype=torch.int8, device=self.device)
-
-# 4b：int8 → dtype 后 permute 翻成后端逻辑布局（gpu_model_runner.py:7040 / attn_utils.py:169 起）
-kv_cache_shape = attn_backend.get_kv_cache_shape(...)   # 如 FlashAttn: (N, 2, B, H, D)
-kv_caches[layer] = raw.view(dtype).view(shape) ... .permute(*inv_order)
-#   block_dim 探测：哨兵值 _S=1234567 再 shape.index(_S)（backend.py:99）
-
-# 4c：同一个 bind_kv_cache（vllm/v1/worker/utils.py:462）——GPU/NPU 共用，只差每层元素是单张量还是二元组
-```
-
-GPU 的 4d：`_dummy_run`（gpu_worker.py:592 内）+ `capture_model()` = **CUDAGraph** capture。
-
-### 3.3 NPU 与 GPU 对比
-
-| 维度 | NPU（vllm-ascend，主线） | GPU（上游 vLLM） |
-|---|---|---|
-| Worker / Runner | `NPUWorker(WorkerBase)` / `NPUModelRunner(GPUModelRunner)`（vllm_ascend/worker/worker.py、model_runner_v1.py） | `GPUWorker` / `GPUModelRunner`（gpu_worker.py、gpu_model_runner.py） |
-| ①②③ 编排与 RPC | **完全相同**（插件只换 Worker 实现，方法名/RPC 骨架不变；`KVCacheConfig`、双 RPC：initialize_from_config + compile_or_warm_up_model） | 同左 |
-| Worker 入口差异 | 先 `ensure_kv_transfer_initialized`（P/D）、sleep mode 在 `CaMemAllocator` 池上下文分配、`deepcopy(config)`（worker.py:907-918；model_runner_v1.py:3850）；不回写 `num_gpu_blocks` | 直接委托；回写 `num_gpu_blocks`（gpu_worker.py:563） |
-| 每层 int8 池数量 | **2 张**（K、V 两次独立、不连续的 `torch.zeros`；`calc_split_factor` 按维宽比例拆，dense 等宽对半、MLA 8:1） | **1 张**（K/V 共用一块原始内存） |
-| raw 登记形态 | `kv_cache_raw_tensors[layer] = (k_tensor, v_tensor)` 二元组（model_runner_v1.py:4309） | `= tensor` 单张量 |
-| 地址对齐 | KV 传输开启时每张池 **2MiB 对齐**（多申请 2MiB + `_align_memory` 切片，:4004/:3911） | 无特殊要求 |
-| 后端 shape 描述符 | Ascend dense `(2, N, B, H, D)`（2 在 dim0，**不落成物理维**，attention_v1.py:104-112）；MLA 直接 4D（mla_v1.py:106） | FlashAttn/FlashInfer `(N, 2, B, H, D)`（2 在 dim1）；ROCm `(2, N, B, H, D)`（2 在 dim0 且落维） |
-| reshape 方式 | int8→dtype 后纯 **`view`，无 permute**；"2"被拆，每层**两张** `(N, B, H, D)` 4 维张量 | int8→dtype 后 **`permute`** 翻成后端逻辑布局，每层**一张**张量 |
-| 层绑定对象 | `kv_caches[layer]`: `(k_cache, v_cache)` 二元组（:4682） | `kv_caches[layer]`: 一张 Tensor |
-| `block_dim` | 恒为每张 K/V 张量的 **dim0**（传输约束：注册 buffer 要求 dim0 = num_blocks），无需探测 | 随后端在 dim0 / dim1，哨兵值 `_S=1234567` 运行时探测（backend.py:99） |
-| 写 KV 算子 | `DeviceOperator.reshape_and_cache(key, value, key_cache, value_cache, slots)` 双池入参（attention_v1.py:1444）+ `notify_kv_cache_written`（:1453） | 单张量入参（K/V 维或 packed 末维在内） |
-| swap/copy | `kv_cache[0]`/`kv_cache[1]` 双池分别搬行（attention_v1.py:114-140） | 单张量整块操作 |
-| 图编译预热 | `capture_model()` = **NPUGraph** capture（worker.py:732）；图内存 4d 实测 + 事后建议 `--kv-cache-memory`（:741-771）；另有 ATB 预热（:775）与 CPU 绑核（:779） | `capture_model()` = CUDAGraph capture；图内存②阶段预估（默认不扣） |
-| 每 worker 张量数（Llama 16 层） | 32 张（16 K + 16 V） | 16 张 |
-| 分叉/额外语义动机 | prefill/decode 分离（Mooncake / ADXL 传输）要求注册 buffer dim0 = num_blocks、地址 2MiB 对齐 | — |
-
-**不变的平台契约**（所以上层零改动）：同一份 `KVCacheConfig` 与跨 worker `min(num_blocks)` 对齐；都是 int8 字节池起步、与 dtype 解耦；都用同一个 `bind_kv_cache` 绑定；逻辑侧 `block_id == 物理张量 dim0 行号` 的约定在两个平台都成立（NPU 上 K 池/V 池各有一套同序号的行空间）——⑤逻辑层（§4）、`BlockPool`、`KVCacheManager` 的分配/释放/哈希/驱逐逻辑对此完全无感。
+**不变的存储契约**（所以上层零改动）：同一份 `KVCacheConfig` 与跨 worker `min(num_blocks)` 对齐；一律从 int8 字节池起步、与 dtype 解耦；都用同一个 `bind_kv_cache` 绑定；逻辑侧 `block_id == 物理张量 dim0 行号` 的约定恒成立（K 池/V 池各有一套同序号的行空间）——⑤逻辑层（§4）、`BlockPool`、`KVCacheManager` 的分配/释放/哈希/驱逐逻辑对此完全无感。
 ## 4. 逻辑侧：建逻辑层（引擎进程 · 纯元数据装配）
 
-④的 RPC 全部返回后，`_initialize_kv_caches`（core.py:317）把收口生成的 scheduler 版 `KVCacheConfig` 返回给 `EngineCore.__init__`，引擎进程随即执行⑤——装配逻辑四层（协调器 / 单类型管理 / 块池 / 门面，架构编号第 2～5 层，见 [`0_kvcache_arch.md`](./0_kvcache_arch.md)）。本侧特点：**全部对象都是纯元数据**（`KVCacheBlock` 只含 `block_id` 与引用计数等，不含任何 K/V 数据）、**启动期一次性建好**、**与平台（NPU/GPU）完全无关**——本节与 GPU 版逐字一致，仅保留以便单篇自洽。
+④的 RPC 全部返回后，`_initialize_kv_caches`（core.py:317）把收口生成的 scheduler 版 `KVCacheConfig` 返回给 `EngineCore.__init__`，引擎进程随即执行⑤——装配逻辑四层（协调器 / 单类型管理 / 块池 / 门面，架构编号第 2～5 层，见 [`0_kvcache_arch.md`](./0_kvcache_arch.md)）。本侧特点：**全部对象都是纯元数据**（`KVCacheBlock` 只含 `block_id` 与引用计数等，不含任何 K/V 数据）、**启动期一次性建好**、**与平台完全无关**（引擎进程内纯 Python 对象装配）。
 
 ### 4.1 装配时点：物理先于逻辑
 
@@ -938,17 +816,11 @@ self.req_to_blocks: defaultdict[str, list[KVCacheBlock]] = defaultdict(list)
 
 1. **同一份配置定义容量**：③收口产出完整版 `list[KVCacheConfig]`（每 worker 一份、`num_blocks` 已 min 对齐）交给④；deepcopy 出的 scheduler 版单份交给⑤。`generate_scheduler_kv_cache_config` 的入口断言（kv_cache_utils.py:1704-1706）兜底保证两侧看到的 `num_blocks` 必然相等——物理侧各张量的 `block_dim` 轴大小、逻辑侧 `BlockPool.blocks` 长度都由同一个数字推出。NPU 特有的一层保障：`NPUModelRunner.initialize_kv_cache` 还会 `deepcopy(config)`（model_runner_v1.py:3850），确保 worker 侧的任何配置增补（encoder-only 层、kv sharing 层）不会污染引擎进程共享的对象。
 2. **从 0 顺序编号的约定**：逻辑侧 `BlockPool.__init__` 一次性建出 `num_blocks` 个 `KVCacheBlock`，`block_id` 取序号 `0 … n-1`；物理侧 reshape 后每张张量的 `block_dim` 轴大小恰为同一 `num_blocks`。两侧在 `block_dim` 轴上"位置等同"——`block_id` 即张量行号，fancy index 直接取行，无查表、无拷贝。
-3. **NPU 上唯一需要记住的形态**：**K 池与 V 池各有一套同序号的行空间**——同一个 `block_id` 同时命中两张张量各自的第 `block_id` 行；逻辑侧对此完全无感，`block_table` 只有一份：
+3. **NPU 唯一的存储形态——K/V 双独立池**（详 §3.1）：**K 池与 V 池各有一套同序号的行空间**——同一个 `block_id` 同时命中两张张量各自的第 `block_id` 行；逻辑侧对此完全无感，`block_table` 只有一份。K、V 各一张 `(num_blocks, block_size, num_kv_heads, head_size)`，`block_dim` 恒为每张张量的 dim0，索引方式 `kv_caches[layer][0][block_ids]`（K）/ `[1][block_ids]`（V）。
 
-| 形式 | 平台 | layout | 逻辑 shape | `block_dim` | 索引方式 |
-|------|------|--------|-----------|-------------|----------|
-| 形式 C（**NPU 主线**） | NPU | K/V 双独立池（vllm-ascend，详 §3.1） | K、V 各一张 `(num_blocks, block_size, num_kv_heads, head_size)` | 每张张量 0 | `kv_caches[layer][0][block_ids]`（K）/ `[1][block_ids]`（V） |
-| 形式 A（GPU） | GPU | K/V packed in content dim（FlashAttn / FlashInfer / CPU） | `(num_blocks, num_kv_heads, block_size, 2*head_size)` | 0 | `kv_caches[layer][block_ids]` |
-| 形式 B（GPU） | GPU | K/V as separate dim（ROCm） | `(2, num_blocks, block_size, num_kv_heads, head_size)` | 1 | `kv_caches[layer][:, block_ids]` |
+**双池形式下 `block_dim` 恒为 dim0，无需哨兵值运行时探测**——这是 KV 传输注册约束（buffer dim0 = num_blocks、地址 2MiB 对齐）的直接副产物。
 
-GPU 后端 `block_dim` 需要哨兵值 `_S=1234567` 运行时探测（backend.py:99-116）；**NPU 双池形式下恒为 dim0，无需探测**——这是 KV 传输注册约束的直接副产物。
-
-forward 伪代码（以 NPU 形式 C 为例，`block_ids` 即该请求的 `block_table`）：
+forward 伪代码（NPU 双池形式，`block_ids` 即该请求的 `block_table`）：
 
 ```python
 # NPU forward 前，Worker 已通过 get_block_ids() 拿到该请求的 block_id 列表
@@ -979,7 +851,7 @@ v = kv_caches[layer][1][block_ids]                # V 池：dim0 fancy indexing�
 | W2 | 1 | 0 | L16–L31（16 层） | 4 |
 | W3 | 1 | 1 | L16–L31（16 层） | 4 |
 
-**参数化示例**（与 GPU 篇对照，沿用假想数字）：TP2 后 `page_size=32KB`（block_size=16），各卡 KV 可用 2GiB → `num_blocks = 2GiB // 32KB // 16 = 4096`。
+**参数化示例**（沿用假想数字）：TP2 后 `page_size=32KB`（block_size=16），各卡 KV 可用 2GiB → `num_blocks = 2GiB // 32KB // 16 = 4096`。
 
 **本仓库 NPU 实测走查**（Llama-3-8B bf16，pp2tp2，block_size=128，启动日志真实数字）：
 
@@ -997,7 +869,7 @@ v = kv_caches[layer][1][block_ids]                # V 池：dim0 fancy indexing�
 - **※ 前置**：`register_all_kvcache_specs` 注册 spec↔manager 映射；扫描 `non_causal`——纯 Full Attention 全因果，不触发。
 - **配置侧 ① 算规格**：每个 NPUModelRunner 各产出 16 个 `FullAttentionSpec`，`num_kv_heads=4`（TP 已切），block_size=128。
 - **配置侧 ② 测预算**：各卡 `profile_run` 实测 KV 可用显存 = 总显存 × 利用率 − 权重 − 激活（公式无图项）→ `51.96 GiB`（worker.py:593）。
-- **③·合并**：`merged_kv_cache_specs` 合并出 32 个层名不同的 spec——W0/W1 层名同为 `layers.0`~`layers.15` 且字段全等 → 合并断言通过；W2/W3 同理（**注意**：NPU 上各 worker 的 spec dict 是 `NPUModelRunner.get_kv_cache_spec()` 产出，但 dense 层内容与 GPU 逐字节相同）。
+- **③·合并**：`merged_kv_cache_specs` 合并出 32 个层名不同的 spec——W0/W1 层名同为 `layers.0`~`layers.15` 且字段全等 → 合并断言通过；W2/W3 同理（**注意**：各 worker 的 spec dict 由 `NPUModelRunner.get_kv_cache_spec()` 产出，dense 层内容同上游推导）。
 - **③·分组**：32 层 `FullAttentionSpec` 字段一致 → `is_kv_cache_spec_uniform=True` → 全模型 1 个 group（32 层）。
 - **③·投影**：`_project_kv_cache_groups_to_worker()` 把 global group（32 层）投影到每 worker 实际层 → projected group（16 层）。
 - **③·num_blocks + 对齐**：每卡基于 projected group（16 层）独立算 `num_blocks = 51.96GiB // 256KB // 16 ≈ 13291`，再取 4 个 worker 的 `min_num_blocks` 统一（§2.3⑤）。
@@ -1028,7 +900,7 @@ v = kv_caches[layer][1][block_ids]                # V 池：dim0 fancy indexing�
 
 ## 8. 设计要点小结
 
-1. **规格先行且平台透明**：所有显存计算源自 spec 的 `page_size_bytes`；NPU 的 Runner 重写只影响 MLA/CacheOnly/mamba 页对齐等特有节点，dense 层 spec 与 GPU 逐字节相同——③编排因此完全平台无关（§2.1/§6）。
+1. **规格先行且平台透明**：所有显存计算源自 spec 的 `page_size_bytes`；NPU 的 Runner 重写只影响 MLA/CacheOnly/mamba 页对齐等特有节点，dense 层 spec 沿用上游原类——③编排因此完全平台无关（§2.1/§6）。
 2. **五阶段单向管线、每卡并行、物理先于逻辑**：`spec → profile → 编排 → 落张量 → 建逻辑层`，①②④ 经 collective RPC 执行、各卡只处理本 rank 的配置；④编译预热（NPUGraph capture）完成后⑤才装配逻辑层，随后 `freeze_gc_heap` 封门（§3/§4）。
 3. **单 group 是 FullAttention 核心特征**：`is_kv_cache_spec_uniform=True`，全模型 1 个 KV group（§2.3②），因此⑤命中工厂的 `UnitaryKVCacheCoordinator` 分支且只建 1 个 manager（§4.4）。
 4. **容量是 per-worker 的**：`num_blocks = available // page_size // group_size`，除数是 projected 后每 worker 层数，不是全局合并层数（§2.3③）。
@@ -1048,7 +920,7 @@ v = kv_caches[layer][1][block_ids]                # V 池：dim0 fancy indexing�
 - **num_blocks 三条配置路径**（`get_kv_cache_config_from_groups`，kv_cache_utils.py:1247）：① 单组 `UniformTypeKVCacheSpecs`（同类型异页大小）——不除层数，每层张量按自身页大小定尺寸；② DeepSeek V4 打包——各 group 同 slot 层共享一张张量；③ 通用路径（主线）——除以 projected 层数，组内第 i 层共享第 i 张张量，层数不足的组补 padding 槽位。
 - **三种 block_size（scheduler / hash / 物理页）**：纯 FullAttention 下三者相等（§4.2 单组路径 128/128/128）；混合模型由 `resolve_kv_cache_block_sizes()` 经 LCM/GCD 统一——协调器基类断言保证整除关系（§4.4）。
 - **⑤ 工厂的其他分支**：`KVCacheCoordinatorNoPrefixCache`（关前缀缓存，前缀查找恒空）与 `HybridKVCacheCoordinator`（多组命中求交集、共享同一 BlockPool，页大小必须统一），见 §4.4 工厂代码。
-- **Mamba/混合布局协调**：`_update_hybrid_attention_mamba_layout()`（gpu_model_runner.py:7167，上游）把 `block_dim==1` 的层 `as_strided_` 成 `block_dim==0`，纯 FullAttention 不触发；**NPU 天然无此问题——所有 dense 张量恒 dim0**。Mamba 组会置 `kv_cache_config.has_mamba_layers`，⑤里 Scheduler 据此调整调度（scheduler.py:259）；NPU 侧①还会把 attn 层 `page_size_padded` 对齐到 mamba 页（model_runner_v1.py:5027-5036）。
+- **Mamba/混合布局协调**：上游 `_update_hybrid_attention_mamba_layout()`（`block_dim==1→0` 的 `as_strided_` 布局翻转）不参与 NPU 路径——NPU 所有 dense 张量恒 dim0，无需布局翻转。Mamba 组会置 `kv_cache_config.has_mamba_layers`，⑤里 Scheduler 据此调整调度（scheduler.py:259）；NPU 侧①还会把 attn 层 `page_size_padded` 对齐到 mamba 页（model_runner_v1.py:5027-5036）。
 - **NPU 特有 spec 的物理侧分流**：`AscendMLAAttentionSpec` → nope/rope 双 4D（§3.1 4b）；sparse（DSA/SFA）形态产生 2～4 元组张量登记（model_runner_v1.py:4646-4680）；`HiddenStateCacheSpec` → 单张量路径（:4118-4134）；`use_compress` 压缩注意力 → 同组共享单张量（:4135-4146）。
 - **V2 ModelRunner**：`NPUWorker.init_device` 支持切到 `v2/model_runner.py` 的 NPUModelRunnerV2（worker.py:514-518，警告"npu model runner v2 is in developing"），主线仍是 v1（model_runner_v1.py）。
 - **sleep mode 与 KV 传输**：开 sleep mode 时④在 `CaMemAllocator` 的 `kv_cache` 内存池上下文内分配（worker.py:910-912，便于休眠换出）；开 KV 传输（P/D 分离）时 `ensure_kv_transfer_initialized` 先拉起传输组（:909）、张量按 2MiB 对齐、4c 后 `register_kv_caches` 登记双池（model_runner_v1.py:3883-3884）——三件事共同构成 NPU 双池布局的动机闭环（§3.1）。

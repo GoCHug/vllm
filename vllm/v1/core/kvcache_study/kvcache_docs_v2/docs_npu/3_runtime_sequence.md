@@ -1,12 +1,12 @@
 # 一条请求的KVCache管理端到端时序（NPU / vllm-ascend 视角 · Llama-3-8B pp2tp2）
 
-> 本篇是 [`docs_gpu/3_runtime_sequence.md`](../docs_gpu/3_runtime_sequence.md) 的 NPU 镜像版。主线：**纯 Full Attention 模型 Llama-3-8B（pp2tp2，4 卡 Ascend NPU 环境）**，一个 KVCacheGroupSpec，类型为 FullAttentionSpec。用时序图串起一条请求从进入 Scheduler 到最终释放的全过程。
+> 主线：**纯 Full Attention 模型 Llama-3-8B（pp2tp2，4 卡 Ascend NPU 环境）**，一个 KVCacheGroupSpec，类型为 FullAttentionSpec。用时序图串起一条请求从进入 Scheduler 到最终释放的全过程。
 >
-> **编排与逻辑侧（引擎进程）与 GPU 完全同一份代码**，本篇照主线展开；**设备执行链换成 NPU 实现**（`NPUModelRunner` / `AscendAttentionBackendImpl`，K/V 双池张量）——两版时序的差异全部集中在"写 KV / 读 KV"的算子层，分配决策层零差异。
+> **编排与逻辑侧（引擎进程）平台无关**，本篇照主线展开；**设备执行链是 NPU 实现**（`NPUModelRunner` / `AscendAttentionBackendImpl`，K/V 双池张量）——分配决策层不碰显存，"写 KV / 读 KV"的算子层是 NPU 特有实现。
 
 > **部署拓扑**：PP2 × TP2 = 4 卡，每个 worker 负责 16 层、4 个 KV 头（TP2 切分 8→4）。调度器视角下全模型仍为单 group（32 层），对 PP/TP 布局透明。
 >
-> 数字约定：为与 GPU 版逐段对照，示例沿用参数化数字（block_size=16、每卡 KV 可用 2GiB → `num_blocks=4096`）；**本仓库 NPU 实测部署为 block_size=128、`num_blocks=13291`、每层 K/V 各一张 `(13291,128,4,128)` bf16**（见 [`2_start_init.md`](./2_start_init.md) §6），机制完全相同，只是页更大。
+> 数字约定：示例沿用参数化数字（block_size=16、每卡 KV 可用 2GiB → `num_blocks=4096`）；**本仓库 NPU 实测部署为 block_size=128、`num_blocks=13291`、每层 K/V 各一张 `(13291,128,4,128)` bf16**（见 [`2_start_init.md`](./2_start_init.md) §6），机制完全相同，只是页更大。
 
 ---
 
@@ -76,7 +76,7 @@ block_size = 16
 
 R 的 prompt 前 32 token 恰与共享前缀相同 → prefill 时 `get_computed_blocks` 命中 P 缓存的块 1/2（`hit_length=32`）；后 38 token 为新内容，需新分配块 3/4/5（16+16+6）。
 
-宏观路径：**入队（WAITING）→ 首次调度 prefill（前 32 token 复用 P 缓存的块 1/2，只算剩余 38 token，→ RUNNING）→ 每步 decode 续写 1 token（至 32 个输出）→ 结束释放**。NPU 与 GPU 在这条宏观路径上**没有任何差别**——差别只在每个"设备执行"框内部的算子与张量形态（§4.3）。
+宏观路径：**入队（WAITING）→ 首次调度 prefill（前 32 token 复用 P 缓存的块 1/2，只算剩余 38 token，→ RUNNING）→ 每步 decode 续写 1 token（至 32 个输出）→ 结束释放**。决策全部在逻辑侧完成、不碰显存——NPU 特有部分只在每个"设备执行"框内部的算子与张量形态（§4.3）。
 
 ---
 
@@ -215,7 +215,7 @@ sequenceDiagram
 > - RUNNING 里也可能有 chunked prefill 的中间片（`is_prefill_chunk`），同样优先于新的 waiting 请求
 > - PD 分离由 KV 传输实现，P/D 实例跑同一个统一 `Scheduler`，上述"先 running、后 waiting"在每个实例内部都成立；NPU 上 P→D 的 KV 搬运正是靠注册过的双池 buffer（`swap_blocks`，attention_v1.py:114-126）完成
 
-KV 编排链固定为 `KVCacheManager → UnitaryKVCacheCoordinator → FullAttentionManager → BlockPool`（**与 GPU 同一条链、同一份代码**），下面三个子步骤都走这条链。
+KV 编排链固定为 `KVCacheManager → UnitaryKVCacheCoordinator → FullAttentionManager → BlockPool`（引擎进程内同一份代码），下面三个子步骤都走这条链。
 #### 4.2.1 ① 前缀缓存查找（get_computed_blocks）
 
 ```mermaid
@@ -286,7 +286,7 @@ sequenceDiagram
 
 **结合请求 R**：S1 容量检查通过后，S2 touch 前缀查找命中的前 2 块（即 P 缓存的共享前缀块 1/2，ref_cnt 0→1）；S3 剩余 38 token 按 16 切块需 3 块（16+16+6），`get_new_blocks(3)` → block_table 变 `[命中1, 命中2, 新3, 新4, 新5]`；S4 命中块 1/2 幂等早退，真正入表的是新满块 3、4，未满块 5 不入表。
 
-**本步全程在引擎进程、零显存操作，NPU/GPU 完全同一份代码**——`allocate_slots` 到 `BlockPool` 为止只知道整数 `block_id`，不知道（也不需要知道）这个块在 NPU 上对应 K 池第几行、V 池第几行。
+**本步全程在引擎进程、零显存操作**——`allocate_slots` 到 `BlockPool` 为止只知道整数 `block_id`，不知道（也不需要知道）这个块在 K 池/V 池上对应第几行。
 
 #### 4.2.3 组装 SchedulerOutput
 
@@ -309,7 +309,7 @@ sequenceDiagram
 记忆口诀：**入队造纯哈希 → ① 拼临时 key 查 → ② 真正落库带 group id**。
 ### 4.3 NPU 写 KV（NPUModelRunner forward）
 
-**这一节是 NPU 版与 GPU 版时序差异的全部所在**：GPU 版此处的执行者与张量形态换成 NPU 等价物，逻辑侧前驱（SchedulerOutput 已带 block_table + 清零块 id）完全一致。
+**这一节是设备执行链（NPU 特有部分）**：逻辑侧前驱（SchedulerOutput 已带 block_table + 清零块 id）完成后，由 `NPUModelRunner` / `AscendAttentionBackendImpl` 在 K/V 双池张量上执行。
 
 ```mermaid
 %%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
@@ -335,7 +335,7 @@ sequenceDiagram
 - **`slot_mapping` 与 `block_table` 的关系**：`slot = block_id * block_size + 块内偏移`——每个 token 一个槽位，**同一个 slot 值同时定位 K 池与 V 池的同一位置**（两张池按同序号行空间对齐，这正是 4a 双池拆分时"行号语义相同"的回报）；
 - **读路径**：注意力核按 `block_table`（`req_to_blocks` 的 block_id 列表）在两张张量上**各自沿第 0 维 gather 对应行**：`k = kv_caches[l][0][block_ids]`、`v = kv_caches[l][1][block_ids]`；同一 `block_id` 在全模型 32 层（每 worker 16 层）对应同一逻辑块，全套层共用一份 block_table；
 - **`AscendMetadata` 状态机**（attention_v1.py:147-152）：`PrefillNoCache / PrefillCacheHit / DecodeOnly / ChunkedPrefill / SpecDecoding`——R 的首次调度命中共用前缀，prefill 走 `PrefillCacheHit` 分支（读命中前缀 K/V、写新 token KV），decode 每步走 `DecodeOnly`；
-- `sample_tokens` 由 **EngineCore** 调用（core.py:463），仅在 `execute_model` 未产出采样时补跑（与 GPU 相同）；
+- `sample_tokens` 由 **EngineCore** 调用（core.py:463），仅在 `execute_model` 未产出采样时补跑；
 - **NPUGraph（enforce_eager=False 时）**：capture 好的图按 token 数分档执行，KV 读写路径被固化进图里（`get_supported_kernel_block_sizes() = [128]` 是图分块的依据之一）；图捕获发生在启动 4d（见启动篇 §3.1 4d）。
 
 **结合请求 R**：3 个新块先清零（双池各自的行）；一次 forward 写 70 token 的 K/V 进 5 块（命中块 1/2 复用 P 的缓存、**K 行与 V 行都直接复用**、不重算）；`slot_mapping` 记录每个 token 落到哪个块的哪个 slot（同一值定位双池）。
@@ -453,4 +453,4 @@ sequenceDiagram
 块 6/7   decode 步 11 / 步 27 申请 → 满块入哈希 → 释放：7 无哈希进队首、6 带哈希进队尾
 ```
 
-释放逆序 7→1——"最近使用的块最先回到可复用位置"；满块持续入哈希、带哈希块 LRU 保护，共同构成前缀缓存被下一个请求命中的机制闭环。**这条数据视角在 GPU 与 NPU 上完全一致：块的一生全部由引用计数与空闲队列决定，与张量是单张还是双张无关。**
+释放逆序 7→1——"最近使用的块最先回到可复用位置"；满块持续入哈希、带哈希块 LRU 保护，共同构成前缀缓存被下一个请求命中的机制闭环。**块的一生全部由引用计数与空闲队列决定，与张量形态无关。**
