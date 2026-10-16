@@ -1,14 +1,25 @@
 # vLLM V1 系统启动期初始化
 
-> **源文件索引**（以下均为仓库内相对路径）
->
-> - **GPU 上游**（`vllm` 仓库）：`vllm/v1/kv_cache_interface.py` · `vllm/v1/core/kv_cache_utils.py` · `vllm/v1/engine/core.py` · `vllm/v1/worker/gpu_worker.py` · `vllm/v1/worker/gpu_model_runner.py` · `vllm/v1/worker/utils.py`
-> - **NPU 插件**（`vllm-ascend` 仓库）：`vllm_ascend/worker/worker.py` · `vllm_ascend/worker/model_runner_v1.py` · `vllm_ascend/attention/attention_v1.py` · `vllm_ascend/utils.py`
-> - **逻辑侧**（`vllm` 仓库）：`vllm/v1/core/sched/scheduler.py` · `vllm/v1/core/kv_cache_manager.py` · `vllm/v1/core/kv_cache_coordinator.py` · `vllm/v1/core/block_pool.py` · `vllm/v1/core/single_type_kv_cache_manager.py`
->
-> 主线：纯 Full Attention 模型 Llama-3-8B（pp2tp2，4卡环境），每 worker 16 层 / 4 KV 头。
+文中统一示例环境：**切分策略 pp2tp2，4 卡环境**；三种 Attention 类型各配一个示例模型：
 
-**章节顺序**：§1 启动期初始化总览（三侧五阶段）→ §2 配置侧详解（① 算规格 → ② 测预算 → ③ 做编排）→ §3 物理侧详解（④ 落张量 · GPU/NPU 双实现）→ §4 逻辑侧详解（⑤ 建逻辑层）→ §5 三侧衔接（`block_id == 张量行号`）→ §6 PP/TP 物理分布 → §7 关键公式速查 → §8 设计要点小结。
+| Attention 类型 | Spec | 示例模型 | 模型链接 |
+|----------------|------|----------|----------|
+| Full Attention | `FullAttentionSpec` | Meta-Llama-3-8B | https://www.modelscope.cn/models/LLM-Research/Meta-Llama-3-8B |
+| MLA | `MLAAttentionSpec` | DeepSeek-V2-Lite | https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V2-Lite |
+| GDN | `MambaSpec` | Qwen3.5-4B | https://www.modelscope.cn/models/Qwen/Qwen3.5-4B |
+
+**章节顺序**：全文按「总览 → 三侧逐个详解 → 衔接 → 物理分布 → 速查」推进，各章如下：
+
+| 章节 | 标题 | 内容主题 |
+|------|------|----------|
+| §1 | 启动期初始化总览 | 三侧五阶段 |
+| §2 | 配置侧详解 | ① 算规格 → ② 测预算 → ③ 做编排 |
+| §3 | 物理侧详解 | ④ 落张量 · GPU/NPU 双实现 |
+| §4 | 逻辑侧详解 | ⑤ 建逻辑层 |
+| §5 | 三侧衔接 | `block_id == 张量行号` |
+| §6 | PP/TP 物理分布 | 切分策略下的张量布局 |
+| §7 | 关键公式速查 | 容量/尺寸公式汇总 |
+| §8 | 设计要点小结 | 设计取舍与结论 |
 
 ---
 
