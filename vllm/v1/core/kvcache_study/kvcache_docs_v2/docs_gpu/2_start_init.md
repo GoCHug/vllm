@@ -6,7 +6,7 @@
 |----------------|------|----------|----------|
 | Full Attention | `FullAttentionSpec` | Meta-Llama-3-8B | https://www.modelscope.cn/models/LLM-Research/Meta-Llama-3-8B |
 | MLA | `MLAAttentionSpec` | DeepSeek-V2-Lite | https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V2-Lite |
-| GDN | `MambaSpec` | Qwen3.5-4B | https://www.modelscope.cn/models/Qwen/Qwen3.5-4B |
+| GDN | `FullAttentionSpec & MambaSpec` | Qwen3.5-4B | https://www.modelscope.cn/models/Qwen/Qwen3.5-4B |
 
 **章节顺序**：全文按「总览 → 三侧逐个详解 → 衔接 → 物理分布 → 速查」推进，各章如下：
 
