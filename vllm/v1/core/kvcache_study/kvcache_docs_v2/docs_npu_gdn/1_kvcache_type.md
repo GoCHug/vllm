@@ -44,6 +44,8 @@
 | 4 | `BlockHashToBlockMap` 哈希→块映射表（第2层） | 块哈希 → 已缓存块的映射 | 前缀缓存命中查找 |
 | 5 | `KVCacheBlocks` 块集合（第5层） | 一次分配/命中结果的打包：`blocks[组下标][块序号]`，只装块引用不含显存 | Scheduler ↔ KVCacheManager 的接口，抽出 block_id 落成 Worker 的 block_table |
 
+**速查 | block size 与页大小（实战主线 Qwen3.5-4B）**：`cache_config.block_size` 从 vllm 上游默认 **16** 出发（`DEFAULT_BLOCK_SIZE`，vllm/config/cache.py:46，CacheConfig 构造期由 pydantic validator `_apply_block_size_default` 生效），vllm-ascend 分两路改造——纯 FA 模型由平台层 `refresh_block_size` 在开 chunked prefill 时强制 **128**（utils.py:1402-1406）；混合（attn+mamba）模型由 `patch_mamba_config` 按 mamba 状态页把 attn 块抬到 **128 的整数倍**（Qwen3.5-4B 实测 **1024-token 大页**），再 padding mamba 页使**两类页字节严格相等**（实测 1.16%）。页统一 ⇒ `FullAttentionSpec` 与 `MambaSpec` 的 `page_size_bytes` 相同，混合多组共享同一 block 账本（`BlockPool` 唯一、`block_table` 按组独立）；物理 kernel 层恒按后端分档 **128** 粒度寻址（逻辑/物理两层粒度分离）。Qwen3.5-4B 页字节数（TP2 / KV bf16 / ssm fp32；1024 进制）：每 token K 页 1 KB、ssm 状态页 1 MB（1,024 KB）、conv 页 24 KB、attn 原生页 2 MB（2,048 KB）、mamba 原生页 1,048 KB（= 1 MB + 24 KB）、**统一页 2,072 KB（= 2 MB + 24 KB）**。**三级跳完整时序、数字推导与 gggtest3 实测四联证见 [`2_start_init.md`](./2_start_init.md) §2.0**；部署日志逐字对照见 [`4_deploy_qwen35_pp2tp2.md`](./4_deploy_qwen35_pp2tp2.md)。
+
 ---
 
 ## 2. 全景图：配置侧生成配置 → 下发两侧各自初始化 → 运行期逻辑侧决策、物理侧执行

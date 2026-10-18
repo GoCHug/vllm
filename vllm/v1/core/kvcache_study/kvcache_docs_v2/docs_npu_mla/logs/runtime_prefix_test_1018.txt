@@ -1,0 +1,43 @@
+# 前缀缓存命中实验（2026-10-18，gggtest2 / deepseek-v2-lite TP4）
+# 实验脚本：/tmp/prefix_test.py（同目录 .py 附本）+ /tmp/long_req.py
+
+## 实验一：相同 prompt 三连发（prompt = 25×2 句模板 + 提问，max_tokens=48）
+
+[run cold1] wall=0.43s finish=length
+[run cold1] usage={"prompt_tokens": 970, "total_tokens": 1018, "completion_tokens": 48, "prompt_tokens_details": null, "completion_tokens_details": null}
+[run warm2] wall=0.43s finish=length
+[run warm2] usage={"prompt_tokens": 970, "total_tokens": 1018, "completion_tokens": 48, "prompt_tokens_details": null, "completion_tokens_details": null}
+[run warm3]  wall=0.38s finish=length
+[run warm3]  usage={"prompt_tokens": 970, "total_tokens": 1018, "completion_tokens": 48, "prompt_tokens_details": null, "completion_tokens_details": null}
+
+## 实验二：长 decode 请求（同前缀 + 不同提问，max_tokens=512，setsid 后台）
+
+wall=3.8s finish=length
+usage= {"prompt_tokens": 975, "total_tokens": 1487, "completion_tokens": 512, "prompt_tokens_details": null, "completion_tokens_details": null}
+
+## 数字闭环（token 级账本）
+
+- Prometheus：vllm:prefix_cache_queries_total = 2925 = 970×3 + 15（冒烟 prompt 15 tokens）
+                                       vllm:prefix_cache_hits_total   = 1792 = 896 × 2（warm2/warm3 各命中）
+- 970 token prompt → 满块 7 个（7×128=896）入哈希表；第 8 块 74 token 未满不入；最后 1 token logits 必重算不可命中
+  → warm 请求单次命中恰为 896 tokens
+- 实验二 prompt 975 前 896 与前序完全相同 → 再命中 896：
+  总 queries 2925+975=3900，总 hits 1792+896=2688，hit rate = 2688/3900 = 68.9%（与日志第二时刻一致）
+- 第一时刻 61.3% = 1792/2925（日志与 metrics 双向印证）
+
+## 服务端 stats 日志（loggers.py 每 10s 一行，pod UTC）
+
+(  16:34:21) Avg prompt throughput: 97.0 tokens/s, Avg generation throughput: 4.8 tokens/s,  Running: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%
+(  16:34:31) Avg prompt throughput: 14.8 tokens/s, Avg generation throughput: 9.6 tokens/s,  Running: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 61.3%
+(  16:34:41) Avg prompt throughput: 0.0 tokens/s,  Avg generation throughput: 0.0 tokens/s,  Running: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 61.3%
+(  16:35:31) Avg prompt throughput: 7.9 tokens/s,  Avg generation throughput: 49.5 tokens/s, Running: 1 reqs, GPU KV cache usage: 0.1%, Prefix cache hit rate: 68.9%   ← 长请求 decode 中
+(  16:35:41) Avg prompt throughput: 0.0 tokens/s,  Avg generation throughput: 1.7 tokens/s,  Running: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 68.9%
+
+- Running: 1 reqs 行即长请求 decode 时态；GPU KV cache usage: 0.1% = cdiv(975+512,128)=12 块 / 13013 块 = 0.092% ≒ 0.1%
+- 请求结束 KV usage 回 0.0%（块归还 free 队列，带哈希块留驻 LRU 尾待复用——前缀缓存持续命中来源）
+
+## 结论
+
+1. MLA latent + rope 为逐 token 因果序列 → 链式哈希前缀缓存照常工作（在线证据：61.3%/68.9% 命中率 + 精确 token 账）
+2. 命中粒度与主线一致：仅满块（128 token）入表；未满尾块与最后一个 token 永不命中
+3. 与 GDN 路线（enable_prefix_caching=False）形成直接分野实证

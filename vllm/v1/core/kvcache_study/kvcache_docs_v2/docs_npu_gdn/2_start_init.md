@@ -8,7 +8,9 @@
 |----------------|------|----------|----------|
 | Full Attention | `FullAttentionSpec`（上游原类） | Meta-Llama-3-8B | https://www.modelscope.cn/models/LLM-Research/Meta-Llama-3-8B |
 | MLA | `AscendMLAAttentionSpec`（nope/rope 拆分） | DeepSeek-V2-Lite | https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V2-Lite |
-| GDN | `MambaSpec`（单张量路径） | Qwen3.5-4B | https://www.modelscope.cn/models/Qwen/Qwen3.5-4B |
+| GDN | `MambaSpec`（单张量路径） | **Qwen3.5-4B（本系列实战主线）** | https://www.modelscope.cn/models/Qwen/Qwen3.5-4B |
+
+> **主线说明**：Qwen3.5-4B 为本系列实战主线模型（2026-10-16 于 a3 4 卡 pod pp2tp2 全流程实测，见部署篇 [`4_deploy_qwen35_pp2tp2.md`](./4_deploy_qwen35_pp2tp2.md)）；Llama-3-8B 为纯 Full Attention 架构示例线，用于对照 §6 实测走查。混合模型的 **block size 三级跳（16 → 128 → 1024）与页统一** 专述于 §2.0。
 
 **章节顺序**：全文按「总览 → 三侧逐个详解 → 衔接 → 物理分布 → 速查」推进，各章如下：
 
@@ -218,9 +220,218 @@ def register_all_kvcache_specs(vllm_config):
 | `kv_caches[layer_name] = (k_cache, v_cache)` | 物理侧 ④ | Ascend attention 算子 + NPUModelRunner | Llama-3-8B 每层两张 `(num_blocks, block_size, num_kv_heads, head_dim)` 物理张量：forward 时 `reshape_and_cache` 按 `slot_mapping` 写新 K/V 各自进池、注意力核按 `block_table` 沿第 0 维 gather 物理行读历史 K/V；ModelRunner 侧引用用于清零本轮新块 |
 | `KVCacheManager` 全套（Coordinator + BlockPool + manager） | 逻辑侧 ⑤ | Scheduler 运行期 | `get_computed_blocks` / `allocate_slots` / `free` 统一 API，产出 `block_table` |
 
+### 1.9 vllm serve 服务启动全栈与进程拓扑（1 API server + 1 EngineCore + N × worker）
+
+> **进程拓扑**（gggtest3 实测，日志 pid 前缀逐一直接佐证，共 **6 个进程**）：
+
+| 进程 | 实测 pid | 谁拉起的 | 跑什么 |
+|---|---|---|---|
+| **[P0] API server 主进程** | 20424（APIServer） | shell | **CLI 入口也在此进程**（`vllm serve` 命令不单开进程，uvicorn 常驻到退出）；config 期、路由注册 |
+| **[P1] EngineCore 进程** | 20736（EngineCore） | P0 spawn | 引擎调度 busy-loop；再 spawn workers |
+| **[P2..P5] worker ×N**（N=PP×TP=4） | 20829-20832（Worker_PP0_TP0…PP1_TP1） | P1 的 executor spawn | ①算规格/②测预算/④落张量/⑤执行——全部 [vllm-ascend] 实现体 |
+
+```text
+$ vllm serve <model> --pipeline-parallel-size 2 ... --port 8100         （完整命令 = 部署篇 §2.3）
+│
+▼ 一、CLI 分派 ════════════════ 进程 [P0 20424]（CLI 与 API server 同进程）═══════  [vllm]
+│  ServeSubcommand.cmd(args)                  cli/serve.py:74                [P0]
+│  └─ 单 server 分支（DP=1 → api_server_count 默认 1）
+│     uvloop.run(run_server(args))             cli/serve.py:148              [P0]
+│    （兄弟分支：:140 multi-port / :142 headless / :144 多 api-server，本例不走）
+│
+▼ 二、API server async 启动 ══════════ 仍进程 [P0 20424] ═══════════════════════  [vllm]
+│  run_server(args)                            api_server.py:652             [P0]
+│  └─ setup_server(args)（绑端口）             api_server.py:664             [P0]
+│     └─ run_server_worker(...)                api_server.py:665（def :668） [P0]
+│        │ 帧内两个兄弟调用：
+│        ├─ build_async_engine_client(args)         api_server.py:679（def :77）     [P0] [vllm]
+│        │  └─ build_async_engine_client_from_engine_args(...)  api_server.py:99（def :108）  [P0] [vllm]
+│        │     ├─ AsyncEngineArgs.from_cli_args(args)（参数搬移，block_size=None） api_server.py:94      [P0] [vllm]
+│        │     ├─ engine_args.create_engine_config()  ★config 期整个栈        api_server.py:123 → §2.0.1 逐帧树
+│        │     └─ AsyncLLM.from_vllm_config(vllm_config, ...)                api_server.py:135（def async_llm.py:203）  [P0] [vllm]
+│        │        └─ ★进程边界 1：P0 spawn 子进程 →
+│        │           ══ 进程 [P1 EngineCore 20736] ══ EngineCoreProc.run_engine_core
+│        │           开 busy-loop（spawn 入口 core.py:1118；类定义 :860）    [P1] [vllm]
+│        │           EngineCore.__init__               v1/engine/core.py:119          [P1] [vllm]
+│        │           ├─ Executor选型 + spawn N=4 worker 子进程             core.py:122 → multiproc_executor.py:140　[P1] [vllm]
+│        │           │  └─ ★进程边界 2：P1 spawn N 个 →
+│        │           │     ══ 进程 [P2..P5 workers 20829-20832] ══
+│        │           │     init_worker                v1/worker/worker_base.py:230   [P2-P5] [vllm]
+│        │           │     └─ NPUWorker 设备初始化/模型加载/①②实现体      vllm_ascend/worker/worker.py、.model_runner_v1.py  [P2-P5] [vllm-ascend]
+│        │           └─ _initialize_kv_caches ①②③④⑤        v1/engine/core.py:132    [P1] [vllm]
+│        │              ②③ RPC 逐 worker 下发；④（K/V 双池→bind→NPUGraph capture worker.py:732）在 P2-P5 内执行
+│        │              （展开 = §1.3 总调用链；时间线 07:52:45→07:55:03 = 部署篇 §2.4）
+│        └─ build_and_serve(engine_client, ...)        api_server.py:683（def :559）  [P0] [vllm]
+│           ├─ get_supported_tasks()（RPC 到 P1；日志 Supported tasks）   api_server.py:576  [P0] [vllm]
+│           ├─ build_app(...)                       api_server.py:580（def :156） 可追溯内：FastAPI(:178)/serve 路由(:183)/
+│           │                                        models 路由 :189 / generate 路由 :209   [P0] [vllm]
+│           ├─ init_app_state(...)                  api_server.py:581        [P0] [vllm]
+│           └─ serve_http(app, ...)（uvicorn，日志"Available routes are"）  api_server.py:585 → launcher.py  [P0] [vllm]
+│
+▼ 三、服务就绪 ══════════════════ 进程 [P0]（uvicorn 常驻）═════════════
+│  "Started server process → Application startup complete"（07:55:17；P2-P5 headless 无此日志属正常）
+│
+└─ 请求期跨进程链：chat 路由（P0）→ 队列 → EngineCore 调度（P1）→ workers 执行（P2-P5）→ 回包（P0）
+   全生命周期 = 3_runtime_sequence.md；pids 对照部署日志即一目了然
+```
+
 ## 2. 配置侧：算规格 → 测预算 → 做编排（引擎进程发起）
 
-配置侧三步在 `EngineCore._initialize_kv_caches`（core.py:236-317）内依序执行：①②的实现主体经 collective RPC 落在各 worker 进程（vllm-ascend 的 `NPUWorker` / `NPUModelRunner`），③ 做纯 Python 编排跑在引擎进程。三步全程不申请任何 KV 显存，产出**唯一的容量仲裁结果** `KVCacheConfig`：一份完整版 list（供④物理侧逐卡执行）+ 一份 scheduler 版（供⑤逻辑侧装配）。
+配置侧三步在 `EngineCore._initialize_kv_caches`（core.py:236-317）内依序执行：①②的实现主体经 collective RPC 落在各 worker 进程（vllm-ascend 的 `NPUWorker` / `NPUModelRunner`），③ 做纯 Python 编排跑在引擎进程。三步全程不申请任何 KV 显存，产出**唯一的容量仲裁结果** `KVCacheConfig`：一份完整版 list（供④物理侧逐卡执行）+ 一份 scheduler 版（供⑤逻辑侧装配）。而三步开始**之前**，`cache_config.block_size` 已在更早的 VllmConfig 构造期定型（§2.0.1）。
+
+### 2.0 装配前置：block size 装配链与 page_size_bytes 统一（Qwen3.5-4B 实测）
+
+block size 定**每块装多少 token**（三级跳 16 → 128 → 1024，2.0.1）；page_size_bytes 统一定**每块占多少字节**（两族 spec 全等 2,072 KB，2.0.2）。两步都在 §1.9 config 期完成，先于 §2.1-§2.3 配置侧三步。
+
+#### 2.0.1 block size 装配链——16 → 128 → 1024
+
+vllm 上游给出默认 **16**，vllm-ascend 分两条路径改造：纯 FA 模型抬到 **128**（平台层），混合（attn+mamba）模型经 mamba 页对齐抬到 **128 的整数倍**（Qwen3.5-4B 实测 **1024**）。①算规格读到的 `block_size` 只是这条链的结果。完整执行时序（按真实先后）：
+
+```text
+│（承接 §1.9 全栈图：run_server_worker → build_async_engine_client 帧内，config 期细目）
+
+└─ engine_args = AsyncEngineArgs.from_cli_args(args)                                                    vllm/entrypoints/api_server.py:117
+   └─ vllm_config = engine_args.create_engine_config(usage_context)                                     vllm/v1/engine/async_llm.py:242
+      ├─ current_platform.pre_register_and_update()                                                     vllm/engine/arg_utils.py:1712
+      │  └─ adapt_patch(is_global_patch=True)                                                           vllm_ascend/platform.py:188
+      │     └─ from vllm_ascend.patch import platform                                                   vllm_ascend/utils.py:565
+      ├─ …
+      ├─ model_config = self.create_model_config()                                                      vllm/engine/arg_utils.py:1735
+      ├─ self._set_default_chunked_prefill_and_prefix_caching_args(model_config)                        :1741
+      ├─ cache_config = CacheConfig(block_size=self.block_size, ...)                                    :1759
+      │  └─ _apply_block_size_default（pydantic validator 自动触发）                                    vllm/config/cache.py:231-244
+      │     └─ block_size = DEFAULT_BLOCK_SIZE = 16                                                     :46
+      └─ config = VllmConfig(...)                                                                       vllm/engine/arg_utils.py:2229
+         │
+         └─ VllmConfig.__post_init__（pydantic 自动触发）                                               vllm/config/vllm.py:847
+            ├─ self.try_verify_and_update_config()                                                      :856
+            │  ├ 纯 FA（Llama-3-8B）：is_hybrid=False → 跳过，16 带过
+            │  └ 混合（Qwen3.5-4B）：is_hybrid=True
+            │     └─ HybridAttentionMambaModelConfig.verify_and_update_config(self)                     :1903
+            │        └─ verify_and_update_config（patch 版）                                            vllm-ascend/patch/platform/patch_mamba_config.py:31
+            │           ├─ kernel_block_size = 128                                                      :58
+            │           ├─ cache_config.block_size = attn_block_size (=1024)                            :103
+            │           └─ cache_config.mamba_page_size_padded = attn_page_size + conv_block_page_size  :117
+            └─ current_platform.check_and_update_config(self)                                           vllm/config/vllm.py:1335
+               └─ refresh_block_size(vllm_config)                                                       vllm_ascend/platform.py:671
+                  ├─ 混合（Qwen3.5-4B）：is_hybrid=True → return，1024 保留                             vllm-ascend/utils.py:1397-1400
+                  └─ 纯 FA（Llama-3-8B）：is_hybrid=False → 强制 cache_config.block_size = 128          :1402-1406
+
+（__post_init__ 返回 = config 期结束；以下进入 worker 进程初始化期（P1 core.py:132 _initialize_kv_caches → executor → P2-P5）的 kernel 分档链）
+└─ initialize_kv_cache(kv_cache_config)                                                                 vllm-ascend/worker/model_runner_v1.py:3843
+   ├─ initialize_attn_backend(kv_cache_config)                                                          :3857
+   └─ may_reinitialize_input_batch(kv_cache_config)                                                     :3864
+      └─ selected_kernel_size = select_common_block_size(kv_manager_block_size, backends)               :4759
+```
+
+**select_common_block_size 选档算法（vllm 主线 `vllm/v1/worker/utils.py:262-328`，vllm-ascend 经 `model_runner_v1.py:102` 导入）**：为每个 attn group 选一个**所有 backend 都支持、且整除 manager 大块**的 kernel 粒度（虚拟块切分，两档从大到小宁可取大以压缩 slot 映射开销）——
+
+```text
+Case 1（:303-306）：kv_manager_block_size(=1024) 本身被所有 backend 支持 → 直接返回（免切分）
+Case 2（:308-327）：否则收集全部 backend 的 int 档位，从大到小逐个试：
+    ① kv_manager_block_size % size == 0（必须整除，一个大块才能均分成 N 个 kernel 小块）
+    ② size 被所有 backend 支持（档位两种格式：int 精确值 / MultipleOf(base) 任意倍数；检查 :284-301）
+    返回第一个命中 → 最大的公共分档
+都不满足 → ValueError（:328）
+```
+
+- **Qwen3.5-4B 实测命中**：GDN 后端不直接吃 1024 粒度 → 走 Case 2，命中 **128**（1024 % 128 == 0 ✓、128 被支持 ✓）→ `kernel_block_size = 128`——**manager 以 1024 大块管理显存、kernel 以 128 粒度读写，一个大块虚拟切分为 8×128**，即下文 hybrid 布局 `view(nb×8, 128, 2, 256)` 的 block-table 8 倍展开来源。
+- **Mamba/conv group 不进此函数**：`may_reinitialize_input_batch` 的 else 分支直接给 `kernel_block_sizes = [0]`（:4769，无切分、不参与 slot 映射）——attn(128) 与 mamba(0) 双粒度分档。
+- 另一调用点：`vllm_ascend/attention/sfa_v1.py:279`（AscendSFABackend 构造时自选 `kernel_block_size`），独立于 model_runner 的 group 级选档。
+
+**两层粒度对照（1024 与 128 的关系）**：1024 是 KV 管理层粒度，128 是算子计算层粒度，经虚拟块切分衔接——
+
+| 粒度 | 层 | 谁消费 | 表现 |
+|---|---|---|---|
+| **1024**（`cache_config.block_size`） | 管理/调度层 | BlockPool、KVCacheManager、`block_id` 编号 | 一个逻辑块 = 1024 token = 2,072 KB；抬到 1024 的唯一动机是**页统一**（§2.0.2，非计算需要） |
+| **128**（`kernel_block_size`） | 计算/算子层 | GDN kernel 写读（`reshape_and_cache` / `npu_fused_infer_attention_score`）、slot mapping | 算子按 128-token 行寻址；`view(nb×8, 128, 2, 256)`，一个大块展开 8×128 细块 |
+
+- 整除约束 `1024 % 128 == 0` 是选档前提（不整除无法无损展开）；`kernel_block_sizes = [128]` 记录的就是 attn group 的**计算粒度**。
+- 对照纯 FA（Llama-3-8B）：管理层被 `refresh_block_size` 直接强制 128，128 **身兼两职**（manager == kernel，无切分）；混合模型管理层被页统一钉到 1024 后才出现**两层分离**。
+- mamba/conv group（`[0]`）是第三个角色：无 kernel 子粒度，GDN linear attention 状态按整块处理、不走 block_table 细寻址。
+
+#### 2.0.2 page_size_bytes 统一——两族 spec 全等 2,072 KB
+
+**为什么是 1024：Qwen3.5-4B 页统一数字链**（TP2 / KV bf16 / ssm fp32；单位 1024 进制——1 KB = 1024 B、1 MB = 1024 KB；推导与部署日志逐字对齐）：
+
+| 量 | 计算 | 值 |
+|---|---|---|
+| 每 token K 页 | head_dim(256) × num_kv_heads(TP2 后 4÷2=2) × bf16(2B) | 1 KB |
+| temporal 状态页（ssm） | value 头(32÷TP2=16) × 128 × 128 × fp32(4B) | 1 MB（1,024 KB） |
+| conv 状态页 | (16×128) × (conv_kernel−1 = 3) × 4B | 24 KB |
+| **attn 块大小** | 128 × ⌈1 MB ÷ (128 × 1 KB)⌉ = 128 × 8 | **1024 token** |
+| attn 原生页 | 2(K/V) × 1024 × 2 头 × 256 × 2B | 2 MB（2,048 KB） |
+| mamba 原生页 | conv(24 KB) + ssm(1 MB) | 1,048 KB（= 1 MB + 24 KB） |
+| **统一页（两族 `page_size_bytes` 全等）** | **attn 页 + conv 页**（patch :113-117） | **2,072 KB（= 2 MB + 24 KB）** |
+| padding 比例 | conv 24 KB ÷ 2,072 KB | **1.16%**（= 日志原值） |
+
+页统一的落点与机制意义：patch 把 `cache_config.mamba_page_size_padded = attn 页 + conv 页 = 2,072 KB` 写入 config 层之后——mamba 层在 ① 算规格构造 `MambaSpec(..., page_size_padded=cache_config.mamba_page_size_padded)`（`model_executor/layers/mamba/abstract.py:44-60`），其 `page_size_bytes` 断言 padded ≥ 原生页（1,048 KB ✓）后返回 padded（`kv_cache_interface.py:616-625`）；attn 层 real 页（2 MB）< 2,072 KB → NPU 侧对齐三行把 attn spec 的 `page_size_padded` 也垫到同一值（model_runner_v1.py:5027-5036），其 `page_size_bytes` 同样返回 padded（:177-180）——**两族 spec 对外 `page_size_bytes` 全等 = 2,072 KB（= 2 MB + 24 KB）**。③编排据此按**统一页**给两类 group 算 `num_blocks`（`get_uniform_page_size` 断言页唯一；每层 `KVCacheTensor.size = 2,072 KB × num_blocks`）——`BlockPool` 唯一账本、`block_table` 按组独立，这是混合模型多组共存的基础（32 层 = 24 GDN 单张量 + 8 full-attn 双池，两组共享同一 block 空间）。
+
+**页统一调用链（§2.0.1 同款格式；P1 spec 生成 → 回 P1 编排断言 → P2-P5 分配落地）**：
+
+```text
+（config 期真源：cache_config.mamba_page_size_padded = 2,072 KB（patch_mamba_config.py:113-117，§2.0.1 tree 尾帧）；config 经 IPC 已带入各进程）
+
+└─ P1 EngineCore._initialize_kv_caches(vllm_config)（def :236；调用行 §1.9 :132）                            vllm/v1/engine/core.py:236
+   ├─ kv_cache_specs = self.model_executor.get_kv_cache_specs()                                              :243
+   │  └─ return self.collective_rpc("get_kv_cache_spec")（executor 基类默认实现）                            vllm/v1/executor/abstract.py:150
+   │     └─ return self.model_runner.get_kv_cache_spec()（P2-P5 各 worker 转发）                             vllm/v1/worker/gpu_worker.py:548
+   │        └─ get_kv_cache_spec(self)（vllm-ascend 覆写版）                                                 vllm-ascend/worker/model_runner_v1.py:4909
+   │           ├─ spec := attn_module.get_kv_cache_spec(self.vllm_config)（8 × full-attn 层）                :4944
+   │           │  └─ spec.page_size_bytes → real 2,048 KB（page_size_padded 未设）                           vllm/v1/kv_cache_interface.py:177-180
+   │           ├─ spec := mamba_module.get_kv_cache_spec(self.vllm_config)（24 × GDN 层）                    vllm-ascend/worker/model_runner_v1.py:5030
+   │           │  └─ page_size_padded = vllm_config.cache_config.mamba_page_size_padded                      vllm/model_executor/layers/mamba/abstract.py:47
+   │           │     └─ MambaSpec(..., page_size_padded=page_size_padded)                                    :48
+   │           │        └─ spec.page_size_bytes（断言 padded ≥ 原生 1,048 KB → 返回 2,072 KB）               vllm/v1/kv_cache_interface.py:616-625
+   │           │           └─ mamba_page_size_padded = spec.page_size_bytes                                  vllm-ascend/worker/model_runner_v1.py:5032
+   │           └─ object.__setattr__(kv_cache_spec[layer_name], "page_size_padded", mamba_page_size_padded)  :5035-5036
+   │              （attn 帧被垫后 :177-180 门同样返回 2,072 KB —— 两族 spec.page_size_bytes 全等，统一完成）
+
+   ├─ available_gpu_memory = self.model_executor.determine_available_memory()                                vllm/v1/engine/core.py:257
+   ├─ kv_cache_configs = get_kv_cache_configs(vllm_config, kv_cache_specs, available_gpu_memory)             :268
+   │  └─ global_kv_cache_groups = get_kv_cache_groups(vllm_config, merged_kv_cache_specs)                    vllm/v1/core/kv_cache_utils.py:2011
+   │     └─ common_page = get_uniform_page_size([g.kv_cache_spec for g in groups])                           :1688
+   │        └─ assert len(page_sizes) == 1（断言页唯一 = 2,072 KB；def :972）                                :977
+   └─ self.model_executor.initialize_from_config(kv_cache_configs)                                           vllm/v1/engine/core.py:290
+      └─ initialize_kv_cache(kv_cache_config)（完整链 §2.0.1 尾已列：:3843/:3857/:3864）                       vllm-ascend/worker/model_runner_v1.py:3843
+         └─ kv_caches = self.initialize_kv_cache_tensors(kv_cache_config)（def :3917）                       :3865
+            └─ page_stride = page_size_padded // dtype_size（每块 2,072 KB 步长）                            :4522-4531
+               ├─ raw[24KB×nb:]（切头部 conv padding）                                                       :4576-4577
+               ├─ K 池 = raw[:attn 页]；V 池 = raw[attn 页:]                                                 :4578-4579
+               └─ view(num_blocks×8, 128, 2, 256)（块表 8 倍展开，衔接 §2.0.1 kernel 双粒度）                  :4561-4570
+```
+
+**统一页的浪费结构（attn 空洞 / mamba 空洞，对称设计）**：统一页 2,072 KB 可分解为三个"子位"——**K 池位（1,024 KB）、V 池位（1,024 KB）、conv 位（24 KB）**，patch 断言（patch_mamba_config.py:95）保证 `K 池位 == ssm 状态页`（1,024 KB），即 mamba 的 ssm 恰好**顶替 K 池位**。两族的"使用 / 空洞"矩阵：
+
+| 子位（每块） | attn full-attn 层（8 层） | mamba GDN 层（24 层） |
+|---|---|---|
+| K 位 1,024 KB | ✓ 使用（K 池） | ✓ 使用（ssm 状态顶替此位） |
+| V 位 1,024 KB | ✓ 使用（V 池） | ✗ **空洞（浪费 1,024 KB/块）** |
+| conv 位 24 KB | ✗ **空洞（浪费 24 KB/块，= 1.16%）** | ✓ 使用（conv 状态） |
+
+- **attn 层每块浪费 conv 大小的 24 KB；mamba 层每块浪费 V 池大小的 1,024 KB**（占该层账单 2,072 KB 的 49.4%）——这是 NPU"所有 cache 张量同格式、连续排布"约束的必要代价，空洞账单随每个 block 线性重复（兄弟研究 [`0_block_sizes_all.md`](../../kvcache_docs/0_block_sizes_all.md) §5.1.4 之"空洞账单"）。
+- **为什么 mamba 不能摊用 K+V 两段省掉空洞（设计取舍）**：① ssm 状态视图 `(16,128,128)` 要求**单段连续嵌入**（GDN 算子 state buffer 布局），若按"摊用"设计块只需 524 token——但 524 块下每段仅 1,050 KB 边缘、K 段装不下 ssm 的整段需求被打破，块被迫 ≥ 1024，"ssm 顶 K 位"成为唯一嵌入方式；② V 段语义被双池算子 API 固化（`reshape_and_cache` 双池入参、`slot→偏移` 线性），conv 塞 V 头会让寻址穿 24 KB 孔洞，而现行设计把 padding 集中**池头一次切掉**（`:4577 raw[24KB×nb:]`）全程线性；③ 两族同构三段式 `[24KB | 1,024KB | 1,024KB]` 使块级操作（swap/注册/清零/块表）跨层一套逻辑（patch :78-80 "keep all cache tensors contiguous"）；④ 摊用方案仅省 24 KB/块（空洞 37.3%→36.6%），0.7pp 换两套偏移逻辑，不划算。**V 位 1,024 KB 空洞本身谁也省不掉**——账单被 attn 的 K+V（2,048）钉死，mamba 只要 1,048。
+- **对照：GPU 单池方案近零浪费（双池代价的定量体现）**：上游 GPU 把对齐锚在"attn 每 token **K+V 整页**"（`_align_hybrid_block_size`，`attn_block = kernel_align × cdiv(mamba 页, kernel_align × 2KB/token)` → 块 **528**），attn 页 528×2KB ≈ 1,081 KB 恰好盖住 mamba 页（1,048 KB），垫片只剩 cdiv 尾部 **~8 KB（0.76%）**（兄弟研究 [`0_hybrid_page_size_alignment.md`](../../kvcache_docs/0_hybrid_page_size_alignment.md) :147-162"垫页最多只发生在最后一个 block 内"）；NPU 因双池把锚点选在"**K 池行 == ssm 行**"（:95 断言），块被钉 1,024，账单 2,072 KB vs GPU ~1,081 KB——**同容量的 KV 预算，NPU 装的块数约为 GPU 一半**。这说明上一轮 §2.0 注定 V 段空洞的根因正是双池结构；vllm-ascend platform.py:313-314 的 TODO（"Move that logic here"）即承认 NPU 的 block 选择背离了 backend 最优，未来迁移后有机会复用 GPU 的近零浪费公式。
+- **为什么双池（NPU）vs 单池（GPU）**：NPU 双池的直接动机是 **PD 分离 KV 传输注册**——`model_runner_v1.py:4087-4088` 注释原文："To support prefill disaggregation, we need to split kvcache tensor into k cache and v cache, and the addr of both are aligned by 2M"：传输层（Mooncake/ADXL/AscendStore）注册 buffer 要求 **dim0 = num_blocks + 地址 2MiB 对齐**，GPU 的 packed 布局（K/V 同 storage 交织）无法整池注册拆块搬运；且 Ascend 注意力算子链（`reshape_and_cache` → `npu_fused_infer_attention_score`）的生态本来就是 K、V 两张独立 4D 入参，而 GPU FlashAttention 系 kernel 吃单张 packed KV、其传输生态（NIXL 等）支持 strided 注册，无此约束。单机无 KV 传输时不强制 2MiB（`_allocate_int8_cache_tensor` :4004 分支），但双池布局形态保留（含 `swap_blocks`/`copy_blocks` 双池搬行，attention_v1.py:114-140）。
+- **物理布局（hybrid 专用格式，model_runner_v1.py:4495-4579）**：混合模式下 dense 层**不走"K/V 双独立池"分配**（那是纯 FA 主线的形态）——所有层统一为**单张连续张量 `2,072 KB × num_blocks`**（:4503 K/V 同对象同 numel），reshape 时先切掉头部 conv padding（`raw[24KB×nb:]`，:4576-4577）再对半切成 K 池（`:attn页`）与 V 池（`[attn页:]`，:4578-4579），各自 `view` 成 `(num_blocks×8, 128, 2, 256)` bf16（:4561-4570）——管理块 1024-token、物理 block_table **展开 8 份 128-token 细块**（与 §2.0.1 的 kernel 双粒度互为印证）；mamba 层同张量格式按状态切片成视图。头部集中的 padding 字节与 mamba 尾部 V 位空洞**物理分配但永不访问**。
+
+**gggtest3 实测**（容器内 `verify_bs.py` + `verify_page.py`，2026-10-16/17；脚本留存 pod NFS `qwen35_pp2tp2/`）：
+
+```
+[1] vllm CacheConfig() default block_size = 16
+[2] refresh_block_size(FA, block=16, chunked_prefill=True) -> 128   # 平台层强制，真实 INFO 日志同打
+[3] refresh_block_size(hybrid, block=16) untouched -> 16           # is_hybrid 跳过，交给模型层
+[4] attn_block_size = 1024 | attn_page = 2 MB | conv_page = 24 KB | padding = 1.16%
+
+# verify_page.py（用 vllm 真实 spec 类的 page_size_bytes property 验证统一页）：
+[P1] MambaSpec 原生页(conv+ssm)            = 1,048 KB（= 1 MB + 24 KB）
+[P2] MambaSpec.page_size_bytes (padded)     = 2,072 KB（= 2 MB + 24 KB）
+[P3] FullAttentionSpec real 页（1024 块）   = 2,048 KB = 2 MB
+[P4] FullAttentionSpec.page_size_bytes（NPU ① 垫页后）= 2,072 KB（= 2 MB + 24 KB）
+[P5] 两族全等: True | 统一页 = 2,072 KB（= 2 MB + 24 KB） | padding = 1.16%
+```
+
+> **上游对照注**：上游 vLLM 把混合页对齐放在 `Platform.update_block_size_for_backend`（模型层构建后、backend 已知时；vllm/model_executor/models/config.py:200-202 注释原意）；vllm-ascend 重写该钩子（vllm_ascend/platform.py:311-331）仅保留 kv-transfer align 场景的 `mamba_block_size` 校验，把对齐**提前到 config 阶段一次完成**——platform.py:313-314 TODO 原文承认："NPU still sets block_size in check_and_update_config. Move that logic here."
 
 ### 2.1 第 ① 步 · 算规格：各层产出 KVCacheSpec
 

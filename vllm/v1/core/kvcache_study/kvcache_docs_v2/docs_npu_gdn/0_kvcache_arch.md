@@ -1,6 +1,8 @@
 # vLLM V1 KV Cache管理架构总览（NPU / vllm-ascend 视角）
 
 > 主线是 **vllm-ascend 插件在昇腾 NPU 上的实现**。配置侧编排与逻辑侧（第 2～5 层）全部跑在引擎进程、平台无关；NPU 的平台特性全部集中在物理侧（worker 进程的第 1 层）与三处 Worker/ModelRunner 重写（① 算规格 / ② 测预算 / ④ 落张量，均由 `NPUWorker` / `NPUModelRunner` 承担），这也是本篇的叙述重点。
+>
+> 实战主线模型为 **Qwen3.5-4B**（GDN 混合，2026-10-16 a3 单机 pp2tp2 全流程实测）：其 block size 三级跳（**16 → 128 → 1024**）与混合模型页统一详见启动篇 [`2_start_init.md`](./2_start_init.md) §2.0；部署日志与冒烟实测见 [`4_deploy_qwen35_pp2tp2.md`](./4_deploy_qwen35_pp2tp2.md)。正文以纯 Full Attention 讲五层骨架，混合模型差异见 §6 扩展表。
 
 **章节顺序**：§1 为什么需要 KV Cache → §2 为什么需要 KV Cache 管理 → §3 启动期三侧架构 / 运行期五层架构 → §4 启动时五层如何静态装配 → §5 一条请求的动态生命周期。
 
