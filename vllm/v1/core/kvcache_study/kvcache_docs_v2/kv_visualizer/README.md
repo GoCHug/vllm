@@ -66,7 +66,9 @@ frontend_vue/                    Vue3 + Vite 前端工程
 ├── src/main.js                  入口（createApp → mount）
 ├── src/style.css                全量样式
 ├── src/lib/legacy.js            页面 JS 逻辑层（自原单页版搬运+升级；legacy 只挂 TABS/boot 两处）
-├── src/lib/qwen35.js            第五场景「Hybrid 混合 · qwen35」渲染模块（五卡 + K≡ssm 几何 1024↔2048 toggle 主视觉）
+├── src/lib/qwen35.js            第五场景主装配（实验画框/轮次对照/K≡ssm 几何 toggle 三卡 + 挂卡④流程/卡⑤实采双卡）
+├── src/lib/q35flow.js           卡④（prefill+1次 decode）逐层填充流程——SIM 48 步状态机 + 单行轨道/K(1)/V(1) 倍宽浮块 + 先读后写标记
+├── src/lib/q35real.js           卡⑤ 真实数据逐步回放——v1.4 STEP-TRACE J/K 轮实采驱动 + SIM↔REAL 对账板 + 数值含义图例
 ├── tests/legacy-logic.test.mjs  node:test 单测（13 项：沙盘算术/日志解析/阶段映射）
 └── dist/index.html              构建产物（~158KB 单文件 bundle；npm run build 生成）
 
@@ -85,7 +87,7 @@ kv_datasets_root/                DATA_ROOT —— vLLM 导出的 KV 数据（后
 | 单机 PP2×TP2 · kvc | 块表 + 前缀复用逐位核验矩阵（256/256 torch.equal = 零篡改） |
 | PD 分离 1P1D · P→D 传输 | P→mooncake→D 链路 + Tx/重算/D独有 分区条 + 逐层逐块网格（Tx 64/64 = 传输无损） |
 | Prefix 四象限矩阵 | 2×2 象限卡 + 行为对照条形图 + 铁律核验表 + PCM 时间线 |
-| Hybrid 混合 · qwen35 | Qwen3.5-0.8B(hybrid 18 GDN+6 attn) 三轮 A/B/C(1024✅/2048❌/2048+PR15408✅)：实验画框 + 轮次对照表 + **K≡ssm 池几何 1024↔2048 toggle 主视觉**（2048 时 K(1) 红斜纹踩 ssm 行2/3 ↯ + cov 楔子 + 写序时间线）+ **逐步填充流程卡**（prefill 24 步 + decode 24 步 = 48 步·每步走过一层填/读写一个块；6 池各一行，每池 3 条**单行轨道**：conv 底格[仅 mamba] / **K≡ssm 轨道 = ssm 块底格(恒 1MiB/格) + K(1) 浮块宽度随 block_size 倍增——1024=1 格宽≡ssm 块宽·画成一样大·恰好不覆盖；2048=2 格宽=2×ssm·红斜纹整段覆盖 ssm(2)(3)!** / V 段[V(1) 浮块同样倍宽但独占不撞]；decode **先读后写**[蓝R=读·金框=写]；可单步/自动播放/⏭跳decode；1024 全绿零覆盖 vs 2048：覆盖→decode ssm 重写反咬 K 前/后半→attn 读 K 混 fp32→NaN 乱码全链）+ **卡⑤ 真实数据逐步回放**（紧邻卡④ 下方对照；08 v1.4 STEP-TRACE · gggtest4 J/K 双轮实采——真实 forward 序[1 prefill+9 decode]逐层真实统计步进：J 轮全程绿零 NaN=SIM 零覆盖判据一致；K 轮 prefill 完成即检 K ✕2030×6 池→decode 起 pool1-5 ✕全NaN、探针 prms 14×——SIM 必炸判据一致且实测检出早于层序推演；含 SIM↔REAL 对账板）+ 逐层统计三轮 viridis 热条（B 轮 NaN=✕）+ 根因实证表（ssm 12×/Pearson 0.086/K 未写区基线破零/C 逐位回归）+ 8 项导出自检徽章 |
+| Hybrid 混合 · qwen35 | Qwen3.5-0.8B(hybrid 18 GDN+6 attn) 三轮 A/B/C(1024✅/2048❌/2048+PR15408✅)：实验画框 + 轮次对照表 + **K≡ssm 池几何 1024↔2048 toggle 主视觉**（2048 时 K(1) 红斜纹踩 ssm 行2/3 ↯ + cov 楔子 + 写序时间线）+ **④（prefill+1次 decode）逐层填充流程卡**（prefill 24 步写 24 个块 + decode 24 步读写 24 个块；6 池各一行，每池 3 条**单行轨道**：conv 底格[仅 mamba] / **K≡ssm 轨道 = ssm 块底格(恒 1MiB/格) + K(1) 浮块宽度随 block_size 倍增——1024=1 格宽≡ssm 块宽·画成一样大·恰好不覆盖；2048=2 格宽=2×ssm·红斜纹整段覆盖 ssm(2)(3)!** / V 段[V(1) 浮块同样倍宽但独占不撞]；decode **先读后写**[蓝R=读·金框=写]；可单步/自动播放/⏭跳decode；1024 全绿零覆盖 vs 2048：覆盖→decode ssm 重写反咬 K 前/后半→attn 读 K 混 fp32→NaN 乱码全链）+ **卡⑤ 真实数据逐步回放**（紧邻卡④ 下方对照；08 v1.4 STEP-TRACE · gggtest4 J/K 双轮实采——真实 forward 序[1 prefill+9 decode]逐层真实统计步进：J 轮全程绿零 NaN=SIM 零覆盖判据一致；K 轮 prefill 完成即检 K ✕2030×6 池→decode 起 pool1-5 ✕全NaN、探针 prms 14×——SIM 必炸判据一致且实测检出早于层序推演；含 SIM↔REAL 对账板 + 数值含义图例[蓝格=crms/srms 有效·K/V 浮块红✕=NaN 计数·pool0 幸存 vs pool1-5 全毁实测标注]）+ 逐层统计三轮 viridis 热条（B 轮 NaN=✕）+ 根因实证表（ssm 12×/Pearson 0.086/K 未写区基线破零/C 逐位回归）+ 8 项导出自检徽章 |
 | 张量浏览器 | 选文件→K/V→块→层；viridis 热图 + hover 查值 |
 
 ## 前端工程与构建链
@@ -146,10 +148,16 @@ node --test tests/     # 前端单测 13 项（纯函数层）
 
 ## 备注
 
-- 2026-10-21 新增第五场景「Hybrid 混合 · qwen35」：`exporter.export_qwen35` 从本地三轮
-  `tensors/{normal,abnormal,fixed}/.pt` 直算（6 项导出自检全 PASS）+ 前端 `src/lib/qwen35.js` 五卡模块
-  → 八标签页；浏览器实测（五卡渲染 / K≡ssm 几何 1024↔2048 toggle 闭环 / 既有七 tab 回归）全绿；
-  设计文档 `docs/design-2026-10-21-qwen35-scenario.md`。
+- 2026-10-21 新增第五场景「Hybrid 混合 · qwen35」并当日多轮演进（七卡版）：`exporter.export_qwen35`
+  从本地三轮 `tensors/{normal,abnormal,fixed}/.pt` + 08 号补丁 **v1.4 STEP-TRACE** 容器实采
+  （`tensors/step1024|step2048`，J/K 轮各 10 forward 真实层统计）直算（**8 项导出自检**全 PASS）；
+  前端 `qwen35.js`（①画框 ②轮次 ③K≡ssm 几何 toggle）+ `q35flow.js`（**卡④（prefill+1次 decode）逐层填充流程**
+  ——SIM 48 步·每池 3 条单行轨道 + K(1)/V(1) 倍宽浮块 + decode 先读后写标记）+ `q35real.js`
+  （**卡⑤ 真实数据逐步回放**——J/K 实采真实 forward 序步进 + SIM↔REAL 对账板 + 数值含义图例）+
+  ⑥逐层统计 ⑦根因实证（卡序 ④SIM↔⑤REAL 紧邻对照）；浏览器实测（七卡序 / J 轮全绿 / K 轮污染链
+  prefill 即破零→decode 全 NaN / SIM↔REAL 判据一致 / 既有七 tab 回归）全绿；gggtest4 产物 md5 校验回传。
+  设计文档 `docs/design-2026-10-21-qwen35-scenario.md` + `design-2026-10-21-q35-writeflow.md`
+  + `design-2026-10-21-q35-real-tensor-verify.md`（含 v1.4 执行记录）。
 - 2026-10-15 后端内部重组：`app.py`+`kvviz/` → `main.py`（FastAPI 接口+CLI）+ `config.py`（全局配置）
   + `lib/`（tensor_reader / utils / dataset_loader / exporter / verify / server_stdlib / pack）
   + `requirements.txt`；接口契约与数据链路零变化（export 实跑 + verify 60/60 + 路由冒烟复验全绿）。
