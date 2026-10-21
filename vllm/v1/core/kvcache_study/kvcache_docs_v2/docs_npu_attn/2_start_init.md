@@ -558,7 +558,62 @@ kv_caches[layer_name] = (k_cache, v_cache)                  # :4681 每层绑定
 
 **4c. 绑定：直接复用上游 `bind_kv_cache`**
 
-NPU 没有自己的绑定函数——绑定发生在 `initialize_kv_cache_tensors()` 内部：:3950 `from vllm.v1.worker.utils import bind_kv_cache`、:3953 以同一上游函数（utils.py:462）把 `(k_cache, v_cache)` 按层序填入 `self.kv_caches`（list[层序 → (K, V)]）并绑进 `static_forward_context`。forward 时 attention 实现拿到的是二元组，`AscendAttentionBackendImpl.reshape_and_cache`（attention_v1.py:1430）取下标分发给 NPU 算子：
+NPU 没有自己的绑定函数——绑定发生在 `initialize_kv_cache_tensors()` 内部：:3950 `from vllm.v1.worker.utils import bind_kv_cache`、:3953 以同一上游函数（utils.py:462-519）把 `(k_cache, v_cache)` 按层序填入 `self.kv_caches` 并绑进 `static_forward_context`。该函数不分配显存、不拷贝数据，只做**引用赋值**，把 4a/4b 产出的张量登记到两个位置：
+
+| 登记目标 | 数据结构 | 后续用途 |
+|---|---|---|
+| `ModelRunner.kv_caches` | `list`，按层号升序，元素为本层的 `(K, V)` 二元组 | 仅用于生命周期管理：profile run 后 `_cleanup_profiling_kv_cache()`（gpu_model_runner.py:6305-6310）逐个置 `None` 再 `clear()`，释放 profile 期的 KV 显存 |
+| `static_forward_context[层名].kv_cache` | 层名 → 张量（NPU 是二元组）的引用 | **前向算子实际读取的位置**，`Attention.kv_cache` 由此从占位值替换为真实池 |
+
+函数签名为 `bind_kv_cache(kv_caches, forward_context, runner_kv_caches, num_attn_module=1)`：`kv_caches` 是 4b 产出的「层名 → (K,V)」字典；`forward_context` 即 `compilation_config.static_forward_context`；`runner_kv_caches` 即 `self.kv_caches`；`num_attn_module` 为单层内注意力模块数，NPU 只在 `longcat_flash` 下取 2（model_runner_v1.py:3952）。
+
+函数体分三段：
+
+```python
+# utils.py:485-518（上游原文，逐段说明见下）
+assert len(runner_kv_caches) == 0                        # ① 只允许绑一次
+index2name = defaultdict(list)                           # ② 层号 → 层名列表
+for layer_name in kv_caches:
+    index2name[extract_layer_index(layer_name, num_attn_module)].append(layer_name)
+for layer_index in sorted(index2name.keys()):            #    按层号升序
+    layer_names = index2name[layer_index]
+    if len(layer_names) > 1:                             #    同层号多注意力
+        if current_platform.is_cuda_alike() or current_platform.is_xpu() or current_platform.is_cpu():
+            pass                                         #    GPU/CPU 容忍
+        else:
+            raise NotImplementedError                    #    NPU 会走到这里 → 见下方 patch
+    for layer_name in layer_names:
+        runner_kv_caches.append(kv_caches[layer_name])
+for layer_name, kv_cache in kv_caches.items():           # ③ 绑进 forward context
+    forward_context[layer_name].kv_cache = kv_cache
+```
+
+- **① 只绑一次**：`list` 的槽位含义是层序，重复 append 会让槽位与层号错位，因此第二次调用必须失败。profile run 与正式初始化之间依赖 `_cleanup_profiling_kv_cache()` 清空该 list。
+- **② 按层号排序转 list**：`kv_caches` 的遍历顺序是模型构造顺序，不保证层号递增，所以先用 `extract_layer_index` 解析层号再 `sorted`。解析规则（utils.py:753-784）是取层名里能转成整数的片段：`"model.layers.3.self_attn" → [3] → 3`；`num_attn_module=2` 时两个整数按 `first*2+second` 合成，如 `"model.layers.3.attn.1" → 7`。
+- **同层号多注意力**：典型是 encoder-decoder 模型（同一 decoder 层的 self attention 与 cross attention 层名不同但层号相同）。GPU/CPU 直接 `pass`，后续仍会把每个层名都 append，list 长度大于层数；因为该 list 在 GPU 上不按下标取层，所以能容忍。NPU 不在白名单内，上游会抛 `NotImplementedError`——vllm-ascend 用 patch 整体替换该函数（patch_qwen3_next_mtp.py:9-50：删除 `raise`，同层号只取 `layer_names[0]`），使 NPU 的 list 长度恒等于去重后的层号数。
+- **③ 绑定是零拷贝**：`Attention.__init__` 先放占位 `self.kv_cache = torch.tensor([])`（attention.py:409-412），并在构造时把自身注册进 `static_forward_context[prefix]`（attention.py:396-398），因此这里的 key 必然能对上；赋值只改指针。跨层 KV 共享在调用前已完成映射——`kv_caches[layer_name] = kv_caches[target_layer_name]`（model_runner_v1.py:3932-3935），多个层名指向同一份物理池。
+
+以 4 层纯 Full Attention 模型为例，绑定完成后两个登记位置的内容如下（同一张量在两侧是同一份显存，图中用相同符号表示）：
+
+```
+kv_caches（输入字典，层名 → (K, V)）             ModelRunner.kv_caches（list，按层号升序）
+"model.layers.0.self_attn": (k0, v0)   ─────▶   [0] = (k0, v0)
+"model.layers.1.self_attn": (k1, v1)   ─────▶   [1] = (k1, v1)
+"model.layers.2.self_attn": (k2, v2)   ─────▶   [2] = (k2, v2)
+"model.layers.3.self_attn": (k3, v3)   ─────▶   [3] = (k3, v3)
+        │
+        └──── 同一引用再写入 forward context ────┐
+                                                 ▼
+static_forward_context（层名 → Attention 对象，其 .kv_cache 被替换）
+"model.layers.0.self_attn" → Attention.kv_cache = (k0, v0)   # 前向算子读取点
+"model.layers.1.self_attn" → Attention.kv_cache = (k1, v1)
+"model.layers.2.self_attn" → Attention.kv_cache = (k2, v2)
+"model.layers.3.self_attn" → Attention.kv_cache = (k3, v3)
+```
+
+要点：`ModelRunner.kv_caches` 的下标严格等于层号（NPU 上等于去重后的层号），而 `static_forward_context` 按层名索引，两者都不复制数据；同一 `(ki, vi)` 二元组同时出现在两处。
+
+forward 时 attention 实现从 `static_forward_context[层名].kv_cache` 拿到二元组，`AscendAttentionBackendImpl.reshape_and_cache`（attention_v1.py:1430）按下标分发给 NPU 算子：
 
 ```python
 # attention_v1.py:1439-1452（reshape_and_cache 方法始于 :1430，节选）
@@ -570,6 +625,8 @@ if len(kv_cache) > 1:                                        # :1439
         key_cache=self.key_cache, value_cache=self.value_cache,   # 两张池分别 scatter
         slot_mapping=slots)
 ```
+
+例外：`deepseek_v4` 完全绕开本函数，自行按 `extract_dsv4_layer_index` 排序并把 `[kv_cache]` 绑进 forward context（model_runner_v1.py:3937-3948）；主线 Llama dense 走标准路径。绑定环节**不校验容量与 shape**，两侧一致性由前一步 `KVCacheConfig.num_blocks` 保证。
 
 **4d. 编译与预热：NPUGraph 替代 CUDAGraph `NPUWorker.compile_or_warm_up_model()`（worker.py:706）**
 
@@ -596,7 +653,7 @@ capture 之后接 §2.2.1 所述的**图内存事后记账**（worker.py:734-771
 
 **4b. `_reshape_kv_cache_tensors()`（gpu_model_runner.py:7040）**：`attn_backend.get_kv_cache_shape(...)` 取后端期望逻辑 shape → `view(dtype)` → **`permute` 翻成后端布局**，每层**一张**张量；padding 场景走 `torch.as_strided()` 跳过物理页间 padding。**block_dim 探测**：不同后端 `num_blocks` 所在轴不同（dim 0 或 dim 1），向 `get_kv_cache_shape` 传哨兵值 `_S=1234567` 再 `shape.index(_S)` 定位（backend.py:99）；两种目标形状：① K/V packed in content dim（FlashAttn/FlashInfer/CPU），block_dim=0；② K/V as separate dim（ROCm），block_dim=1。
 
-**4c. 绑定 `bind_kv_cache()`（utils.py:462）**：按层号排序填入 ModelRunner.kv_caches（每层一张 Tensor），再把每层张量绑进 `static_forward_context`——**NPU 复用的正是这同一个函数**，只是每层元素从一张 Tensor 变成一对。
+**4c. 绑定 `bind_kv_cache()`（utils.py:462）**：按层号排序填入 ModelRunner.kv_caches（每层一张 Tensor），再把每层张量绑进 `static_forward_context`——**NPU 复用的正是这同一个函数**，只是每层元素从一张 Tensor 变成一对（函数逐段解析见 §3.1 4c）。
 
 **4d. `compile_or_warm_up_model()`（gpu_worker.py:592）**：各 batch size `_dummy_run`（gpu_model_runner.py:5599）→ kernel warmup → 非 eager 时 `capture_model()` = **CUDAGraph** capture。
 

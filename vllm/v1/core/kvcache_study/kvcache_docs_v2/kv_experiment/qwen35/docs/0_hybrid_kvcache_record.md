@@ -806,3 +806,19 @@ cd ../../kv_visualizer/backend_fastapi && python3 main.py serve --port 8347
 #   → 浏览器 http://localhost:8347/ → tab「Hybrid 混合 · qwen35」
 #   数据由 exporter.export_qwen35 从本地三轮 .pt + step1024/step2048 TRACE 直算(8 项导出自检), serve 自动重导
 ```
+
+## 10. 与 kvc/（llama3-8b 单组 attn）工作区差异速记
+
+> `kv_experiment/kvc/` 是同一套 [KVC] 打点的纯 attention 版（v2.5 归档）；本工作区 01~07 号补丁与其完全一致，仅 08 号为 hybrid 演进版。
+
+| 项 | `kvc/`（llama3-8b 单组） | `qwen35/`（本工作区） |
+|----|--------------------------|------------------------|
+| 模型 / 层组 | 32 层纯 full-attn，1 个 KV cache group | 24 层 = 6 attn + 18 GDN，4 组（1 attn + 3 mamba） |
+| 并行 / 端口 | PP2×TP2 占 4 卡，`:8000`，每请求 4 份 `.pt` | 单卡 TP1，`:8340`，每请求 1 份 `.pt` |
+| block_size | 128 | 1024（hybrid 页匹配矫正后） |
+| 08 归档 | `kvt4-raw`，K/V 单组（19 行 [KVC]） | `kvt5-hybrid-raw`，attn K/V + mamba conv/ssm 双组（v1.4 补丁 25 行 [KVC]） |
+| 张量展开路径 | `self.kv_caches`（list of `(K,V)`） | `self.attn_groups` + `forward_context[层名].kv_cache`（attn=tuple / mamba=state list） |
+| 01~07 管理侧 | vllm 155 行，块表单组 | 同 155 行（`HybridKVCacheManager` 走基类方法），块表按组 |
+| 补丁校验 | 174 行 = 155 + 19 | 178 行 = 155 + 23（`apply_patches.sh` 的 EXPECT 值，为 v1.2 时期；v1.3/v1.4 增补 SEG/TRACE 后 08 实为 25 行） |
+
+> v1.3/v1.4 的 SEG 三段窗口与 STEP-TRACE 采集只在 08 号补丁增加，01~07 管理侧打点未变。
