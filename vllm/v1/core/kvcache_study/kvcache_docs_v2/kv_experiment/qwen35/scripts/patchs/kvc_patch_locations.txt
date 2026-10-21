@@ -1,0 +1,47 @@
+# [KVC] qwen35 hybrid 打点位置总览 (08 hybrid 归档版: 121 个 logger 调用点 / 8 文件; grep '[KVC]' = 178 行 = vllm 155 + vllm-ascend 23)
+# 01~07 与 kvc/ 完全一致(vllm 管理侧 155 行 = request 5 / utils 10 / block_pool 29 / manager 58 / coordinator 17 / single_type 18 / engine_core 18),
+#   详见 kvc/scripts/patchs/kvc_patch_locations.txt(逐文件行号两工作区共用同基线源码, 打点为基类方法对 HybridKVCacheManager 同样生效)。
+# 08 hybrid 版差异(本表只列 08 的 23 行; 行号为本地源码应用后实测, 容器侧在分歧点以下约 -2):
+#
+# KVS 请求级归档(hybrid 双组) —— NPUModelRunner, execute_model 每步前向后 hook:
+#   :2337  注释 "[KVC][KVS] 归档点: 本步前向完成..."(hook 说明)
+#   :2408  注释 "[KVC][KVS] 请求结束物理 KV tensor 原样归档(08 号补丁核心, hybrid 混合模型版)"(方法块头, 含差异说明 3 条)
+#   :2450  f"[KVC][KVS] 物理KV原样归档已启用(hybrid): KVC_SAVE_KV=1, 输出目录=%s"  (每 worker armed 一次)
+#   :2463  f"[KVC][KVS] LATE req=%s 已结束但未见 TERM..."  (兜底告警, 不归档)
+#   :2515  f"[KVC][KVS] _kvc_rel_snapshot exception: %s (%s)"
+#   :2518  注释 "[KVC][KVS] _kvc_kv_save: 终值归档执行(仅 TERM 触发...)"
+#   :2519  注释 "[KVC][KVS] hybrid 版: attn 组 K/V 块-行映射(同 kvc v2.5) + mamba 组每 slot 全部状态张量..."
+#   :2693  f"[KVC][KVS] ======== 开始保存物理tensor worker=PP%d_TP%d..." (横幅 1/2: 声明 attn K/V 层×块 + mamba 层×slot)
+#   :2712  f"[KVC][KVS] ======== 完成保存物理tensor worker=PP%d_TP%d..." (横幅 2/2: 后台落盘回执)
+#   :2721  f"[KVC][KVS] ARCHIVE-FAIL worker=PP%d_TP%d..." (落盘失败仅记录)
+#   :2728  f"[KVC][KVS] %s 归档异常(忽略): %s (%s)" (TERM/LATE 入口保护)
+#
+# 归档语义(kvc v2.5 -> hybrid 演进):
+#   · 层来源: self.attn_groups 展开(组序 <-> NewRequestData.block_ids 下标), 每层张量取
+#     forward_context[层名].kv_cache(bind_kv_cache 绑定): attn=(k,v) 元组 / mamba=[conv,ssm] 列表
+#   · attn 组: 每层每块 K/V 整块 (block_size, kv_heads, head_dim), 块-行映射(block id = dim0 行号), 含未写槽位
+#   · mamba 组: 每层每 slot 全部状态张量(conv+ssm)整块 —— slot 即 MambaSpec slot 张量 dim0 行号,
+#     每 slot 一整套 state(无 token 维度, 不适用 cov); conv (3,6144) bf16 + ssm (16,128,128) fp32(qwen3.5-0.8B)
+#   · 两组共用同一张物理 raw tensor(页级共用) 但块表独立 —— 归档按各组块表分别取证, 不做跨组对齐假设
+#   · bundle schema kvt5-hybrid-raw: {"K":[attn层][块->t], "V":同构, "M":[mamba层][slot->[conv,ssm]],
+#     "meta":{attn:层名/块表/cov/几何..., mamba:层名/slot表/state_shapes/state_dtypes...}}(kvt4 兼容字段另置顶层)
+#   · 归档布局: {KVC_SAVE_DIR}/req{seq}_{rid尾8}/kv_pp{p}tp{t}.pt(一请求一子目录, 每 worker 一份)
+#
+# L1 物理池分配/视图(每 worker) —— NPUModelRunner._allocate_kv_cache_tensors / _reshape_kv_cache_tensors:
+#   :4426/4427  "[KVC][L1] 物理侧 KV Cache 分配开始(hybrid)" 横幅对开始
+#   :4465       注释 "[KVC][L1] hybrid(attn+mamba)/mamba: 多层共用单张 int8 raw tensor(物理页)"
+#   :4467       f"[KVC][L1] vllm-ascend _allocate_kv_cache_tensors[hybrid]: shared_by=... 单张 int8 raw
+#               (attn K/V 与 mamba conv/ssm 共用物理页, 页内布局在 _reshape 三视图切分)"
+#   :4599/4601  f"[KVC][L1] _allocate_kv_cache_tensors[dense]: K/V 两张独立 int8 池" (kvc 原样, 非 hybrid 纯 attn 路径对照, qwen35 不走)
+#   :5036/5039  f"[KVC][L1] _reshape_kv_cache_tensors: attn 组首层 K_cache/V_cache shape/dtype" (kvc 原样)
+#   :5084       注释 "[KVC][L1] mamba 组状态视图: 每 slot(state) 一整套状态张量, block_id=dim0=状态槽号"
+#   :5086       f"[KVC][L1] _reshape_kv_cache_tensors[mamba]: states(spec)=... slot张量 shape=... dtype=...
+#               num_blocks=... page_size=...B (conv/ssm 与 attn K/V 共用 raw 物理页, 页内三视图布局)"
+#   :5104/5105  "[KVC][L1] 物理侧 KV Cache 分配完成(hybrid)" 横幅对完成
+#
+# total 08 = 23 行(11 KVS + 12 L1); 8 文件合计 178 行
+# 预期运行(qwen3.5-0.8B, 单卡 TP1 = 1 worker, curl.sh 单请求可连发):
+#   · 启动: 分配开始/完成横幅 ×1 worker; [hybrid] 单张 raw 页打印 ×每 KVCacheTensor; [mamba] 状态视图 ×mamba 组首层; attn 组首层 K/V 布局 ×1
+#   · 每请求: TERM 归档横幅对 ×1 worker(文件 tensors/req{seq}_{尾8}/kv_pp0tp0.pt, [K]=attn层数 [M]=mamba层数)
+#   · qwen3.5-0.8B 层结构(full-attn + GDN 混合): attn 组每层 K/V (num_blocks, 1024, 2, 256) bf16 之意向;
+#     mamba 每层 conv (num_blocks,3,6144) bf16 + ssm (num_blocks,16,128,128) fp32 —— 实测以启动日志为准

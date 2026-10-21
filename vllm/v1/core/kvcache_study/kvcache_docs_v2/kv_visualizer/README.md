@@ -5,7 +5,7 @@
 > ```
 > kv_visualizer/
 > ├── backend_fastapi/      # FastAPI 后端（Python）—— main.py 四命令 + config.py + lib/ 业务包
-> ├── frontend_vue/        # Vue3 + Vite 前端 —— 七标签页单页应用（构建产物 dist/index.html）
+> ├── frontend_vue/        # Vue3 + Vite 前端 —— 八标签页单页应用（构建产物 dist/index.html）
 > ├── kv_datasets_root/     # DATA_ROOT：存放 vLLM 实验导出的 KV 数据 JSON【后端读取这里】
 > └── README.md             # 本文件
 > ```
@@ -30,15 +30,15 @@ python3 main.py serve
 | `pack` | 按需生成 `viz_standalone.html`（数据内嵌单文件，双击即开；用完可删 3s 再生） | `--out` |
 
 路径默认按 `config.py` 位置解析（任意 CWD 可运行）：
-`ROOT_DEF=../kv_experiment`（三个实验源目录所在地）、`PAGE_DIR=../frontend_vue`、`DATA_ROOT=../kv_datasets_root`。
+`ROOT_DEF=../kv_experiment`（四个实验源目录所在地，2026-10-21 增 qwen35）、`PAGE_DIR=../frontend_vue`、`DATA_ROOT=../kv_datasets_root`。
 
 ## 数据链路
 
 ```
-kv_experiment/{kvc, kvc_1p1d, kvc_1p1d_prefix}/   实验产物（.pt 归档 · [KVC] 日志 · PCM 六打点）
+kv_experiment/{kvc, kvc_1p1d, kvc_1p1d_prefix, qwen35}/   实验产物（.pt 归档 · [KVC] 日志 · PCM 六打点；qwen35=hybrid A/B/C 三轮）
         │
-        ▼  backend_fastapi/lib/exporter.py 四场景导出(kvc / p1d / matrix / kvcFlow)
-kv_visualizer/kv_datasets_root/   manifest + 12 归档 JSON（DATA_ROOT，后端读取这里）
+        ▼  backend_fastapi/lib/exporter.py 五场景导出(kvc / p1d / matrix / kvcFlow / qwen35)
+kv_visualizer/kv_datasets_root/   manifest + 12 归档 JSON（DATA_ROOT，后端读取这里；qwen35 场景数据内嵌 manifest 不落独立文件）
         │
         ▼  frontend_vue/dist/index.html（Vue bundle · embedded / api / static 三模式 fetch 懒加载）
 浏览器 ／ main.py(FastAPI)·lib.server_stdlib 后端 ／ pack 单文件
@@ -55,26 +55,27 @@ backend_fastapi/                 Python 后端
     ├── tensor_reader.py        .pt 归档读取与基础张量/统计（11 个共享函数，exporter/verify 共用）
     ├── utils.py                工具：路径校验 safe_api_rel · 目录遍历 sources_signature · write_json
     ├── dataset_loader.py       kv_datasets_root 数据集层（LOCK · ensure_fresh 新鲜度 · api_verify）
-    ├── exporter.py             四场景导出（kvc / p1d / matrix / kvcFlow）· build()
+    ├── exporter.py             五场景导出（kvc / p1d / matrix / kvcFlow / qwen35）· build()
     ├── verify.py               独立核验器（A~D 60 项断言）· run()
     ├── server_stdlib.py        纯标准库 HTTP 回退装配（缺 fastapi/uvicorn 时 serve 自动回退）
     └── pack.py                 standalone 打包器（dist 产物 + 数据内嵌注入 </head>）
 
 frontend_vue/                    Vue3 + Vite 前端工程
 ├── index.html · vite.config.js · package.json · package-lock.json
-├── src/App.vue                  页面骨架（7 个 view 区 + errbox + heatTip；onMounted 调 boot）
+├── src/App.vue                  页面骨架（8 个 view 区 + errbox + heatTip；onMounted 调 boot）
 ├── src/main.js                  入口（createApp → mount）
 ├── src/style.css                全量样式
-├── src/lib/legacy.js            页面 JS 逻辑层（自原单页版搬运+升级；新增板块请组件化新写）
+├── src/lib/legacy.js            页面 JS 逻辑层（自原单页版搬运+升级；legacy 只挂 TABS/boot 两处）
+├── src/lib/qwen35.js            第五场景「Hybrid 混合 · qwen35」渲染模块（五卡 + K≡ssm 几何 1024↔2048 toggle 主视觉）
 ├── tests/legacy-logic.test.mjs  node:test 单测（13 项：沙盘算术/日志解析/阶段映射）
-└── dist/index.html              构建产物（~150KB 单文件 bundle；npm run build 生成）
+└── dist/index.html              构建产物（~158KB 单文件 bundle；npm run build 生成）
 
 kv_datasets_root/                DATA_ROOT —— vLLM 导出的 KV 数据（后端读取这里）
-├── manifest.json                四场景索引
+├── manifest.json                五场景索引（qwen35 场景数据内嵌 manifest，不落独立文件）
 ├── kvc/…  p1d/…                 12 个归档 JSON（可删，export 自动重建）
 ```
 
-## 页面内容（7 个标签页）
+## 页面内容（8 个标签页）
 
 | 标签 | 看什么 |
 |---|---|
@@ -84,6 +85,7 @@ kv_datasets_root/                DATA_ROOT —— vLLM 导出的 KV 数据（后
 | 单机 PP2×TP2 · kvc | 块表 + 前缀复用逐位核验矩阵（256/256 torch.equal = 零篡改） |
 | PD 分离 1P1D · P→D 传输 | P→mooncake→D 链路 + Tx/重算/D独有 分区条 + 逐层逐块网格（Tx 64/64 = 传输无损） |
 | Prefix 四象限矩阵 | 2×2 象限卡 + 行为对照条形图 + 铁律核验表 + PCM 时间线 |
+| Hybrid 混合 · qwen35 | Qwen3.5-0.8B(hybrid 18 GDN+6 attn) 三轮 A/B/C(1024✅/2048❌/2048+PR15408✅)：实验画框 + 轮次对照表 + **K≡ssm 池几何 1024↔2048 toggle 主视觉**（2048 时 K(1) 红斜纹踩 ssm 行2/3 ↯ + cov 楔子 + 写序时间线）+ **逐步填充流程卡**（prefill 24 步 + decode 24 步 = 48 步·每步走过一层填/读写一个块；6 池各一行，每池 3 条**单行轨道**：conv 底格[仅 mamba] / **K≡ssm 轨道 = ssm 块底格(恒 1MiB/格) + K(1) 浮块宽度随 block_size 倍增——1024=1 格宽≡ssm 块宽·画成一样大·恰好不覆盖；2048=2 格宽=2×ssm·红斜纹整段覆盖 ssm(2)(3)!** / V 段[V(1) 浮块同样倍宽但独占不撞]；decode **先读后写**[蓝R=读·金框=写]；可单步/自动播放/⏭跳decode；1024 全绿零覆盖 vs 2048：覆盖→decode ssm 重写反咬 K 前/后半→attn 读 K 混 fp32→NaN 乱码全链）+ 逐层统计三轮 viridis 热条（B 轮 NaN=✕）+ 根因实证表（ssm 12×/Pearson 0.086/K 未写区基线破零/C 逐位回归）+ 6 项导出自检徽章 |
 | 张量浏览器 | 选文件→K/V→块→层；viridis 热图 + hover 查值 |
 
 ## 前端工程与构建链
@@ -144,6 +146,10 @@ node --test tests/     # 前端单测 13 项（纯函数层）
 
 ## 备注
 
+- 2026-10-21 新增第五场景「Hybrid 混合 · qwen35」：`exporter.export_qwen35` 从本地三轮
+  `tensors/{normal,abnormal,fixed}/.pt` 直算（6 项导出自检全 PASS）+ 前端 `src/lib/qwen35.js` 五卡模块
+  → 八标签页；浏览器实测（五卡渲染 / K≡ssm 几何 1024↔2048 toggle 闭环 / 既有七 tab 回归）全绿；
+  设计文档 `docs/design-2026-10-21-qwen35-scenario.md`。
 - 2026-10-15 后端内部重组：`app.py`+`kvviz/` → `main.py`（FastAPI 接口+CLI）+ `config.py`（全局配置）
   + `lib/`（tensor_reader / utils / dataset_loader / exporter / verify / server_stdlib / pack）
   + `requirements.txt`；接口契约与数据链路零变化（export 实跑 + verify 60/60 + 路由冒烟复验全绿）。
@@ -151,4 +157,4 @@ node --test tests/     # 前端单测 13 项（纯函数层）
   kv_datasets_root 承接原 viz_data 的 13 个 JSON（git rename 呈现）。
 - 生成物不入库（见 .gitignore）：node_modules、dist、viz_standalone.html、__pycache__。
   可再生成物已清理出工作区（viz_standalone.html 11M / __pycache__ 140K / .DS_Store），需要时 `pack` 即重出。
-- 实验源在 `../kv_experiment/{kvc, kvc_1p1d, kvc_1p1d_prefix}`，本工具只读不写。
+- 实验源在 `../kv_experiment/{kvc, kvc_1p1d, kvc_1p1d_prefix, qwen35}`，本工具只读不写。

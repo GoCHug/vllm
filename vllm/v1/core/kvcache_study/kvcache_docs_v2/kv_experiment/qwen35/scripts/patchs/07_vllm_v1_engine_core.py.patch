@@ -1,0 +1,89 @@
+diff --git a/vllm/v1/engine/core.py b/vllm/v1/engine/core.py
+index 08c814ab34..41fe1114a6 100644
+--- a/vllm/v1/engine/core.py
++++ b/vllm/v1/engine/core.py
+@@ -241,7 +241,22 @@ class EngineCore:
+ 
+         # Get all kv cache needed by the model
+         kv_cache_specs = self.model_executor.get_kv_cache_specs()
++        # [KVC][CFG] 配置侧 KVCache 编排全局开始
++        logger.info("[KVC][CFG] " + "=" * 16 + " 配置侧 KVCache 编排开始 " + "=" * 16)
++        logger.info("[KVC][CFG] --- ①: 算规格 ---")
++        # [KVC][CFG] 配置侧·算规格(①): 每 worker 提交的层 KVCacheSpec 摘要(类型×层数×首末层名)
++        _spec_parts = [
++            (
++                f"worker{_wi}={len(_specs)}×{type(next(iter(_specs.values()))).__name__}"
++                f"(首 {list(_specs.keys())[0]}, 末 {list(_specs.keys())[-1]})"
++                if _specs
++                else f"worker{_wi}=0"
++            )
++            for _wi, _specs in enumerate(kv_cache_specs)
++        ]
++        logger.info("[KVC][CFG] ① 算规格 get_kv_cache_specs: " + "; ".join(_spec_parts))
+ 
++        logger.info("[KVC][CFG] --- ②: 测预算 ---")
+         has_kv_cache = any(kv_cache_spec for kv_cache_spec in kv_cache_specs)
+         if has_kv_cache:
+             if envs.VLLM_ELASTIC_EP_SCALE_UP_LAUNCH:
+@@ -261,6 +276,12 @@ class EngineCore:
+             available_gpu_memory = [0] * len(kv_cache_specs)
+ 
+         assert len(kv_cache_specs) == len(available_gpu_memory)
++        # [KVC][CFG] 配置侧·测预算: 各 worker profile_run 实测可用 KV 显存 (以实际跑为准)
++        logger.info(
++            f"[KVC][CFG] determine_available_memory: 各 worker 可用 KV 显存 = "
++            f"{[f'{m / 1024**3:.2f}GiB' for m in available_gpu_memory]}"
++        )
++        logger.info("[KVC][CFG] --- ③: 做编排 ---")
+ 
+         # Track max_model_len before KV cache config to detect auto-fit changes
+         max_model_len_before = vllm_config.model_config.max_model_len
+@@ -268,6 +289,33 @@ class EngineCore:
+         kv_cache_configs = get_kv_cache_configs(
+             vllm_config, kv_cache_specs, available_gpu_memory
+         )
++        # [KVC][CFG] 配置侧·编排产物: KVCacheSpec -> KVCacheGroupSpec -> KVCacheTensor -> KVCacheConfig
++        for _w_idx, _cfg in enumerate(kv_cache_configs):
++            logger.info(
++                f"[KVC][CFG] worker{_w_idx} KVCacheConfig: num_blocks={_cfg.num_blocks}, "
++                f"groups数={len(_cfg.kv_cache_groups)}, tensors数={len(_cfg.kv_cache_tensors)}"
++            )
++            for _g_idx, _g in enumerate(_cfg.kv_cache_groups):
++                logger.info(
++                    f"[KVC][CFG]   [{_w_idx}] KVCacheGroupSpec(group_id={_g_idx}): "
++                    f"layers={len(_g.layer_names)} (首层 {_g.layer_names[0]}, 末层 {_g.layer_names[-1]}), "
++                    f"is_eagle_group={_g.is_eagle_group}"
++                )
++                logger.info(
++                    f"[KVC][CFG]   [{_w_idx}]   kv_cache_spec={repr(_g.kv_cache_spec)}"
++                )
++                _spec = _g.kv_cache_spec
++                logger.info(
++                    f"[KVC][CFG]   [{_w_idx}]   page_size_bytes={_spec.page_size_bytes} "
++                    f"({_spec.page_size_bytes / 1024:.1f}KB/层/块), "
++                    f"storage_block_size={_spec.storage_block_size}"
++                )
++            for _t in _cfg.kv_cache_tensors:
++                logger.info(
++                    f"[KVC][CFG]   [{_w_idx}] KVCacheTensor: size={_t.size} bytes "
++                    f"({_t.size / 1024**2:.2f}MiB), shared_by={len(_t.shared_by)} 层 "
++                    f"({_t.shared_by[0] if len(_t.shared_by) == 1 else _t.shared_by[0] + ' .. ' + _t.shared_by[-1]})"
++                )
+ 
+         # If auto-fit reduced max_model_len, sync the new value to workers.
+         # This is needed because workers were spawned before memory profiling
+@@ -279,6 +327,14 @@ class EngineCore:
+         scheduler_kv_cache_config = generate_scheduler_kv_cache_config(kv_cache_configs)
+         vllm_config.cache_config.num_gpu_blocks = scheduler_kv_cache_config.num_blocks
+         kv_cache_groups = scheduler_kv_cache_config.kv_cache_groups
++        # [KVC][CFG] 多 worker min(num_blocks) 对齐后的最终逻辑块数 (下发逻辑侧 BlockPool)
++        logger.info(
++            f"[KVC][CFG] 最终 scheduler KVCacheConfig: num_blocks={scheduler_kv_cache_config.num_blocks} "
++            f"(跨 worker min 对齐), cache_config.num_gpu_blocks={vllm_config.cache_config.num_gpu_blocks}, "
++            f"block_size={vllm_config.cache_config.block_size}"
++        )
++        logger.info("[KVC][CFG] " + "=" * 16 + " 配置侧 KVCache 编排完成 " + "=" * 16)
++
+         if kv_cache_groups:
+             vllm_config.cache_config.block_size = min(
+                 g.kv_cache_spec.block_size for g in kv_cache_groups

@@ -12,6 +12,7 @@
   <section class="view" id="view-kvc"></section>
   <section class="view" id="view-p1d"></section>
   <section class="view" id="view-matrix"></section>
+  <section class="view" id="view-qwen35"></section>
   <section class="view" id="view-flow"></section>
   <section class="view" id="view-sandbox"></section>
   <section class="view" id="view-browser"></section>

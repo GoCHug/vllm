@@ -1,0 +1,69 @@
+==============================================================================
+qwen35 hybrid 归档对比: A(基线侧 --normal) vs B(被检侧 --abnormal)
+A normal  : tensors/normal/req1_90bfa9ce/ (kv_pp0tp0.pt)  schema=kvt5-hybrid-raw
+B abnormal: tensors/abnormal/req1_abdc0ba8/ (kv_pp0tp0.pt)  schema=kvt5-hybrid-raw
+生成: 2026-10-20 22:54:30
+==============================================================================
+① meta 对照(不变量 K段宽==SSM段宽 的物理载体; 同 prompt 两轮请求)
+  block_size(attn 组):
+    A: 1024
+    B: 2048
+  attn 层数:
+    A: 6
+    B: 6
+  attn 块表:
+    A: [1]
+    B: [1]
+  attn cov(每块已写槽):
+    A: [130]
+    B: [130]
+  kv_heads / head_dim: A=(2, 256) B=(2, 256)
+  mamba 层数:
+    A: 18
+    B: 18
+  mamba state shapes:
+    A: [(3, 6144), (16, 128, 128)]
+    B: [(3, 6144), (16, 128, 128)]
+  mamba state dtypes:
+    A: ['torch.bfloat16', 'torch.float32']
+    B: ['torch.bfloat16', 'torch.float32']
+  mamba 组级 slot 表(4 组 block id 全景):
+    A: attn=[1] mambaA/B/C=[[2], [3], [4]]
+    B: attn=[1] mambaA/B/C=[[2], [3], [4]]
+
+② attn K/V 首块对照(首 attn 层, 同 prompt 同写入 token 序)
+  A K[blk0]: shape=(1024, 2, 256) dtype=torch.bfloat16 RMS=0.49855 mean=-0.00151 |min|=0 |max|=9.562
+  B K[blk0]: shape=(2048, 2, 256) dtype=torch.bfloat16 RMS=nan mean=+nan |min|=nan |max|=nan
+  A V[blk0]: shape=(1024, 2, 256) dtype=torch.bfloat16 RMS=0.21655 mean=-0.001094 |min|=0 |max|=4.469
+  B V[blk0]: shape=(2048, 2, 256) dtype=torch.bfloat16 RMS=0.15373 mean=-0.0004124 |min|=0 |max|=4.469
+  块粒度: A bsz=1024 (块内已写 130) | B bsz=2048 (块内已写 130)
+
+③ K 已写区对比(前 w=130 个 token = 两轮共同写入段)
+  A K[:w]: shape=(130, 2, 256) dtype=torch.bfloat16 RMS=1.39924 mean=-0.01189 |min|=3.624e-05 |max|=9.562
+  B K[:w]: shape=(130, 2, 256) dtype=torch.bfloat16 RMS=nan mean=+nan |min|=nan |max|=nan
+  逐元素差: mean=+nan RMS=nan |max|=nan  Pearson(A,B)=nan
+  (Pearson≈1 + 差≈ULP: 分布一致; Pearson 低/差显著: B 读回的 K 已失真)
+
+④ K 未写槽区 RMS(★ 根因直接证据: A 基线应≈0; B 污染则显著非零)
+    A 未写区 [130:1024]: RMS=0.000000
+    B 未写区 [130:2048]: RMS=nan
+    B 页内重叠段提示: mamba conv/ssm 物理落点 ≈ 块内 token[36:1040] 区间, 该段 RMS=nan
+
+⑤ mamba 状态张量对照(首 mamba 层首 slot; 检验 attn K 写入是否反向污染 mamba)
+  A state[0]: shape=(3, 6144) dtype=torch.bfloat16 RMS=1.63590 mean=-0.01691 |min|=1.08e-37 |max|=32.25
+  B state[0]: shape=(3, 6144) dtype=torch.bfloat16 RMS=1.17869 mean=-0.01087 |min|=2.16e-37 |max|=15.5
+  逐元素差: mean=-0.00604 RMS=1.3128 Pearson=0.607252
+
+  A state[1]: shape=(16, 128, 128) dtype=torch.float32 RMS=0.02791 mean=+0.0002246 |min|=0 |max|=4.106
+  B state[1]: shape=(16, 128, 128) dtype=torch.float32 RMS=0.33573 mean=-0.004009 |min|=0 |max|=7.877
+  逐元素差: mean=+0.004233 RMS=0.33449 Pearson=0.086071
+
+
+==============================================================================
+判定(对应 README §2 根因链: K段宽≠SSM段宽 -> 页内重叠区两族互写 -> 读回失真 -> 乱码)
+  A 未写区 RMS=0.000000 -> 基线干净 PASS
+  B 未写区 RMS=nan 未显著异常 -> 未见 mamba 溢出 attn 未写区, 结合 ③ Pearson 与 ⑤ mamba 对照判断
+  K 已写区 Pearson(A,B)=nan -> B 相对 A 已失真
+  结论请结合: 响应体(logs/curl_resp.json) + 启动日志 L1 页几何 + 本报告四组数值
+==============================================================================
+[DONE] 对比报告已落盘: logs/analysis/compare_modes.out

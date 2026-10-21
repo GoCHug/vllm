@@ -1,0 +1,496 @@
+diff --git a/vllm_ascend/worker/model_runner_v1.py b/vllm_ascend/worker/model_runner_v1.py
+index 70ef1d79a..aa7c74c22 100644
+--- a/vllm_ascend/worker/model_runner_v1.py
++++ b/vllm_ascend/worker/model_runner_v1.py
+@@ -2334,6 +2334,10 @@ class NPUModelRunner(GPUModelRunner):
+                         for aux_hidden_states_pcp in aux_hidden_states
+                     ]
+ 
++            # [KVC][KVS] 归档点: 本步前向完成, 该批 KV 已全部落卡 —— free() 在
++            # EngineCore 进程而张量驻留各 worker, 故以"最后一次写卡"为等价时点。
++            self._kvc_rel_snapshot(scheduler_output)
++
+             if not self.broadcast_pp_output:
+                 # Common case.
+                 if not get_pp_group().is_last_rank:
+@@ -2400,6 +2404,383 @@ class NPUModelRunner(GPUModelRunner):
+             deferred_state_corrections_fn()
+         return None
+ 
++    # --------------------------------------------------------------------------
++    # [KVC][KVS] 请求结束物理 KV tensor 原样归档(08 号补丁核心, hybrid 混合模型版).
++    #
++    # 挂载于 execute_model 每步前向后(hook 见上): 物理张量驻留各 worker 进程,
++    # EngineCore 侧 free() 跨进程不可读, 故以 worker 侧"该请求最后一次写卡完成"
++    # (written >= prompt + max_tokens - 1, 即 TERM)为等价归档时点.
++    #
++    # 混合模型(qwen3.5: full-attn 层 + GDN/mamba 层)与 llama 版差异:
++    #   1) 层分组: kv_cache 两组(attn 组 + mamba 组), 运行时经 self.attn_groups
++    #      展开 —— 组序与 NewRequestData.block_ids 下标一一对应;
++    #   2) 层张量: forward_context[层名].kv_cache 经 bind_kv_cache 绑定 ——
++    #      attn 层为 (k_cache, v_cache) 元组, mamba 层为 state_tensors 列表
++    #      (conv+ssm, 见 _reshape_kv_cache_tensors MambaSpec 分支);
++    #   3) 两组共享同一张物理 raw tensor(页级共用), 但块表独立(每组块号命名
++    #      空间独立), 归档按各组块表分别整块取证, 不做跨组对齐假设.
++    #
++    # _kvc_rel_snapshot: 请求级追踪(块表累积 + TERM 判定), 每步 O(请求数);
++    #                    错过 TERM 的请求(LATE)仅一行告警不归档(块已还池, 非证据级).
++    # _kvc_kv_save:      TERM 专用 —— attn 组每层每块 K/V 整块 + mamba 组每层
++    #                    每 slot 全部状态张量(conv/ssm)整块 cpu().clone() 位级
++    #                    快照 -> 后台线程 torch.save 落盘.
++    # 归档布局: {KVC_SAVE_DIR}/req{seq}_{rid尾8}/kv_pp{p}tp{t}.pt —— 一请求一个
++    #          子目录, 目录内每 worker 一份(PP2xTP2 下 4 份联合覆盖全层).
++    # bundle schema kvt5-hybrid-raw: {"K": [attn层][块号->t], "V": 同构,
++    #          "M": [mamba层][slot号->[state张量...]], "meta": {...attn/mamba 双组
++    #          块表/shape/dtype...}}(kvt4 兼容字段另置顶层, 旧查看器可读 K/V).
++    # 开关: KVC_SAVE_KV=1 启用(默认关, 零侵入); KVC_SAVE_DIR 输出目录(默认
++    #       log/tensors, 相对 worker cwd).
++    # --------------------------------------------------------------------------
++    def _kvc_rel_snapshot(self, scheduler_output) -> None:
++        """每步前向后追踪运行中请求(块表/已写 token), 命中 TERM 即触发归档。"""
++        try:
++            import os
++            import traceback
++            kv_caches = getattr(self, "kv_caches", None)
++            if not kv_caches or scheduler_output is None:
++                return
++
++            # 首次调用: 打启用横幅(每 worker 一行)
++            if not getattr(self, "_kvc_kvs_armed", False):
++                self._kvc_kvs_armed = True
++                if os.environ.get("KVC_SAVE_KV", "0") == "1":
++                    logger.info(
++                        "[KVC][KVS] 物理KV原样归档已启用(hybrid): KVC_SAVE_KV=1, 输出目录=%s "
++                        "(相对 worker cwd)",
++                        os.environ.get("KVC_SAVE_DIR", "log/tensors"))
++
++            rt = getattr(self, "_kvc_rt", None)
++            if rt is None:
++                rt = self._kvc_rt = {}
++
++            # (a) 上轮结束的请求: 清理追踪; 错过 TERM 者仅告警(块已还池, 非证据级)
++            for rid in getattr(scheduler_output, "finished_req_ids", None) or ():
++                st = rt.pop(rid, None)
++                if st is not None and not st["done"]:
++                    logger.info(
++                        "[KVC][KVS] LATE req=%s 已结束但未见 TERM(final 推算偏移?), "
++                        "不归档(块或已复用): written=%d final=%d blocks=%s",
++                        rid, st["written"], st["final"],
++                        st["blocks"][0] if st["blocks"] else [])
++
++            # (b) 新请求注册: 初始块表(含前缀命中块, 多组)/已写 token/终值目标
++            for req in scheduler_output.scheduled_new_reqs:
++                if req.req_id not in rt:
++                    max_new = (req.sampling_params.max_tokens
++                               if req.sampling_params is not None else 0)
++                    rt[req.req_id] = {
++                        "blocks": [list(g) for g in req.block_ids] if req.block_ids else [],
++                        "written": int(req.num_computed_tokens or 0),
++                        "p_tok": len(req.prompt_token_ids or []),
++                        "final": len(req.prompt_token_ids or []) + max_new - 1,
++                        "done": False,
++                    }
++
++            # (c) 续算请求: 按组追加本步新分配的块
++            cr = scheduler_output.scheduled_cached_reqs
++            for i, rid in enumerate(cr.req_ids):
++                st = rt.get(rid)
++                if st is None:
++                    continue
++                nb = cr.new_block_ids[i] if i < len(cr.new_block_ids) else None
++                if nb:
++                    for gi, gnew in enumerate(nb):
++                        if gnew and gi < len(st["blocks"]):
++                            st["blocks"][gi].extend(gnew)
++
++            # (d) 累加本步 token, 达终值即 TERM 归档。num_scheduled_tokens 双形态:
++            #     同步路径=dict[rid->n] / 异步路径=按批内槽位序的 list —— 以
++            #     input_batch.req_ids(本步执行批)按位 zip 对齐
++            nst = scheduler_output.num_scheduled_tokens
++            if hasattr(nst, "items"):
++                sched_pairs = list(nst.items())
++            else:
++                ib = getattr(self, "input_batch", None)
++                n_reqs = int(getattr(ib, "num_reqs", 0) or 0)
++                rid_list = list(getattr(ib, "req_ids", []) or [])[:n_reqs]
++                sched_pairs = (list(zip(rid_list, [int(x) for x in list(nst)[:n_reqs]]))
++                               if n_reqs > 0 and len(nst) >= n_reqs else [])
++
++            for rid, ntok in sched_pairs:
++                st = rt.get(rid)
++                if st is None:
++                    continue
++                st["written"] += int(ntok)
++                if not st["done"] and st["written"] >= st["final"]:
++                    st["done"] = True
++                    self._kvc_kv_save(rid, st, "TERM")
++        except Exception as e:  # 追踪绝不影响服务
++            logger.info("[KVC][KVS] _kvc_rel_snapshot exception: %s (%s)", e,
++                        traceback.format_exc().strip().splitlines()[-1])
++
++    # [KVC][KVS] _kvc_kv_save: 终值归档执行(仅 TERM 触发, LATE 只告警不归档).
++    # [KVC][KVS] hybrid 版: attn 组 K/V 块-行映射(同 kvc v2.5) + mamba 组每 slot
++    # 全部状态张量(conv/ssm)整块 —— 见上方法块头注释.
++    def _kvc_kv_save(self, rid: str, st: dict, tag: str) -> None:
++        """TERM 归档: 本 worker attn 组 K/V 整块 + mamba 组状态张量整块落盘。"""
++        try:
++            import os
++            import threading
++            if os.environ.get("KVC_SAVE_KV", "0") != "1":
++                return
++            attn_groups = getattr(self, "attn_groups", None) or []
++            blocks_all = st.get("blocks") or []
++            kv_caches = getattr(self, "kv_caches", None)
++            if not attn_groups or not blocks_all or not kv_caches:
++                return
++
++            # 层清单: 组序展开(组 gid <-> req.block_ids[gid]), 每层取
++            # forward_context 绑定的 kv_cache 张量(bind_kv_cache 装配:
++            # attn=(k,v) 元组 / mamba=[conv,ssm] 列表), 类型取组级 spec;
++            # spec_bs = 组 spec 的管理块 token 数(attn 组 qwen3.5 实测 1024 / mamba 组 1).
++            fc = getattr(self.compilation_config, "static_forward_context", {}) or {}
++            groups = []   # [(gid, is_mamba, spec_bs, [层名], [层张量], 该组块表)]
++            for gid, agrp in enumerate(attn_groups):
++                if gid >= len(blocks_all):
++                    continue
++                spec = getattr(agrp[0], "kv_cache_spec", None) if agrp else None
++                is_mamba = isinstance(spec, MambaSpec)
++                spec_bs = int(getattr(spec, "block_size", 0) or 0)
++                names, kvs = [], []
++                for sub in agrp:
++                    for ln in getattr(sub, "layer_names", []) or []:
++                        mod = fc.get(ln)
++                        kvv = getattr(mod, "kv_cache", None) if mod is not None else None
++                        if kvv is None and isinstance(kv_caches, dict) and ln in kv_caches:
++                            kvv = kv_caches[ln]
++                        if kvv is None:
++                            continue
++                        names.append(ln)
++                        kvs.append(kvv)
++                if not names:
++                    continue
++                blocks = [int(b) for b in (blocks_all[gid] or [])]
++                groups.append((gid, is_mamba, spec_bs, names, kvs, blocks))
++            if not any(g[5] for g in groups):
++                return
++
++            # worker 身份: PP stage / TP rank(并行组查询失败兜底为 0)
++            try:
++                pp_rank = int(get_pp_group().rank_in_group)
++            except Exception:
++                pp_rank = 0
++            try:
++                tp_rank = int(get_tp_group().rank_in_group)
++            except Exception:
++                tp_rank = 0
++
++            # 归档序号(每 worker 独立递增: seq=1 即本 worker第 1 个结束请求)
++            _seq_map = getattr(self, "_kvc_kvs_seq", None) or {}
++            seq = int(_seq_map.get((pp_rank, tp_rank), 0)) + 1
++            _seq_map[(pp_rank, tp_rank)] = seq
++            self._kvc_kvs_seq = _seq_map
++
++            written = int(st["written"])
++            rid8 = rid.split("-")[-1][:8]
++            base_dir = os.environ.get("KVC_SAVE_DIR", "log/tensors")
++            req_dir = "req{}_{}".format(seq, rid8)   # 一个请求一个子目录
++            out_dir = os.path.join(base_dir, req_dir)
++            os.makedirs(out_dir, exist_ok=True)
++            fname = os.path.join(req_dir, "kv_pp{}tp{}.pt".format(pp_rank, tp_rank))
++            path = os.path.join(base_dir, fname)
++
++            # attn 组: 管理块整段归档 —— NPU 张量行为 kernel 块(qwen3.5-0.8B 虚拟拆分
++            # 实测 128 token/行), 管理块(spec.block_size=1024)在张量上占
++            # ratio=mbs//ksz 连续行: 管理块 g -> 行段 [g*ratio,(g+1)*ratio), 请求块表
++            # block_ids 中的块 id 即管理块 id(非张量行号!)。归档按管理块整段
++            # cpu().clone() 并 reshape 回 (mbs, kv_heads, head_dim), 含未写槽位。
++            K_layers, V_layers, attn_names = [], [], []
++            bsz = kv_heads = head_dim = -1    # bsz = 管理块 token 数(如 1024)
++            ksz = -1                          # kernel 行 token 数(张量行粒度, 如 128)
++            ratio = 1                         # 一个管理块占张量行数 = bsz//ksz
++            at_dtype = None
++            dev = str(self.device)
++            at_bt, covs = [], []
++            seg_attn_pool = []   # v1.3: 每池 attn K/V 视图(zip 层序 = 池序)
++            for gid0, is_mamba, spec_bs, names, kvs, blocks in groups:
++                if is_mamba or not blocks:
++                    continue
++                for ln, kv in zip(names, kvs):
++                    if not (isinstance(kv, (tuple, list)) and len(kv) >= 2
++                            and kv[0] is not None and kv[1] is not None
++                            and kv[0].dim() >= 2):
++                        continue
++                    kt, vt = kv[0], kv[1]
++                    seg_attn_pool.append((kt, vt))
++                    if bsz < 0:
++                        ksz = int(kt.shape[1]) if kt.dim() >= 2 else -1
++                        bsz = int(spec_bs) if spec_bs > 0 else ksz
++                        ratio = max(1, bsz // ksz) if ksz > 0 else 1
++                        kv_heads = int(kt.shape[2]) if kt.dim() >= 3 else -1
++                        head_dim = int(kt.shape[3]) if kt.dim() >= 4 else -1
++                        at_dtype = kt.dtype
++                        dev = str(kt.device)
++                        at_bt = blocks
++                        covs = [min(bsz, max(0, written - e * bsz))
++                                for e in range(len(blocks))]
++                    kd, vd = {}, {}
++                    for blk in blocks:
++                        lo, hi = int(blk) * ratio, (int(blk) + 1) * ratio
++                        if 0 <= lo and hi <= int(kt.shape[0]):
++                            kd[int(blk)] = (kt[lo:hi].cpu().clone()
++                                            .reshape(bsz, kv_heads, head_dim))
++                            vd[int(blk)] = (vt[lo:hi].cpu().clone()
++                                            .reshape(bsz, kv_heads, head_dim))
++                    if not kd:
++                        continue
++                    K_layers.append(kd)
++                    V_layers.append(vd)
++                    attn_names.append(ln)
++
++            # mamba 组: 每层每 slot 全部状态张量(conv/ssm)整块 —— block id 即
++            # 状态张量(dim0)行号(每 slot 一套 state, 无虚拟拆分, 1:1 直映射)
++            M_layers, mamba_names = [], []
++            mb_bt = []      # v1.1 兼容: 首组表(旧查看器)
++            mb_gts = {}     # v1.2: 每 mamba 组(gid0)各自 slot 表 —— 4 组 id 全景
++            seg_mA_pool = []   # v1.3: mA 组 6 层 [conv,ssm] 视图(zip 层序 = 池序)
++            m_shapes, m_dtypes = [], []
++            for gid0, is_mamba, spec_bs, names, kvs, blocks in groups:
++                if not is_mamba or not blocks:
++                    continue
++                for ln, kv in zip(names, kvs):
++                    if not (isinstance(kv, (tuple, list)) and len(kv) >= 1
++                            and all(t is not None and t.dim() >= 2 for t in kv)):
++                        continue
++                    sd = {}
++                    for blk in blocks:
++                        if all(0 <= blk < int(t.shape[0]) for t in kv):
++                            sd[int(blk)] = [t[blk].cpu().clone() for t in kv]
++                    if not sd:
++                        continue
++                    if len(seg_mA_pool) < 6:   # v1.3: 前 6 层 = mA 组(6 池各 1 层)
++                        seg_mA_pool.append(kv)
++                    if gid0 not in mb_gts:
++                        mb_gts[gid0] = [int(b) for b in blocks]
++                    M_layers.append(sd)
++                    mamba_names.append(ln)
++                    if not mb_bt:
++                        mb_bt = mb_gts[gid0]
++                        m_shapes = [tuple(int(x) for x in t.shape[1:]) for t in kv]
++                        m_dtypes = [str(t.dtype) for t in kv]
++                        if bsz < 0:
++                            dev = str(kv[0].device)
++            if not K_layers and not M_layers:
++                return
++
++            # v1.3: SEG 三区段窗口归档 —— 每池前 seg_win 个 block/slot 的
++            # conv(A) / k≡ssm(B, attn+mamba 双视角同段字节) / v(C) 窗口,
++            # 供按 id 直切对比判正确性(1024 正确 / 2048 错误, §5 H/I 轮)
++            seg_win = 8
++            seg_pools = []
++            try:
++                for j in range(min(len(seg_attn_pool), len(seg_mA_pool))):
++                    kt, vt = seg_attn_pool[j]
++                    cs_ss = seg_mA_pool[j]
++                    n_krows = min(int(kt.shape[0]), seg_win * max(1, ratio))
++                    seg_pools.append({
++                        "k": kt[:n_krows].cpu().clone(),
++                        "v": vt[:n_krows].cpu().clone(),
++                        "conv": cs_ss[0][:seg_win].cpu().clone(),
++                        "ssm": cs_ss[1][:seg_win].cpu().clone(),
++                    })
++            except Exception as se:      # 窗口取证失败不阻断主归档
++                logger.info("[KVC][KVS] SEG-WIN-FAIL(忽略): %s (%s)", se,
++                            type(se).__name__)
++
++            seg_req = sorted(set(int(b) for b in at_bt) |
++                             {int(b) for tbl in mb_gts.values() for b in tbl})
++
++            meta = {
++                "schema": "kvt5-hybrid-raw",
++                "pp": pp_rank, "tp": tp_rank, "seq": seq,
++                "request_id": rid, "tag": tag,
++                "p_tok": int(st.get("p_tok", -1)),
++                "w_tok": int(written),
++                "final": int(st["final"]),
++                "attn": {
++                    "layers": len(attn_names),
++                    "layer_names": attn_names,
++                    "block_size": bsz,
++                    "kernel_size": ksz,
++                    "kernel_ratio": ratio,
++                    "block_table": at_bt,
++                    "cov": covs,
++                    "kv_heads": kv_heads,
++                    "head_dim": head_dim,
++                    "dtype": str(at_dtype) if at_dtype is not None else None,
++                },
++                "mamba": {
++                    "layers": len(mamba_names),
++                    "layer_names": mamba_names,
++                    "block_table": mb_bt,
++                    "group_block_tables": [list(mb_gts[g]) for g in sorted(mb_gts)],
++                    "state_shapes": m_shapes,
++                    "state_dtypes": m_dtypes,
++                },
++                # kvt4 兼容顶层字段(旧查看器按 attn 组读取)
++                "block_size": bsz,
++                "block_table": at_bt,
++                "cov": covs,
++                "layers": len(attn_names),
++                "layer_ids": attn_names,
++                "group_size": len(attn_names),   # attn 组内层数(块-行映射)
++                "kv_heads": kv_heads,
++                "head_dim": head_dim,
++                "dtype": str(at_dtype) if at_dtype is not None else None,
++                "dev": dev,
++                "seg": {"win": seg_win, "pools": len(seg_pools)},
++                "req_ids": seg_req,   # v1.3: 本请求使用的全部 block/slot id(扁平)
++                "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
++            }
++            bundle = {"K": K_layers, "V": V_layers, "M": M_layers, "meta": meta,
++                      "SEG": {"win": seg_win, "pools": seg_pools}}
++
++            # 开始横幅(同步): 声明保存对象 —— 谁(worker/dev)、保存文件(先行说明)、
++            # 张量内容(attn K/V 双池 + mamba 状态张量, 每块 shape、层×块/slot)
++            logger.info(
++                "[KVC][KVS] ======== 开始保存物理tensor worker=PP%d_TP%d dev=%s "
++                "%s seq=%d req尾8=%s: 保存文件=%s, 张量内容=attn_K/V(%d 层×%d 块 "
++                "blk=%s cov=%s, 每块 shape=(%d,%d,%d) 含未写槽位) + mamba_states"
++                "(%d 层×%d mamba组 各组slot表=%s 按组序, 每slot states=%s) "
++                "+ seg_三段×%d池×前%d块(请求id=%s)(混合组共用物理页, 块表独立) ========",
++                pp_rank, tp_rank, dev, tag, seq, rid8, fname,
++                len(attn_names), len(at_bt),
++                [int(b) for b in at_bt], [int(c) for c in covs],
++                bsz, kv_heads, head_dim,
++                len(mamba_names), len(mb_gts),
++                [[int(b) for b in mb_gts[g]] for g in sorted(mb_gts)], m_shapes,
++                len(seg_pools), seg_win, seg_req)
++
++            # 落盘后台线程: 快照已同步进 host, TERM 不等 IO; 完成横幅一行回执
++            def _kvc_flush() -> None:
++                try:
++                    t0 = time.time()
++                    torch.save(bundle, path)
++                    nb = os.path.getsize(path)
++                    logger.info(
++                        "[KVC][KVS] ======== 完成保存物理tensor worker=PP%d_TP%d dev=%s "
++                        "seq=%d req尾8=%s: %s (attn K/V %d 层×%d 块 + mamba states "
++                        "%d 层×%d mamba组 各组slot表=%s, %d B = %.1f MiB) 落盘 %.1f ms "
++                        "========",
++                        pp_rank, tp_rank, dev, seq, rid8, fname,
++                        len(K_layers), len(K_layers[0]) if K_layers else 0,
++                        len(M_layers), len(mb_gts),
++                        [[int(b) for b in mb_gts[g]] for g in sorted(mb_gts)],
++                        nb, nb / 1048576.0, (time.time() - t0) * 1000.0)
++                except Exception as fe:  # 落盘失败仅一行告警, 不影响服务
++                    logger.info(
++                        "[KVC][KVS] ARCHIVE-FAIL worker=PP%d_TP%d dev=%s seq=%d "
++                        "req尾8=%s -> %s: %s (%s)",
++                        pp_rank, tp_rank, dev, seq, rid8, path, fe,
++                        type(fe).__name__)
++
++            threading.Thread(target=_kvc_flush, daemon=True).start()
++        except Exception as e:  # 归档绝不影响服务
++            logger.info("[KVC][KVS] %s 归档异常(忽略): %s (%s)", tag, e,
++                        type(e).__name__)
++
+     @torch.inference_mode()
+     def sample_tokens(
+         self, grammar_output: "GrammarOutput | None"
+@@ -4093,6 +4474,8 @@ class NPUModelRunner(GPUModelRunner):
+             dict[str, tuple(torch.Tensor, torch.Tensor)] A map between layer names
+             to their corresponding memory buffer for K cache and V cache.
+         """
++        # [KVC][L1] 物理侧分配开始
++        logger.info("[KVC][L1] " + "=" * 16 + " 物理侧 KV Cache 分配开始(hybrid) " + "=" * 16)
+         # init kv cache tensors
+         kv_cache_raw_tensors: dict[str, torch.Tensor | torch.Tensor | None | None] = {}
+         # prefill disaggregation need the addr of cache tensor be aligned with 2M
+@@ -4130,6 +4513,17 @@ class NPUModelRunner(GPUModelRunner):
+                     for layer_name_inner in kv_cache_tensor.shared_by:
+                         # shared the kvcache for all shared layers
+                         kv_cache_raw_tensors[layer_name_inner] = tensor
++                    # [KVC][L1] hybrid(attn+mamba)/mamba: 多层共用单张 int8 raw tensor(物理页)
++                    logger.info(
++                        "[KVC][L1] vllm-ascend _allocate_kv_cache_tensors[hybrid]: "
++                        "shared_by=%s: KVCacheTensor(size=%d bytes = %.2fMiB) -> 单张 int8 raw "
++                        "(attn K/V 与 mamba conv/ssm 共用物理页, 页内布局在 _reshape 三视图切分) "
++                        "(device=%s)",
++                        list(kv_cache_tensor.shared_by),
++                        kv_cache_tensor.size,
++                        kv_cache_tensor.size / 1024**2,
++                        self.device,
++                    )
+                 elif "attn" in layer_name and self.use_compress and layer_name not in kv_cache_raw_tensors:
+                     if self.vllm_config.kv_transfer_config is None:
+                         tensor = torch.zeros(kv_cache_tensor.size,
+@@ -4253,6 +4647,19 @@ class NPUModelRunner(GPUModelRunner):
+                             v_tensor_size,
+                             alignment,
+                         )
++                        # [KVC][L1] 每层 K/V 两张独立 int8 池(2MiB 对齐, 与 dtype 解耦; 非 hybrid 纯 attn 路径)
++                        logger.info(
++                            "[KVC][L1] vllm-ascend _allocate_kv_cache_tensors[dense]: "
++                            "%s: KVCacheTensor(size=%d bytes = %.2fMiB) -> K int8 %.2fMiB + V int8 %.2fMiB"
++                            " (alignment=%d, device=%s)",
++                            layer_name,
++                            kv_cache_tensor.size,
++                            kv_cache_tensor.size / 1024**2,
++                            k_tensor_size / 1024**2,
++                            v_tensor_size / 1024**2,
++                            alignment,
++                            self.device,
++                        )
+ 
+                     if self.use_sparse and dsa_k_tensor_size is not None:
+                         if current_sparse_li_c8:
+@@ -4677,6 +5084,20 @@ class NPUModelRunner(GPUModelRunner):
+                     elif self.use_sparse and current_sparse_sfa_c8:
+                         kv_caches[layer_name] = (k_cache,)
+                     else:
++                        # [KVC][L1] 组内首层打一次: reshape 成最终 bf16 布局(K/V 分离, block_id=dim0)
++                        if layer_name == group.layer_names[0]:
++                            logger.info(
++                                "[KVC][L1] vllm-ascend _reshape_kv_cache_tensors: "
++                                "%s (本组 %d 层同形) -> K_cache shape=%s dtype=%s / "
++                                "V_cache shape=%s dtype=%s, device=%s (K/V 分离布局)",
++                                layer_name,
++                                len(group.layer_names),
++                                tuple(k_cache.shape),
++                                k_cache.dtype,
++                                tuple(v_cache.shape) if v_cache is not None else None,
++                                v_cache.dtype if v_cache is not None else None,
++                                k_cache.device,
++                            )
+                         kv_caches[layer_name] = (k_cache, v_cache)
+                 elif isinstance(current_kv_cache_spec, MambaSpec):
+                     raw_tensor = kv_cache_raw_tensors[layer_name]
+@@ -4711,10 +5132,28 @@ class NPUModelRunner(GPUModelRunner):
+                         tensor = raw_tensor[start_idx:target_idx].view(dtype).view(target_shape)
+                         start_idx = target_idx
+                         state_tensors.append(tensor)
++                    # [KVC][L1] mamba 组状态视图: 每 slot(state) 一整套状态张量, block_id=dim0=状态槽号
++                    logger.info(
++                        "[KVC][L1] vllm-ascend _reshape_kv_cache_tensors[mamba]: "
++                        "%s (本组 %d 层同形) -> states(spec)=%s -> slot张量 shape=%s dtype=%s, "
++                        "num_blocks=%d, page_size=%d B = %.2f MiB, device=%s "
++                        "(conv/ssm 与 attn K/V 共用 raw 物理页, 页内三视图布局, 各组块表独立)",
++                        layer_name,
++                        len(group.layer_names),
++                        [tuple(int(x) for x in s) for s in current_kv_cache_spec.shapes],
++                        [tuple(int(x) for x in t.shape) for t in state_tensors],
++                        [str(t.dtype) for t in state_tensors],
++                        num_blocks,
++                        current_kv_cache_spec.page_size_bytes,
++                        current_kv_cache_spec.page_size_bytes / 1024**2,
++                        state_tensors[0].device if state_tensors else self.device,
++                    )
+                     kv_caches[layer_name] = state_tensors
+                 else:
+                     raise ValueError("Unknown KV cache spec type.")
+ 
++        # [KVC][L1] 物理侧分配完成
++        logger.info("[KVC][L1] " + "=" * 16 + " 物理侧 KV Cache 分配完成(hybrid) " + "=" * 16)
+         return kv_caches
+ 
+     def may_reinitialize_input_batch(self, kv_cache_config: KVCacheConfig) -> None:

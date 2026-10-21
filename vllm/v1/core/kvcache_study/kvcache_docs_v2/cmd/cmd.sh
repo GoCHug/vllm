@@ -25,3 +25,10 @@ itask create --name gggtest3 \
 --model hcr.meta-guian02.guian.hw-a3.local/aistudio/modelhub_41700011_qwen3.5-4b:112600047_20260303111458 \
 --4card \
 -t a3
+
+
+itask create --name gggtest4 \
+--image hcr.meta-guian02.guian.hw-a3.local/antsys/vllm:v0.23.0-a3-openeuler-20260818163431_aarch64 \
+--model hcr.meta-guian02.guian.hw-a3.local/aistudio/modelhub_41900013_qwen3.5-0.8b:112800048_20260304125902 \
+--4card \
+-t a3

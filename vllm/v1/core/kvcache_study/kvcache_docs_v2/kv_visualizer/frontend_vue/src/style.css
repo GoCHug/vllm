@@ -218,3 +218,99 @@ canvas.mainheat{border:1px solid var(--line);border-radius:6px;image-rendering:p
 .diffrow b{color:var(--txt)}
 .diff-ok{color:var(--ok)}
 .diff-bad{color:var(--fail)}
+
+/* ================= qwen35 hybrid 场景(qwen35.js 第五场景) ================= */
+.q35nan{color:var(--fail);font-weight:700}
+.q35rowfail>td{background:rgba(248,113,113,.07)}
+.q35bcol{color:var(--fail);font-weight:700}
+.q35grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px}
+.q35t td{padding:2px 4px;font-size:11px}
+.q35v{min-width:30px;text-align:center}
+.q35x{background:rgba(248,113,113,.16);color:var(--fail);font-weight:700}
+.q35grp{display:inline-block;margin-left:3px;padding:0 4px;border-radius:4px;background:rgba(56,189,248,.14);color:var(--acc);font-size:9px}
+/* 池三段缩略条 */
+.q35poolbar{display:flex;gap:3px;margin:6px 0 10px;font-size:10.5px;color:var(--dim)}
+.q35seg{border:1px solid var(--line);border-radius:4px;padding:4px 6px;text-align:center}
+.s-c{flex:0 0 15%;background:rgba(167,139,250,.12)}
+.s-k{flex:1 0 44%;background:rgba(56,189,248,.08);border-color:rgba(56,189,248,.35)}
+.s-v{flex:0 0 20%;background:rgba(52,211,153,.08)}
+/* K≡ssm 共享段几何网格 */
+.q35geo{display:grid;grid-template-columns:150px 1fr;gap:6px 8px;margin-bottom:8px}
+.q35rowlbl{font-size:10.5px;color:var(--dim);text-align:right;padding:2px 2px;line-height:1.35;align-self:center}
+.q35row{display:flex;gap:3px}
+.q35cell{flex:1 1 0;min-height:36px;border:1px dashed var(--line);border-radius:4px;font-size:10px;color:var(--faint);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.q35cell span{position:relative;z-index:2;color:var(--txt);font-weight:600}
+.q35cell.own{border:1px solid rgba(70,130,180,.55);background:rgba(70,130,180,.30)}
+.q35cell.own span{color:#cfe4f5}
+.q35cell.crushed{border:1px solid var(--fail);background:repeating-linear-gradient(45deg,rgba(248,113,113,.18) 0 6px,rgba(248,113,113,.38) 6px 12px)}
+.q35pop{position:absolute;top:1px;right:4px;color:var(--fail);font-size:11px;z-index:2}
+.q35cell.kmine{border:1px solid #4ca878;background:rgba(76,168,120,.35)}
+.q35cell.kpoll{border:1px solid var(--fail);background:repeating-linear-gradient(-45deg,rgba(248,113,113,.18) 0 8px,rgba(248,113,113,.42) 8px 16px)}
+.q35cell.kpoll span,.q35cell.kmine span{color:#e9fbf2}
+.q35cov{position:absolute;left:0;top:0;bottom:0;background:rgba(245,194,107,.8);z-index:1}
+.q35axc{flex:1 1 0;align-self:center;text-align:center;font-size:9px;color:var(--faint)}
+/* toggle + 解说 + 写序时间线 */
+.q35toggle{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 10px}
+.q35toggle .btn.on{border-color:var(--acc);color:var(--acc);background:rgba(56,189,248,.12)}
+.q35note{font-size:11.5px;color:var(--dim);line-height:1.55;flex:1;min-width:280px}
+.q35steps{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:8px;font-size:11.5px;color:var(--txt)}
+.q35n{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:1px solid var(--acc);border-radius:50%;color:var(--acc);font-size:10px;font-weight:700;flex:0 0 auto}
+.q35n3{border-color:var(--fail);color:var(--fail)}
+
+/* ===== q35 逐步填充流程卡(q35flow.js · 2026-10-21 新增) ===== */
+.q35fctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 8px}
+.q35fctrl .btn:disabled{opacity:.4;cursor:not-allowed}
+.q35fbsz{display:inline-flex;gap:6px}
+.q35fbsz .btn.on{border-color:var(--acc);color:var(--acc);background:rgba(56,189,248,.12)}
+.q35fbanner{font-size:12.5px;margin:2px 0 6px;line-height:1.6;min-height:20px}
+.q35fdesc{font-size:11.5px;color:var(--dim);margin-bottom:8px;line-height:1.55}
+.q35fwrap{display:flex;flex-direction:column;gap:7px}
+.q35frow{display:grid;grid-template-columns:88px .78fr 1.55fr 1.55fr;gap:6px;align-items:stretch;
+  border:1px solid transparent;border-radius:8px;padding:4px 6px;background:var(--bg2)}
+.q35frow.q35frowcur{border-color:var(--gold)}
+.q35fpool{font-family:var(--mono);font-size:11px;color:var(--gold);display:flex;flex-direction:column;justify-content:center;line-height:1.3}
+.q35fpool .q35fl{color:var(--faint);font-size:9px;font-family:var(--mono)}
+.q35fseg{display:flex;flex-direction:column;gap:3px;min-width:0}
+.q35fsgh{font-size:9.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.q35fsgh b{color:var(--dim)}
+.q35fcells{display:flex;gap:3px}
+.q35fc{flex:1 1 0;min-height:24px;border:1px solid var(--line);border-radius:4px;font-family:var(--mono);font-size:9.5px;color:var(--faint);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.q35fc.q35fdots,.q35fc.q35fk-idle{border-style:dashed;flex:0 0 20px}
+.q35fc.q35fwm{background:rgba(70,130,180,.34);border-color:rgba(70,130,180,.6);color:#cfe4f5}
+.q35fc.q35fwa{background:rgba(76,168,120,.35);border-color:#4ca878;color:#e9fbf2}
+.q35fc.q35fcrush{background:repeating-linear-gradient(45deg,rgba(248,113,113,.18) 0 5px,rgba(248,113,113,.40) 5px 10px);border-color:var(--fail);color:#fecaca}
+.q35fc.q35fnan{background:rgba(248,113,113,.25);border-color:var(--fail);color:var(--fail);font-weight:700}
+/* q35 v2(48 步版 2026-10-21): conv 小格 + decode 读标记(R) */
+.q35fc.q35fcsm{flex:0 0 26px;min-height:20px;font-size:9px}
+.q35fc.q35fread{outline:1.5px dashed var(--acc);outline-offset:-1px}
+.q35fc.q35fread::after{content:"R";position:absolute;top:0;right:2px;font-size:8px;color:var(--acc);font-weight:700}
+
+/* ===== q35 v3(2026-10-21 单行轨道+浮块): 每池 3 段各一行, 底格等分, K(1)/V(1) 浮块宽度=block_size 倍增 ===== */
+.q35ftrack{position:relative;display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;min-height:22px;background:var(--bg2)}
+.q35fts{flex:1 1 0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9px;color:var(--faint);border-right:1px dashed var(--line);position:relative;min-height:22px}
+.q35fts:last-child{border-right:none}
+.q35fts.q35fwm{background:rgba(70,130,180,.34);color:#cfe4f5}
+.q35fts.q35fcrush{background:repeating-linear-gradient(45deg,rgba(248,113,113,.18) 0 5px,rgba(248,113,113,.40) 5px 10px);color:#fecaca}
+.q35fts.q35fcur{outline:2px solid var(--gold);outline-offset:-2px;z-index:4}
+.q35fts.q35fread{outline:1.5px dashed var(--acc);outline-offset:-1.5px}
+.q35fts.q35fread::after{content:"R";position:absolute;top:0;right:2px;font-size:8px;color:var(--acc);font-weight:700}
+/* K(1)/V(1) 浮块: 绝对定位, left/width 由 bsz 决定(1024=20% / 2048=40%) */
+.q35fkabs{position:absolute;top:1px;bottom:1px;z-index:3;display:flex;align-items:center;justify-content:center;border-radius:4px;font-family:var(--mono);font-size:9.5px;font-weight:700;border:1px solid;cursor:default;text-shadow:0 0 3px rgba(0,0,0,.8)}
+.q35fkabs.q35fwa{background:rgba(76,168,120,.45);border-color:#4ca878;color:#e9fbf2;box-shadow:0 0 6px rgba(76,168,120,.5)}
+.q35fkabs.q35fcrush{background:repeating-linear-gradient(45deg,rgba(248,113,113,.30) 0 6px,rgba(248,113,113,.58) 6px 12px);border-color:var(--fail);color:#fecaca;box-shadow:0 0 7px rgba(248,113,113,.55)}
+.q35fkabs.q35fnan{background:rgba(248,113,113,.34);border-color:var(--fail);color:var(--fail)}
+.q35fkabs.q35fcur{outline:2px solid var(--gold);outline-offset:1px;animation:q35fpulse 1s ease-out infinite}
+.q35fkabs.q35fread{outline:1.5px dashed var(--acc);outline-offset:1px}
+.q35fkabs.q35fread::after{content:"R";position:absolute;top:-1px;right:2px;font-size:8px;color:var(--acc);font-weight:700}
+.q35fkabs .q35fbite{position:absolute;font-size:11px;color:#f59e0b;font-style:normal;text-shadow:0 0 2px #000;z-index:5}
+.q35fkabs .q35fbite.bf{left:3px;top:-2px}
+.q35fkabs .q35fbite.bb{right:3px;bottom:-3px}
+.q35fbite{position:absolute;bottom:0;right:2px;color:#f59e0b;font-size:10px;text-shadow:0 0 2px #000}
+.q35fc.q35fcur{outline:2px solid var(--gold);animation:q35fpulse 1s ease-out infinite}
+@keyframes q35fpulse{0%{box-shadow:0 0 0 0 rgba(245,194,107,.55)}100%{box-shadow:0 0 0 7px rgba(245,194,107,0)}}
+.q35flogbox{margin-top:10px}
+.q35flog{max-height:112px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:10.5px}
+.q35flev{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.q35flev.q35flevw{color:var(--fail)}
+.q35ft{display:inline-block;min-width:14px;margin-right:6px;text-align:center;border:1px solid var(--line);border-radius:3px;color:var(--dim)}
+.q35ftw{border-color:var(--fail);color:var(--fail);background:rgba(248,113,113,.12)}
