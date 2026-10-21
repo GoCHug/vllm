@@ -1,5 +1,5 @@
 diff --git a/vllm_ascend/worker/model_runner_v1.py b/vllm_ascend/worker/model_runner_v1.py
-index 70ef1d79a..aa7c74c22 100644
+index 70ef1d79a..873d4d6f2 100644
 --- a/vllm_ascend/worker/model_runner_v1.py
 +++ b/vllm_ascend/worker/model_runner_v1.py
 @@ -2334,6 +2334,10 @@ class NPUModelRunner(GPUModelRunner):
@@ -13,7 +13,7 @@ index 70ef1d79a..aa7c74c22 100644
              if not self.broadcast_pp_output:
                  # Common case.
                  if not get_pp_group().is_last_rank:
-@@ -2400,6 +2404,383 @@ class NPUModelRunner(GPUModelRunner):
+@@ -2400,6 +2404,488 @@ class NPUModelRunner(GPUModelRunner):
              deferred_state_corrections_fn()
          return None
  
@@ -121,12 +121,109 @@ index 70ef1d79a..aa7c74c22 100644
 +                if st is None:
 +                    continue
 +                st["written"] += int(ntok)
++                # v1.4 STEP-TRACE: 每 forward 后逐层读真实视图统计(写入/基线/NaN 墨迹)
++                self._kvc_trace(rid, st, ntok)
 +                if not st["done"] and st["written"] >= st["final"]:
 +                    st["done"] = True
 +                    self._kvc_kv_save(rid, st, "TERM")
 +        except Exception as e:  # 追踪绝不影响服务
 +            logger.info("[KVC][KVS] _kvc_rel_snapshot exception: %s (%s)", e,
 +                        traceback.format_exc().strip().splitlines()[-1])
++
++    def _kvc_trace(self, rid, st, ntok) -> None:
++        """v1.4 STEP-TRACE: 每 forward 后逐层读绑定视图真实小统计与
++        (前 2 fwd)真实小窗 —— attn 写区/基线/NaN + mamba state + 跨组探针。"
++"""
++        try:
++            import os
++            import torch as _t
++
++            def _r(x):
++                f = x.float()
++                return None if bool(_t.isnan(f).any()) else round(float(f.pow(2).mean().sqrt()), 5)
++
++            def _n(x):
++                return int(_t.isnan(x.float()).sum())
++
++            kv_caches = getattr(self, "kv_caches", None)
++            attn_groups = getattr(self, "attn_groups", None) or []
++            blocks_all = st.get("blocks") or []
++            if not kv_caches or not attn_groups or not blocks_all:
++                return
++            tr = getattr(self, "_kvc_tr", None)
++            if tr is None:
++                tr = self._kvc_tr = {"steps": [], "snap": [], "n": 0}
++            fwd = tr["n"]; tr["n"] += 1
++            ph = "P" if st["written"] <= int(st.get("p_tok", 0) or 0) else "D"
++            fc = getattr(self.compilation_config, "static_forward_context", {}) or {}
++            step = {"fwd": fwd, "ph": ph, "ntok": int(ntok),
++                    "written": int(st["written"]), "attn": [], "mb": []}
++            snap = {"fwd": fwd, "k": [], "v": [], "c": [], "s": []}
++            SN = 2   # 真实小窗仅前 2 个 forward(prefill 完 + 首 decode)
++            for gid, agrp in enumerate(attn_groups):
++                if gid >= len(blocks_all) or not agrp:
++                    continue
++                spec = getattr(agrp[0], "kv_cache_spec", None)
++                blocks = [int(b) for b in (blocks_all[gid] or [])]
++                if not blocks:
++                    continue
++                names, kvs = [], []
++                for sub in agrp:
++                    for ln in getattr(sub, "layer_names", []) or []:
++                        mod = fc.get(ln)
++                        kvv = getattr(mod, "kv_cache", None) if mod is not None else None
++                        if kvv is None and isinstance(kv_caches, dict) and ln in kv_caches:
++                            kvv = kv_caches[ln]
++                        if kvv is not None:
++                            names.append(ln); kvs.append(kvv)
++                if not kvs:
++                    continue
++                if not isinstance(spec, MambaSpec):   # attn 组: K/V 管理块1行段
++                    bsz = int(getattr(spec, "block_size", 0) or 0)
++                    for ln, kv in zip(names, kvs):
++                        if not (isinstance(kv, (tuple, list)) and len(kv) >= 2
++                                and kv[0] is not None and kv[1] is not None
++                                and kv[0].dim() >= 2):
++                            continue
++                        kt, vt = kv[0], kv[1]
++                        ksz = int(kt.shape[1])
++                        ratio = max(1, bsz // ksz) if ksz > 0 and bsz > 0 else 1
++                        blk = blocks[0]
++                        lo, hi = blk * ratio, (blk + 1) * ratio
++                        seg, vseg = kt[lo:hi], vt[lo:hi]
++                        wr, bl = seg[:2], seg[2:]
++                        vwr, vbl = vseg[:2], vseg[2:]
++                        step["attn"].append({
++                            "krms": _r(seg), "wrms": _r(wr), "brms": _r(bl),
++                            "kn": _n(seg), "wn": _n(wr), "bn": _n(bl),
++                            "vrms": _r(vseg), "vwrms": _r(vwr), "vbrms": _r(vbl),
++                            "vn": _n(vseg), "vbn": _n(vbl)})
++                        if fwd < SN:
++                            snap["k"].append(seg.cpu().clone())
++                            snap["v"].append(vseg.cpu().clone())
++                else:                                   # mamba 组: 本 slot + 跨组探针
++                    for ln, kv in zip(names, kvs):
++                        if not (isinstance(kv, (tuple, list)) and len(kv) >= 2
++                                and kv[0] is not None and kv[1] is not None
++                                and kv[0].dim() >= 1 and kv[1].dim() >= 1):
++                            continue
++                        cv, ss = kv[0], kv[1]
++                        so = blocks[0]
++                        step["mb"].append({
++                            "crms": _r(cv[so:so + 1]), "cn": _n(cv[so:so + 1]),
++                            "srms": _r(ss[so:so + 1]), "sn": _n(ss[so:so + 1]),
++                            "prms": _r(ss[2:5]), "pn": _n(ss[2:5])})
++                        if fwd < SN and gid == 1:         # mA 组(gid1)6 层 zip 序=池序
++                            snap["c"].append(cv[so:so + 1].cpu().clone())
++                            snap["s"].append(ss[2:5].cpu().clone())
++            if step["attn"] or step["mb"]:
++                tr["steps"].append(step)
++            if fwd < SN and (snap["k"] or snap["c"]):
++                tr["snap"].append(snap)
++        except Exception as _e:
++            import traceback as _tb
++            logger.info("[KVC][KVS] STEP-TRACE exception(忽略): %s (%s)", _e,
++                        _tb.format_exc().strip().splitlines()[-1])
 +
 +    # [KVC][KVS] _kvc_kv_save: 终值归档执行(仅 TERM 触发, LATE 只告警不归档).
 +    # [KVC][KVS] hybrid 版: attn 组 K/V 块-行映射(同 kvc v2.5) + mamba 组每 slot
@@ -305,6 +402,11 @@ index 70ef1d79a..aa7c74c22 100644
 +            seg_req = sorted(set(int(b) for b in at_bt) |
 +                             {int(b) for tbl in mb_gts.values() for b in tbl})
 +
++            # v1.4 STEP-TRACE: 本请求 forward 级真实墨迹序列 + 真实小窗
++            tr_cur = getattr(self, "_kvc_tr", None) or {}
++            tr_steps = tr_cur.get("steps", [])
++            tr_snaps = tr_cur.get("snap", [])
++
 +            meta = {
 +                "schema": "kvt5-hybrid-raw",
 +                "pp": pp_rank, "tp": tp_rank, "seq": seq,
@@ -345,10 +447,13 @@ index 70ef1d79a..aa7c74c22 100644
 +                "dev": dev,
 +                "seg": {"win": seg_win, "pools": len(seg_pools)},
 +                "req_ids": seg_req,   # v1.3: 本请求使用的全部 block/slot id(扁平)
++                "trace": {"steps": len(tr_steps), "snap": len(tr_snaps)},   # v1.4
 +                "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
 +            }
 +            bundle = {"K": K_layers, "V": V_layers, "M": M_layers, "meta": meta,
-+                      "SEG": {"win": seg_win, "pools": seg_pools}}
++                      "SEG": {"win": seg_win, "pools": seg_pools},
++                      "TRACE": {"steps": tr_steps, "snap": tr_snaps}}
++            self._kvc_tr = None   # v1.4: 归档消费后重置, 避免串下一请求
 +
 +            # 开始横幅(同步): 声明保存对象 —— 谁(worker/dev)、保存文件(先行说明)、
 +            # 张量内容(attn K/V 双池 + mamba 状态张量, 每块 shape、层×块/slot)
@@ -397,7 +502,7 @@ index 70ef1d79a..aa7c74c22 100644
      @torch.inference_mode()
      def sample_tokens(
          self, grammar_output: "GrammarOutput | None"
-@@ -4093,6 +4474,8 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4093,6 +4579,8 @@ class NPUModelRunner(GPUModelRunner):
              dict[str, tuple(torch.Tensor, torch.Tensor)] A map between layer names
              to their corresponding memory buffer for K cache and V cache.
          """
@@ -406,7 +511,7 @@ index 70ef1d79a..aa7c74c22 100644
          # init kv cache tensors
          kv_cache_raw_tensors: dict[str, torch.Tensor | torch.Tensor | None | None] = {}
          # prefill disaggregation need the addr of cache tensor be aligned with 2M
-@@ -4130,6 +4513,17 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4130,6 +4618,17 @@ class NPUModelRunner(GPUModelRunner):
                      for layer_name_inner in kv_cache_tensor.shared_by:
                          # shared the kvcache for all shared layers
                          kv_cache_raw_tensors[layer_name_inner] = tensor
@@ -424,7 +529,7 @@ index 70ef1d79a..aa7c74c22 100644
                  elif "attn" in layer_name and self.use_compress and layer_name not in kv_cache_raw_tensors:
                      if self.vllm_config.kv_transfer_config is None:
                          tensor = torch.zeros(kv_cache_tensor.size,
-@@ -4253,6 +4647,19 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4253,6 +4752,19 @@ class NPUModelRunner(GPUModelRunner):
                              v_tensor_size,
                              alignment,
                          )
@@ -444,7 +549,7 @@ index 70ef1d79a..aa7c74c22 100644
  
                      if self.use_sparse and dsa_k_tensor_size is not None:
                          if current_sparse_li_c8:
-@@ -4677,6 +5084,20 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4677,6 +5189,20 @@ class NPUModelRunner(GPUModelRunner):
                      elif self.use_sparse and current_sparse_sfa_c8:
                          kv_caches[layer_name] = (k_cache,)
                      else:
@@ -465,7 +570,7 @@ index 70ef1d79a..aa7c74c22 100644
                          kv_caches[layer_name] = (k_cache, v_cache)
                  elif isinstance(current_kv_cache_spec, MambaSpec):
                      raw_tensor = kv_cache_raw_tensors[layer_name]
-@@ -4711,10 +5132,28 @@ class NPUModelRunner(GPUModelRunner):
+@@ -4711,10 +5237,28 @@ class NPUModelRunner(GPUModelRunner):
                          tensor = raw_tensor[start_idx:target_idx].view(dtype).view(target_shape)
                          start_idx = target_idx
                          state_tensors.append(tensor)

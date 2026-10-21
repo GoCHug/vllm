@@ -305,6 +305,10 @@ canvas.mainheat{border:1px solid var(--line);border-radius:6px;image-rendering:p
 .q35fkabs .q35fbite{position:absolute;font-size:11px;color:#f59e0b;font-style:normal;text-shadow:0 0 2px #000;z-index:5}
 .q35fkabs .q35fbite.bf{left:3px;top:-2px}
 .q35fkabs .q35fbite.bb{right:3px;bottom:-3px}
+
+/* ===== q35 卡⑦ 真实数据回放(q35real.js · 2026-10-21 08 v1.4 STEP-TRACE 实采) ===== */
+.q35rrow .q35fts{font-size:8.5px}
+.q35fts.q35rcrush{background:repeating-linear-gradient(45deg,rgba(248,113,113,.15) 0 5px,rgba(248,113,113,.38) 5px 10px);color:#fecaca}
 .q35fbite{position:absolute;bottom:0;right:2px;color:#f59e0b;font-size:10px;text-shadow:0 0 2px #000}
 .q35fc.q35fcur{outline:2px solid var(--gold);animation:q35fpulse 1s ease-out infinite}
 @keyframes q35fpulse{0%{box-shadow:0 0 0 0 rgba(245,194,107,.55)}100%{box-shadow:0 0 0 7px rgba(245,194,107,0)}}

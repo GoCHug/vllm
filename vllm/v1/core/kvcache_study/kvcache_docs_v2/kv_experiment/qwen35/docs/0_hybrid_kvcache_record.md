@@ -34,13 +34,17 @@
 `patch_mamba_config.py` 的矫正条件 `<` 改 `!=`——2048 不再被放行，强制拉回 1024。
 
 **可视化**：三轮 A/B/C 已做成 kv_visualizer **第五场景「Hybrid 混合 · qwen35」**（2026-10-21，
-六卡：实验画框 / 轮次对照 / **K≡ssm 池几何 1024↔2048 toggle 主视觉** / **④ 逐步填充流程**（prefill 24 步 +
+七卡：实验画框 / 轮次对照 / **K≡ssm 池几何 1024↔2048 toggle 主视觉** / **④ 逐步填充流程**（prefill 24 步 +
 decode 24 步 = 48 步·每步走过一层填/读写一个块；6 池各一行，每池 3 条单行轨道，K≡ssm 轨道 = ssm 块底格
 （恒 1MiB/格）+ K(1) 浮块宽度随 block_size 倍增——**1024=1 格宽≡ssm 块宽·画成一样大·不覆盖；2048=2 格宽
 =2×ssm·整段覆盖 ssm(2)(3)**；V(1) 浮块同倍宽但 V 段独占不撞；decode **先读后写**[蓝R=读·金框=写]；
-2048 全链演示 覆盖 → decode 反咬 K → attn 读 K NaN 乱码；1024 全绿零覆盖）/ 逐层统计三轮并排 / 根因实证表；数据由
-`backend_fastapi/lib/exporter.py::export_qwen35` 从本地三轮 .pt 直算 + 6 项导出自检）。启动命令见 **§9** 末，
-设计文档见 `kv_visualizer/docs/design-2026-10-21-qwen35-scenario.md` 与 `design-2026-10-21-q35-writeflow.md`。
+2048 全链演示 覆盖 → decode 反咬 K → attn 读 K NaN 乱码；1024 全绿零覆盖）/ **⑤ 真实数据逐步回放**（紧邻卡④ 下方对照；08 v1.4 STEP-TRACE · gggtest4 J/K 双轮实采：
+每 forward 逐层真实统计步进回放 + SIM↔REAL 对账板——**判据一致 ✅**：J 轮 10 步全绿=SIM 零覆盖；K 轮
+prefill 即破零 ✕2030×6 池 + decode 起 pool1-5 ✕全NaN = SIM 2048 必炸，且实测检出早于层序推演
+[未写区残留 ssm fp32 位型]）/ 逐层统计三轮并排 / 根因实证表；
+数据由 `backend_fastapi/lib/exporter.py::export_qwen35` 从本地三轮 .pt + `tensors/step1024|step2048` TRACE
+直算 + 8 项导出自检）。启动命令见 **§9** 末，设计文档见 `kv_visualizer/docs/design-2026-10-21-qwen35-scenario.md`
+与 `design-2026-10-21-q35-writeflow.md`、`design-2026-10-21-q35-real-tensor-verify.md`。
 
 ---
 
@@ -554,6 +558,32 @@ class MambaManager(SingleTypeKVCacheManager):
   3. **V 段 pool-1 也全 NaN**：C 段并非独善其身（旧 B 轮单看 V 只见轻度失真）
 - 产物：`tensors/seg2048/req1_806f4449/` + `logs/qwen35_abnormal_runI.log`（容器）
 
+### 5.10 轮 J：1024 TRACE 逐步真实实采 — 2026-10-21（gggtest4, 08 v1.4）
+
+- 配置：start_normal（1024 基线, 08 补丁升级 v1.4 STEP-TRACE）——响应 `1+14=15`（fingerprint 95daf0c5）✓
+- **v1.4 STEP-TRACE 落地**（fix_08_v14.py 五式：rel_snapshot (d) 循环每 forward 钩子 + `_kvc_trace`
+  方法[6 attn 层 K/V 块窗 写区/基线/NaN + 18 mamba 层 state + 跨组探针 ss(2:5)] + bundle"TRACE"）；
+  patch 工件升级 601 行（md5 bbe1f4a7），归档 236.8 MiB（kvt5 全量 + SEG + TRACE steps×10 + snap×2）
+- **真实步尺**：10 forward = 1 prefill（ntok=121, 24 层一次性）+ 9 decode（每 1 token; TERM@written=130）
+- **逐步判定 ✅ 全绿**：每 forward 每 attn 层 K 窗 NaN=0 / 写区 wrms≈0.96 / 基线 brms=0.0（新块零基线）；
+  mamba 18 层 state 全有效；探针 prms≈0.0185 全程平稳（3 slot 联合窗零检出）
+- 产物：`tensors/step1024/kv_pp0tp0.pt`（237 MiB）+ `qwen35_step1024.log` + `logs/curl_resp.json`(tag J)
+
+### 5.11 轮 K：2048 TRACE 逐步污染实采 — 2026-10-21（gggtest4, 08 v1.4）
+
+- 配置：start_abnormal(2048) 无修复——响应 `1!!!!!!!!!`（fingerprint a86348cd）✓
+- 归档 368.8 MiB（TRACE steps×10 + snap×2, 2048 双大窗）
+- **逐步污染链（真实 forward 时序首次实证, 可视化卡⑦回放）**：
+  1. **prefill 完成即破零**（新时序发现, 早于 SIM 层序推演的 decode 阶段）：forward 0 后 6 attn 层
+     K 窗 kn=1859~2030（写区 wn=138 + 基线 bn=1892）——K(1) 自写 121 KiB 干净，但 K 窗未写区
+     ≈135 KiB+ 残留 L0/L1 写入的 ssm fp32 位型 → bf16 解释 NaN——**B 轮"未写区基线破零"的逐步实锤**
+  2. **decode 首 token 全恶化**：forward 1 后 pool1-5 五层 K 窗 kn=1048576（块 1 整窗 16 行全 NaN）；
+     pool0 attn[0] 仅 2053 保持量级——**pool0 与 pool1-5 差异新发现**（pool0 前 3 mamba 层 L0/1/2
+     decode 更新行为与 pool1-5 不同, 待深挖, 疑与层执行序/内核写回路径相关）
+  3. **探针暴涨**：prms J 0.0185 → K prefill 后 0.2618（**14×混型**, K(1) 踩 ssm(2)(3) 实证）
+- 产物：`tensors/step2048/kv_pp0tp0.pt`（369 MiB）+ `qwen35_step2048.log`
+- 收注：itask 平台随后回收 gggtest4 Pod——全量产物已提前拉回本地（md5 af859e84 一致）, 无影响
+
 ## 6. 分析与实证
 
 ### 6.1 三轮两两对比（`compare_modes.py`）
@@ -762,8 +792,17 @@ python3 scripts/analysis/group_slots.py tensors/normal/req1_90bfa9ce/kv_pp0tp0.p
 # 日志关键行（页几何/矫正行/[KVS] 横幅三份对比）
 grep -E 'Setting attention|\[KVS\]|_reshape_kv_cache_tensors' \
     logs/qwen35_normal.log logs/qwen35_abnormal_runB.log logs/qwen35_abnormal_runC.log | head -20
-# 可视化（kv_visualizer 第五场景「Hybrid 混合 · qwen35」: A/B/C 三轮 + K≡ssm 几何 1024↔2048 toggle, §0 入口）
+# TRACE 逐步真实数据检视（v1.4 归档, §5.10/§5.11; 每 forward 逐层真实统计与探针）
+python3 - <<'EOF'
+import torch
+tr = torch.load("tensors/step2048/kv_pp0tp0.pt", map_location="cpu", weights_only=False)["TRACE"]
+print("steps:", len(tr["steps"]), "snap:", len(tr["snap"]))
+for s in tr["steps"][:3]:
+    print(f"fwd{s['fwd']} {s['ph']} ntok={s['ntok']} w={s['written']}: attn[0] kn={s['attn'][0]['kn']} prms={s['mb'][0]['prms']}")
+EOF
+# 可视化（kv_visualizer 第五场景七卡: A/B/C 终态 + K≡ssm 几何 toggle + ④ 逐步填充(SIM 48 步)
+#   + ⑦ 真实数据回放(J/K 轮 TRACE 逐 forward 实测 + SIM↔REAL 对账), §0 入口）
 cd ../../kv_visualizer/backend_fastapi && python3 main.py serve --port 8347
 #   → 浏览器 http://localhost:8347/ → tab「Hybrid 混合 · qwen35」
-#   数据由 exporter.export_qwen35 从本地三轮 .pt 直算(6 项导出自检), serve 自动重导
+#   数据由 exporter.export_qwen35 从本地三轮 .pt + step1024/step2048 TRACE 直算(8 项导出自检), serve 自动重导
 ```
