@@ -299,9 +299,157 @@ sequenceDiagram
 | ② 落库 | `set_block_hash(key)` 存入块字段 + `insert(key, block)` 写映射表 | `BlockHashWithGroupId`（持久） | `KVCacheBlock.block_hash` 与 `cached_block_hash_to_block` 映射表 |
 
 记忆口诀：**入队造纯哈希 → ① 拼临时 key 查 → ② 真正落库带 group id**。
-### 4.3 NPU 写 KV（NPUModelRunner forward）
+
+### 4.3 物理侧：从 block_id 到张量读写（NPUModelRunner forward）
+
+#### 4.3.1 一次前向内 KV 相关动作全景
 
 NPU 侧由 vllm-ascend 的 `NPUModelRunner.execute_model`（model_runner_v1.py:1950）承接调度输出，attention 层落到 `AscendAttentionBackendImpl`（attention_v1.py:397）——读写物理张量的全部是 CANN 算子：
+
+一次前向（`execute_model`）内，KV 相关动作全部发生在模型层；以一个 attention 层为例，五步相邻发生：
+
+```
+execute_model(scheduler_output)（model_runner_v1.py:1950）
+  _update_states（:2047 调用 → 定义 :729）
+  _prepare_inputs（:2097 调用 → 定义 :862）→ attn_metadata（slot_mapping / block_tables）
+  _preprocess（:2259）→ _model_forward（:2320）
+      第 1 层 … 第 N 层，每层 attention 内部依次：
+        计算 Q/K/V（模型层 qkv_proj + RoPE）
+        reshape_and_cache：按 slot_mapping 写入本步 K/V
+        FIA/PA：按 block_table 读取历史 K/V（含本步刚写入的行）
+  compute_logits（:2358）→ 只对本步要采样的位置算 logits，供后续采样
+```
+
+**写与读相邻，但不是两个阶段**：第 l 层的写入与读取在同一个 `impl.forward` 调用内完成，随后才进入第 l+1 层，N 层重复 N 次。写只覆盖本步 `total_num_scheduled_tokens` 个新 token；读覆盖该请求 `block_table` 里的全部历史块。
+
+以示例请求 R 为例：2 个新块（3/4）先清零；prefill 只对 132 个新 token 计算——`reshape_and_cache` 把它们的 K/V 写进块 3（满 128）与块 4（4/128），命中块 1/2 的 256 token K/V 不重算、不重写，FIA 算子按 block_table 把它们连同新 token 一起读出做注意力；`slot_mapping` 记录每个 token 落到哪个块的哪个 slot。
+
+#### 4.3.2 更新块表（`_update_states`）
+
+把 `SchedulerOutput` 里的 `block_ids` 落成 `block_table`（主体 `gpu_model_runner.py:1125`；NPU 前置 guard `model_runner_v1.py:729-744`）：
+
+```
+老请求   req_state.block_ids 逐组 extend 增量（gpu_model_runner.py:1370-1373）
+         input_batch.block_table.append_row(new_block_ids, req_index)（:1401）
+新/恢复  reqs_to_add → input_batch.add_request（:1436-1439，首行全量写入块表）
+收尾     condense()（:1443）→ refresh_metadata()（:1447）
+NPU 特有 KV-load-failure 回卷 guard（model_runner_v1.py:729-744）；
+         混合模型 mamba 状态事后处理 _update_states_after_model_execute（:746-787，align/all 两模式）
+```
+
+即：**新请求整行全量写入，老请求按增量追加**——正是 §4.2.3 中"全量 / 增量"下发方式的物理侧落点。
+
+#### 4.3.3 换算 slot_mapping（`_prepare_inputs`）
+
+`_prepare_inputs`（`model_runner_v1.py:862`）把 `block_table` 换算成写路径要用的 `slot_mapping`：
+
+```
+先行拷块表  block_table.commit_block_table(num_reqs)（:885）——与后续 CPU 准备重叠
+状态机      _build_attn_state（:901）：PrefillNoCache / PrefillWithCache / DecodeOnly / SpecDecoding
+slot 换算   compute_slot_mapping（:1283；PCP 布局提前在 :931）→ Triton kernel（block_table.py:326-380）
+            无 CP：slot = block_table[req, pos // block_size] * block_size + pos % block_size
+            有 CP：虚拟块按 block_size × cp_world_size 切分（:357-378），非本 rank 的偏移填 PAD_SLOT_ID
+            未调度位置（padding）填 PAD_SLOT_ID（:343-351）
+逐 KV 组    多组时逐组换算块表与 slot 并挂到 cm（:3296，函数 :3092）；
+            MTP drafter 同样取 per-group 元数据（:3303）
+NPU 特有    GDN 组用未 pad 的 query_start_loc（:3288-3293）；
+            TND 布局要求 hidden_states 首维 == actual_seq_lengths_q 末值
+            → _pad_query_start_loc_for_fia（:813）
+```
+
+slot_mapping 只覆盖本步"新计算"的 token；历史 token 不重新换算。
+
+#### 4.3.4 计算 Q/K/V
+
+```
+模型层        qkv_proj（qwen3.py:150）→ RoPE（:159）→ self.attn(q, k, v)（:160）
+              得到 q/k/v（[num_tokens, heads, head_size]）
+Attention.forward（vllm/model_executor/layers/attention/attention.py:437）
+              output = torch.empty(...)（:478）
+              query.view(-1, num_heads, head_size)（:483）
+              key/value.view(-1, num_kv_heads, head_size)（:485-488）
+              → impl.forward（direct call :501-508 / 自定义算子 :521-528）
+NPU 差异      query/key 首维是 padded 后的 num_tokens_padded；
+              真实 token 数在 attn_metadata.num_actual_tokens（model_runner_v1.py:2303）
+```
+
+计算本身不属于 KV 管理：它只产出本层 q/k/v，作为随后写入与读取的原料。
+
+#### 4.3.5 写入 KV（`reshape_and_cache`）
+
+写入有两个入口（`attention_v1.py:1430-1454`），取决于该层在 forward context 里有没有独立的 `slot_mapping`：
+
+| 入口 | 触发条件 | 调用链 |
+|---|---|---|
+| A · 单独写 | `forward_context.slot_mapping` 中含该层（`attention.py:687`） | `Attention.forward` → `unified_kv_cache_update`（:498-500 / :518-520）→ `impl.do_kv_cache_update`（`attention_v1.py:1408-1428`） |
+| B · 前向内写 | 该层无独立 `slot_mapping` | `impl.forward`（:1479）→ `key/value` 非 None → `reshape_and_cache`（:1530-1534） |
+
+两条路径最终落到同一套动作：
+
+- `key/value` 切到 `[:num_actual_tokens]`（`:1445-1446`），padding 不写
+- `DeviceOperator.reshape_and_cache`（`:1444`）→ `torch_npu._npu_reshape_and_cache(key, value, key_cache, value_cache, slot_mapping)`（`device_op.py:49-57`）
+- 按 slot 把新 K/V 分别 scatter 到 K 池、V 池的第 `block_id` 行：`slot = block_id × 128 + offset`
+- 写完 `notify_kv_cache_written`（`:1453`）——PD 分离时通知 KV 传输层"可传"
+
+#### 4.3.6 读取 KV（PA / FIA 分派）
+
+每层 `impl.forward`（`attention_v1.py:1479-1541`）内部顺序固定：
+
+```
+1 绑池   首次访问把 kv_cache[0]/[1] 固化为 key_cache / value_cache（:1519-1527；
+         DecodeOnly 时 key=value=None，仅凭双池计算）
+2 写入   见 4.3.5（:1530-1534）
+3 读取   forward_impl 分派（:1468-1475）：
+         ├ DecodeOnly + 非滑窗 + using_paged_attention → PA（:1473）
+         └ 其余 → FIA（:1475）
+```
+
+读路径的两条算子对 block_table 的消费方式不同：
+
+| 路径 | 算子（调用行） | block_table 用法 |
+|---|---|---|
+| **PA**（decode） | `_npu_paged_attention`（attention_v1.py:1371-1381） | `attn_metadata.block_tables` 作页表（:1378），按 `context_lens = seq_lens`（:1379）逐请求 gather 历史行 |
+| **FIA**（prefill/混合） | `npu_fused_infer_attention_score[_v2]`（:1283 sinks / :1303 非因果 sparse_mode=0 / :1318 滑窗 sparse_mode=4 / :1336 标准因果 sparse_mode=3） | `_get_fia_params`（:1257 → :1174）取 `attn_metadata.block_tables`（:1202 按 batch 切片）；本步新算的 K/V 以 `current_key / current_value`（:1352-1353）直读，不必先写再读 |
+| PrefillNoCache（首步无历史） | FIA 分支内处理 | 不走页表：直接用本步刚算的 K/V（:1272-1273 切片，`is_prefill_no_cache` :1355） |
+
+两条算子的实际入参（读 KV 的关键参数）：
+
+```
+PA   torch_npu._npu_paged_attention（:1371-1381）
+       query=query                                      本步 token 的 Q
+       key_cache / value_cache                          双池
+       num_kv_heads / num_heads / scale_value
+       block_table=attn_metadata.block_tables（:1378）   页表
+       context_lens=attn_metadata.seq_lens（:1379）      每请求历史长度
+       out=output（:1380）
+     图捕获时改走 full_graph_pa（:1369-1370）
+
+FIA  npu_fused_infer_attention_score[_v2]（:1283 / :1303 / :1318 / :1336）
+       query；key/value 为双池 view（_get_fia_params :1223-1231 view 成
+       [num_block, block_size, -1]）
+       block_table（PrefillCacheHit 按 batch 切片 :1202；其余取全表 :1219/:1230）
+       input_layout="TND"（:1342）
+       actual_seq_lengths=actual_seq_lengths_q（:1344）
+       actual_seq_lengths_kv（:1345；PrefillNoCache 时直接复用 q 的长度 :1197）
+       current_key / current_value（:1352-1353）——本步新算 K/V 直读，不依赖刚写回的行
+       is_prefill_no_cache（:1355）——首步无历史，block_table=None（:1194-1197）
+       sparse_mode：0 非因果（:1303）/ 3 因果（:1356）/ 4 滑窗（:1333）
+```
+
+`_get_fia_params` 按状态给出不同入参（`attention_v1.py:1174-1232`）：
+
+| attn_state | block_table | key/value | actual_seq_lengths_kv |
+|---|---|---|---|
+| PrefillNoCache | `None`（:1196） | 本步直读 | `actual_seq_lengths_q`（:1197） |
+| PrefillCacheHit | 按 batch 切片（:1202） | 双池 view 成 3D（:1204-1209） | `seq_lens_list`（:1210） |
+| DecodeOnly | 全表（:1219） | 双池 view（:1213-1218） | `seq_lens_list`（:1220） |
+| ChunkedPrefill | 全表（:1230） | 双池 view（:1223-1229） | `seq_lens_list`（:1231） |
+
+PA 的启用由 `using_paged_attention`（`attention/utils.py:104-120`）控制：投机解码直接关闭（`:105-106`，回落 FIA）；A5 设备关闭（`:107-108`）；仅当非投机、cudagraph 恰为 `FULL_DECODE_ONLY`（`:117-118`）且 decode batch 形状命中 `pa_shape_list` 注册表（`:120`）时才走 PA。因此 PA 是"decode 图模式形状命中的快路径"，其余一切（prefill、混合、滑窗、投机、未命中形状）由 FIA 兜底——本文各扩展类型的算子入口也都从 FIA 分支出发。
+
+#### 4.3.7 时序图
+
+上述动作在一次前向中的时序（从 `execute_model` 到 `sample_tokens`）：
 
 ```mermaid
 %%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
@@ -335,8 +483,6 @@ sequenceDiagram
   - 其余 → **FIA 算子** `npu_fused_infer_attention_score / _v2`（TND 布局 + `block_table` + `block_size`，:1336/:1283；滑窗走 `sparse_mode=4` 分支 :1317-1334）；encoder 侧走 `npu_fusion_attention`（:1397）
 - `block_table`（`req_to_blocks` 的 block_id 列表）作 K 池、V 池两张张量第 0 维的 fancy index，算子从 `k_cache[block_id]` / `v_cache[block_id]` 各 gather 对应行；同一 `block_id` 在全模型 32 层（每 worker 16 层）对应同一逻辑块，全套层共用一份 block_table
 - `sample_tokens` 由 **EngineCore** 调用（core.py:463），仅在 `execute_model` 未产出采样时补跑
-
-**结合请求 R**：2 个新块（3/4）先清零；prefill 只对 132 个新 token 计算——`reshape_and_cache` 把它们的 K/V 写进块 3（满 128）与块 4（4/128），命中块 1/2 的 256 token K/V 不重算、不重写，FIA 算子按 block_table 把它们连同新 token 一起读出做注意力；`slot_mapping` 记录每个 token 落到哪个块的哪个 slot。
 
 ### 4.4 ③ decode 续写（RUNNING）
 
@@ -431,7 +577,7 @@ sequenceDiagram
 |---|---|---|---|---|
 | 入队 | 4.1 | `add_request` 入 WAITING | 预计算链式哈希 `block_hashes` | 3 个满块 hash 备查 |
 | 首次调度 prefill（①②） | 4.2 | ① 前缀查找 → ② 分配物理块 → 组装 SchedulerOutput | 命中块 1/2；`allocate_slots` 四步 S1~S4：容量检查 → touch 命中块 → 新分配块 3/4 → 满块 3 入哈希 | block_table 就绪，新块待清零 |
-| NPU 写 KV | 4.3 | `execute_model` + `sample_tokens` | 清零新块 → `reshape_and_cache` 写 132 个新 token 的 K/V、FIA 按 `block_table` 读全部 388 token 上下文 | 第 1 个输出 token，→ RUNNING |
+| NPU 写 KV | 4.3 | `execute_model` + `sample_tokens` | 清零新块 → `_update_states` 建块表 → `_prepare_inputs` 换算 slot → `reshape_and_cache` 写 132 个新 token 的 K/V、FIA 按 `block_table` 读全部 388 token 上下文 | 第 1 个输出 token，→ RUNNING |
 | ③ decode 续写 | 4.4 | 每步 1 token 循环调度 | 同一套 `allocate_slots`：未满 0 块、满则 1 块（块 5），满块持续入哈希 | 130 个输出全部生成 |
 | ④ 结束释放 | 4.5 | 移出 RUNNING | `free` 逆序 5→1：`ref_cnt--` 归零才回收，带哈希进队尾、无哈希进队首 | 块归池，前缀缓存留存 |
 

@@ -313,7 +313,7 @@ class KVCacheConfig:
 
 # 中篇 · 物理侧：第 1 层的物理张量（NPU · K/V 双池）
 
-> NPU 物理侧没有自定义管理类，唯一的类型就是设备上的 **K、V 两张 `torch.Tensor` 组成的二元组**。本章只讲它的类型形态：容器、dtype、shape 与平台变体。张量如何申请、对齐、view、bind 见 [`2_start_init.md`](./2_start_init.md) §3.1；运行期由谁读写见 [`0_kvcache_arch.md`](./0_kvcache_arch.md) §5。
+> NPU 物理侧没有自定义管理类，唯一的类型就是设备上的 **K、V 两张 `torch.Tensor` 组成的二元组**。本章只讲它的类型形态：容器、dtype、shape 与平台变体。张量如何申请、对齐、view、bind 见 [`2_start_init.md`](./2_start_init.md) §3.1；运行期由谁读写见 [`3_runtime_sequence.md`](./3_runtime_sequence.md) §4.3。
 
 ## 1. 类型本体：两块 storage，三段视图
 
