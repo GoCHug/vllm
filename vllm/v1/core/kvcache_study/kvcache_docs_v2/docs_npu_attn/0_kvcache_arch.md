@@ -157,9 +157,47 @@ Scheduler（调用者）
 
 初始化完成后，第 2～5 层在引擎进程（只持有 block_id），第 1 层在 worker 进程（只持有张量），两侧没有对象引用：调度器不感知张量形状，张量也不感知调度，唯一耦合点是 `block_id == 物理张量第 0 维下标`（NPU 上 K 池、V 池各一套同序号行空间，`block_size = 128`）。
 
-## 5. 系统运行期：一条请求的 KV Cache 操作流程
+## 5. 系统运行期：一条请求的 KV Cache 生命周期
 
-运行期每个调度步，调度器"操作物理张量"只传递整数：
+启动装配完成之后，KVCache管理体系由"建"转"用"。一条请求进入系统后，便一头扎进 `schedule → execute_model → sample` 的步进循环，直到生成结束，KV Cache 与之相伴始终——循环中的"分配"每步发生在逻辑侧：Scheduler 为请求分配 block id；"读写"每步发生在物理侧：worker 收到 block table 后，对物理张量写入新 K/V、读取历史 K/V 各一次。
+
+调度器中维护两个队列——WAITING 与 RUNNING，大体对应 prefill 与 decode 两个阶段（chunked prefill 时，首个 chunk 调度成功即转入 RUNNING，剩余 prompt 在后续步内续算）。每个调度步都在共享 token budget 内，按"先 RUNNING、后 WAITING"的次序填充：
+
+```
+入队 ── 请求排进 WAITING，预计算前缀哈希链（不触碰管理对象）
+   │
+   ▼ 首调度 · prefill（仅一次）
+逻辑侧   前缀命中查询＋allocate_slots ⇒ 分得整段 prompt 的块号；
+         ★分配成功即刻转入 RUNNING（不等计算完成），块号随 SchedulerOutput 下发
+   │
+   ▼ worker 执行 · prefill
+物理侧   整段 prompt 新 K/V 按 slot 写入 K/V 池对应行 ⟶ 采样产出首 token
+   │
+   ▼ 此后每步 · decode（在 RUNNING 中循环）
+逻辑侧   每步只补 0/1 块（本步新 token），增量块号随 SchedulerOutput 下发
+物理侧   按 block table 读回此前全部 K/V＋写入本步新 K/V ⟶ 采样产出新 token
+   │
+   ├─ 未结束：⟲ 回到 decode 下一步
+   ▼ 循环与终局（EOS / max_tokens）
+释放 ── free 逆序归还：ref_cnt--，归零块回空闲队列——带哈希者受 LRU
+        保护优先复用，张量随块归池（待后续请求复用）
+```
+
+一条请求的旅程依次为：
+
+**首调度 · prefill** —— 请求排进 WAITING，等首次调度时被取出，一次性分得整段 prompt 所需的 block id；**分配成功的这一刻请求即转入 RUNNING**（不等计算完成），block id 随 `SchedulerOutput` 下发 worker。
+
+**worker 执行 · prefill** —— forward 计算中，整段 prompt 新生成的 K/V 按 slot 写入 block id 对应行的物理张量；随后采样产出首 token，prefill 完成。
+
+**此后每步 · decode** —— 调度器继续在 RUNNING 中调度该请求，每步只为本步新 token 补充 block id（通常 0 或 1 块）并下发；
+**worker 执行 · decode** —— forward 中，注意力算子按 block table 读回此前全部 token 的 K/V，本步新 token 的 K/V 写入对应 slot；采样产出新 token，一轮 decode 完成。
+
+**循环与终局** —— 请求就这样在 RUNNING 中被一步步推进，直至 EOS / max_tokens 生成结束，全部 block 归还空闲队列。
+
+值得说明的是：无论请求此刻身在 WAITING（首调度）还是 RUNNING（每步续算），调度器分配 block id 走的都是**同一套**流程——前缀命中查询收回可复用块、`allocate_slots` 补充新块。调度器眼里本没有"prefill 阶段"与"decode 阶段"之分，每个请求只是"已算 token 数在追赶待算 token 数"（源码注释原话，scheduler.py:343-351）；两个阶段的全部差别，只是本步要分配的 token 数量。
+
+
+
 
 ```
 ① 选块  Scheduler 逐请求：
@@ -173,43 +211,25 @@ Scheduler（调用者）
        → worker 追加到 InputBatch.block_table 对应行（gpu_model_runner.py:1401）
        产物：block_table[req, logical_block] = block_id（设备张量）
 
-③ 换算  block_table.compute_slot_mapping()，只给本步"新计算"的 token 生成：
+③ 换算  block_table.compute_slot_mapping()（Triton kernel），只给本步"新计算"的 token 生成：
        block_id = block_table[req, pos // block_size]
-       slot     = block_id * block_size + pos % block_size        （block_table.py:363-378）
-       产物：slot_mapping[num_actual_tokens]；未调度位置填 PAD_ID（供图模式对齐）
+       slot     = block_id * block_size + pos % block_size        （入口 block_table.py:303；kernel :326-380）
+       产物：slot_mapping[num_actual_tokens]；未调度位置填 PAD_ID（decode 图模式按填充形状对齐）
 
-④ 写入  attention 后端 reshape_and_cache(key, value, kv_cache, slot_mapping)
-       → 按 slot 把新 K/V 分别 scatter 到 K 池、V 池的第 block_id 行（attention_v1.py:1444）
+④ 写入  AscendAttentionBackendImpl.reshape_and_cache（attention_v1.py:1430）：
+       key/value 先切到 [:num_actual_tokens]，再 DeviceOperator.reshape_and_cache（:1444）
+       按 slot 把新 K/V 分别 scatter 到 K 池、V 池的第 block_id 行；
+       写完 notify_kv_cache_written（:1453）——PD 分离时此处通知 KV 传输层"可传"
 
-⑤ 读取  attention 算子以 block_table 为页表，按 block_id 逐页 gather K/V
-       （FIA / PA 的 block_table 入参，attention_v1.py:963）
+⑤ 读取  attention 算子以 block_table 为页表，按 block_id 逐页 gather K/V：
+       PA（decode）：torch_npu._npu_paged_attention（attention_v1.py:1371-1381，block_table 页表 + context_lens）
+       FIA（prefill/混合）：npu_fused_infer_attention_score[_v2]（:1283 / :1303 / :1336，block_table 入参）
 ```
 
 概括：调度器只产出一串 `block_id`，worker 把它换算成"行号 + 块内偏移"；物理张量只按行号读写，不会反向影响调度——显存不够时 `allocate_slots` 返回 `None`，等待中的请求本步跳过，运行中的请求先被抢占。
 
-### 5.1 宏观：请求状态机与两侧调用链
 
-请求由 Scheduler 在两个队列间推进。prefill 只在首次调度时执行一次、处理整段 prompt；decode 每步生成 1 个 token。二者共用同一套 step 骨架（`schedule → execute_model → sample`，内部都是"分配 slot → NPU 执行"），decode 只是规模更小并跳过前缀查找；调度器在共享 token 预算下按"先 RUNNING、后 WAITING"逐请求填充。
-
-```
-WAITING ──首次调度（prefill，一次）──▶ RUNNING ──每步 decode──▶ 生成结束 ──▶ 释放
-                                      （EOS / max_tokens）
-```
-
-分配决策全部在逻辑侧完成，产出整数 `block_id` 列表；第 1 层不在这条链上，worker 收到下发的 `block_table` 后才读写张量：
-
-```
-逻辑侧（引擎进程）· 只改元数据，不碰显存
-Scheduler → KVCacheManager(第5层) → Coordinator(第4层)
-          → FullAttentionManager(第3层) → BlockPool(第2层) → block_table
-          │ block_table 随 SchedulerOutput 下发
-          ▼
-物理侧（worker 进程 · NPU）· 只按 block_id 读写张量
-reshape_and_cache  按 slot_mapping 把新 K/V scatter 进 k_cache / v_cache
-FIA / PA 算子      按 block_table 索引历史 K/V（第 1 层）
-```
-
-### 5.2 时间线：prefill 一次，decode 循环
+### 5.1 时间线：prefill 一次，decode 循环
 
 四个阶段中，前缀查找只在 prefill 出现一次；分配 slot 与 NPU 执行每个调度步都有；释放在生成结束时做一次。
 
@@ -244,7 +264,7 @@ NPU 执行 ── 新块清零 → PA/FIA 算子读历史 K/V、reshape_and_cach
 释放 ── 逆序归还、ref_cnt--；归零才回收，按 LRU 规则入空闲队列
 ```
 
-### 5.3 空间分工：决策在逻辑侧，执行在物理侧
+### 5.2 空间分工：决策在逻辑侧，执行在物理侧
 
 - **逻辑侧（第 2～5 层）承担全部分配决策**：前缀查找、分配 slot、释放只改引用计数、哈希表与空闲队列，全程不触碰物理张量。
 - **物理侧（第 1 层）只在 NPU 执行时动张量**：worker 先清零本轮新块，`AscendAttentionBackendImpl` 再 `reshape_and_cache` 按 `slot_mapping` 把新 K/V scatter 进 K/V 双池，最后由 FIA/PA 算子按 `block_table` 索引物理行做注意力计算。
@@ -260,6 +280,67 @@ NPU 执行 ── 新块清零 → PA/FIA 算子读历史 K/V、reshape_and_cach
 | 归零回收 | 入空闲队列 | 带哈希的排到队尾受 LRU 保护，无哈希的排到队首优先复用 |
 
 前缀缓存因此能跨请求持续积累，并被后续请求复用。
+
+### 5.3 源码级：调度之后，一次模型执行内的读写链
+
+调度器只下发三样原料：新请求全量 block_ids、老请求增量 block_ids（`NewRequestData` / `CachedRequestData`，scheduler.py:898-910 / :1140）与 `num_scheduled_tokens`。`NPUModelRunner.execute_model`（model_runner_v1.py:1950）从收到 `SchedulerOutput` 到读写 K/V 双池，共三站：
+
+**A · 收单对账（`_update_states`；NPU 侧前置 guard：model_runner_v1.py:729-744，主体走主线 gpu_model_runner.py:1125）**
+
+```
+老请求    req_state.block_ids 逐组 extend 增量（gpu_model_runner.py:1370-1373）
+          input_batch.block_table.append_row(new_block_ids, req_index)（:1401）
+新/恢复   reqs_to_add → input_batch.add_request（:1436-1439，首行全量写入块表）
+收尾      condense()（:1443）→ refresh_metadata()（:1447）
+NPU 特有  KV-load-failure 回卷 guard（model_runner_v1.py:729-744）；
+          混合模型 mamba 状态事后处理 _update_states_after_model_execute（:746-787，align/all 两模式）
+```
+
+**B · 输入换算（`_prepare_inputs`，model_runner_v1.py:862）**
+
+```
+先行拷块表  block_table.commit_block_table(num_reqs)（:885）——与后续 CPU 准备重叠
+状态机      _build_attn_state（:901）：PrefillNoCache / PrefillWithCache / DecodeOnly / SpecDecoding
+slot 换算   compute_slot_mapping（:1283；PCP 布局提前在 :931）→ Triton kernel（block_table.py:326-380）
+             slot = block_table[req, pos // 128] * 128 + pos % 128；未调度位置填 PAD_SLOT_ID
+逐 KV 组    多组时逐组换算块表与 slot 并挂到 cm（:3296，函数 :3092）；
+             MTP drafter 同样取 per-group 元数据（:3303）
+NPU 特有    GDN 组用未 pad 的 query_start_loc（:3288-3293）；
+             TND 布局要求 hidden_states 首维 == actual_seq_lengths_q 末值
+             → _pad_query_start_loc_for_fia（:813）
+```
+
+**C · 逐层 attention：先写后读（`AscendAttentionBackendImpl.forward`，attention_v1.py:1479）**
+
+每层三拍，写与读在同一次 forward 内完成：
+
+```
+1 绑池   首次访问把 kv_cache[0]/[1] 固化为 key_cache / value_cache（:1519-1527；
+         DecodeOnly 时 key=value=None，仅凭双池计算）
+2 写入   key/value 非 None 时调 reshape_and_cache（:1530-1534 → 实现 :1430-1454）：
+         切 [:num_actual_tokens] 后 DeviceOperator.reshape_and_cache（:1444）
+         按 slot 把新 K/V scatter 进 K 池、V 池的第 block_id 行；
+         notify_kv_cache_written（:1453）——PD 分离时此处通知 KV 传输层"可传"
+3 读取   forward_impl 分派（:1468-1475）：
+         ├ DecodeOnly + 非滑窗 + using_paged_attention → PA（:1473）
+         └ 其余 → FIA（:1475）
+```
+
+读路径的两条算子对 block_table 的消费方式不同：
+
+| 路径 | 算子（调用行） | block_table 用法 |
+|---|---|---|
+| **PA**（decode） | `_npu_paged_attention`（attention_v1.py:1371-1381） | `attn_metadata.block_tables` 作页表（:1378），按 `context_lens = seq_lens`（:1379）逐请求 gather 历史行 |
+| **FIA**（prefill/混合） | `npu_fused_infer_attention_score[_v2]`（:1283 sinks / :1303 非因果 sparse_mode=0 / :1318 滑窗 sparse_mode=4 / :1336 标准因果 sparse_mode=3） | `_get_fia_params`（:1257 → :1174）取 `attn_metadata.block_tables`（:1202 按 batch 切片）；本步新算的 K/V 以 `current_key / current_value`（:1352-1353）直读，不必先写再读 |
+| PrefillNoCache（首步无历史） | FIA 分支内处理 | 不走页表：直接用本步刚算的 K/V（:1272-1273 切片，`is_prefill_no_cache` :1355） |
+
+**PA 的启用由注册表控制**（`using_paged_attention`，attention/utils.py:104-120）：投机解码直接关闭（:105-106，回落 FIA 兜底）；A5 设备关闭（:107-108）；仅当非投机、cudagraph 恰为 FULL_DECODE_ONLY（:117-118）且 decode batch 形状命中 `pa_shape_list` 注册表（:120）时才走 PA。工程含义：**PA 是"decode 图模式形状命中的专属快路径"，其余一切（prefill、混合、滑窗、投机、未命中形状）由 FIA 兜底**——§6 各扩展类型的算子入口也都从 FIA 分支出发。
+
+**收尾不变式**
+
+- `block_id` 是唯一的跨进程语言：调度器只发整数，worker 只认行号，两侧零对象引用（呼应 §4）；
+- 同一张 block_table，两个消费者：**读路径页表**（FIA/PA 的 block_table 入参）与**写路径换算**（slot_mapping 的唯一来源）；
+- 写依赖 slot_mapping、读依赖 block_table——一表两视图，物理张量只按行号读写，不会反向影响调度（呼应本节开头的概括）。
 
 ---
 
