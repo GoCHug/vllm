@@ -6,7 +6,7 @@
 
 | # | 主题 | 标题候选 | 实测 | 核心问题 | 招牌素材 |
 |---|---|---|---|---|---|
-| 一 | FA 骨架 | 《NPU（昇腾）上的 KV Cache 管理（一）：Full Attention 的骨架——逻辑管理、物理张量与一条请求的生命周期》 | Llama-3-8B pp2tp2 | 系统由哪些对象组成、怎么初始化、怎么调度 | 对象地图；13,291 数字闭环；启动日志对账 |
+| 一 | FA 骨架 | 《NPU（昇腾）上的 KV Cache 管理（一）：Full Attention 的骨架——逻辑管理、物理张量与一条请求的生命周期》 | Llama-3-8B pp2tp2 | 系统由哪些对象组成、怎么初始化、怎么调度 | 五层架构图；启动四步泳道；块命运 + 前缀缓存闭环（13,291 / 启动日志等数字留 §7 实验待补） |
 | 二 | 混合模型 | 《（二）混合注意力：协调器存在的理由与 block 尺寸精度陷阱》 | Qwen3.5-4B 部署 + 0.8B 三轮实验 | 多套分配规则并存时怎么初始化与调度；block 尺寸为何咬到精度 | 三级跳 16→128→1024；PR 15408 精度实验 |
 | 三 | MLA 变奏 | 《（三）MLA：自有 spec 与张量双池布局，类型管理与块池零改动》 | DeepSeek-V2-Lite TP4 | KV 压缩会推翻管理系统吗（答：只动 spec 与物理张量两个字段） | 双池 8:1、V 不落池、8.89×、三路线对照 |
 | 四 | PD 分离 | 《（四）PD 分离：KV Cache 的跨进程传输》 | 1P1D | P 算完的 KV 怎么交到 D；prefix 双开关是否解耦 | 哑请求与延迟释放；双侧调用链；四象限矩阵 |
@@ -21,64 +21,74 @@
 
 ## 第 1 章 · 第一篇《Full Attention 的骨架——逻辑管理、物理张量与一条请求的生命周期》
 
-**篇定位**：系列开篇 + 全系列零件图。以 Llama-3-8B pp2tp2（纯 FA、单组规则）为标本，把逻辑管理栈（逻辑管理器 → 协调器 → 类型管理器 → 块池）、worker 物理张量、跨进程配置对象（`KVCacheConfig`）一次立正；后续各篇只讲"扰动怎么流经"。**实测**：Llama-3-8B pp2tp2，篇幅 ~1.5 万字 + 8~9 图表。
+**篇定位**：系列开篇 + 全系列零件图。以 Llama-3-8B pp2tp2（纯 FA、单组规则）为标本，把逻辑管理栈（逻辑管理器 → 协调器 → 类型管理器 → 块池）、worker 物理张量、跨进程配置对象（`KVCacheConfig`）一次立正；后续各篇只讲"扰动怎么流经"。**实测**：Llama-3-8B pp2tp2；§1~§6 与 §8 已成稿，§7 实验、引言与结语待补；篇幅 ~1.2 万字 + 7~8 图表。
 
 ### 章节架构
 
 ```text
-第一篇《Full Attention 的骨架——逻辑管理、物理张量与一条请求的生命周期》  Llama-3-8B pp2tp2 · ~1.5 万字
+第一篇《Full Attention 的骨架——逻辑管理、物理张量与一条请求的生命周期》  Llama-3-8B pp2tp2 · ~1.2 万字
 │
-├── 0 引言（~1000）O(n²)→O(n)；HBM 三方分配（权重/激活/KV）；系列与本篇 30 秒预告
-│     全篇提问集（问句只出现在这里，正文逐章讲解式作答——读者带着问题往下读）：
-│     · 一页 32KB，怎么推出整卡恰好 13,291 块的可用容量？（第 1 章作答）
-│     · 管理代码摊开后，系统住着哪些对象、谁持有谁？（第 2 章作答）
-│     · block_id 只是引擎里的编号，怎么落到另一台进程物理张量的第 0 维行号？（第 2 章作答）
-│     · vllm serve 敲下到块池就绪，引擎与 worker 之间发生了什么？NPU 又在哪几步动手脚？（第 3 章作答）
-│     · 刚算过的前缀能直接复用吗？块从哪里来、空间不够找谁要？（第 4 章作答 · Q1/Q2）
-│     · 新算的 K/V 写进哪个显存行？注意力核又从哪里读回历史 KV？（第 4 章作答 · Q3）
-│     · 请求算完，块什么时候还回池子？前缀为什么会跨请求留下来？（第 4 章作答 · Q4）
-│     尾问收束：以上每个答案都只是"源码声称"——怎么用比特级的物理证据让它服气？→ 第五篇
-├── 1 分页 KV Cache 的三个基础问题与容量计算（~1800）
-│     1.1 碎片化→分页 block；前缀重复存储→链式哈希+引用计数；分配回收→空闲队列 LRU
-│     1.2 容量第 0 项：num_blocks = 可用显存 ÷ page_size ÷ 本 worker 层数；多卡取 min
-│     1.3 13,291 完整数字闭环（本篇招牌图）：page 32KB(TP2) → 13,291 块 →
-│         每 worker 每层 K/V 各 (13291,128,4,128) bf16 → ~170 万 KV token
-├── 2 对象地图：逻辑管理栈与物理张量（~3500 · 全系列零件图）
-│     2.1 Scheduler 的唯一调用面：allocate_slots / get_computed_blocks / free / usage
-│         全部经 KVCacheManager（bind_gpu_block_pool 一句话预告第四篇）
-│     2.2 逻辑管理栈四站下钻：KVCacheManager → KVCacheCoordinator →
-│         SingleTypeKVCacheManager → BlockPool（持有关系 + 各站 API 一图钉死；
-│         Coordinator 纯 FA 单组时直通——悬念留二篇；注册表扩展点——埋三篇）
-│     2.3 KVCacheConfig 跨进程衔接：num_blocks / kv_cache_tensors / kv_cache_groups
-│         三字段同时驱动块池与物理张量；block_id == 物理张量第 0 维行号；块 0 为
-│         null_block；引擎进程与 worker 进程零对象引用
-│     2.4 物理张量与 vllm-ascend 插件边界：kv_caches[layer] 分层张量 +
-│         AscendAttentionBackend 算子（GPU/NPU 两侧布局唯一对照点）
-│     2.5 六文件源码地图总览
-├── 3 初始化五步：vllm serve 到块池就绪（~4500 · NPU 特性主战场）
-│     3.0 进程拓扑（1 API + 1 EngineCore + N worker）+ 五步总览
-│     3.1 ① 算规格（RPC① get_kv_cache_spec：每层产出 spec；NPU 重写点一）
-│     3.2 ② 测预算（RPC② dummy forward 实测可用显存；NPUGraph 内存推迟 capture 后记账）
-│     3.3 ③ 编排配置（引擎进程 get_kv_cache_configs：同构层合并 group → num_blocks →
-│         多卡取 min → KVCacheConfig 三字段诞生）
-│     3.4 ④ 分配物理张量（RPC③ initialize_from_config：int8 字节双池申请 +
-│         calc_split_factor 按维宽拆 K/V → 纯 view 成 4D；PD 传输 +2MiB 地址对齐留白四篇）
-│     3.5 ⑤ 建逻辑侧（Scheduler 构造链：Coordinator 按分组挂类型管理器；
-│         BlockPool new 13,291 块、块 0 摘作 null_block）
-│     3.6 启动日志对账（三段真实日志 × 五步逐条对上）
-├── 4 一条请求的 KV Cache 生命周期（~4000 · 运行维 · 逐一作答引言提问集的 Q1~Q4）
-│     4.1 入队前：请求级前缀哈希链预计算（不触碰管理对象）
-│     4.2 前缀命中查询（Q1）：get_computed_blocks → find_longest_cache_hit 沿哈希链
-│         只读查询；命中块标可复用、引用计数不动
-│     4.3 块分配（Q2）：allocate_slots 逻辑栈唯一一次完整下钻
-│         （comp+new_comp+ext+new+lookahead 五分区 → 协调器计数 → 类型管理器
-│         touch 命中+弹空闲块 → 块池记账，写满块入哈希表）
-│     4.4 物理写入（Q3）：reshape_and_cache scatter 进双池；注意力核按 block_table
-│         gather 历史 KV（配置对象在算子层兑现，呼应 2.3）
-│     4.5 块释放与复用（Q4）：free 触发引用计数递减、归零回收；LRU 两队列语义（带哈希
-│         受保护 / 无哈希先复用）——前缀缓存的跨请求积累是机制的自然涌现
-│     4.6 P/R 双请求块号闭环：324 tok [1,2,3] → 520 tok [1,2]+[4,5,6]、共享 [1,2]=256 tok
-├── 5 结语与系列预告（~300）对象地图一图流复述 + 后四篇路线
+├── 0 引言（待补）30 秒前情；全篇提问集（口径见 README §4.2，问句只出现在引言）
+├── 1 为什么需要 KV Cache（~1500）
+│     1.1 自回归生成：每个新 token 都要看全部历史（attention 消费历史 / FFN 无需缓存）
+│     1.2 不缓存：历史 K/V 每步重算（"你是谁→我是小明"逐步示意；O(n) → O(n²)）
+│     1.3 KV Cache：只算新 token，历史直接复用（attention 写入 / 读取双通路）
+│     1.4 为什么只缓存 K/V，不缓存 Q（K/V 被反复引用，Q 只用一次）
+│     1.5 代价与下一步：显存换时间；CANN 三算子 reshape_and_cache / FIA / PA
+├── 2 KV Cache 如何管理（~1200）三问：怎么放 / 怎么共享 / 怎么回收
+│     2.1 PagedAttention：以 block 为最小单位（Ascend 算子核内分页 128 token）
+│         逻辑块 → block_id → 物理张量第 0 维行号，两侧零地址换算
+│     2.2 两个配套设计：逻辑/物理分离（BlockPool 只管 block_id，NPUModelRunner 一次性
+│         申请并 reshape）；前缀缓存 + 引用计数共享（链式哈希 / ref_cnt / LRU）；
+│         NPU 与 GPU 差异全部封装在物理侧（分页粒度、张量形态）
+│     2.3 从设计到实现：三者同属一条自下而上的调用链——五层架构预告
+├── 3 vLLM V1 KV Cache 管理架构（~1000）
+│     3.1 五层自下而上编号图：第 1 层物理显存在 worker 进程、第 2~5 层逻辑结构在引擎进程；
+│         唯一桥接约定 block_id == 张量行号（K 池、V 池各一套同序号行空间）
+│     3.2 Full Attention 五层表（层 / 实例名 / 职责）：KVCacheManager（第 5 层）→
+│         UnitaryKVCacheCoordinator（第 4 层）→ FullAttentionManager（第 3 层）→
+│         BlockPool + FreeKVCacheBlockQueue + BlockHashToBlockMap（第 2 层）→
+│         NPUModelRunner.kv_caches[layer] = (k_cache, v_cache)（第 1 层）
+├── 4 系统启动期：KV Cache 管理初始化（~1800）
+│     4.1 两部分总览：物理张量初始化（4 步，横跨引擎/worker 进程）+ 建逻辑管理器
+│     4.2 ① 算规格 get_kv_cache_specs() ──RPC──▶ 每层返回 1 个 FullAttentionSpec
+│     4.3 ② 测预算 determine_available_memory() ──RPC──▶ profile_run（dummy forward）
+│         产物 = 总显存 × 利用率 − 权重 − 激活（NPU 此步无图内存项）
+│     4.4 ③ 做编排 get_kv_cache_configs()：同规格层合并 group → 每 worker 算
+│         num_blocks = available_memory // page_size_bytes → 多 worker 取 min →
+│         KVCacheConfig(num_blocks, kv_cache_tensors, kv_cache_groups) 三字段诞生
+│     4.5 ④ 落张量 initialize_from_config() ──RPC──▶ 按字节申请 int8 K/V 池 → view 成
+│         后端 shape → bind 到 runner_kv_caches 与 Attention.kv_cache → 登记给 KV 传输层
+│     4.6 ⑤ 建逻辑管理器（引擎进程）：Scheduler → KVCacheManager →
+│         UnitaryKVCacheCoordinator → FullAttentionManager × 1 + BlockPool（全组共享）
+│     4.7 收束：两侧零对象引用——调度器不感知张量形状，张量不感知调度
+├── 5 系统运行期：一条请求的 KV Cache 生命周期（~1800）
+│     5.1 两阶段总览：prefill / decode 大体对应 WAITING / RUNNING；分配在逻辑侧、
+│         读写在物理侧；"入队 → 首步 prefill → 续步 decode → 结束"四行时序表
+│     5.2 prefill vs decode 参数差异表：前缀查询 / 本步 token 数 / 本步新块数 /
+│         下发字段（block_ids 全量 vs new_block_ids 增量）/ block_table 写入方式 /
+│         attn_state / 读路径算子（FIA vs PA）
+│     5.3 一次前向两侧分工全貌：Scheduler 选块（get_computed_blocks 只读 + allocate_slots
+│         四步：容量检查 → touch 命中 → 弹新块 → 满块入哈希）→ SchedulerOutput
+│         （只传整数与标量）→ NPUModelRunner（_update_states / _prepare_inputs：
+│         slot = block_id×128 + 块内偏移 / _model_forward：reshape_and_cache 写、
+│         FIA/PA 按 block_table 读 / compute_logits）
+├── 6 块的命运与前缀缓存（~2000 · 本篇招牌）
+│     6.1 块的命运：两大决定量 ref_cnt 与 LRU 队序；状态图（空闲队列 ⇄ 已入哈希 ⇄ 请求持有）；
+│         五动作表（入队预计算 / 命中 touch / 每步分配 / 结束 free / 归零回收）；
+│         三要点（ref_cnt 唯一仲裁者 / 物理显存零搬运 / 带哈希进队尾、无哈希进队首）
+│     6.2 前缀缓存命中机制
+│         6.2.1 写入：cache_full_blocks 两条件（已写满 + 已确定）；set_block_hash + insert
+│               双写；链式哈希 H(bₙ) = fn(H(bₙ₋₁), tokens(bₙ))
+│         6.2.2 查询：get_computed_blocks 沿哈希链从左到右查、遇 miss 即 break；
+│               上界 num_tokens−1；只读不改 ref_cnt；未满尾块不参与
+│         6.2.3 闭环：写入端持续供给（decode 每步也调 cache_blocks）/ 复用端 touch 零拷贝 /
+│               回收端带哈希 append 队尾、哈希条目保留 → 前缀缓存跨请求积累
+├── 7 实验（待补）Llama-3-8B pp2tp2 实测：容量数字闭环 / 启动日志对账 / P-R 双请求块号闭环
+├── 8 其他注意力类型概览（~800）一表七型：SWA / Mamba·SSM / 混合模型 / MLA /
+│     稀疏 DSA·SFA·C8 / Cross-Attention / 投机解码；列"主要差异 + 扩展落点（代码层 · NPU）"
+│     → 每型对应后四篇一处变奏
+├── 9 结语与系列预告（待补）五层一图流复述 + 后四篇路线
 └── 附录 A 环境快照（脱敏）· B 本篇源码地图（README §五锚点表本篇子集）
 ```
 
@@ -86,12 +96,16 @@
 
 | 章 | 素材 | 图表（编号篇内自增） | 数据点 |
 |---|---|---|---|
-| 0 | `docs_npu_gdn/0_kvcache_arch.md` §1/§2 | 图 1 缓存前后对比；图 2 全篇路由图 | — |
-| 1 | `0_kvcache_arch.md` §4.2、`2_start_init.md` §2.2、`kvc/README.md` §2 | 图 3 显存三方分配瀑布（13,291 回填）；图 4 num_blocks 推导链 | 13,291；(13291,128,4,128)；32KB page；~50s 就绪 |
-| 2 | `0_kvcache_arch.md` §3.3、`1_kvcache_type.md` 类型总览、`docs_gpu/`（仅 2.4 一处对照） | **图 5 对象地图**（全系列底图）：逻辑管理栈⇢配置对象⇢物理张量；图 6 一次调用侧视图；表 7 文件→类→职责 | — |
-| 3 | `2_start_init.md` 全篇、`kvc/docs/0_kvcache_e2e_record.md` §3、`4_deploy_qwen35_pp2tp2.md` §3 | **图 8 进程拓扑×五步交互泳道**（全系列底图）；图 9 NPU int8 双池→view 4D；表 10 日志×五步对照 | 三段启动日志；page_size 32KB；NPUGraph 事后记账 |
-| 4 | `3_runtime_sequence.md` 全篇、`kvc/docs/0_kvcache_e2e_record.md` §1.2 | 图 11 生命周期四阶段泳道时序（Q1~Q4）；图 12 block layout 五分区条带；图 13 P/R 双请求块号闭环 | P 324 tok / R 520 tok / 共享 256 tok |
-| 5 | 本篇自产 | 图 14 系列路线图（五篇） | — |
+| 0 | 本篇自产（复用系列路线图一幅） | — | — |
+| 1 | `docs_npu_attn/0_kvcache_arch.md` §1（成稿底稿） | 图 1 无缓存重算 O(n²)；图 2 KV Cache 写入/读取双通路 | "你是谁→我是小明" 四步；N 层再乘 N；128 token/块 |
+| 2 | `docs_npu_attn/0_kvcache_arch.md` §2、`1_kvcache_type.md` 上篇、`3_runtime_sequence.md` §4 | 图 3 PagedAttention 逻辑块 → 物理行映射 | block_size = 128；block_id == 张量第 0 维 |
+| 3 | `docs_npu_attn/0_kvcache_arch.md` §3、`1_kvcache_type.md` 类型总览 | **图 4 五层架构 + 两侧桥接**（全系列底图）；表 5 五层 × 实例名 × 职责 | 第 1~5 层；K/V 双池同序号行空间 |
+| 4 | `docs_npu_attn/2_start_init.md` 全篇、`kv_experiment/kvc/docs/0_kvcache_e2e_record.md` §3 | **图 6 启动期四步 RPC × 建逻辑管理器泳道**（全系列底图）；表 7 启动日志 × 四步对照（待补） | FullAttentionSpec；num_blocks = available // page_size；多卡取 min；int8 字节池 → view → bind |
+| 5 | `docs_npu_attn/3_runtime_sequence.md` 全篇、`kv_experiment/kvc/docs/0_kvcache_e2e_record.md` §1.2 | 图 8 运行期两侧分工全貌；表 9 prefill vs decode 参数差异 | slot = block_id×128 + 块内偏移；block_ids 全量 vs new_block_ids 增量 |
+| 6 | `docs_npu_attn/0_kvcache_arch.md` §6、`block_pool.py`（cache_full_blocks / touch / free_blocks）、`request.py` 哈希链 | 图 10 块命运状态图；图 11 前缀缓存写入/查询闭环；表 12 块五动作对照 | ref_cnt；LRU 两队列；num_tokens−1 上界；已写满 + 已确定 |
+| 7 | `kv_experiment/kvc/` 八轮产物 | 待定（容量瀑布 / 日志对账 / P-R 块号闭环） | 13,291 块；(13291,128,4,128)；~170 万 KV token；P 324 tok / R 520 tok / 共享 256 tok |
+| 8 | `docs_gpu/`（平台对照）、`docs_npu_attn/`、vllm-ascend 源码（attention_v1.py / mla_v1.py / dsa_v1.py） | 表 13 七型注意力差异与 NPU 扩展落点 | 行号锚点见附录 B |
+| 9 | 本篇自产 | 图 14 系列路线图（五篇） | — |
 
 ## 第 2 章 · 第二篇《混合注意力：协调器存在的理由与 block 尺寸精度陷阱》
 
