@@ -304,25 +304,45 @@ sequenceDiagram
 
 #### 4.3.1 一次前向内 KV 相关动作全景
 
-NPU 侧由 vllm-ascend 的 `NPUModelRunner.execute_model`（model_runner_v1.py:1950）承接调度输出，attention 层落到 `AscendAttentionBackendImpl`（attention_v1.py:397）——读写物理张量的全部是 CANN 算子：
+NPU 侧由 vllm-ascend 的 `NPUModelRunner.execute_model`（model_runner_v1.py:1950）承接调度输出，attention 层落到 `AscendAttentionBackendImpl.forward`（attention_v1.py:1479）——写物理张量最终调 `torch_npu._npu_reshape_and_cache`，读物理张量最终调 `torch_npu._npu_paged_attention` 或 `torch_npu.npu_fused_infer_attention_score`。`DeviceOperator` 是设备 adaptor 单例（`DeviceOperator = get_device_adaptor()`，device_op.py:2120）：A2/A3 解析为 `BaseDeviceAdaptor`（device_op.py:2117），A5 解析为 `A5DeviceAdaptor`（:2114）。
 
-一次前向（`execute_model`）内，KV 相关动作全部发生在模型层；以一个 attention 层为例，五步相邻发生：
+一次前向（`execute_model`）内，KV 相关动作全部发生在模型层；以一个 attention 层为例，实际调用链如下：
 
 ```
-execute_model(scheduler_output)（model_runner_v1.py:1950）
-  _update_states（:2047 调用 → 定义 :729）
-  _prepare_inputs（:2097 调用 → 定义 :862）→ attn_metadata（slot_mapping / block_tables）
+execute_model(scheduler_output)（NPUModelRunner.execute_model，model_runner_v1.py:1950）
+  _update_states（:2047 调用 → 定义 :729）      # SchedulerOutput.block_ids → block_table
+  _prepare_inputs（:2097 调用 → 定义 :862）     # → AscendMetadata（slot_mapping / block_tables）
   _preprocess（:2259）→ _model_forward（:2320）
-      第 1 层 … 第 N 层，每层 attention 内部依次：
-        计算 Q/K/V（模型层 qkv_proj + RoPE）
-        reshape_and_cache：按 slot_mapping 写入本步 K/V
-        FIA/PA：按 block_table 读取历史 K/V（含本步刚写入的行）
-  compute_logits（:2358）→ 只对本步要采样的位置算 logits，供后续采样
+      第 1 层 … 第 N 层：LlamaAttention.forward（llama.py:223）
+        self.qkv_proj(hidden_states)        QKVParallelLinear.forward（:228）
+        self.rotary_emb(positions, q, k)    RotaryEmbedding.forward（:230）
+        self.attn(q, k, v)                  Attention.forward（attention.py:437）
+          → AscendAttentionBackendImpl.forward（attention_v1.py:1479）
+            写  self.reshape_and_cache（:1532 调用 → :1430 定义）
+                → DeviceOperator.reshape_and_cache（:1444）
+                · 另一入口 do_kv_cache_update（:1408）→ 同一个 DeviceOperator.reshape_and_cache（:1422）
+                → torch_npu._npu_reshape_and_cache（device_op.py:48，BaseDeviceAdaptor）
+            读  forward_impl（:1456）二选一：
+                · DecodeOnly + 无滑窗 + using_paged_attention()
+                  → forward_paged_attention（:1363）
+                  → torch_npu._npu_paged_attention（:1371）
+                · 其余 → forward_fused_infer_attention（:1234）
+                  → _get_fia_params（:1257）取出 block_table / block_size / actual_seq_lengths_kv
+                  · sinks 非空  → torch_npu.npu_fused_infer_attention_score_v2（:1283）
+                  · 非 causal   → torch_npu.npu_fused_infer_attention_score（:1303，sparse_mode=0）
+                  · 有滑窗      → torch_npu.npu_fused_infer_attention_score（:1318，sparse_mode=4）
+                  · 默认 causal → DeviceOperator.npu_fused_infer_attention_score（:1336，sparse_mode=3）
+                                 → torch_npu.npu_fused_infer_attention_score（device_op.py:90，BaseDeviceAdaptor）
+  compute_logits（:2358）→ self.model.compute_logits(sample_hidden_states)
 ```
 
-**写与读相邻，但不是两个阶段**：第 l 层的写入与读取在同一个 `impl.forward` 调用内完成，随后才进入第 l+1 层，N 层重复 N 次。写只覆盖本步 `total_num_scheduled_tokens` 个新 token；读覆盖该请求 `block_table` 里的全部历史块。
+Llama-3-8B 无 sinks、无滑窗、causal，因此实测走到最后一条：`DeviceOperator.npu_fused_infer_attention_score` → `BaseDeviceAdaptor` → `torch_npu.npu_fused_infer_attention_score`（device_op.py:90）。
 
-以示例请求 R 为例：2 个新块（3/4）先清零；prefill 只对 132 个新 token 计算——`reshape_and_cache` 把它们的 K/V 写进块 3（满 128）与块 4（4/128），命中块 1/2 的 256 token K/V 不重算、不重写，FIA 算子按 block_table 把它们连同新 token 一起读出做注意力；`slot_mapping` 记录每个 token 落到哪个块的哪个 slot。
+A5 设备上两个底层算子换成 `torch_npu.npu_scatter_pa_kv_cache`（device_op.py:1120，`cache_mode="Norm"`）与 `A5DeviceAdaptor.npu_fused_infer_attention_score` 内的 `torch_npu.npu_fused_infer_attention_score`（device_op.py:1148），调用层级与上面一致，只是底层算子不同。
+
+**写与读相邻，但不是两个阶段**：第 l 层的 `DeviceOperator.reshape_and_cache` 与 `forward_paged_attention` / `forward_fused_infer_attention` 都在同一次 `AscendAttentionBackendImpl.forward` 调用内完成，随后才进入第 l+1 层，N 层重复 N 次。写只覆盖本步 `total_num_scheduled_tokens` 个新 token；读覆盖该请求 `block_table` 里的全部历史块。
+
+以示例请求 R 为例：2 个新块（3/4）先清零；prefill 只对 132 个新 token 计算——`DeviceOperator.reshape_and_cache`（底层 `torch_npu._npu_reshape_and_cache`）把它们的 K/V 写进块 3（满 128）与块 4（4/128），命中块 1/2 的 256 token K/V 不重算、不重写，`torch_npu.npu_fused_infer_attention_score` 按 block_table 把它们连同新 token 一起读出做注意力；`slot_mapping` 记录每个 token 落到哪个块的哪个 slot。
 
 #### 4.3.2 更新块表（`_update_states`）
 

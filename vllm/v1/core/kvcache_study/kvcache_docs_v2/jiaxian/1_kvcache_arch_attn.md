@@ -448,7 +448,251 @@ hash_to_block_map.insert(key, block)                        # 写进哈希 → �
 
 ## 7. 实验
 
+前六章的结构与流程均由源码推导得出。本章用同一轮真实实验把它们逐项对上：Llama-3-8B 在 4 卡 Ascend910 上以 PP2TP2 启动，冷缓存下发 P 请求，随后发共享前缀的 R 请求；启动期采集 172 行、运行期采集 P 61 行 / R 719 行 `[KVC]` 打点，请求结束时各 worker 另存 8 份物理 KV 归档。要回答三个问题：§4 的四步初始化在真实数值上是否闭合、§5 的一条请求是否按 S1~S4 走完、§6.2 的前缀复用是否真的对应同一批物理字节。
 
+| 项 | 值 |
+|---|---|
+| 硬件 | Ascend a3 · 4×Ascend910 · PP2TP2 |
+| 模型 | Meta-Llama-3-8B（32 层 / kv_heads 8 / TP2 下每卡 4 个 KV 头 / block_size 128） |
+| 软件 | vLLM 0.23.0 + vllm-ascend 0.23.0 |
+| 进程 | APIServer ×1 · EngineCore ×1 · Worker ×4（PP0_TP0 / PP0_TP1 / PP1_TP0 / PP1_TP1） |
+| 打点 | 174 行 `[KVC]`（vllm 155 + vllm-ascend 19，8 个文件），应用 8/8、回退后计数归零 |
+
+### 7.1 启动期：172 行日志 × 初始化四步
+
+172 行按输出位置分三段，正好覆盖 §4 的五个动作：①②③ 由 EngineCore 完成，④ 在 4 个 worker 内并行完成，⑤ 回到 EngineCore。
+
+| 日志段 | 行数 | 输出进程 | 对应 §4 | 关键产物 |
+| --- | --- | --- | --- | --- |
+| 编排段 `[CFG]` | 88 | EngineCore | ① 算规格 · ② 测预算 · ③ 做编排 | 每层 `FullAttentionSpec`；每卡可用显存；`KVCacheConfig(num_blocks=13,291)` |
+| 物理段 `[L1]` | 76 | 4 worker × 19 | ④ 落张量 | 每层 K/V int8 双池 → `(13291, 128, 4, 128)` bf16 |
+| 逻辑段 `[L2]~[L5]` | 8 | EngineCore | ⑤ 建逻辑管理器 | 13,291 个 `KVCacheBlock`，其中 13,290 个空闲 |
+
+#### 7.1.1 物理侧初始化：88 行编排 + 76 行落张量
+
+四步的数值是一条首尾相接的推导链：
+
+```
+① 算规格   4 worker × 16 层 FullAttentionSpec
+                    │
+② 测预算   最小 worker 可用 51.92 GiB（四卡 51.92 / 51.93 / 51.96 / 51.97 GiB）
+                    │
+③ 做编排   一页 = 128 token × 4 头 × 128 维 × 2 B × 2(K/V) = 262,144 B
+           num_blocks = 51.92 GiB ÷ 16 层 ÷ 262,144 B = 13,291
+             ├─ 每层 KVCacheTensor = 262,144 × 13,291 = 3,484,155,904 B（3322.75 MiB）
+             └─ 全模型 KV 容量 = 13,291 × 128 = 1,701,248 token
+                    │
+④ 落张量   每层：K int8 1661.38 MiB + V int8 1661.38 MiB（2 MiB 对齐）
+           view 零拷贝 → K_cache / V_cache = (13291, 128, 4, 128) bf16
+```
+
+**① 算规格**。`get_kv_cache_specs()` 的返回值一行读完 4 个 worker：每个 worker 16 层 `FullAttentionSpec`。PP2 按层切（PP0 两卡 `layers.0~15`、PP1 两卡 `layers.16~31`）；TP2 只切 KV 头不切层，同一 PP 段内两个 TP rank 的 spec 完全同形（`num_kv_heads=4` = 8 头 ÷ TP2）。
+
+**② 测预算**。`profile_run()` 在每张卡上跑一次 dummy forward，得到可用 KV 显存 `51.92 / 51.93 / 51.96 / 51.97 GiB`；最小值 51.92 GiB 决定后续全局块数。
+
+**③ 做编排**。32 层 spec 字段全等 → 单 group；投影到本 worker 后 `layers=16`。单块字节数与块数：
+
+```
+page_size_bytes = block_size × num_kv_heads × head_size × dtype 字节 × K/V 份数
+                = 128 × 4 × 128 × 2 B × 2 = 262,144 B（256 KiB/层/块）
+num_blocks      = 51.92 GiB ÷ 16 ÷ 262,144 B = 13,291
+KVCacheTensor   = 262,144 × 13,291 = 3,484,155,904 B = 3322.75 MiB（每层一张）
+```
+
+预算闭合：每 worker 16 张 × 3322.75 MiB = 53,164 MiB = 51.92 GiB，恰等于最小预算卡，编排无浪费。四卡 `num_blocks` 取 min 后统一为 13,291，并写回 `cache_config.num_gpu_blocks`。
+
+**④ 落张量**。4 个 worker 各自并行执行 `initialize_from_config()`，每卡 19 行 `[L1]`：
+
+- **分配**：每层 `KVCacheTensor(size=3,484,155,904)` 拆成 **K int8 1,661.38 MiB + V int8 1,661.38 MiB** 两个独立池（张量级拆分，不是最后一维拼接），`alignment=2,097,152`（2 MiB）。
+- **reshape**：int8 池经 `view(dtype).view(shape)` 零拷贝转成 `(13291, 128, 4, 128)` bf16。四维依次是 `num_blocks`（`block_id` 即 dim0 行号）、`block_size`、`num_kv_heads`、`head_dim`。
+- **布局**：K、V 各一张同形张量（NPU 的分离布局，区别于上游 GPU 的 K/V packed 单张量）。
+
+关键数值对账：
+
+| 日志字段 | 值 | 验算 |
+|---|---|---|
+| `page_size_bytes` | 262,144 B | 128 × 4 × 128 × 2 B × 2 |
+| `num_blocks` | 13,291 | 51.92 GiB ÷ 16 ÷ 262,144 |
+| `KVCacheTensor.size` | 3,484,155,904 B | 262,144 × 13,291 |
+| K 池 / V 池 | 1,661.38 MiB 各一 | size ÷ 2 |
+| `K_cache` / `V_cache` shape | `(13291, 128, 4, 128)` | dim0=块号、dim1=128、dim2=4 头、dim3=128 |
+
+物理侧落地的张量与逻辑侧即将建立的 13,291 个块消费的是**同一份 `KVCacheConfig`**，这是 `block_id == 张量行号` 能成立的前提。
+
+#### 7.1.2 逻辑侧：8 行自底向上装配
+
+物理张量就位后，EngineCore 自底向上创建五层对象，每层一条 `__init__完成` 打印，加首尾横幅共 8 行：
+
+| 序 | 层 | 组件 | 日志关键字段 |
+|---|---|---|---|
+| 1 | — | 开始横幅 | — |
+| 2 | L2 | `FreeKVCacheBlockQueue` | `num_free_blocks=13291`，伪头尾哨兵 `block_id=-1` |
+| 3 | L2 | `BlockHashToBlockMap` | `size=0`（尚未写入任何哈希） |
+| 4 | L2 | `BlockPool` | 13,291 个块；`free=13290`；`null_block=block 0`；`hash_block_size=128` |
+| 5 | L3 | `FullAttentionManager` | `group_id=0`；`scheduler_block_size=128`；`dcp×pcp=1×1` |
+| 6 | L4 | `UnitaryKVCacheCoordinator` | 单组直通，`managers=['FullAttentionManager']` |
+| 7 | L5 | `KVCacheManager` | `num_kv_cache_groups=1`；`max_model_len=8192` |
+| 8 | — | 完成横幅 | — |
+
+两个细节与运行期直接相关：
+
+- **13,291 → 13,290**：`BlockPool` 从空闲队列摘走 1 块作为 `null_block`（`block_id=0`，不承载任何 token），因此第一个可分配块是 1 号。P 请求拿到的 [1,2,3] 正是从 1 开始。
+- **单组直通**：全模型只有 1 个 Full Attention group，`UnitaryKVCacheCoordinator` 不做多组对齐，分配/释放直接下放给第 3 层。运行期日志里每个 S 子步只出现一次，原因就在这里。
+
+#### 7.1.3 原生关键行：6 行交叉对账
+
+除 `[KVC]` 外，vLLM 自身还会输出 6 行结论性日志，可作为独立口径与打点结果对账：
+
+| 原生日志（源码位置） | 值 | 与 `[KVC]` 的对账 |
+|---|---|---|
+| `Block size is set to 128 if prefix cache or chunked prefill is enabled.`（`utils.py:1404`） | 128 | 对应 L1 张量 dim1，也对应 `FullAttentionSpec.block_size` |
+| `Available KV cache memory: 51.96 GiB`（`worker.py:593`） | 51.96 | 四卡 51.92~51.97 中的一张；全量见编排段的 `determine_available_memory` |
+| `GPU KV cache size: 1,701,248 tokens`（`kv_cache_utils.py:1771`） | 1,701,248 | 13,291 × 128 |
+| `Maximum concurrency for 8,192 tokens per request: 207.67x`（`kv_cache_utils.py:1772`） | 207.67 | 1,701,248 ÷ 8,192 |
+| `init engine (profile, create kv cache, warmup model) took 11.43 s`（`core.py:369`） | 11.43 s | ② 测预算 + ③ 编排 + ④ 落张量都在其中 |
+| `Application startup complete.`（uvicorn） | 就绪标志 | P 入队紧随其后；含服务启动全程约 50 s |
+
+六行是"官方口径"，172 行是"逐步展开"：block_size、块数、总容量、并发上限、耗时逐项一致，说明打点只是把同一份数值拆开显示，未改变系统行为。
+
+### 7.2 运行期：P/R 两条请求
+
+两条请求一冷一热，共同覆盖块池的完整生命周期：
+
+| # | prompt | tokens | max_tokens | 验证目标 |
+|---|---|---|---|---|
+| P | 缓存主题短文（394 字） | **324 = 2 满 + 尾 68** | 1 | 冷缓存：分配 3 块、仅 2 个满块入哈希；请求结束逆序归队尾 |
+| R | P 全文 + 追问句（591 字） | **486 = 3 满 + 尾 102** | 35 | ① 前缀命中 2 块、第 3 个哈希断链；② prefill 补 1 满 + 1 尾；③ decode 前 26 步填尾块、步 27 跨界第 5 块 |
+
+R 的前 256 token 与 P 完全相同，因此必然命中 P 留下的块 1、2；486 落在 (384, 512) 区间内，第 4 个逻辑块始终有 102 个 token，保证 prefill 后仍有余量、decode 一定会跨界。R 的 token 数只要落在该区间，五块生命周期都成立，486 只是本轮取值。
+
+> 哈希值由服务启动时的随机种子参与计算，每次重启都会变化；下文哈希值仅用于本轮对照，链结构与块号不受影响。
+
+#### 7.2.1 P 请求：冷缓存下缓冲两个满块
+
+```
+[ENQ] 入队 hash_block_tokens: parent=NONE_HASH, tokens=128 -> BlockHash=91fa1a6ce907
+[ENQ] 入队 hash_block_tokens: parent=91fa1a6ce907, tokens=128 -> BlockHash=1bcf00b5f84f
+[L2]  前缀查找 hash=91fa1a6ce907 -> MISS
+[L4]  S1 num_tokens=324 -> 需分配 3 块
+[L5]  S1 需分配 3 块 vs 可用 13290 块 (free=13290 - reserved=0)
+[L2]  S3 BlockPool.get_new_blocks(3): popleft_n -> block_ids=[1, 2, 3], 剩余 num_free_blocks=13287
+[L3]  S4 num_tokens=324, block_size=128, 已缓存 0 块 -> 满块数 2
+[L2]  S4 insert: hash=91fa1a6ce907 <- block_id=1; hash=1bcf00b5f84f <- block_id=2
+[L5]  S4 返回 KVCacheBlocks(blocks=([1, 2, 3],))，完整 block_table=([1, 2, 3],)
+[L2]  释放 blocks=[(3, 0), (2, 0), (1, 0)]，归零回收 [3, 2, 1]，append_n -> 队尾
+```
+
+1. **入队**。`add_request` 只为满块预计算哈希：324 token 中的前两个 128 token 块各得一个哈希，首块 `parent=NONE_HASH`；尾块 68 token 不完整，不产生哈希。
+2. **前缀查找**。冷缓存中没有任何条目，第 1 个哈希即 MISS，按 §6.2.2 的规则立即 `break`，`hit_length=0`、命中块为空。
+3. **分配 S1~S4**。
+   - S1：`cdiv(324, 128) = 3` 块，对可用 13,290 块，容量充足；
+   - S2：无命中块，无需 `touch`；
+   - S3：从空闲队列队头 `popleft_n(3)` 取到 [1, 2, 3]，空闲数降为 13,287；
+   - S4：`324 // 128 = 2`，只有块 1、2 写满并入哈希表（尾块 3 为 68/128，仍在 `block_table` 中但不入表）。
+4. **写卡与终止**。prefill 一次写入 324 个 token 的 K/V；`max_tokens=1`，prefill 采样出的就是唯一输出 token，请求直接进入 TERM，没有 decode 循环。
+5. **提交与释放**。调度提交 1 次（`num_computed_tokens=324`）；`free` 按逆序 [3,2,1] 逐块 `ref_cnt--`，全部归零后由 `append_n` 追加到空闲队列**队尾**，空闲数回到 13,290。
+
+这里有两个容易混淆的取整：**分配用上取整**（324 token 需要 3 个块容纳），**入哈希用下取整**（只有 2 个完整块可入表）。尾块既占用物理行，又不参与前缀缓存。
+
+关于归队位置，本轮走的是 `SingleTypeKVCacheManager.free` → `BlockPool.free_blocks(ordered_blocks)` 的默认路径（`prepend=False`），逆序后的 [3,2,1] 整体追加到队尾，其中无哈希的尾块 3 并不单独插到队首；`prepend=True` 只用于滑窗等场景回收 scratch 块（`single_type_kv_cache_manager.py:497`、`:764`）。因此队列此时的顺序是 `[4, 5, 6, …, 3, 2, 1]`，队头仍是 4。
+
+#### 7.2.2 R 请求：复用两块 + 五块生命周期
+
+```
+[ENQ] 入队 hash: 91fa1a6ce907 → 1bcf00b5f84f → 069e6b8ba285（3 个满块）
+[L2]  前缀查找 hash=91fa1a6ce907 -> HIT block_id=1
+[L2]  前缀查找 hash=1bcf00b5f84f -> HIT block_id=2
+[L3]  前缀查找 第 3 块 MISS: hash=069e6b8ba285 -> break
+[L4]  前缀查找返回 hit_blocks=[[1, 2]], hit_length=256
+[L5]  分配进入: num_new_tokens=230(new), num_new_computed_tokens=256(new_comp)
+[L5]  S1 需分配 4 块 vs 可用 13290 块
+[L2]  S2 touch: blocks=[(1, 1), (2, 1)]（ref_cnt 各 +1）
+[L2]  S3 get_new_blocks(2): popleft_n -> block_ids=[4, 5], 剩余 num_free_blocks=13286
+[L3]  S3 需 4 块 - 已有 2 = 新分配 2 块 [4, 5]，持有 req_blocks=[1, 2, 4, 5]
+[L2]  S4 insert: hash=069e6b8ba285 <- block_id=4（map 2 -> 3）
+[L5]  S4 block_table=([1, 2, 4, 5],)
+[L5]  decode: 33 步 S1 需分配 0 块
+[L5]  步 27: num_computed_tokens=512 -> 需分配 1 块
+[L2]  S3 popleft_n -> block_ids=[6]; S4 insert: hash=bd4db0e02394 <- block_id=5（map 3 -> 4）
+[L5]  释放 block_table=([1, 2, 4, 5, 6],) -> [6, 5, 4, 2, 1]
+```
+
+1. **入队**。486 token 产生 3 个满块哈希：前两个与 P 相同，第 3 个由追问句内容决定。
+2. **前缀查找**。块 1、2 连续 HIT；第 3 个哈希 MISS 后 `break`，`hit_length = 2 × 128 = 256`。查找上界是 `num_tokens − 1 = 485`，本次未触及。
+3. **分配 S1~S4**。
+   - 进入时 `num_new_tokens = 486 − 256 = 230`，`num_new_computed_tokens = 256`；
+   - S1：486 token 共需 `cdiv(486, 128) = 4` 块，对可用 13,290 块；
+   - S2：`touch` 命中块 1、2，`ref_cnt` 各 +1，两块从空闲队列摘出（13,290 → 13,288），物理 K/V 不复制；
+   - S3：已有 2 块，再取 `4 − 2 = 2` 块，队头弹出 [4, 5]，空闲数降为 13,286；
+   - S4：`486 // 128 = 3`，已缓存 2 块，新增满块只有块 4；查找时 MISS 的哈希 `069e6b8ba285` 此时作为块 4 的 key 入表，映射表由 2 条增至 3 条。块 5 为 102/128，暂不入表。
+4. **写卡**。prefill 只重算未命中的 230 个 token，命中块 1、2 直接读取。
+5. **decode**。前 26 步逐步把块 5 从 102 填到 128，每一步 `allocate_slots` 都返回"需分配 0 块"，S1~S4 四段仍完整打印并紧跟一次调度提交。第 27 步时 `num_computed_tokens=512`，本步要写的 token 落到下一个块边界，S1 变为"需分配 1 块"，S3 从队头弹出块 6，S4 把刚填满的块 5 连同 decode 段哈希 `bd4db0e02394` 入表（映射表 3 → 4）。块表变为 `[1, 2, 4, 5, 6]`。
+6. **释放**。按逆序 [6,5,4,2,1] 逐块减计数并追加到队尾；块 3 从未属于 R，不在释放列表中。空闲数回到 13,290。
+
+两条请求的块号闭环如下：
+
+```
+P  prompt 324 tok
+   block_table = [1, 2, 3]
+   S4 入哈希表：[1, 2]（块 3 为 68/128，不入表）
+   释放 [3, 2, 1] ── append 队尾 ──▶ 队列：[4, 5, 6, …, 3, 2, 1]
+                                              ▲ 队头
+R  prompt 486 tok
+   查找 HIT [1, 2] ── touch ref_cnt 1→2 ── 零拷贝复用
+   prefill S3 popleft [4, 5]  ──▶ block_table = [1, 2, 4, 5]
+   decode 26 步填满块 5；步 27 popleft [6] ──▶ block_table = [1, 2, 4, 5, 6]
+   释放 [6, 5, 4, 2, 1] ── append 队尾
+```
+
+全程计数可独立复验：调度提交 P=1 / R=35（prefill 1 步 + 34 个写卡 decode 步；第 35 个输出 token 仅采样不写卡）；`[KVS]` 归档横幅 P=12 行（4 启用 + 4 开始 + 4 完成）/ R=8 行（4 开始 + 4 完成）；R 的 S1 汇总值为 **33×0 + 1×1 + 1×4**（33 个无块步 + 1 个跨界步 + 1 个 prefill 步）。写卡总量 520 = 486 + 34，与 R 归档的 `cov=[128,128,128,128,8]` 闭合。
+
+#### 7.2.3 归档互证：8 份 .pt 与逐位相等
+
+请求最后一次写卡完成（TERM）时，每个 worker 把该请求占用的全部物理块**整块原样**快照：每层每块 `kt[blk].cpu().clone()`，含未写槽位；快照完成后交后台线程 `torch.save`，不阻塞推理。每个请求每个 worker 只输出两行横幅，逐层逐块的粒度由 `.pt` 内的 meta 与离线查看器承载。
+
+归档规模：
+
+| 请求 | 层 × 块 | blk | cov | 每 worker 字节 | 块-行映射 |
+|---|---|---|---|---|---|
+| P | 16 × 3 | `[1, 2, 3]` | `[128, 128, 68]` | 12,611,023 B = 12.0 MiB | `group_size=16`，块号即组内每张 K/V 张量 dim0 行号 |
+| R | 16 × 5 | `[1, 2, 4, 5, 6]` | `[128, 128, 128, 128, 8]` | 21,017,419 B = 20.0 MiB | 同上 |
+
+两份归档共 2 请求 × 4 worker = 8 份 `.pt`。四维字节可验算：16 层 × 3 块 × 2 池 × 128 × 4 × 128 × 2 B = 12,582,912 B，加上 meta 开销即 12.0 MiB；R 为 16 × 5 × 2 池 × 131,072 B = 20,971,520 B，加 meta 为 20.0 MiB。
+
+```
+P 归档（8 份之一，worker PP0_TP0）
+  kv_pp0tp0.pt
+   ├─ K: [16 层][块 1,2,3]，每块 (128, 4, 128) bf16
+   ├─ V: 同构
+   └─ meta: block_table=[1,2,3], cov=[128,128,68], group_size=16
+
+R 归档
+   ├─ K/V: [16 层][块 1,2,4,5,6]
+   └─ meta: cov=[128,128,128,128,8]
+
+公共块 1、2（同一 worker、同一层、同一池）
+   P.K[layer][1] ≡ R.K[layer][1]     逐位相等
+   P.V[layer][1] ≡ R.V[layer][1]     逐位相等
+   （4 worker × 16 层 × K/V 两池；跨 worker 不比——PP 分层段、TP 切 KV 头）
+```
+
+离线互证结果：
+
+| 验证项 | 方法 | 结果 |
+|---|---|---|
+| 横幅 vs `.pt` meta | 开始横幅的 `blk` / `cov` / `group_size` 与 meta 对照 | **8/8** 一致 |
+| 横幅 vs 实际文件 | 完成横幅字节数与落盘文件大小对照 | **8/8** 一致 |
+| 公共块 `[1,2]` | 同一 worker 内 P、R 两份归档逐层逐池比较 | 4 worker × 16 层 × 2 池**逐位相等** |
+| 未写槽位 | 检查块内 coverage 之后的区域 | P 块 3 的 `[68:128]`、R 块 6 的 `[8:128]` **全零** |
+| 首块首 token | K 的前 3 个值 | `[0.5078, 0.9336, 0.9219]`，跨轮独立重跑逐位一致 |
+
+三条结论：
+
+- **前缀复用是同一批物理字节**。R 命中块 1、2 后没有复制、没有重算，归档中这两块与 P 的对应块逐位相等；`touch` 只改 `ref_cnt`，物理行从未搬动，与 §6.2.3 的描述一致。
+- **块号就是行号**。归档按 `K[layer][blk]` 直接索引即可取到该请求的块数据，无需任何地址换算；`group_size=16` 表示同一 `block_id` 在组内 16 张 K 与 16 张 V 张量上各占一行。
+- **未写槽位为零**。新建块来自空闲队列，基线为零；P 的尾块只写了 68 token、R 的第 5 块（物理块 6）只写了 8 token，其余槽位保持零值——这也反证了复用块是按原行整块读取，而非重新分配。
+
+**本章小结**。172 行启动日志把 §4 的四步数值串成闭合推导：51.92 GiB → 13,291 块 → 3,484,155,904 B/层 → 1,701,248 token，物理张量与逻辑块池消费同一份配置。780 行运行日志（P 61 + R 719）把两条请求的每个块落到具体编号：冷缓存 P 分配 3 块、只有 2 个满块入哈希；热缓存 R 命中 2 块、补 2 块、decode 第 27 步跨界取第 5 块，释放顺序与复用顺序解耦。8 份 `.pt` 则在字节层证明：前缀命中复用的就是同一批物理 KV，未写槽位保持零值。
 
 ## 8. 其他注意力类型概览
 
