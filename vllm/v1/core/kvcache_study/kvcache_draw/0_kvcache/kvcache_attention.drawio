@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e" pages="9">
     <diagram id="families_overview" name="1. 三大家族总览">
-        <mxGraphModel dx="789" dy="521" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
+        <mxGraphModel dx="1037" dy="767" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -266,17 +266,17 @@
         </mxGraphModel>
     </diagram>
     <diagram id="waYi_WR0qsoNe6gtuDCA" name="2. Attention KV 存储全景（模型 / PP2×TP2 / 分块）">
-        <mxGraphModel dx="1316" dy="869" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
+        <mxGraphModel dx="1037" dy="767" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="720" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
-                <mxCell id="p2b_a" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f9fe;strokeColor=#b9d2f0;strokeWidth=1;arcSize=2;" vertex="1" parent="1">
+                <mxCell id="p2b_a" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f9fe;strokeColor=#b9d2f0;strokeWidth=1;arcSize=2;" parent="1" vertex="1">
                     <mxGeometry x="40" y="102" width="1188" height="198" as="geometry"/>
                 </mxCell>
-                <mxCell id="p2b_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5faf4;strokeColor=#b8dcaf;strokeWidth=1;arcSize=2;" vertex="1" parent="1">
+                <mxCell id="p2b_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5faf4;strokeColor=#b8dcaf;strokeWidth=1;arcSize=2;" parent="1" vertex="1">
                     <mxGeometry x="40" y="310" width="1188" height="188" as="geometry"/>
                 </mxCell>
-                <mxCell id="p2b_c" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8f0;strokeColor=#f0c693;strokeWidth=1;arcSize=2;" vertex="1" parent="1">
+                <mxCell id="p2b_c" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8f0;strokeColor=#f0c693;strokeWidth=1;arcSize=2;" parent="1" vertex="1">
                     <mxGeometry x="40" y="508" width="1188" height="202" as="geometry"/>
                 </mxCell>
                 <mxCell id="nVT04rkdEODBYUNIr3Od-1" value="三家族 KV 存储全景：模型参数 → 单层 KV 结构 → PP2×TP2 切分 → vLLM 分块" style="text;html=1;fontSize=22;fontStyle=1;align=left;" parent="1" vertex="1">
@@ -285,16 +285,16 @@
                 <mxCell id="nVT04rkdEODBYUNIr3Od-2" value="真实模型实算：Llama-3-8B（家族 A · FullAttention）· DeepSeek V3（家族 B · MLA）· Qwen3.5 GDN（家族 C）· 每页字段均为「每层」口径" style="text;html=1;fontSize=12;align=left;fontColor=#666666;" parent="1" vertex="1">
                     <mxGeometry x="40" y="56" width="1200" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="p2h1" value="① 模型参数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#d0d0d0;fontSize=11;fontStyle=1;fontColor=#333333;arcSize=20;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                <mxCell id="p2h1" value="① 模型参数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#d0d0d0;fontSize=11;fontStyle=1;fontColor=#333333;arcSize=20;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="40" y="80" width="150" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="p2h2" value="② 单层 KV 结构（每层存什么）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#d0d0d0;fontSize=11;fontStyle=1;fontColor=#333333;arcSize=20;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                <mxCell id="p2h2" value="② 单层 KV 结构（每层存什么）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#d0d0d0;fontSize=11;fontStyle=1;fontColor=#333333;arcSize=20;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="204" y="80" width="306" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="p2h3" value="③ PP2 × TP2 切分" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#d0d0d0;fontSize=11;fontStyle=1;fontColor=#333333;arcSize=20;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                <mxCell id="p2h3" value="③ PP2 × TP2 切分" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#d0d0d0;fontSize=11;fontStyle=1;fontColor=#333333;arcSize=20;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="546" y="80" width="312" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="p2h4" value="④ vLLM 分块 · 物理页池" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#d0d0d0;fontSize=11;fontStyle=1;fontColor=#333333;arcSize=20;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                <mxCell id="p2h4" value="④ vLLM 分块 · 物理页池" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#d0d0d0;fontSize=11;fontStyle=1;fontColor=#333333;arcSize=20;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="898" y="80" width="330" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="nVT04rkdEODBYUNIr3Od-3" value="&lt;b&gt;家族 A · FullAttention&lt;/b&gt;&lt;br&gt;Llama-3-8B&lt;br&gt;&lt;br&gt;32 层 · GQA&lt;br&gt;num_heads(KV) = 8&lt;br&gt;head_dim = 128&lt;br&gt;bf16" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=middle;align=left;spacingLeft=12;spacingRight=6;fontSize=10;strokeWidth=2;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">

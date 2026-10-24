@@ -2,7 +2,7 @@
 
 > 本篇是 KV Cache 学习系列的**实战篇**：在昇腾 A3 4 卡 pod 上以 **pp2tp2** 部署 **Qwen3.5-4B** 并冒烟验证，记录全流程与关键实测数字，并把每一步启动日志证据回挂到系列文档的三侧五阶段模型上。
 >
-> 与系列前几篇的关系：前四篇主线是**纯 Full Attention**（Llama-3-8B，单 KV cache group）；Qwen3.5-4B 正是 [`0_kvcache_arch.md`](./0_kvcache_arch.md) §6 扩展表与 [`2_start_init.md`](./2_start_init.md) §1 示例表中的 **GDN（Gated DeltaNet，线性注意力混合模型）代表**——本篇等于给"混合模型（Full + Mamba/GDN）多 KV group"这条扩展路线补上一次真实部署走查。混合相关的架构结论直接引用 [`1_kvcache_type.md`](./1_kvcache_type.md) §4.3 与 [`2_start_init.md`](./2_start_init.md) 扩展节，不再复述代码细节。
+> 与系列前几篇的关系：前四篇主线是**纯 Full Attention**（Llama-3-8B，单 KV cache group）；Qwen3.5-4B 正是 [`0_kvcache_arch.md`](./0_kvcache_arch.md) §6 扩展表与 [`1_start_init.md`](./1_start_init.md) §1 示例表中的 **GDN（Gated DeltaNet，线性注意力混合模型）代表**——本篇等于给"混合模型（Full + Mamba/GDN）多 KV group"这条扩展路线补上一次真实部署走查。混合相关的架构结论直接引用 [`1_kvcache_type.md`](../../kvcache_docs_v2/1_kvcache_type.md) §4.3 与 [`1_start_init.md`](./1_start_init.md) 扩展节，不再复述代码细节。
 
 **实测环境一览**：
 
@@ -32,7 +32,7 @@
 | `mtp_num_hidden_layers` | 1 | 解码端含 1 层 MTP（本次未启投机解码） |
 | `mamba_ssm_dtype` | float32 | GDN 状态精度 |
 
-按 [`1_kvcache_type.md`](./1_kvcache_type.md) §4.3 的分类：full_attention 层产出上游 `FullAttentionSpec`（NPU 上 K/V 双池）、linear_attention 层产出 `MambaSpec`（NPU 上单张量路径，`model_runner_v1.py:4118` 命中 `linear_attn` 层名分支）→ 两种 spec 无法 merge → **多 KV cache group，走 `HybridKVCacheCoordinator`**（对照 [`2_start_init.md`](./2_start_init.md) §4.4 工厂三分支）。
+按 [`1_kvcache_type.md`](../../kvcache_docs_v2/1_kvcache_type.md) 上篇 §1.5 的分类：full_attention 层产出上游 `FullAttentionSpec`（NPU 上 K/V 双池）、linear_attention 层产出 `MambaSpec`（NPU 上单张量路径，`model_runner_v1.py:4118` 命中 `linear_attn` 层名分支）→ 两种 spec 无法 merge → **多 KV cache group，走 `HybridKVCacheCoordinator`**（对照 [`1_start_init.md`](./1_start_init.md) §4.4 工厂三分支）。
 
 **pp2tp2 切分推演**（实测进程名印证）：PP2 按层切 32→每 stage 16 层（各含 12 linear + 4 full attn）；TP2 按 KV 头切 full attn 4→每 rank 2 头。4 个 worker：`W0=PP0/TP0，W1=PP0/TP1，W2=PP1/TP0，W3=PP1/TP1`。
 
@@ -79,7 +79,7 @@ itask exec gggtest3 -- bash -c 'mkdir -p /a3_inference/itask/workdir/<user>/qwen
 
 ### 2.4 Step 4：监控启动（marker 驱动）
 
-启动 10 秒后开始 `tail` 日志，按 marker 判断阶段（Full Attention 主线 marker 见 [`2_start_init.md`](./2_start_init.md)；rank1+ headless 无 `Application startup complete` 属正常——单机部署 rank0 日志即总日志）。本次完整时间线：
+启动 10 秒后开始 `tail` 日志，按 marker 判断阶段（Full Attention 主线 marker 见 [`1_start_init.md`](./1_start_init.md)；rank1+ headless 无 `Application startup complete` 属正常——单机部署 rank0 日志即总日志）。本次完整时间线：
 
 | 时刻（pod UTC） | marker | 对应五阶段 |
 |---|---|---|
@@ -109,7 +109,7 @@ itask exec gggtest3 -- bash -c "curl -s http://localhost:8100/v1/chat/completion
 
 ## 3. 启动日志 × 三侧五阶段对照（本篇核心）
 
-把 [`2_start_init.md`](./2_start_init.md) §1 的"①算规格→②测预算→③做编排→④落张量→⑤建逻辑层"管线与本实例日志逐段对上（单机 pp2tp2，无 PD 分离、无 KV 传输组 → 无 2MiB 对齐/`register_kv_caches` 环节）：
+把 [`1_start_init.md`](./1_start_init.md) §1 的"①算规格→②测预算→③做编排→④落张量→⑤建逻辑层"管线与本实例日志逐段对上（单机 pp2tp2，无 PD 分离、无 KV 传输组 → 无 2MiB 对齐/`register_kv_caches` 环节）：
 
 | 阶段 | 代码入口（系列文档行号） | 本实例日志/行为证据 |
 |---|---|---|
@@ -129,9 +129,9 @@ itask exec gggtest3 -- bash -c "curl -s http://localhost:8100/v1/chat/completion
 
 1. **mamba 页对齐 patch 实测生效**：`Setting attention block size to 1024 tokens…` + `Padding mamba page size by 1.16%…`。这正是 [`0_kvcache_arch.md`](./0_kvcache_arch.md) §6 混合模型行的"NPU 侧①算规格时把 attn 层 page_size_padded 对齐到 mamba 页"在 config 阶段的日志投影：attn 块被放大到与 mamba 状态页**字节严格相等**，两类页才能共享同一套 block 账本（`BlockPool` 唯一、`block_table` 按组独立）。对照纯 FA 主线（block_size=128）——**Qwen3.5-4B 的 attn KV 块是 1024-token 大页**。1024 的来源公式（`patch_mamba_config.py:94`）：`attn_block_size = 128 × cdiv(ssm_block_page_size, 128 × attn_single_token_k_page_size)`——128 是 kernel 分档基值，按 GDN ssm 状态页字节数（TP2 后 `linear_num_value_heads×head_dim²` 状态矩阵）反推出 8 倍放大。
 2. **前缀缓存自动关闭**：引擎 config 中 `enable_prefix_caching=False`（默认本应开启）。GDN 递归状态无"逐 token 增量"语义，链式哈希前缀复用不成立；调度链上 `get_computed_blocks` 恒空，协调器退化为只走分配/释放。
-3. **两类物理张量形态并存**（对照 [`1_kvcache_type.md`](./1_kvcache_type.md) §4.3）：full-attn 层 K/V 双 int8 池 → `view` 成 4D（本例 `(num_blocks, 1024, 2, 256)` bf16）；linear-attn 层单张量路径 → 按 `MambaSpec.shapes` 切成 conv/temporal 状态视图。`block_id == dim0 行号` 契约在两种形态上同时成立。
+3. **两类物理张量形态并存**（对照 [`1_kvcache_type.md`](../../kvcache_docs_v2/1_kvcache_type.md) 中篇 §5）：full-attn 层 K/V 双 int8 池 → `view` 成 4D（本例 `(num_blocks, 1024, 2, 256)` bf16）；linear-attn 层单张量路径 → 按 `MambaSpec.shapes` 切成 conv/temporal 状态视图。`block_id == dim0 行号` 契约在两种形态上同时成立。
 4. **GDN 计算路径**：`Using Triton/FLA GDN prefill kernel (head_k_dim=128)`；编译 splitting_ops 里可见 `vllm::qwen_gdn_attention_core / mamba_mixer / linear_attention` 等混合算子（`compilation_config.splitting_ops`）。异步调度（async scheduling）开启。
-5. **block size 双粒度 + attention 后端分派**（**16 → 128 → 1024 三级跳全链时序、页统一数字推导与 `verify_bs.py` 实测四联证见 [`2_start_init.md`](./2_start_init.md) §2.0**）：本次 full-attn 组默认走 `AscendAttentionBackend`（dense 主线，kernel 分档 `[128]`），linear-attn 组走 `AscendGDNAttentionBackend`（状态后端）；混合模型跳过平台层 `refresh_block_size`（`is_hybrid` 分支，utils.py:1397），`cache_config.block_size` 由 mamba 对齐层定为 1024，但 kernel 层 `select_common_block_size(kv_manager_block_size, backends)`（model_runner_v1.py:4759）仍在后端支持的 **128 粒度**上物理寻址——逻辑管理块 1024-token 对齐 mamba 状态页、物理 kernel 128-token 分档访问，两层粒度分离；`MambaSpec` 组 `kernel_block_sizes` 记 `[0]`（不按 token 切分，:4763-4769）。**即 NPU 的 block size 并非"都是 128"**：dense 主线默认 128，DSA 后端多档（2~128），deepseek_v4 推荐 32，混合 GDN 模型 attn 块为 128 的整数倍（本例 1024）。
+5. **block size 双粒度 + attention 后端分派**（**16 → 128 → 1024 三级跳全链时序、页统一数字推导与 `verify_bs.py` 实测四联证见 [`1_start_init.md`](./1_start_init.md) §2.0**）：本次 full-attn 组默认走 `AscendAttentionBackend`（dense 主线，kernel 分档 `[128]`），linear-attn 组走 `AscendGDNAttentionBackend`（状态后端）；混合模型跳过平台层 `refresh_block_size`（`is_hybrid` 分支，utils.py:1397），`cache_config.block_size` 由 mamba 对齐层定为 1024，但 kernel 层 `select_common_block_size(kv_manager_block_size, backends)`（model_runner_v1.py:4759）仍在后端支持的 **128 粒度**上物理寻址——逻辑管理块 1024-token 对齐 mamba 状态页、物理 kernel 128-token 分档访问，两层粒度分离；`MambaSpec` 组 `kernel_block_sizes` 记 `[0]`（不按 token 切分，:4763-4769）。**即 NPU 的 block size 并非"都是 128"**：dense 主线默认 128，DSA 后端多档（2~128），deepseek_v4 推荐 32，混合 GDN 模型 attn 块为 128 的整数倍（本例 1024）。
 
 
 ---
@@ -186,5 +186,5 @@ yes | itask delete gggtest3
 
 1. **部署结论**：Qwen3.5-4B 在 A3 单机 4 卡 pp2tp2 下经 vllm 0.23.0 + vllm-ascend 0.23.0 一次拉起成功，启动 ≈2.5 分钟，冒烟推理通过（`tp2-pp2` fingerprint 印证切分生效）。
 2. **系列文档结论被逐条实证**：GDN=Qwen3.5-4B 走 `MambaSpec` 单张量路径 ✓；混合模型多 KV group（Hybrid 协调器）✓；NPU mamba 页对齐 patch（attn block 128→1024、mamba 页 padding 1.16%）✓；前缀缓存自动关闭 ✓；②测预算无图项 + 4d 图内存事后记账并给出 `--kv-cache-memory` 建议 ✓。
-3. **混合模型的容量口径变化**：KV 容量从纯 FA 的"块数"视角变为"mamba 状态页与 attn 大页共享同一 block 账本"的协调视角（6.15M tokens / 51.9 GiB），粗算 attn 组理论块数(≈6912)与编排结果(≈6003)之差即 mamba 状态占用——这正是 [`1_kvcache_type.md`](./1_kvcache_type.md) 中篇"两种形态并存、逻辑侧无感"的数字体现。
+3. **混合模型的容量口径变化**：KV 容量从纯 FA 的"块数"视角变为"mamba 状态页与 attn 大页共享同一 block 账本"的协调视角（6.15M tokens / 51.9 GiB），粗算 attn 组理论块数(≈6912)与编排结果(≈6003)之差即 mamba 状态占用——这正是 [`1_kvcache_type.md`](../../kvcache_docs_v2/1_kvcache_type.md) 中篇"两种形态并存、逻辑侧无感"的数字体现。
 4. **复现路径**：第 2 章五步命令从空 pod 到冒烟通过顺序可复跑；换模型只需替换 `--model`（权重拉取路径同 pattern）与 `--served-model-name`，纯 FA 模型可额外开 `--enable-prefix-caching` 对比观察组合切换。

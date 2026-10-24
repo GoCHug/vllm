@@ -6,9 +6,9 @@
 
 > **部署拓扑**：PP2 × TP2 = 4 卡，每个 worker 负责 16 层、4 个 KV 头（TP2 切分 8→4）。调度器视角下全模型仍为单 group（32 层），对 PP/TP 布局透明。
 >
-> 数字约定：示例沿用参数化数字（block_size=16、每卡 KV 可用 2GiB → `num_blocks=4096`）；**本仓库 NPU 实测部署为 block_size=128、`num_blocks=13291`、每层 K/V 各一张 `(13291,128,4,128)` bf16**（见 [`2_start_init.md`](./2_start_init.md) §6），机制完全相同，只是页更大。
+> 数字约定：示例沿用参数化数字（block_size=16、每卡 KV 可用 2GiB → `num_blocks=4096`）；**本仓库 NPU 实测部署为 block_size=128、`num_blocks=13291`、每层 K/V 各一张 `(13291,128,4,128)` bf16**（见 [`1_start_init.md`](./1_start_init.md) §6），机制完全相同，只是页更大。
 
-> **实战主线注记（Qwen3.5-4B · GDN 混合，2026-10-16 实测）**：本篇按纯 Full Attention 骨架讲时序（Llama 示例）；Qwen3.5-4B 主线下四点差异——① 混合多 KV group（24 层 linear `MambaSpec` + 8 层 full-attn `FullAttentionSpec`，前缀缓存/分配按组独立）；② **前缀缓存强制关闭**（`enable_prefix_caching=False`：§4.2.1 前缀查找恒空、S2 touch 恒跳过，全流程只走新块分配/释放）；③ linear 层每步**状态步进**（递归状态原地更新），无"读历史 token K/V"路径，只有 8 个 full-attn 层走 block_table 读历史；④ attn 块为 **1024-token 大页**（vllm 上游默认 16 → NPU 128 → 混合模型 1024，三级跳与页统一全链见启动篇 [`2_start_init.md`](./2_start_init.md) §2.0，pp2tp2 部署实测见 [`4_deploy_qwen35_pp2tp2.md`](./4_deploy_qwen35_pp2tp2.md)）。
+> **实战主线注记（Qwen3.5-4B · GDN 混合，2026-10-16 实测）**：本篇按纯 Full Attention 骨架讲时序（Llama 示例）；Qwen3.5-4B 主线下四点差异——① 混合多 KV group（24 层 linear `MambaSpec` + 8 层 full-attn `FullAttentionSpec`，前缀缓存/分配按组独立）；② **前缀缓存强制关闭**（`enable_prefix_caching=False`：§4.2.1 前缀查找恒空、S2 touch 恒跳过，全流程只走新块分配/释放）；③ linear 层每步**状态步进**（递归状态原地更新），无"读历史 token K/V"路径，只有 8 个 full-attn 层走 block_table 读历史；④ attn 块为 **1024-token 大页**（vllm 上游默认 16 → NPU 128 → 混合模型 1024，三级跳与页统一全链见启动篇 [`1_start_init.md`](./1_start_init.md) §2.0，pp2tp2 部署实测见 [`3_deploy_qwen35_pp2tp2.md`](./3_deploy_qwen35_pp2tp2.md)）。
 
 ---
 

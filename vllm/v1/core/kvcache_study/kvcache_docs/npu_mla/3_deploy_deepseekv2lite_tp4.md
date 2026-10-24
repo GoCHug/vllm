@@ -2,7 +2,7 @@
 
 > 本篇是 KV Cache 学习系列 MLA 路线的**实战篇**：在昇腾 A3 4 卡 pod 上以 **TP4** 部署 **DeepSeek-V2-Lite** 并冒烟验证，记录全流程与关键实测数字，并把每一步启动日志证据回挂到系列文档的三侧五阶段模型上。
 >
-> 与系列各篇的关系：理论篇 [`0_kvcache_arch.md`](./0_kvcache_arch.md)（五层架构 + §6 MLA 扩展行）、类型篇 [`1_kvcache_type.md`](./1_kvcache_type.md)（`AscendMLAAttentionSpec` 冻结值 + latent/rope 双池）、启动篇 [`2_start_init.md`](./2_start_init.md)（五阶段全链 + 数字一字不差推演）、运行篇 [`3_runtime_sequence.md`](./3_runtime_sequence.md)（一条请求端到端 + 前缀缓存实测闭环）——本篇只做**部署操作与日志实录**，MLA 机制结论引用前四篇不复述。对照兄弟路线的 GDN 混合模型部署篇 [`../docs_npu_gdn/4_deploy_qwen35_pp2tp2.md`](../docs_npu_gdn/4_deploy_qwen35_pp2tp2.md)。
+> 与系列各篇的关系：理论篇 [`0_kvcache_arch.md`](./0_kvcache_arch.md)（五层架构 + §6 MLA 扩展行）、类型篇 [`1_kvcache_type.md`](../../kvcache_docs_v2/1_kvcache_type.md)（`AscendMLAAttentionSpec` 冻结值 + latent/rope 双池）、启动篇 [`1_start_init.md`](./1_start_init.md)（五阶段全链 + 数字一字不差推演）、运行篇 [`2_runtime_sequence.md`](./2_runtime_sequence.md)（一条请求端到端 + 前缀缓存实测闭环）——本篇只做**部署操作与日志实录**，MLA 机制结论引用前四篇不复述。对照兄弟路线的 GDN 混合模型部署篇 [`../npu_hybrid/3_deploy_qwen35_pp2tp2.md`](../npu_hybrid/3_deploy_qwen35_pp2tp2.md)。
 
 **实测环境一览**：
 
@@ -116,7 +116,7 @@ itask exec gggtest2 -- bash -c "curl -s http://localhost:8100/v1/chat/completion
 
 - `/metrics`：`vllm:prefix_cache_queries_total=2925 / hits_total=1792`（token 账 = 970×3+15 与 896×2， Prometheus counter 与块叙事互相印证）
 - stats 日志：`Prefix cache hit rate: 61.3% → 68.9%`、`Running: 1 reqs` 时 `GPU KV cache usage: 0.1%`（= cdiv(1487,128)=12 块 / 13,013，一字不差）
-- **三个数字全部手算复现**——MLA 前缀缓存可用 + 容量账实的运维级证据，详证与解读见 [`3_runtime_sequence.md`](./3_runtime_sequence.md) §4/§5。
+- **三个数字全部手算复现**——MLA 前缀缓存可用 + 容量账实的运维级证据，详证与解读见 [`2_runtime_sequence.md`](./2_runtime_sequence.md) §4/§5。
 
 ---
 

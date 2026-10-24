@@ -883,7 +883,7 @@ self.req_to_blocks: defaultdict[str, list[KVCacheBlock]] = defaultdict(list)
                                                           # request_id → 块序列，运行期 block_table 的唯一数据源
 ```
 
-> `FullAttentionManager` 的核心运行期方法 `find_longest_cache_hit`（:521 起，前缀查找）等不在启动期执行，本篇不展开（见 `3_runtime_sequence.md`）。主线 manager 仅 1 个（单 group），混合模型下每 group 一个、共享同一 BlockPool。
+> `FullAttentionManager` 的核心运行期方法 `find_longest_cache_hit`（:521 起，前缀查找）等不在启动期执行，本篇不展开（见 `2_runtime_sequence.md`）。主线 manager 仅 1 个（单 group），混合模型下每 group 一个、共享同一 BlockPool。
 
 ### 4.7 逻辑侧交付物与运行期消费方
 

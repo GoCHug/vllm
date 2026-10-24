@@ -6,7 +6,7 @@
 
 > **部署拓扑**：TP4 = 4 卡，每个 worker 负责全部 27 层（PP=1）、4 个 Q 头；**latent/rope 池不切分**（TP 各 rank 全尺寸持有）。调度器视角下全模型仍为单 group（27 层），对 TP 布局透明。
 
-> 数字约定：示例数字**全部取自 gggtest2 真实实验**（[`./logs/runtime_prefix_test_1018.txt`](./logs/runtime_prefix_test_1018.txt) 原始输出 + 服务端 metrics/stats；实验脚本 [`./logs/runtime_test_scripts_1018.py`](./logs/runtime_test_scripts_1018.py)）：`block_size=128`、`num_blocks=13,013`、每层 `k_cache=(13013,128,1,512)`（latent 池）与 `v_cache=(13013,128,1,64)`（rope 池）bf16——机制推导见 [`2_start_init.md`](./2_start_init.md) §6。
+> 数字约定：示例数字**全部取自 gggtest2 真实实验**（[`./logs/runtime_prefix_test_1018.txt`](./logs/runtime_prefix_test_1018.txt) 原始输出 + 服务端 metrics/stats；实验脚本 [`./logs/runtime_test_scripts_1018.py`](./logs/runtime_test_scripts_1018.py)）：`block_size=128`、`num_blocks=13,013`、每层 `k_cache=(13013,128,1,512)`（latent 池）与 `v_cache=(13013,128,1,64)`（rope 池）bf16——机制推导见 [`1_start_init.md`](./1_start_init.md) §6。
 
 > **实战主线注记（与兄弟路线上四点差异）**：本篇按主线骨架讲时序（请求样本用 MLP 实测样本）；MLA 主线下四点特征——① **单 KV group**（27 层 `AscendMLAAttentionSpec` 同构 merge，Unitary 协调器直通，与 GDN 混合多组对照）；② **前缀缓存开箱可用**（`enable_prefix_caching=True`：latent+rope 逐 token 因果——§4.2.1 前缀查找正常走，实测命中 61.3%→68.9% token 级闭环，与 GDN 强关前缀对照）；③ **写的"K/V"= latent+rope**（`unified_mla_kv_cache_update` 把 (c_KV, k_rope) scatter 进双池；读历史=读 latent+rope 行，decode 吸收式：latent 经 `W_UK/W_UV` 即时展开 16 头 K(nope)/V，**value 从不落地 cache**）；④ **块粒度单一 128**（管理块==物理块==128，无 GDN 的 1024/128 两层粒度分离；运行期 KV usage 复证 0.1%=12 块/13,013 一字不差）。
 

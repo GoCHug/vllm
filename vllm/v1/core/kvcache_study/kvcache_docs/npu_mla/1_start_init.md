@@ -10,7 +10,7 @@
 | Full Attention | `FullAttentionSpec`（上游原类） | Meta-Llama-3-8B | https://www.modelscope.cn/models/LLM-Research/Meta-Llama-3-8B |
 | GDN | `MambaSpec`（单张量路径） | Qwen3.5-4B | https://www.modelscope.cn/models/Qwen/Qwen3.5-4B |
 
-> **主线说明**：DeepSeek-V2-Lite 为本系列实战主线模型（2026-10-18 于 a3 4 卡 pod `gggtest2` TP4 全流程实测，见部署篇 [`4_deploy_deepseekv2lite_tp4.md`](./4_deploy_deepseekv2lite_tp4.md)）；Llama-3-8B 为纯 Full Attention 架构示例线，用于对照。MLA 的 **block size 装配链（16 → 128 直通，无级跳）与页数字链（147,456 B → 13,013 块 → 1,665,664 tokens 一字不差）** 专述于 §2.0。
+> **主线说明**：DeepSeek-V2-Lite 为本系列实战主线模型（2026-10-18 于 a3 4 卡 pod `gggtest2` TP4 全流程实测，见部署篇 [`3_deploy_deepseekv2lite_tp4.md`](./3_deploy_deepseekv2lite_tp4.md)）；Llama-3-8B 为纯 Full Attention 架构示例线，用于对照。MLA 的 **block size 装配链（16 → 128 直通，无级跳）与页数字链（147,456 B → 13,013 块 → 1,665,664 tokens 一字不差）** 专述于 §2.0。
 
 **章节顺序**：全文按「总览 → 三侧逐个详解 → 衔接 → 物理分布 → 速查」推进，各章如下：
 
@@ -196,7 +196,7 @@ EngineCore.__init__                                     # engine/core.py:119 起
        │           │     └─ 5b 每 group 1 个 manager（注册表查表）  # single_type_kv_cache_manager.py:1311
        │           └─ self.block_pool = coordinator.block_pool          # kv_cache_manager.py:156
        ├─ request_block_hasher（前缀缓存开启时生成请求级哈希器，core.py:206-215）
-       │    （实测 enable_prefix_caching=True → 哈希器生效，运行期命中见 3_runtime_sequence.md §4）
+       │    （实测 enable_prefix_caching=True → 哈希器生效，运行期命中见 2_runtime_sequence.md §4）
        └─ freeze_gc_heap() / enable_envs_cache()（core.py:228 / :233，启动装配冻结，运行期进入定态）
 ```
 
@@ -234,7 +234,7 @@ def register_all_kvcache_specs(vllm_config):
 
 ### 2.0 前置一步：block size 装配链——16 → 128（MLA 直通，实测数字链一字不差）
 
-vllm 上游给出默认 **16**，vllm-ascend 把它抬到 **128**（平台层）。对 MLA 模型这条链**只有两级、无分叉**——对照混合（attn+mamba）模型的 16 → 128 → 1024 三级跳（兄弟系列 `../docs_npu_gdn/2_start_init.md` §2.0），MLA 直通的关键是**无第二种 spec 族需要对齐**（27 层同构）。①算规格读到的 `block_size` 只是这条链的结果。完整执行时序（按真实先后，三个分叉点逐一标注 MLA 的走向）：
+vllm 上游给出默认 **16**，vllm-ascend 把它抬到 **128**（平台层）。对 MLA 模型这条链**只有两级、无分叉**——对照混合（attn+mamba）模型的 16 → 128 → 1024 三级跳（兄弟系列 `../npu_hybrid/1_start_init.md` §2.0），MLA 直通的关键是**无第二种 spec 族需要对齐**（27 层同构）。①算规格读到的 `block_size` 只是这条链的结果。完整执行时序（按真实先后，三个分叉点逐一标注 MLA 的走向）：
 
 ```text
 vllm serve CLI（引擎入口）
@@ -691,7 +691,7 @@ kv_caches[layer_name] = (k_cache, v_cache)                # 每层绑定对象 =
 
 **4c. 绑定：直接复用上游 `bind_kv_cache`**
 
-NPU 没有自己的绑定函数——绑定发生在 `initialize_kv_cache_tensors()` 内部：:3950 `from vllm.v1.worker.utils import bind_kv_cache`、:3953 以同一上游函数把 `(latent_cache, rope_cache)` 按层序填入 `self.kv_caches`（`list[层序 → (latent, rope)]`）并绑进 `static_forward_context`。forward 时 MLA 实现拿到二元组，写路径 `unified_mla_kv_cache_update` 取下标分发给 NPU 算子；同一后端的双池版 `swap_blocks`/`copy_blocks`（P/D 传输、offload 的算子层入口）对 MLA 双池同样按 `[0]`/`[1]` 分别搬行——**MLA 写路径的入参是 `(c_KV, k_rope)`**：`AscendMLAImpl.forward` 先做 `W_DKV/W_KR` 投影与缓存写入，再走注意力（吸收式展开见 [`3_runtime_sequence.md`](./3_runtime_sequence.md) §4.3）。
+NPU 没有自己的绑定函数——绑定发生在 `initialize_kv_cache_tensors()` 内部：:3950 `from vllm.v1.worker.utils import bind_kv_cache`、:3953 以同一上游函数把 `(latent_cache, rope_cache)` 按层序填入 `self.kv_caches`（`list[层序 → (latent, rope)]`）并绑进 `static_forward_context`。forward 时 MLA 实现拿到二元组，写路径 `unified_mla_kv_cache_update` 取下标分发给 NPU 算子；同一后端的双池版 `swap_blocks`/`copy_blocks`（P/D 传输、offload 的算子层入口）对 MLA 双池同样按 `[0]`/`[1]` 分别搬行——**MLA 写路径的入参是 `(c_KV, k_rope)`**：`AscendMLAImpl.forward` 先做 `W_DKV/W_KR` 投影与缓存写入，再走注意力（吸收式展开见 [`2_runtime_sequence.md`](./2_runtime_sequence.md) §4.3）。
 
 **4d. 编译与预热：NPUGraph 替代 CUDAGraph `NPUWorker.compile_or_warm_up_model()`（worker.py:706）**
 
@@ -855,7 +855,7 @@ self.null_block.is_null = True
 | `cached_block_hash_to_block` | **空** dict（`BlockHashToBlockMap`） | 前缀缓存查表，运行期由"写满的块回填哈希"逐步积累 |
 | `null_block` | 队头 pop 出的 `block_id=0`，`is_null=True` | 占位块：供管理器在需要占位/对齐的场合使用，不维护引用计数、永不再分配 |
 
-摘走 `null_block` 后实际可分配块为 **13,012**（编号 1..13012）——与物理侧"两张张量 dim0 的 0 号行闲置无人写"一一对应（§5）。**注意 NPU 上逻辑块只有这一份：一个 `block_id` 同时命名 latent 池行与 rope 池行，不存在"每张张量一套块池"**——运行期实测佐证：长请求峰值占用 12 块 → `GPU KV cache usage: 0.1%`（=12/13,013，一字不差，见 [`3_runtime_sequence.md`](./3_runtime_sequence.md) §5）。
+摘走 `null_block` 后实际可分配块为 **13,012**（编号 1..13012）——与物理侧"两张张量 dim0 的 0 号行闲置无人写"一一对应（§5）。**注意 NPU 上逻辑块只有这一份：一个 `block_id` 同时命名 latent 池行与 rope 池行，不存在"每张张量一套块池"**——运行期实测佐证：长请求峰值占用 12 块 → `GPU KV cache usage: 0.1%`（=12/13,013，一字不差，见 [`2_runtime_sequence.md`](./2_runtime_sequence.md) §5）。
 
 ### 4.6 `FullAttentionManager`：注册表查表实例化（第 3 层）
 
@@ -883,7 +883,7 @@ self.req_to_blocks: defaultdict[str, list[KVCacheBlock]] = defaultdict(list)
                                                           # request_id → 块序列，运行期 block_table 的唯一数据源
 ```
 
-> `FullAttentionManager` 的核心运行期方法 `find_longest_cache_hit`（:521 起，前缀查找）等不在启动期执行，本篇不展开（见 `3_runtime_sequence.md`）。主线 manager 仅 1 个（单 group），混合模型下每 group 一个、共享同一 BlockPool——**MLA 复用 FA 的 manager 这件事本身就是"latent/rope 仍是逐 token 因果序列"的结构性证据**：前缀查找/分配/释放只依赖块语义，与池内装什么无关。
+> `FullAttentionManager` 的核心运行期方法 `find_longest_cache_hit`（:521 起，前缀查找）等不在启动期执行，本篇不展开（见 `2_runtime_sequence.md`）。主线 manager 仅 1 个（单 group），混合模型下每 group 一个、共享同一 BlockPool——**MLA 复用 FA 的 manager 这件事本身就是"latent/rope 仍是逐 token 因果序列"的结构性证据**：前缀查找/分配/释放只依赖块语义，与池内装什么无关。
 
 ### 4.7 逻辑侧交付物与运行期消费方
 

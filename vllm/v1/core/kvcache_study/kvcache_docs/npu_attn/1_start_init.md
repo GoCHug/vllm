@@ -865,7 +865,7 @@ self.req_to_blocks: defaultdict[str, list[KVCacheBlock]] = defaultdict(list)
                                                           # request_id → 块序列，运行期 block_table 的唯一数据源
 ```
 
-> `FullAttentionManager` 的核心运行期方法 `find_longest_cache_hit`（:521 起，前缀查找）等不在启动期执行，本篇不展开（见 `3_runtime_sequence.md`）。主线 manager 仅 1 个（单 group），混合模型下每 group 一个、共享同一 BlockPool。
+> `FullAttentionManager` 的核心运行期方法 `find_longest_cache_hit`（:521 起，前缀查找）等不在启动期执行，本篇不展开（见 `2_runtime_sequence.md`）。主线 manager 仅 1 个（单 group），混合模型下每 group 一个、共享同一 BlockPool。
 
 ### 4.7 逻辑侧交付物与运行期消费方
 
@@ -982,7 +982,7 @@ kv = (k[block_ids], v[block_ids])                 # 形式A(NPU)：两张池各�
 - **⑤ 工厂的其他分支**：`KVCacheCoordinatorNoPrefixCache`（关前缀缓存，前缀查找恒空）与 `HybridKVCacheCoordinator`（多组命中求交集、共享同一 BlockPool，页大小必须统一），见 §4.4 工厂代码。
 - **Mamba/混合布局**：NPU 侧在 `_allocate_kv_cache_tensors` / `_reshape_kv_cache_tensors` 内按层名单独分流（Mamba / linear_attn / attn-mamba hybrid / cache_only 走**单张量**分支，model_runner_v1.py:4118-4134，K/V 拆分逻辑不适用），并做 mamba 页对齐（spec 收集 :5034-5036）；GPU 侧对应 `_update_hybrid_attention_mamba_layout()`（gpu_model_runner.py:7167）把 `block_dim==1` 的层 `as_strided_` 成 `block_dim==0`，纯 FullAttention 不触发。Mamba 组会置 `kv_cache_config.has_mamba_layers`，⑤里 Scheduler 据此调整调度（scheduler.py:259）。
 - **NPU 特有扩展（vllm-ascend 插件）**：
-  - **注意力后端家族**：`AscendAttentionBackend`（`register_backend(AttentionBackendEnum.CUSTOM, "ASCEND")`，attention_v1.py:78；decode 无滑窗且算子条件满足时走 `torch_npu._npu_paged_attention`（PA），其余走 `npu_fused_infer_attention_score[_v2]`（FIA）、算子分流见 `3_runtime_sequence.md`）；`AscendFABackend`（FA3 风格，fa3_v1.py）；稀疏注意力 `AscendC8AttentionBackendImpl`（attention_v1.py:1548）、DSA/SFA（dsa_v1.py / sfa_v1.py，额外分配 indexer/scale 张量）、kvcomp（Hamming 稀疏）；上下文并行 `enable_cp()` 时换成 CP 版 Impl（AscendAttentionCPImpl / AscendMlaCPImpl / AscendDSACPImpl / AscendSFADCPImpl，attention/context_parallel/）。
+  - **注意力后端家族**：`AscendAttentionBackend`（`register_backend(AttentionBackendEnum.CUSTOM, "ASCEND")`，attention_v1.py:78；decode 无滑窗且算子条件满足时走 `torch_npu._npu_paged_attention`（PA），其余走 `npu_fused_infer_attention_score[_v2]`（FIA）、算子分流见 `2_runtime_sequence.md`）；`AscendFABackend`（FA3 风格，fa3_v1.py）；稀疏注意力 `AscendC8AttentionBackendImpl`（attention_v1.py:1548）、DSA/SFA（dsa_v1.py / sfa_v1.py，额外分配 indexer/scale 张量）、kvcomp（Hamming 稀疏）；上下文并行 `enable_cp()` 时换成 CP 版 Impl（AscendAttentionCPImpl / AscendMlaCPImpl / AscendDSACPImpl / AscendSFADCPImpl，attention/context_parallel/）。
   - **KV 传输与 2MiB 对齐**：Mooncake / ADXL prefill 分离传输——`register_kv_caches` 把双池登记给传输层（model_runner_v1.py:3884），每张池 2MiB 对齐（:4004/:3911）；`swap_blocks` / `copy_blocks` 也按 `[0]`/`[1]` 双池操作（attention_v1.py:115-140）。
   - **NPUGraph 与 `--kv-cache-memory` 建议**：图内存不在②预算公式内，由 4d capture 后的事后记账给出建议值（worker.py:734-771）——NPU 上推荐显式指定 KV 显存。
   - **sleep mode**：开 sleep mode 时 ④ 的张量在 `CaMemAllocator` 的 `kv_cache` 内存池内分配（worker.py:910-912），便于休眠换出。

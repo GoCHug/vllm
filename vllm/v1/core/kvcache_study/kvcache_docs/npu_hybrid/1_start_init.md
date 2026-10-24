@@ -10,7 +10,7 @@
 | MLA | `AscendMLAAttentionSpec`（nope/rope 拆分） | DeepSeek-V2-Lite | https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V2-Lite |
 | GDN | `MambaSpec`（单张量路径） | **Qwen3.5-4B（本系列实战主线）** | https://www.modelscope.cn/models/Qwen/Qwen3.5-4B |
 
-> **主线说明**：Qwen3.5-4B 为本系列实战主线模型（2026-10-16 于 a3 4 卡 pod pp2tp2 全流程实测，见部署篇 [`4_deploy_qwen35_pp2tp2.md`](./4_deploy_qwen35_pp2tp2.md)）；Llama-3-8B 为纯 Full Attention 架构示例线，用于对照 §6 实测走查。混合模型的 **block size 三级跳（16 → 128 → 1024）与页统一** 专述于 §2.0。
+> **主线说明**：Qwen3.5-4B 为本系列实战主线模型（2026-10-16 于 a3 4 卡 pod pp2tp2 全流程实测，见部署篇 [`3_deploy_qwen35_pp2tp2.md`](./3_deploy_qwen35_pp2tp2.md)）；Llama-3-8B 为纯 Full Attention 架构示例线，用于对照 §6 实测走查。混合模型的 **block size 三级跳（16 → 128 → 1024）与页统一** 专述于 §2.0。
 
 **章节顺序**：全文按「总览 → 三侧逐个详解 → 衔接 → 物理分布 → 速查」推进，各章如下：
 
@@ -272,7 +272,7 @@ $ vllm serve <model> --pipeline-parallel-size 2 ... --port 8100         （完�
 │  "Started server process → Application startup complete"（07:55:17；P2-P5 headless 无此日志属正常）
 │
 └─ 请求期跨进程链：chat 路由（P0）→ 队列 → EngineCore 调度（P1）→ workers 执行（P2-P5）→ 回包（P0）
-   全生命周期 = 3_runtime_sequence.md；pids 对照部署日志即一目了然
+   全生命周期 = 2_runtime_sequence.md；pids 对照部署日志即一目了然
 ```
 
 ## 2. 配置侧：算规格 → 测预算 → 做编排（引擎进程发起）
@@ -1007,7 +1007,7 @@ self.req_to_blocks: defaultdict[str, list[KVCacheBlock]] = defaultdict(list)
                                                           # request_id → 块序列，运行期 block_table 的唯一数据源
 ```
 
-> NPU 特有 spec 同样经注册表闭环：vllm-ascend 为 `AscendMLAAttentionSpec` 等注册对应 manager，④⑤之间的对接方式与主线一致。`FullAttentionManager` 的核心运行期方法 `find_longest_cache_hit`（:521 起，前缀查找）等不在启动期执行，本篇不展开（见 `3_runtime_sequence.md`）。主线 manager 仅 1 个（单 group），混合模型下每 group 一个、共享同一 BlockPool。
+> NPU 特有 spec 同样经注册表闭环：vllm-ascend 为 `AscendMLAAttentionSpec` 等注册对应 manager，④⑤之间的对接方式与主线一致。`FullAttentionManager` 的核心运行期方法 `find_longest_cache_hit`（:521 起，前缀查找）等不在启动期执行，本篇不展开（见 `2_runtime_sequence.md`）。主线 manager 仅 1 个（单 group），混合模型下每 group 一个、共享同一 BlockPool。
 
 ### 4.7 逻辑侧交付物与运行期消费方
 
