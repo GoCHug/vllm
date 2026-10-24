@@ -1,0 +1,797 @@
+<?xml version="1.0" encoding="utf-8"?><mxfile host="65bd71144e">
+    
+    
+    
+    
+    
+    
+    
+    
+<diagram id="p1_general_layout" name="1-通用张量布局">
+        <mxGraphModel dx="2757" dy="2330" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="2280" math="0" shadow="0">
+            <root>
+                <mxCell id="0" />
+                <mxCell id="1" parent="0" />
+                <mxCell id="title" parent="1" style="text;html=1;fontSize=20;fontStyle=1;align=center;" value="通用张量布局：12 层混合模型 · PP2×TP2 —— 从多 Worker 到单 Worker 的 KV Cache 张量建设（源码流程）" vertex="1">
+                    <mxGeometry height="32" width="2000" x="100" y="10" as="geometry" />
+                </mxCell>
+                <mxCell id="params" parent="1" style="text;html=1;fontSize=12;fontStyle=1;align=center;fontColor=#555555;" value="教学例设定：12 层混合模型，pattern = (1 full + 2 sw)×4 —— full.0–full.3（全上下文）· sw.0–sw.7（滑窗）&lt;br&gt;层序 full.0→sw.0→sw.1→full.1→…→full.3→sw.7 ｜ 部署 PP2×TP2：每段 6 层 = 2 个完整 pattern · TP 切 KV 头（同层 spec 相等）&lt;br&gt;每卡 6 层 · page=256B（教学值）· PP0 卡可用显存 10240B / PP1 卡可用显存 7680B ｜ 对应 get_kv_cache_configs() :2073" vertex="1">
+                    <mxGeometry height="46" width="2000" x="60" y="50" as="geometry" />
+                </mxCell>
+                <mxCell id="s1_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="① 每个 worker 提交本地层 spec + 可用显存（TP 同层 spec 相等，PP 各段层名不同）" vertex="1">
+                    <mxGeometry height="22" width="1340" x="60" y="110" as="geometry" />
+                </mxCell>
+                <mxCell id="w0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" value="Worker 0 · PP0·TP0" vertex="1">
+                    <mxGeometry height="100" width="460" x="400" y="140" as="geometry" />
+                </mxCell>
+                <mxCell id="w0c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;" value="full.0" vertex="1">
+                    <mxGeometry height="22" width="60" x="414" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w0c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.0" vertex="1">
+                    <mxGeometry height="22" width="60" x="482" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w0c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.1" vertex="1">
+                    <mxGeometry height="22" width="60" x="550" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w0c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;" value="full.1" vertex="1">
+                    <mxGeometry height="22" width="60" x="618" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w0c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.2" vertex="1">
+                    <mxGeometry height="22" width="60" x="686" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w0c6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.3" vertex="1">
+                    <mxGeometry height="22" width="60" x="754" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w0t" parent="1" style="text;html=1;fontSize=10;fontColor=#888888;align=center;" value="6 份 spec · 可用显存 10240B" vertex="1">
+                    <mxGeometry height="12" width="432" x="414" y="204" as="geometry" />
+                </mxCell>
+                <mxCell id="w1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=1.5;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" value="Worker 1 · PP0·TP1" vertex="1">
+                    <mxGeometry height="100" width="460" x="900" y="140" as="geometry" />
+                </mxCell>
+                <mxCell id="w1c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;dashed=1;" value="full.0" vertex="1">
+                    <mxGeometry height="22" width="60" x="914" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w1c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;dashed=1;" value="sw.0" vertex="1">
+                    <mxGeometry height="22" width="60" x="982" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w1c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;dashed=1;" value="sw.1" vertex="1">
+                    <mxGeometry height="22" width="60" x="1050" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w1c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;dashed=1;" value="full.1" vertex="1">
+                    <mxGeometry height="22" width="60" x="1118" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w1c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;dashed=1;" value="sw.2" vertex="1">
+                    <mxGeometry height="22" width="60" x="1186" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w1c6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;dashed=1;" value="sw.3" vertex="1">
+                    <mxGeometry height="22" width="60" x="1254" y="168" as="geometry" />
+                </mxCell>
+                <mxCell id="w1t" parent="1" style="text;html=1;fontSize=10;fontColor=#888888;align=center;" value="同层同 spec（头 4–7）" vertex="1">
+                    <mxGeometry height="12" width="432" x="914" y="204" as="geometry" />
+                </mxCell>
+                <mxCell id="w2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1.5;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" value="Worker 2 · PP1·TP0" vertex="1">
+                    <mxGeometry height="100" width="460" x="400" y="280" as="geometry" />
+                </mxCell>
+                <mxCell id="w2c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;" value="full.2" vertex="1">
+                    <mxGeometry height="22" width="60" x="414" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w2c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.4" vertex="1">
+                    <mxGeometry height="22" width="60" x="482" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w2c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.5" vertex="1">
+                    <mxGeometry height="22" width="60" x="550" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w2c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;" value="full.3" vertex="1">
+                    <mxGeometry height="22" width="60" x="618" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w2c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.6" vertex="1">
+                    <mxGeometry height="22" width="60" x="686" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w2c6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.7" vertex="1">
+                    <mxGeometry height="22" width="60" x="754" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w2t" parent="1" style="text;html=1;fontSize=10;fontColor=#888888;align=center;" value="6 份 spec · 可用显存 7680B" vertex="1">
+                    <mxGeometry height="12" width="432" x="414" y="344" as="geometry" />
+                </mxCell>
+                <mxCell id="w3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;strokeWidth=2;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" value="Worker 3 · PP1·TP1" vertex="1">
+                    <mxGeometry height="100" width="460" x="900" y="280" as="geometry" />
+                </mxCell>
+                <mxCell id="w3c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;dashed=1;" value="full.2" vertex="1">
+                    <mxGeometry height="22" width="60" x="914" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w3c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;dashed=1;" value="sw.4" vertex="1">
+                    <mxGeometry height="22" width="60" x="982" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w3c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;dashed=1;" value="sw.5" vertex="1">
+                    <mxGeometry height="22" width="60" x="1050" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w3c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;dashed=1;" value="full.3" vertex="1">
+                    <mxGeometry height="22" width="60" x="1118" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w3c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;dashed=1;" value="sw.6" vertex="1">
+                    <mxGeometry height="22" width="60" x="1186" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w3c6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;dashed=1;" value="sw.7" vertex="1">
+                    <mxGeometry height="22" width="60" x="1254" y="308" as="geometry" />
+                </mxCell>
+                <mxCell id="w3t" parent="1" style="text;html=1;fontSize=10;fontColor=#888888;align=center;" value="同层同 spec（头 4–7）" vertex="1">
+                    <mxGeometry height="12" width="432" x="914" y="344" as="geometry" />
+                </mxCell>
+                <mxCell id="s1_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fbff;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=10;spacingTop=6;verticalAlign=top;" value="① 每卡提交两样东西：&lt;br&gt;　1) 本地层 spec（get_kv_cache_spec&lt;br&gt;　　:7782，只遍历本卡实例化的层）&lt;br&gt;　2) profile 出的可用显存（available）&lt;br&gt;&lt;br&gt;PP0 卡可用显存 10240B · PP1 卡 7680B（教学值）&lt;br&gt;TP 同层 spec 相等（虚线卡 = 头 4–7 镜像）&lt;br&gt;层名全局唯一（model.layers.N），跨卡合并不冲突" vertex="1">
+                    <mxGeometry height="190" width="300" x="60" y="140" as="geometry" />
+                </mxCell>
+                <mxCell id="s2_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="② 控制器合并 spec → 按值去重 → stride 切分成分组" vertex="1">
+                    <mxGeometry height="22" width="1340" x="60" y="410" as="geometry" />
+                </mxCell>
+                <mxCell id="merge_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#999999;fontSize=11;fontStyle=1;verticalAlign=top;spacingTop=4;align=center;" value="merged_kv_cache_specs（同层 spec 断言相等）" vertex="1">
+                    <mxGeometry height="70" width="700" x="60" y="438" as="geometry" />
+                </mxCell>
+                <mxCell id="mc1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;" value="full.0" vertex="1">
+                    <mxGeometry height="24" width="52" x="76" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.0" vertex="1">
+                    <mxGeometry height="24" width="52" x="132" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.1" vertex="1">
+                    <mxGeometry height="24" width="52" x="188" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;" value="full.1" vertex="1">
+                    <mxGeometry height="24" width="52" x="244" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.2" vertex="1">
+                    <mxGeometry height="24" width="52" x="300" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.3" vertex="1">
+                    <mxGeometry height="24" width="52" x="356" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;" value="full.2" vertex="1">
+                    <mxGeometry height="24" width="52" x="412" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.4" vertex="1">
+                    <mxGeometry height="24" width="52" x="468" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.5" vertex="1">
+                    <mxGeometry height="24" width="52" x="524" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;fontStyle=1;" value="full.3" vertex="1">
+                    <mxGeometry height="24" width="52" x="580" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.6" vertex="1">
+                    <mxGeometry height="24" width="52" x="636" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="mc12" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;fontStyle=1;" value="sw.7" vertex="1">
+                    <mxGeometry height="24" width="52" x="692" y="464" as="geometry" />
+                </mxCell>
+                <mxCell id="stride_chip" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;fontSize=10;align=center;" value="stride 切分 layers[i::num_groups] :1257，num_group = 3&lt;br&gt;sw stride 2 → G1=(sw.0,2,4,6) · G2=(sw.1,3,5,7)&lt;br&gt;每段 2 个完整周期 → 每卡每组 2 层，布局对称" vertex="1">
+                    <mxGeometry height="70" width="600" x="800" y="438" as="geometry" />
+                </mxCell>
+                <mxCell id="ng_note" parent="1" style="text;html=1;fontSize=11;fontColor=#888888;align=left;" value="按值去重：full(4) → 1 组 · sw(8) → cdiv(8,4)=2 组 ⇒ 3 组（num_groups=3，每请求每步 3 个 ID）· 分组阶段 group_size=4，每组恰好 4 层，无 padding" vertex="1">
+                    <mxGeometry height="16" width="1340" x="60" y="514" as="geometry" />
+                </mxCell>
+                <mxCell id="G0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=4;align=center;" value="Group 0 (full)" vertex="1">
+                    <mxGeometry height="140" width="420" x="60" y="540" as="geometry" />
+                </mxCell>
+                <mxCell id="G0c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" value="full.0" vertex="1">
+                    <mxGeometry height="28" width="92" x="76" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G0c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" value="full.1" vertex="1">
+                    <mxGeometry height="28" width="92" x="174" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G0c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" value="full.2" vertex="1">
+                    <mxGeometry height="28" width="92" x="272" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G0c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" value="full.3" vertex="1">
+                    <mxGeometry height="28" width="92" x="370" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G0m" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=1;" value="Manager 0" vertex="1">
+                    <mxGeometry height="28" width="388" x="76" y="648" as="geometry" />
+                </mxCell>
+                <mxCell id="G1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=4;align=center;" value="Group 1 (sw)" vertex="1">
+                    <mxGeometry height="140" width="420" x="520" y="540" as="geometry" />
+                </mxCell>
+                <mxCell id="G1c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=10;" value="sw.0" vertex="1">
+                    <mxGeometry height="28" width="92" x="536" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G1c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=10;" value="sw.2" vertex="1">
+                    <mxGeometry height="28" width="92" x="634" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G1c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=10;" value="sw.4" vertex="1">
+                    <mxGeometry height="28" width="92" x="732" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G1c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=10;" value="sw.6" vertex="1">
+                    <mxGeometry height="28" width="92" x="830" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G1m" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=1;" value="Manager 1" vertex="1">
+                    <mxGeometry height="28" width="388" x="536" y="648" as="geometry" />
+                </mxCell>
+                <mxCell id="G2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontStyle=1;verticalAlign=top;spacingTop=4;align=center;" value="Group 2 (sw)" vertex="1">
+                    <mxGeometry height="140" width="420" x="980" y="540" as="geometry" />
+                </mxCell>
+                <mxCell id="G2c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=10;" value="sw.1" vertex="1">
+                    <mxGeometry height="28" width="92" x="996" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G2c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=10;" value="sw.3" vertex="1">
+                    <mxGeometry height="28" width="92" x="1094" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G2c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=10;" value="sw.5" vertex="1">
+                    <mxGeometry height="28" width="92" x="1192" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G2c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=10;" value="sw.7" vertex="1">
+                    <mxGeometry height="28" width="92" x="1290" y="578" as="geometry" />
+                </mxCell>
+                <mxCell id="G2m" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontStyle=1;" value="Manager 2" vertex="1">
+                    <mxGeometry height="28" width="388" x="996" y="648" as="geometry" />
+                </mxCell>
+                <mxCell id="s3_label" parent="1" style="text;html=1;fontSize=15;fontStyle=1;fontColor=#333333;" value="③ 投影：全局 group 只过滤本地层 → 每卡独立算 num_blocks" vertex="1">
+                    <mxGeometry height="22" width="1340" x="60" y="710" as="geometry" />
+                </mxCell>
+                <mxCell id="s3_desc" parent="1" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" value="投影 _project_kv_cache_groups_to_worker（:2031）= 全局组的 layer_names 只保留本卡层名：组数 / 顺序 / gid 不变，空组保留，不重新分组 · 投影结果只用于建张量与显存账，不回流调度器" vertex="1">
+                    <mxGeometry height="14" width="1340" x="60" y="736" as="geometry" />
+                </mxCell>
+                <mxCell id="gp_global" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=middle;align=center;" value="全局分组结果（合并后只分组一次 :2128）· 3 个 group 对所有 worker 唯一：G0 = full.0/1/2/3（full）　·　G1 = sw.0/2/4/6　·　G2 = sw.1/3/5/7" vertex="1">
+                    <mxGeometry height="30" width="1340" x="60" y="756" as="geometry" />
+                </mxCell>
+                <mxCell id="s3_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fbff;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=10;spacingTop=6;verticalAlign=top;" value="③ 投影要点（:2031）：&lt;br&gt;全局组 ∩ 本卡层名，只裁层名&lt;br&gt;—— 组数/顺序/gid 不变，空组也保留&lt;br&gt;（本例四卡均无空组）&lt;br&gt;&lt;br&gt;每层因此拿到唯一 (gid, 组内序)&lt;br&gt;调度器按 gid 记账、按组出块表&lt;br&gt;—— 与层在哪张卡上无关&lt;br&gt;&lt;br&gt;④ 的张量数 = max(各组本卡层数)&lt;br&gt;组块表跨卡共享同一 块 ID 空间" vertex="1">
+                    <mxGeometry height="240" width="300" x="60" y="800" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ef;strokeColor=#d79b00;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" value="W0 · 投影后本地 6 层（每组 2 层）" vertex="1">
+                    <mxGeometry height="124" width="460" x="400" y="800" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" value="full.0" vertex="1">
+                    <mxGeometry height="22" width="62" x="414" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=8;" value="sw.0" vertex="1">
+                    <mxGeometry height="22" width="62" x="482" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=8;" value="sw.1" vertex="1">
+                    <mxGeometry height="22" width="62" x="550" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" value="full.1" vertex="1">
+                    <mxGeometry height="22" width="62" x="618" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=8;" value="sw.2" vertex="1">
+                    <mxGeometry height="22" width="62" x="686" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0c6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=8;" value="sw.3" vertex="1">
+                    <mxGeometry height="22" width="62" x="754" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=1;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" value="W1 · 投影后本地 6 层（TP 镜像层：头 4–7）" vertex="1">
+                    <mxGeometry height="124" width="460" x="900" y="800" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" value="full.0" vertex="1">
+                    <mxGeometry height="22" width="62" x="914" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=8;dashed=1;" value="sw.0" vertex="1">
+                    <mxGeometry height="22" width="62" x="982" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=8;dashed=1;" value="sw.1" vertex="1">
+                    <mxGeometry height="22" width="62" x="1050" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" value="full.1" vertex="1">
+                    <mxGeometry height="22" width="62" x="1118" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=8;dashed=1;" value="sw.2" vertex="1">
+                    <mxGeometry height="22" width="62" x="1186" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1c6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=8;dashed=1;" value="sw.3" vertex="1">
+                    <mxGeometry height="22" width="62" x="1254" y="830" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f9f0;strokeColor=#82b366;strokeWidth=2;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" value="W2 · 投影后本地 6 层（每组 2 层）" vertex="1">
+                    <mxGeometry height="124" width="460" x="400" y="944" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" value="full.2" vertex="1">
+                    <mxGeometry height="22" width="62" x="414" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=8;" value="sw.4" vertex="1">
+                    <mxGeometry height="22" width="62" x="482" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=8;" value="sw.5" vertex="1">
+                    <mxGeometry height="22" width="62" x="550" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;" value="full.3" vertex="1">
+                    <mxGeometry height="22" width="62" x="618" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=8;" value="sw.6" vertex="1">
+                    <mxGeometry height="22" width="62" x="686" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2c6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=8;" value="sw.7" vertex="1">
+                    <mxGeometry height="22" width="62" x="754" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f7ec;strokeColor=#82b366;strokeWidth=1;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" value="W3 · 投影后本地 6 层（TP 镜像层：头 4–7）" vertex="1">
+                    <mxGeometry height="124" width="460" x="900" y="944" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" value="full.2" vertex="1">
+                    <mxGeometry height="22" width="62" x="914" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=8;dashed=1;" value="sw.4" vertex="1">
+                    <mxGeometry height="22" width="62" x="982" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=8;dashed=1;" value="sw.5" vertex="1">
+                    <mxGeometry height="22" width="62" x="1050" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=8;dashed=1;" value="full.3" vertex="1">
+                    <mxGeometry height="22" width="62" x="1118" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=8;dashed=1;" value="sw.6" vertex="1">
+                    <mxGeometry height="22" width="62" x="1186" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3c6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=8;dashed=1;" value="sw.7" vertex="1">
+                    <mxGeometry height="22" width="62" x="1254" y="974" as="geometry" />
+                </mxCell>
+                <mxCell id="s4_label" parent="1" style="text;html=1;fontSize=15;fontStyle=1;fontColor=#333333;" value="④ 建张量（每 worker 独立执行 :1399-1416）" vertex="1">
+                    <mxGeometry height="22" width="1340" x="60" y="1090" as="geometry" />
+                </mxCell>
+                <mxCell id="s4_desc" parent="1" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" value="每卡按“投影后”的组建张量：张量数 = max(本卡各组层数)（:1399）· 第 j 个张量 shared_by = 各组的第 j 层（:1413）· 同组各层共用一张组块表，pop 的每个 block id 在每个张量上各写一页" vertex="1">
+                    <mxGeometry height="14" width="1340" x="60" y="1116" as="geometry" />
+                </mxCell>
+                <mxCell id="T0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=11;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" value="W0 · PP0·TP0（6 层 · 2 张量）" vertex="1">
+                    <mxGeometry height="180" width="460" x="400" y="1140" as="geometry" />
+                </mxCell>
+                <mxCell id="T0_shared" parent="1" style="text;html=1;fontSize=9;fontColor=#666666;align=center;" value="张量0 = 各组第 0 层 → [G0.0 full.0 · G1.0 sw.0 · G2.0 sw.1]" vertex="1">
+                    <mxGeometry height="14" width="432" x="414" y="1162" as="geometry" />
+                </mxCell>
+                <mxCell id="T0p0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="p0" vertex="1">
+                    <mxGeometry height="22" width="66" x="414" y="1182" as="geometry" />
+                </mxCell>
+                <mxCell id="T0p5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="p5" vertex="1">
+                    <mxGeometry height="22" width="66" x="486" y="1182" as="geometry" />
+                </mxCell>
+                <mxCell id="T0p6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p6" vertex="1">
+                    <mxGeometry height="22" width="66" x="558" y="1182" as="geometry" />
+                </mxCell>
+                <mxCell id="T0p7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p7" vertex="1">
+                    <mxGeometry height="22" width="66" x="630" y="1182" as="geometry" />
+                </mxCell>
+                <mxCell id="T0p19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="…p14" vertex="1">
+                    <mxGeometry height="22" width="74" x="702" y="1182" as="geometry" />
+                </mxCell>
+                <mxCell id="T0_shared1" parent="1" style="text;html=1;fontSize=9;fontColor=#666666;align=center;" value="张量1 = 各组第 1 层 → [G0.1 full.1 · G1.1 sw.2 · G2.1 sw.3]" vertex="1">
+                    <mxGeometry height="14" width="432" x="414" y="1212" as="geometry" />
+                </mxCell>
+                <mxCell id="T0b0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="p0" vertex="1">
+                    <mxGeometry height="22" width="66" x="414" y="1232" as="geometry" />
+                </mxCell>
+                <mxCell id="T0b5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="p5" vertex="1">
+                    <mxGeometry height="22" width="66" x="486" y="1232" as="geometry" />
+                </mxCell>
+                <mxCell id="T0b6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p6" vertex="1">
+                    <mxGeometry height="22" width="66" x="558" y="1232" as="geometry" />
+                </mxCell>
+                <mxCell id="T0b7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p7" vertex="1">
+                    <mxGeometry height="22" width="66" x="630" y="1232" as="geometry" />
+                </mxCell>
+                <mxCell id="T0b19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="…p14" vertex="1">
+                    <mxGeometry height="22" width="74" x="702" y="1232" as="geometry" />
+                </mxCell>
+                <mxCell id="T0_owner" parent="1" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" value="同组一张块表：pop 的每个 block id 在每个张量上各写一页" vertex="1">
+                    <mxGeometry height="14" width="432" x="414" y="1262" as="geometry" />
+                </mxCell>
+                <mxCell id="T0_info" parent="1" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" value="块数 20 → 15（多卡取最小值）· 每张量 3840B" vertex="1">
+                    <mxGeometry height="13" width="270" x="414" y="1284" as="geometry" />
+                </mxCell>
+                <mxCell id="T0_shrink" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;" value="多卡取最小值 min(20,15)=15 :2192" vertex="1">
+                    <mxGeometry height="20" width="152" x="696" y="1282" as="geometry" />
+                </mxCell>
+                <mxCell id="Tk1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e6;strokeColor=#d79b00;strokeWidth=1;dashed=1;fontSize=11;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" value="W1 · PP0·TP1（TP 镜像层：头 4–7）" vertex="1">
+                    <mxGeometry height="180" width="460" x="900" y="1140" as="geometry" />
+                </mxCell>
+                <mxCell id="W1_shared" parent="1" style="text;html=1;fontSize=9;fontColor=#666666;align=center;" value="张量0 = 各组第 0 层 → [G0.0 full.0 · G1.0 sw.0 · G2.0 sw.1]" vertex="1">
+                    <mxGeometry height="14" width="432" x="914" y="1162" as="geometry" />
+                </mxCell>
+                <mxCell id="W1a0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="p0" vertex="1">
+                    <mxGeometry height="22" width="66" x="914" y="1182" as="geometry" />
+                </mxCell>
+                <mxCell id="W1a5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="p5" vertex="1">
+                    <mxGeometry height="22" width="66" x="986" y="1182" as="geometry" />
+                </mxCell>
+                <mxCell id="W1a6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p6" vertex="1">
+                    <mxGeometry height="22" width="66" x="1058" y="1182" as="geometry" />
+                </mxCell>
+                <mxCell id="W1a7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p7" vertex="1">
+                    <mxGeometry height="22" width="66" x="1130" y="1182" as="geometry" />
+                </mxCell>
+                <mxCell id="W1a19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="…p14" vertex="1">
+                    <mxGeometry height="22" width="74" x="1202" y="1182" as="geometry" />
+                </mxCell>
+                <mxCell id="W1_shared1" parent="1" style="text;html=1;fontSize=9;fontColor=#666666;align=center;" value="张量1 = 各组第 1 层 → [G0.1 full.1 · G1.1 sw.2 · G2.1 sw.3]" vertex="1">
+                    <mxGeometry height="14" width="432" x="914" y="1212" as="geometry" />
+                </mxCell>
+                <mxCell id="W1b0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="p0" vertex="1">
+                    <mxGeometry height="22" width="66" x="914" y="1232" as="geometry" />
+                </mxCell>
+                <mxCell id="W1b5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="p5" vertex="1">
+                    <mxGeometry height="22" width="66" x="986" y="1232" as="geometry" />
+                </mxCell>
+                <mxCell id="W1b6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p6" vertex="1">
+                    <mxGeometry height="22" width="66" x="1058" y="1232" as="geometry" />
+                </mxCell>
+                <mxCell id="W1b7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p7" vertex="1">
+                    <mxGeometry height="22" width="66" x="1130" y="1232" as="geometry" />
+                </mxCell>
+                <mxCell id="W1b19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="…p14" vertex="1">
+                    <mxGeometry height="22" width="74" x="1202" y="1232" as="geometry" />
+                </mxCell>
+                <mxCell id="W1_owner" parent="1" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" value="同组一张块表：pop 的每个 block id 在每个张量上各写一页" vertex="1">
+                    <mxGeometry height="14" width="432" x="914" y="1262" as="geometry" />
+                </mxCell>
+                <mxCell id="W1_info" parent="1" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" value="块数 20 → 15（多卡取最小值）· 每张量 3840B/张量" vertex="1">
+                    <mxGeometry height="13" width="270" x="914" y="1284" as="geometry" />
+                </mxCell>
+                <mxCell id="W1_shrink" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;" value="多卡取最小值 min(20,15)=15 :2192" vertex="1">
+                    <mxGeometry height="20" width="152" x="1196" y="1282" as="geometry" />
+                </mxCell>
+                <mxCell id="T1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=11;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" value="W2 · PP1·TP0（6 层 · 2 张量）" vertex="1">
+                    <mxGeometry height="180" width="460" x="400" y="1340" as="geometry" />
+                </mxCell>
+                <mxCell id="T1_shared" parent="1" style="text;html=1;fontSize=9;fontColor=#666666;align=center;" value="张量0 = 各组第 0 层 → [G0.0 full.2 · G1.0 sw.4 · G2.0 sw.5]" vertex="1">
+                    <mxGeometry height="14" width="432" x="414" y="1362" as="geometry" />
+                </mxCell>
+                <mxCell id="T1p0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="p0" vertex="1">
+                    <mxGeometry height="22" width="66" x="414" y="1382" as="geometry" />
+                </mxCell>
+                <mxCell id="T1p5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="p5" vertex="1">
+                    <mxGeometry height="22" width="66" x="486" y="1382" as="geometry" />
+                </mxCell>
+                <mxCell id="T1p6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p6" vertex="1">
+                    <mxGeometry height="22" width="66" x="558" y="1382" as="geometry" />
+                </mxCell>
+                <mxCell id="T1p7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p7" vertex="1">
+                    <mxGeometry height="22" width="66" x="630" y="1382" as="geometry" />
+                </mxCell>
+                <mxCell id="T1p19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="…p14" vertex="1">
+                    <mxGeometry height="22" width="74" x="702" y="1382" as="geometry" />
+                </mxCell>
+                <mxCell id="T1_shared1" parent="1" style="text;html=1;fontSize=9;fontColor=#666666;align=center;" value="张量1 = 各组第 1 层 → [G0.1 full.3 · G1.1 sw.6 · G2.1 sw.7]" vertex="1">
+                    <mxGeometry height="14" width="432" x="414" y="1412" as="geometry" />
+                </mxCell>
+                <mxCell id="T1b0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="p0" vertex="1">
+                    <mxGeometry height="22" width="66" x="414" y="1432" as="geometry" />
+                </mxCell>
+                <mxCell id="T1b5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="p5" vertex="1">
+                    <mxGeometry height="22" width="66" x="486" y="1432" as="geometry" />
+                </mxCell>
+                <mxCell id="T1b6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p6" vertex="1">
+                    <mxGeometry height="22" width="66" x="558" y="1432" as="geometry" />
+                </mxCell>
+                <mxCell id="T1b7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p7" vertex="1">
+                    <mxGeometry height="22" width="66" x="630" y="1432" as="geometry" />
+                </mxCell>
+                <mxCell id="T1b19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="…p14" vertex="1">
+                    <mxGeometry height="22" width="74" x="702" y="1432" as="geometry" />
+                </mxCell>
+                <mxCell id="T1_owner" parent="1" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" value="同组一张块表：pop 的每个 block id 在每个张量上各写一页" vertex="1">
+                    <mxGeometry height="14" width="432" x="414" y="1462" as="geometry" />
+                </mxCell>
+                <mxCell id="T1_info" parent="1" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" value="块数 15（已是最小）· 每张量 3840B" vertex="1">
+                    <mxGeometry height="13" width="270" x="414" y="1484" as="geometry" />
+                </mxCell>
+                <mxCell id="T1_shrink" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;fontSize=9;" value="块数已是最小 = 15" vertex="1">
+                    <mxGeometry height="20" width="152" x="696" y="1482" as="geometry" />
+                </mxCell>
+                <mxCell id="Tk3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;strokeWidth=1;dashed=1;fontSize=11;fontStyle=1;verticalAlign=top;spacingTop=2;align=center;" value="W3 · PP1·TP1（TP 镜像层：头 4–7）" vertex="1">
+                    <mxGeometry height="180" width="460" x="900" y="1340" as="geometry" />
+                </mxCell>
+                <mxCell id="W3_shared" parent="1" style="text;html=1;fontSize=9;fontColor=#666666;align=center;" value="张量0 = 各组第 0 层 → [G0.0 full.2 · G1.0 sw.4 · G2.0 sw.5]" vertex="1">
+                    <mxGeometry height="14" width="432" x="914" y="1362" as="geometry" />
+                </mxCell>
+                <mxCell id="W3a0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="p0" vertex="1">
+                    <mxGeometry height="22" width="66" x="914" y="1382" as="geometry" />
+                </mxCell>
+                <mxCell id="W3a5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="p5" vertex="1">
+                    <mxGeometry height="22" width="66" x="986" y="1382" as="geometry" />
+                </mxCell>
+                <mxCell id="W3a6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p6" vertex="1">
+                    <mxGeometry height="22" width="66" x="1058" y="1382" as="geometry" />
+                </mxCell>
+                <mxCell id="W3a7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p7" vertex="1">
+                    <mxGeometry height="22" width="66" x="1130" y="1382" as="geometry" />
+                </mxCell>
+                <mxCell id="W3a19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="…p14" vertex="1">
+                    <mxGeometry height="22" width="74" x="1202" y="1382" as="geometry" />
+                </mxCell>
+                <mxCell id="W3_shared1" parent="1" style="text;html=1;fontSize=9;fontColor=#666666;align=center;" value="张量1 = 各组第 1 层 → [G0.1 full.3 · G1.1 sw.6 · G2.1 sw.7]" vertex="1">
+                    <mxGeometry height="14" width="432" x="914" y="1412" as="geometry" />
+                </mxCell>
+                <mxCell id="W3b0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="p0" vertex="1">
+                    <mxGeometry height="22" width="66" x="914" y="1432" as="geometry" />
+                </mxCell>
+                <mxCell id="W3b5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="p5" vertex="1">
+                    <mxGeometry height="22" width="66" x="986" y="1432" as="geometry" />
+                </mxCell>
+                <mxCell id="W3b6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p6" vertex="1">
+                    <mxGeometry height="22" width="66" x="1058" y="1432" as="geometry" />
+                </mxCell>
+                <mxCell id="W3b7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" value="p7" vertex="1">
+                    <mxGeometry height="22" width="66" x="1130" y="1432" as="geometry" />
+                </mxCell>
+                <mxCell id="W3b19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=9;" value="…p14" vertex="1">
+                    <mxGeometry height="22" width="74" x="1202" y="1432" as="geometry" />
+                </mxCell>
+                <mxCell id="W3_owner" parent="1" style="text;html=1;fontSize=9;fontColor=#888888;align=center;" value="同组一张块表：pop 的每个 block id 在每个张量上各写一页" vertex="1">
+                    <mxGeometry height="14" width="432" x="914" y="1462" as="geometry" />
+                </mxCell>
+                <mxCell id="W3_info" parent="1" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" value="块数 15（已是最小）· 每张量 3840B/张量" vertex="1">
+                    <mxGeometry height="13" width="270" x="914" y="1484" as="geometry" />
+                </mxCell>
+                <mxCell id="W3_shrink" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;fontSize=9;" value="块数已是最小 = 15" vertex="1">
+                    <mxGeometry height="20" width="152" x="1196" y="1482" as="geometry" />
+                </mxCell>
+                <mxCell id="num_note" parent="1" style="text;html=1;fontSize=11;fontColor=#888888;align=left;" value="④+ 多 worker 对齐 :2192：每卡 num_blocks = 可用显存 ÷ 页大小 ÷ 张量数 → W0/W1 = 20（可用显存 10240）· W2/W3 = 15（可用显存 7680）&#xA;num_blocks = min(20,15) = 15 · W0/W1 shrink 5120B→3840B · 块 ID 空间全 worker 统一 · 落显存 :7286" vertex="1">
+                    <mxGeometry height="34" width="1340" x="60" y="1530" as="geometry" />
+                </mxCell>
+                <mxCell id="s5_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="⑤ BlockPool 全局唯一：各 manager 互斥 pop，各卡按 dim0 行号落写" vertex="1">
+                    <mxGeometry height="22" width="1340" x="60" y="1574" as="geometry" />
+                </mxCell>
+                <mxCell id="pool" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8e8e8;strokeColor=#999999;" value="" vertex="1">
+                    <mxGeometry height="66" width="1340" x="60" y="1602" as="geometry" />
+                </mxCell>
+                <mxCell id="pool_lbl" parent="1" style="text;html=1;fontSize=12;fontStyle=1;align=center;" value="BlockPool（调度器侧 · 15 个 block ID = min 对齐后）" vertex="1">
+                    <mxGeometry height="18" width="1340" x="60" y="1604" as="geometry" />
+                </mxCell>
+                <mxCell id="pc0" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;" value="0" vertex="1">
+                    <mxGeometry height="26" width="40" x="76" y="1624" as="geometry" />
+                </mxCell>
+                <mxCell id="pc1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;" value="1" vertex="1">
+                    <mxGeometry height="26" width="40" x="120" y="1624" as="geometry" />
+                </mxCell>
+                <mxCell id="pc2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;" value="2" vertex="1">
+                    <mxGeometry height="26" width="40" x="164" y="1624" as="geometry" />
+                </mxCell>
+                <mxCell id="pcd" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;" value="…" vertex="1">
+                    <mxGeometry height="26" width="40" x="208" y="1624" as="geometry" />
+                </mxCell>
+                <mxCell id="pc5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;" value="5" vertex="1">
+                    <mxGeometry height="26" width="60" x="252" y="1624" as="geometry" />
+                </mxCell>
+                <mxCell id="pc6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" value="6" vertex="1">
+                    <mxGeometry height="26" width="60" x="316" y="1624" as="geometry" />
+                </mxCell>
+                <mxCell id="pc7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontStyle=1;" value="7" vertex="1">
+                    <mxGeometry height="26" width="60" x="380" y="1624" as="geometry" />
+                </mxCell>
+                <mxCell id="pc19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;" value="…14" vertex="1">
+                    <mxGeometry height="26" width="66" x="444" y="1624" as="geometry" />
+                </mxCell>
+                <mxCell id="m0" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;verticalAlign=middle;align=center;" value="Manager 0 · pop → 5（一张组块表 → 本组各层的张量）&#xA;W0: 张量0·p5=full.0 · 张量1·p5=full.1　　W1: 同 W0&#xA;W2: 张量0·p5=full.2 · 张量1·p5=full.3　　W3: 同 W2&#xA;每卡 2 页 = 512B" vertex="1">
+                    <mxGeometry height="110" width="420" x="60" y="1678" as="geometry" />
+                </mxCell>
+                <mxCell id="m1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;verticalAlign=middle;align=center;" value="Manager 1 · pop → 6（sw 偶数组）&#xA;W0: 张量0·p6=sw.0 · 张量1·p6=sw.2　　W1: 同 W0&#xA;W2: 张量0·p6=sw.4 · 张量1·p6=sw.6　　W3: 同 W2&#xA;每卡 2 页 = 512B" vertex="1">
+                    <mxGeometry height="110" width="420" x="520" y="1678" as="geometry" />
+                </mxCell>
+                <mxCell id="m2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;fontSize=10;fontStyle=1;verticalAlign=middle;align=center;" value="Manager 2 · pop → 7（sw 奇数组）&#xA;W0: 张量0·p7=sw.1 · 张量1·p7=sw.3　　W1: 同 W0&#xA;W2: 张量0·p7=sw.5 · 张量1·p7=sw.7　　W3: 同 W2&#xA;每卡 2 页 = 512B" vertex="1">
+                    <mxGeometry height="110" width="420" x="980" y="1678" as="geometry" />
+                </mxCell>
+                <mxCell id="a_m0" edge="1" parent="1" source="pc5" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;strokeWidth=2;endArrow=block;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="m0">
+                    <mxGeometry relative="1" as="geometry" />
+                </mxCell>
+                <mxCell id="a_m1" edge="1" parent="1" source="pc6" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;endArrow=block;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="m1">
+                    <mxGeometry relative="1" as="geometry" />
+                </mxCell>
+                <mxCell id="a_m2" edge="1" parent="1" source="pc7" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;strokeWidth=2;endArrow=block;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="m2">
+                    <mxGeometry relative="1" as="geometry" />
+                </mxCell>
+                <mxCell id="s6_label" parent="1" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#333333;" value="⑥ 真实模型 config + pp2tp2：同一条流水线，三种 page 形态（第 2/3/4 页展开）" vertex="1">
+                    <mxGeometry height="24" width="1340" x="60" y="1830" as="geometry" />
+                </mxCell>
+                <mxCell id="fa_card" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fbff;strokeColor=#6c8ebf;strokeWidth=2;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" value="FullAttention 类（Llama-3-8B · pp2tp2）" vertex="1">
+                    <mxGeometry height="340" width="660" x="60" y="1860" as="geometry" />
+                </mxCell>
+                <mxCell id="fa_c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="full.0" vertex="1">
+                    <mxGeometry height="22" width="60" x="76" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="fa_c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" value="…" vertex="1">
+                    <mxGeometry height="22" width="60" x="140" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="fa_t1" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=left;" value="×32 层同 spec → 1 group · state 头 8→4（TP）· 32→16 层（PP）" vertex="1">
+                    <mxGeometry height="22" width="420" x="210" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="fa_k" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" value="K · 本地 4 头 × 128 维" vertex="1">
+                    <mxGeometry height="62" width="300" x="80" y="1936" as="geometry" />
+                </mxCell>
+                <mxCell id="fa_v" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" value="V · 本地 4 头 × 128 维" vertex="1">
+                    <mxGeometry height="62" width="300" x="400" y="1936" as="geometry" />
+                </mxCell>
+                <mxCell id="fa_t2" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=left;spacingLeft=6;" value="每页 = 16 token × 2(K+V) × 4 本地头 × 128 × bf16 = 32KiB" vertex="1">
+                    <mxGeometry height="22" width="620" x="80" y="2006" as="geometry" />
+                </mxCell>
+                <mxCell id="fa_t3" parent="1" style="text;html=1;fontSize=12;fontStyle=1;fontColor=#1a4a7a;align=left;spacingLeft=6;" value="(4096, 4, 16, 256) × 16 张量/卡 · page=32KiB · num_blocks=4096（可用显存 2GiB）" vertex="1">
+                    <mxGeometry height="22" width="620" x="80" y="2042" as="geometry" />
+                </mxCell>
+                <mxCell id="fa_t4" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=left;spacingLeft=6;" value="每写 1 个 block_id = 32 层 × 2TP 卡同时落盘 ≈ 2MiB" vertex="1">
+                    <mxGeometry height="22" width="620" x="80" y="2078" as="geometry" />
+                </mxCell>
+                <mxCell id="mla_card" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fdf9fd;strokeColor=#9673a6;strokeWidth=2;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" value="MLA 类（DeepSeek-V3 · pp2tp2）" vertex="1">
+                    <mxGeometry height="340" width="660" x="740" y="1860" as="geometry" />
+                </mxCell>
+                <mxCell id="ml_c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=1;" value="MLA 0" vertex="1">
+                    <mxGeometry height="22" width="60" x="756" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="ml_c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" value="…" vertex="1">
+                    <mxGeometry height="22" width="60" x="830" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="ml_t1" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=left;" value="×61 层同 spec → 1 group · PP 31+30 层 · KV头=1 TP 不切" vertex="1">
+                    <mxGeometry height="22" width="420" x="910" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="ml_latent" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;" value="latent c_KV 512 · 128 个 Q头共享一份" vertex="1">
+                    <mxGeometry height="62" width="500" x="756" y="1936" as="geometry" />
+                </mxCell>
+                <mxCell id="ml_rope" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;fontStyle=1;" value="rope 64" vertex="1">
+                    <mxGeometry height="62" width="100" x="1276" y="1936" as="geometry" />
+                </mxCell>
+                <mxCell id="ml_t2" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=left;spacingLeft=6;" value="每 token 存 576 维 = 512 latent + 64 rope（block_size=64，V3 serving 惯例）" vertex="1">
+                    <mxGeometry height="22" width="620" x="756" y="2006" as="geometry" />
+                </mxCell>
+                <mxCell id="ml_t3" parent="1" style="text;html=1;fontSize=12;fontStyle=1;fontColor=#4a148c;align=left;spacingLeft=6;" value="(nb, 64, 576) × 31/30 张量/卡 · page=72KiB · 块数 ≈3,758（可用显存 8GiB）" vertex="1">
+                    <mxGeometry height="22" width="620" x="756" y="2042" as="geometry" />
+                </mxCell>
+                <mxCell id="ml_t4" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=left;spacingLeft=6;" value="每写 1 个 block_id = 61 层 × 2TP 各写 576 维 ≈ 8.6MiB（复制）" vertex="1">
+                    <mxGeometry height="22" width="620" x="756" y="2078" as="geometry" />
+                </mxCell>
+                <mxCell id="gdn_card" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbfa;strokeColor=#b85450;strokeWidth=2;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=6;align=center;" value="GDN 混合类（Qwen3.5 · pp2tp2）" vertex="1">
+                    <mxGeometry height="340" width="660" x="1420" y="1860" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_p1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;" value="G" vertex="1">
+                    <mxGeometry height="22" width="40" x="1436" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_p2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;" value="G" vertex="1">
+                    <mxGeometry height="22" width="40" x="1480" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_p3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;" value="G" vertex="1">
+                    <mxGeometry height="22" width="40" x="1524" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_p4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" value="F" vertex="1">
+                    <mxGeometry height="22" width="40" x="1568" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_t1" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=left;" value="×8 = 32 层（24 GDN + 8 Full）→ 4 组 · PP 本地各 4 层/组" vertex="1">
+                    <mxGeometry height="22" width="420" x="1628" y="1898" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_conv" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;" value="conv_state 24,576B" vertex="1">
+                    <mxGeometry height="62" width="210" x="1436" y="1936" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_ssm" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;" value="ssm_state 524,288B" vertex="1">
+                    <mxGeometry height="62" width="210" x="1660" y="1936" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_pad" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;dashed=1;" value="pad" vertex="1">
+                    <mxGeometry height="62" width="90" x="1884" y="1936" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_t2" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=left;spacingLeft=6;" value="GDN 页 536KB（TP2 切头后）｜Full 页 32KiB → 不整除，stride 垫页到 536KB（块大小保持 16）" vertex="1">
+                    <mxGeometry height="22" width="620" x="1436" y="2006" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_t3" parent="1" style="text;html=1;fontSize=12;fontStyle=1;fontColor=#b71c1c;align=left;spacingLeft=6;" value="GDN (nb,1,1,536KB) · Full (nb,2,16,512)+pad · 块数 = 8GiB ÷ 536KB ÷ 4 ≈ 3,912" vertex="1">
+                    <mxGeometry height="22" width="620" x="1436" y="2042" as="geometry" />
+                </mxCell>
+                <mxCell id="gd_t4" parent="1" style="text;html=1;fontSize=11;fontColor=#555555;align=left;spacingLeft=6;" value="每请求每步 4 ID · 每 block_id 全模型 = 32 层 × 2TP × 536KB ≈ 33.5MiB" vertex="1">
+                    <mxGeometry height="22" width="620" x="1436" y="2078" as="geometry" />
+                </mxCell>
+                <mxCell id="leg1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" value="FullAttention 层" vertex="1">
+                    <mxGeometry height="20" width="110" x="60" y="2210" as="geometry" />
+                </mxCell>
+                <mxCell id="leg2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" value="SlidingWindow 层" vertex="1">
+                    <mxGeometry height="20" width="120" x="180" y="2210" as="geometry" />
+                </mxCell>
+                <mxCell id="leg3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" value="MLA / GDN 状态" vertex="1">
+                    <mxGeometry height="20" width="120" x="310" y="2210" as="geometry" />
+                </mxCell>
+                <mxCell id="leg4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" value="GDN 层 / 状态" vertex="1">
+                    <mxGeometry height="20" width="100" x="440" y="2210" as="geometry" />
+                </mxCell>
+                <mxCell id="leg5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" value="min shrink/padding" vertex="1">
+                    <mxGeometry height="20" width="120" x="550" y="2210" as="geometry" />
+                </mxCell>
+                <mxCell id="leg6" parent="1" style="text;html=1;fontSize=10;fontColor=#888888;align=left;" value="真实 config 口径：page 随 TP 切头减半（MLA 例外复制）；可用显存为每卡教学值" vertex="1">
+                    <mxGeometry height="20" width="600" x="670" y="2210" as="geometry" />
+                </mxCell>
+                <mxCell id="f_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#0288d1;" value="" vertex="1">
+                    <mxGeometry height="230" width="460" x="1700" y="140" as="geometry" />
+                </mxCell>
+                <mxCell id="f_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#01579b;" value="page_size / num_blocks 公式（源码口径）" vertex="1">
+                    <mxGeometry height="24" width="460" x="1700" y="146" as="geometry" />
+                </mxCell>
+                <mxCell id="f_content" parent="1" style="text;html=1;fontSize=12;fontColor=#333333;align=left;spacingLeft=12;fontFamily=Courier New;verticalAlign=top;" value="Full/SW: 2 × 块大小 × 本地KV头 × head_dim × dtype_size&lt;br&gt;MLA: 块大小 × (kv_lora 512 + rope 64) × dtype_size（头不切）&lt;br&gt;GDN: Σ(conv,ssm state bytes)÷tp，可 page_size_padded 补齐&lt;br&gt;&lt;br&gt;num_blocks = 可用显存 ÷ 页大小 ÷ 投影后本地组内层数&lt;br&gt;（get_num_blocks :993 · may_override :962）&lt;br&gt;&lt;br&gt;每块全模型代价 = 张量总数 × page × TP 卡份&lt;br&gt;&lt;br&gt;PP 不均时 num_blocks = min(各卡块数)，&lt;br&gt;size 等比 shrink（page×nb_old → page×nb_min）:2192" vertex="1">
+                    <mxGeometry height="190" width="436" x="1712" y="174" as="geometry" />
+                </mxCell>
+                <mxCell id="mm_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;" value="" vertex="1">
+                    <mxGeometry height="210" width="460" x="1700" y="400" as="geometry" />
+                </mxCell>
+                <mxCell id="mm_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;" value="三个易混量（教学例口径）" vertex="1">
+                    <mxGeometry height="24" width="460" x="1700" y="406" as="geometry" />
+                </mxCell>
+                <mxCell id="mm_content" parent="1" style="text;html=1;fontSize=12;fontColor=#555555;align=left;spacingLeft=12;" value="group_size（张量数）= max(投影后各组层数)，教学例 = 2&lt;br&gt;（两卡均 max(2,2,2)=2：12 层每段恰好 2 个完整 n:1 周期）&lt;br&gt;num_groups（manager 数）= 3（全局定，各卡一致）&lt;br&gt;　→ 每请求每步消耗 num_groups 个 block ID&lt;br&gt;page_size（每页字节）= 256B&lt;br&gt;&lt;br&gt;两处 group_size 范围不同：&lt;br&gt;:1224 在合并后的全模型层上算 → 只决定拆几组&lt;br&gt;:1399 在投影到本 worker 的组上算 → 决定建几个张量" vertex="1">
+                    <mxGeometry height="170" width="436" x="1712" y="434" as="geometry" />
+                </mxCell>
+                <mxCell id="code_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f8e9;strokeColor=#558b2f;" value="" vertex="1">
+                    <mxGeometry height="320" width="460" x="1700" y="640" as="geometry" />
+                </mxCell>
+                <mxCell id="code_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#33691e;" value="源码调用链" vertex="1">
+                    <mxGeometry height="24" width="460" x="1700" y="646" as="geometry" />
+                </mxCell>
+                <mxCell id="code_content" parent="1" style="text;html=1;fontSize=11;fontColor=#333333;align=left;spacingLeft=12;fontFamily=Courier New;verticalAlign=top;" value="get_kv_cache_configs() :2073&lt;br&gt; ├─ 合并 specs（同层断言相等）&lt;br&gt; ├─ get_kv_cache_groups() :1760&lt;br&gt; │　 ├ uniform → 单 group :1022&lt;br&gt; │　 └ hybrid → unify page :1070&lt;br&gt; │　　 └ 切组（stride+padding）:1140&lt;br&gt; ├─ 投影 _project_to_worker() :2031&lt;br&gt; │　 └ 每卡 num_blocks / 显存校验&lt;br&gt; ├─ config_from_groups() :1340&lt;br&gt; │　 ├ 按列切张量 + shared_by&lt;br&gt; │　 └ min 对齐 shrink :2192&lt;br&gt; └─ worker 落显存 :7286&lt;br&gt; 　　int8 池 → view/permute → bind" vertex="1">
+                    <mxGeometry height="280" width="436" x="1712" y="674" as="geometry" />
+                </mxCell>
+                <mxCell id="bind_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#7b1fa2;" value="" vertex="1">
+                    <mxGeometry height="210" width="460" x="1700" y="990" as="geometry" />
+                </mxCell>
+                <mxCell id="bind_title" parent="1" style="text;html=1;fontSize=14;fontStyle=1;align=center;fontColor=#4a148c;" value="①~④ 与 ⑤ 的衔接" vertex="1">
+                    <mxGeometry height="24" width="460" x="1700" y="996" as="geometry" />
+                </mxCell>
+                <mxCell id="bind_content" parent="1" style="text;html=1;fontSize=12;fontColor=#555555;align=left;spacingLeft=12;" value="· ①② 每卡 profile 后收集；③ 合并分组在控制器&lt;br&gt;· 投影结果只算物理账，不回流调度器&lt;br&gt;· ④ 建出的张量 bind 到各 attention 层&lt;br&gt;· ⑤ 运行期调度器只动 block_id（零显存拷贝）&lt;br&gt;· 4 卡物理张量按同一张全局块表对号入座" vertex="1">
+                    <mxGeometry height="170" width="436" x="1712" y="1024" as="geometry" />
+                </mxCell>
+                <mxCell id="steps_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fbff;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=10;spacingTop=6;verticalAlign=top;" value="④ 每卡执行步骤（:1399-1416）&lt;br&gt;（每卡只跑一遍，无两种口径）&lt;br&gt;&lt;br&gt;1. 输入 = 投影后的组（只裁层名）&lt;br&gt;　　组数/顺序/gid 全局一致&lt;br&gt;　　四卡均为：G0=2 · G1=2 · G2=2 层&lt;br&gt;&lt;br&gt;2. 张量数 = max(各组层数) = 2（:1399）&lt;br&gt;&lt;br&gt;3. 第 j 张量 shared_by = 各组第 j 层&lt;br&gt;　　（:1413，图上每个张量一行）&lt;br&gt;　　W0/W1: 张量0=[full.0, sw.0, sw.1]&lt;br&gt;　　　　　张量1=[full.1, sw.2, sw.3]&lt;br&gt;　　W2/W3: 张量0=[full.2, sw.4, sw.5]&lt;br&gt;　　　　　张量1=[full.3, sw.6, sw.7]&lt;br&gt;&lt;br&gt;4. num_blocks = 可用显存 ÷ 页大小 ÷ 张量数&lt;br&gt;　　（:993）→ min(20,15)=15&lt;br&gt;　　（:2192，等比 shrink）" vertex="1">
+                    <mxGeometry height="340" width="300" x="60" y="1140" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0l1" parent="1" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" value="本地投影层（6）" vertex="1">
+                    <mxGeometry height="11" width="180" x="414" y="818" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0l2" parent="1" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" value="归入 3 个 group（每组 2 层）" vertex="1">
+                    <mxGeometry height="11" width="220" x="414" y="856" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0g1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #dae8fc;strokeColor= #6c8ebf;fontSize=8;" value="G0 · full&amp;#xa;full.0 + full.1" vertex="1">
+                    <mxGeometry height="36" width="146" x="414" y="870" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0g2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #d5e8d4;strokeColor= #82b366;fontSize=8;" value="G1 · sw&amp;#xa;sw.0 + sw.2" vertex="1">
+                    <mxGeometry height="36" width="146" x="562" y="870" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0g3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #ffe6cc;strokeColor= #d79b00;fontSize=8;" value="G2 · sw&amp;#xa;sw.1 + sw.3" vertex="1">
+                    <mxGeometry height="36" width="138" x="710" y="870" as="geometry" />
+                </mxCell>
+                <mxCell id="pj0nb" parent="1" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" value="num_blocks = 10240 ÷ 256 ÷ 2 = 20" vertex="1">
+                    <mxGeometry height="12" width="430" x="414" y="910" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1l1" parent="1" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" value="本地投影层（6）" vertex="1">
+                    <mxGeometry height="11" width="180" x="914" y="818" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1l2" parent="1" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" value="归入 3 个 group（每组 2 层）" vertex="1">
+                    <mxGeometry height="11" width="220" x="914" y="856" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1g1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #dae8fc;strokeColor= #6c8ebf;fontSize=8;" value="G0 · full&amp;#xa;full.0 + full.1" vertex="1">
+                    <mxGeometry height="36" width="146" x="914" y="870" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1g2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #d5e8d4;strokeColor= #82b366;fontSize=8;" value="G1 · sw&amp;#xa;sw.0 + sw.2" vertex="1">
+                    <mxGeometry height="36" width="138" x="1066" y="870" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1g3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #ffe6cc;strokeColor= #d79b00;fontSize=8;" value="G2 · sw&amp;#xa;sw.1 + sw.3" vertex="1">
+                    <mxGeometry height="36" width="138" x="1210" y="870" as="geometry" />
+                </mxCell>
+                <mxCell id="pj1nb" parent="1" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" value="num_blocks = 20（同 W0）" vertex="1">
+                    <mxGeometry height="12" width="430" x="914" y="910" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2l1" parent="1" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" value="本地投影层（6）" vertex="1">
+                    <mxGeometry height="11" width="180" x="414" y="962" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2l2" parent="1" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" value="归入 3 个 group（每组 2 层）" vertex="1">
+                    <mxGeometry height="11" width="220" x="414" y="1000" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2g1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #dae8fc;strokeColor= #6c8ebf;fontSize=8;" value="G0 · full&amp;#xa;full.2 + full.3" vertex="1">
+                    <mxGeometry height="36" width="146" x="414" y="1014" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2g2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #d5e8d4;strokeColor= #82b366;fontSize=8;" value="G1 · sw&amp;#xa;sw.4 + sw.6" vertex="1">
+                    <mxGeometry height="36" width="146" x="562" y="1014" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2g3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #ffe6cc;strokeColor= #d79b00;fontSize=8;" value="G2 · sw&amp;#xa;sw.5 + sw.7" vertex="1">
+                    <mxGeometry height="36" width="138" x="710" y="1014" as="geometry" />
+                </mxCell>
+                <mxCell id="pj2nb" parent="1" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" value="num_blocks = 7680 ÷ 256 ÷ 2 = 15" vertex="1">
+                    <mxGeometry height="12" width="430" x="414" y="1054" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3l1" parent="1" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" value="本地投影层（6）" vertex="1">
+                    <mxGeometry height="11" width="180" x="914" y="962" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3l2" parent="1" style="text;html=1;fontSize=8;fontColor=#888888;align=left;" value="归入 3 个 group（每组 2 层）" vertex="1">
+                    <mxGeometry height="11" width="220" x="914" y="1000" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3g1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #dae8fc;strokeColor= #6c8ebf;fontSize=8;" value="G0 · full&amp;#xa;full.2 + full.3" vertex="1">
+                    <mxGeometry height="36" width="146" x="914" y="1014" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3g2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #d5e8d4;strokeColor= #82b366;fontSize=8;" value="G1 · sw&amp;#xa;sw.4 + sw.6" vertex="1">
+                    <mxGeometry height="36" width="138" x="1066" y="1014" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3g3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor= #ffe6cc;strokeColor= #d79b00;fontSize=8;" value="G2 · sw&amp;#xa;sw.5 + sw.7" vertex="1">
+                    <mxGeometry height="36" width="138" x="1210" y="1014" as="geometry" />
+                </mxCell>
+                <mxCell id="pj3nb" parent="1" style="text;html=1;fontSize=9;fontColor=#555555;align=left;spacingLeft=4;" value="num_blocks = 15（同 W2）" vertex="1">
+                    <mxGeometry height="12" width="430" x="914" y="1054" as="geometry" />
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram></mxfile>
