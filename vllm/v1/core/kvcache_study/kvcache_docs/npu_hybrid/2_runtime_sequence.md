@@ -1,136 +1,133 @@
-# 一条请求的KVCache管理端到端时序（NPU / vllm-ascend 视角 · Llama-3-8B pp2tp2）
+# 一条请求的 KVCache 管理端到端时序（NPU / vllm-ascend 视角 · Qwen3.5-4B GDN 混合 pp2tp2）
 
-> 主线：**纯 Full Attention 模型 Llama-3-8B（pp2tp2，4 卡 Ascend NPU 环境）**，一个 KVCacheGroupSpec，类型为 FullAttentionSpec。用时序图串起一条请求从进入 Scheduler 到最终释放的全过程。
+> 主线：**GDN 混合模型 Qwen3.5-4B（pp2tp2，4 卡 Ascend NPU 环境）**。它是 Gated DeltaNet（线性注意力）与 Full Attention 的混合体——32 层里 **24 层 `linear_attention`（GDN，产出 `MambaSpec`，单张量状态）+ 8 层 `full_attention`（产出 `FullAttentionSpec`，1024-token 大页 K/V）**，两类 spec 无法 merge，构成**4 个 KV cache group（1 组 attn + 3 组 linear，因分组要求"每组层数相等"）**，由同一个协调器统一编排、共享唯一 `BlockPool`。
 >
-> **编排与逻辑侧（引擎进程）平台无关**，本篇照主线展开；**设备执行链是 NPU 实现**（`NPUModelRunner` / `AscendAttentionBackendImpl`，K/V 双池张量）——分配决策层不碰显存，"写 KV / 读 KV"的算子层是 NPU 特有实现。
+> **本篇按「两侧」展开运行期**（对齐 [`0_kvcache_arch.md`](./0_kvcache_arch.md) §5）：**逻辑侧（引擎进程）负责"选块、下发"**——`Scheduler` 为请求选定 `block_id`；**物理侧（worker 进程）负责"建表、换算、读写"**——收到 `SchedulerOutput` 后对物理张量写入本步新 K/V、读取历史 K/V。两侧仅靠 `block_id` 与标量参数衔接。
 
-> **部署拓扑**：PP2 × TP2 = 4 卡，每个 worker 负责 16 层、4 个 KV 头（TP2 切分 8→4）。调度器视角下全模型仍为单 group（32 层），对 PP/TP 布局透明。
->
-> 数字约定：示例沿用参数化数字（block_size=16、每卡 KV 可用 2GiB → `num_blocks=4096`）；**本仓库 NPU 实测部署为 block_size=128、`num_blocks=13291`、每层 K/V 各一张 `(13291,128,4,128)` bf16**（见 [`1_start_init.md`](./1_start_init.md) §6），机制完全相同，只是页更大。
+> **部署拓扑**：PP2 × TP2 = 4 卡，每个 worker 负责 16 层（**12 linear + 4 full attn**）、full attn 的 KV 头 4→2（TP2 切分）。调度器视角下全模型是 **4 个 group（1 组 attn + 3 组 linear）**，对 PP/TP 布局透明。
 
-> **实战主线注记（Qwen3.5-4B · GDN 混合，2026-10-16 实测）**：本篇按纯 Full Attention 骨架讲时序（Llama 示例）；Qwen3.5-4B 主线下四点差异——① 混合多 KV group（24 层 linear `MambaSpec` + 8 层 full-attn `FullAttentionSpec`，前缀缓存/分配按组独立）；② **前缀缓存强制关闭**（`enable_prefix_caching=False`：§4.2.1 前缀查找恒空、S2 touch 恒跳过，全流程只走新块分配/释放）；③ linear 层每步**状态步进**（递归状态原地更新），无"读历史 token K/V"路径，只有 8 个 full-attn 层走 block_table 读历史；④ attn 块为 **1024-token 大页**（vllm 上游默认 16 → NPU 128 → 混合模型 1024，三级跳与页统一全链见启动篇 [`1_start_init.md`](./1_start_init.md) §2.0，pp2tp2 部署实测见 [`3_deploy_qwen35_pp2tp2.md`](./3_deploy_qwen35_pp2tp2.md)）。
+> **实测数字（Qwen3.5-4B，2026-10-16，见部署篇 [`3_deploy_qwen35_pp2tp2.md`](./3_deploy_qwen35_pp2tp2.md)）**：attn 组 `block_size = 1024`、`num_blocks ≈ 6003`（= 6,147,276 tokens ÷ 1024）、每卡 KV 可用 **51.90 GiB**；full-attn 每 rank 2 KV 头 / head_dim 256；mamba 组 `block_size = max_model_len = 32768`（前缀缓存关闭 → 整序列压进一个状态块，见 §1）。
+
+> **混合模型约束（本篇贯穿）**：
+> ① **前缀缓存强制关闭**（`enable_prefix_caching=False`）——GDN 递归状态没有"逐 token 增量"，链式哈希前缀复用不成立：逻辑侧前缀查找恒空、S2 touch 恒跳过，全流程只走新块分配 / 释放；
+> ② **两类层 block_size 不同**（attn 1024 / mamba 32768）——逻辑侧对4 组分别下钻各自的 manager；
+> ③ **执行路径分叉**：8 个 full-attn 层在物理侧走 `reshape_and_cache` 写 K/V 双池 + 按 `block_table` 读历史，24 个 linear 层只做**状态原地步进**、无"读历史 token"路径；
+> ④ attn 块是 **1024-token 大页**（16 → 128 → 1024 三级跳与页统一全链见启动篇 [`1_start_init.md`](./1_start_init.md) §2.0）。
 
 ---
 
 ## 1. 模型配置与框架配置
 
-下文所有阶段共用同一个请求示例，模型参数固定为 Llama-3-8B，部署于 pp2tp2（4 卡 Ascend NPU）环境。
+下文所有阶段共用同一请求示例，模型固定为 Qwen3.5-4B（架构 `Qwen3_5ForConditionalGeneration`），部署于 pp2tp2（4 卡 Ascend NPU）。
 
-Llama-3-8B 采用 GQA（Grouped Query Attention），其模型级 KV cache 参数如下：
+`config.json` 的 `text_config` 里 `layer_types` 显示 **24 × `linear_attention` + 8 × `full_attention`**（`full_attention_interval=4`，即每 3 层 GDN 插 1 层全注意力）：
 
 | 参数 | 值 | 说明 |
 |---|---|---|
-| `num_hidden_layers` | 32 | 全模型层数；每层各持一份 KV 张量（NPU 上 K、V 各一张），但**共享同一套 block_id** |
-| `num_attention_heads` | 32 | 查询头数 |
-| `num_key_value_heads`（=`num_kv_heads`） | 8 | KV 头数；`32/8 = 4` 个查询头共享 1 个 KV 头 |
-| `head_dim`（=`head_size`） | 128 | 每 head 维度 |
-| `hidden_size` | 4096 | 隐层宽度 `= num_attention_heads × head_dim` |
+| `num_hidden_layers` | 32 | 24 linear + 8 full attn；**两类层各成一个 KV group**，共享同一套 `block_id` |
+| full attn：`num_attention_heads` / `num_key_value_heads` / `head_dim` | 16 / 4 / 256 | GQA，4 个 KV 头 |
+| GDN：`linear_num_key_heads` / `linear_num_value_heads` / `head_dim` / `conv_kernel` | 16 / 32 / 128 / 4 | 门控 DeltaNet 递归状态；块内**存 state 而非 token K/V** |
+| `hidden_size` / `intermediate_size` / `vocab` | 2560 / 9216 / 248320 | 4B 级小模型 |
+| `mamba_ssm_dtype` | float32 | GDN 状态精度 |
+| `mtp_num_hidden_layers` | 1 | 含 1 层 MTP（本次未启投机解码） |
 
 **pp2tp2 部署切分**：
 
 | 切分维度 | 全模型 | 每 worker | 说明 |
 |----------|--------|-----------|------|
-| PP2（按层切） | 32 层 | 16 层 | `get_layers_start_end_indices()` 按 `pp_rank` 切层范围 |
-| TP2（按 KV 头切） | 8 KV 头 | 4 KV 头 | `get_num_kv_heads()` 除以 `tensor_parallel_size` |
+| PP2（按层切） | 32 层（24 lin + 8 attn） | 16 层（12 lin + 4 attn） | `get_layers_start_end_indices()` 按 `pp_rank` 切层范围 |
+| TP2（按 KV 头切） | full attn 4 KV 头 | 2 KV 头 | `get_num_kv_heads()` 除以 `tensor_parallel_size`；GDN 状态另按 value 头切 |
 
-vLLM侧 KV cache 配套参数：
+vLLM 侧 KV cache 配套参数：
 
 | 参数 | 值 | 说明 |
 |---|---|---|
-| `block_size` | 16 | 每块容纳 token 数（page 粒度；vllm 上游默认 16 → NPU 纯 FA 实测 **128** → 混合 Qwen3.5-4B 实测 **1024**，三级跳见启动篇 §2.0；`AscendAttentionBackend.get_supported_kernel_block_sizes()` 返回 `[128]`，物理 kernel 恒 128 粒度寻址） |
-| `dtype` | `fp16`（示例）/ `bf16`（实验） | KV 元素精度（2 字节/元素） |
+| `block_size`（attn 组） | **1024** | 每块容纳 token 数；混合模型经 mamba 页对齐定为 1024（`patch_mamba_config.py:103`） |
+| `mamba_block_size`（mamba 组） | **32768**（= `max_model_len`） | 前缀缓存关闭时 `patch_mamba_config.py:146` 把 mamba 块设为整序列长度——**每请求只占 1 个状态块** |
+| `scheduler_block_size` | **32768** | 4 组 block_size 的 **LCM**（`resolve_kv_cache_block_sizes`，kv_cache_utils.py:627） |
+| `hash_block_size` | **32768** | 前缀缓存关闭 → 退回等于 scheduler_block_size（kv_cache_utils.py:633-634） |
+| `kernel_block_size`（attn 组） | **128** | 算子寻址粒度；一个大块虚拟切成 8×128 |
+| `enable_prefix_caching` | **False** | 混合模型强制关闭 |
+| `mamba_cache_mode` | `none` | 前缀缓存关闭时随之（`patch_mamba_config.py:137-138` 仅在 kv_transfer 场景升为 `align`） |
 
-基于上述参数，**每 worker** 的 KV cache 物理规模可逐级推导（`num_kv_heads=4`、`num_layers` 取 projected group 的 16，即 PP2 切分后每 worker 实际层数）：
+**`page_size_bytes`（统一页）**：patch 把两族 spec 的对外页垫到全等 **2,072 KB（= attn 页 2 MB + conv 页 24 KB，padding 1.16%）**——这是4 组能共享同一 `BlockPool`（同一个 block 账本）的前提（数字链见启动篇 §2.0.2）。
 
-| 派生量 | 计算式 | 值 | 说明 |
-|---|---|---|---|
-| `page_size_bytes` | `2 × block_size × num_kv_heads × head_dim × 2B`<br>= `2 × 16 × 4 × 128 × 2` | 32,768 B<br>（32 KB） | 单层单块字节数（TP2 后 4 头），因子 2 为 K、V 各一份；**NPU 物理落地拆成 K/V 两池** |
-| `num_blocks`（示例每卡可用显存 2GB） | `2 GB ÷ page_size_bytes ÷ num_layers`<br>= `2,147,483,648 ÷ 32,768 ÷ 16` | 4096 | 跨 worker `min` 对齐后的逻辑块总数，`BlockPool` 建立 `KVCacheBlock(0..4095)`（块 0 开池即摘作 `null_block`，实际可分配 4095） |
-| `kv_caches[layer]` | **二元组** `(k_cache, v_cache)`，各 4D | K、V 各 `(4096, 16, 4, 128)` | 每层**两张**独立张量（形状由 `AscendAttentionBackend.get_kv_cache_shape()` 的描述符 `(2, N, B, H, D)` 丢掉 dim0 的"2"而来，model_runner_v1.py:4599-4644；实测部署为 `(13291, 128, 4, 128)` bf16）；**K 池、V 池各一套同序号行，同一个 `block_id` 命中两张张量各自的同一行** |
+基于上述参数，**每 worker** 的 KV cache 物理规模：
+
+| 派生量 | 值 | 说明 |
+|---|---|---|
+| `num_blocks` | ≈ **6003** | 混合编排结果（6,147,276 tokens ÷ 1024）；跨 worker `min` 对齐后的逻辑块总数，`BlockPool` 建 `KVCacheBlock(0..6002)`（块 0 开池即摘作 `null_block`，实际可分配 6002） |
+| full-attn 层（4 层/rank）形态 | 单张连续张量 `2,072 KB × num_blocks`，`view` 成 K/V 各 `(6003×8, 128, 2, 256)` bf16 | 每层 K 池 + V 池；**同一 `block_id` 命中两池同序号行** |
+| linear 层（12 层/rank）形态 | 单张量路径，按 `MambaSpec.shapes` 切成 conv / temporal 状态视图 | `"linear_attn" in layer_name` 命中单张量分支（model_runner_v1.py:4118） |
 
 ---
 
 ## 2. 示例请求
 
-示例以 **Llama-3-8B（pp2tp2，NPU）** 为主线。
+示例以 **Qwen3.5-4B（pp2tp2，NPU）** 为主线。
 
-**前置请求 P（先于 R 服务、已结束）**：
+> 注：下文块号即真实 `block_id`。块 0 开池即被 `BlockPool` 摘作 `null_block`（不分配、不释放），因此示例中所有分配从块 1 起。
 
-> 注：下文块号即真实 `block_id`。block 0 开池即被 `BlockPool` 摘作 `null_block`（不分配、不释放，实际可分配 4095 块），因此示例中所有分配从块 1 起。
-
-```
-prompt     = 共享前缀（32 token） + P 自己的追问（若干 token，与 R 不同）
-            → P 服务时把共享前缀写成满块 1/2，写满即哈希入前缀缓存表
-block_size = 16
-```
-
-P 结束后，块 1/2 作为**带哈希的缓存块**被保留：进 free 队列**队尾**（LRU 保护），记录在 `cached_block_hash_to_block` 映射表。**注意：P 缓存的"块 1"是 K、V 两张张量各自的第 1 行——逻辑上的一个块在 NPU 物理上横跨两张张量**，这对逻辑侧不可见。
-
-**共享前缀（32 token = 2 个满块）**：P 与 R 共同复用的开头（如同一段 system prompt 或公共开场白），前 32 token 恰好装满 2 块。
+**前置说明**：混合模型**前缀缓存关闭**，逻辑侧 `get_computed_blocks` 恒返回空——不存在"命中其他请求缓存"的路径，每个请求都从空块池开始分配。
 
 **示例请求 R**：
 
 ```
-prompt     = 共享前缀（32 token） + 追加问题（38 token） = 70 token
+prompt     = 1020 token
 max_tokens = 32
-block_size = 16
+attn 组 block_size = 1024；mamba 组 block_size = 32768
 ```
 
-R 的 prompt 前 32 token 恰与共享前缀相同 → prefill 时 `get_computed_blocks` 命中 P 缓存的块 1/2（`hit_length=32`）；后 38 token 为新内容，需新分配块 3/4/5（16+16+6）。
+R 的 prompt 1020 token：
+- **attn 组**：`cdiv(1020, 1024) = 1` 块（块 1，装 1020/1024）；
+- **3 个 linear 组**：各 `cdiv(1020, 32768) = 1` 块（块 2/3/4，整序列状态块，此后原地步进、不再增长）。
 
-宏观路径：**入队（WAITING）→ 首次调度 prefill（前 32 token 复用 P 缓存的块 1/2，只算剩余 38 token，→ RUNNING）→ 每步 decode 续写 1 token（至 32 个输出）→ 结束释放**。决策全部在逻辑侧完成、不碰显存——NPU 特有部分只在每个"设备执行"框内部的算子与张量形态（§4.3）。
+宏观路径：**入队（WAITING）→ 首次调度 prefill（逻辑侧 4 组各分配各自的块并下发，物理侧写入）→ 每步 decode 续写 1 token（逻辑侧 attn 组跨块边界时申请新块、mamba 组恒 0 块；物理侧步进状态 / 写读双池）→ 结束释放**。
 
----
+## 3. 端到端两侧分工总览
 
-## 3. 端到端过程速览与总览时序图
+`EngineCore.step()`（core.py:443）每步驱动 `schedule → execute_model → sample_tokens`。运行期两侧各司其职——**分配在逻辑侧**（Scheduler 为请求选定 block id），**读写在物理侧**（worker 收到 block table 后，对物理张量写入本步新 K/V、读取历史 K/V 各一次）。一条请求 R 从入队到结束，两侧配对如下（阶段 × 两侧）：
 
-`EngineCore.step()`（core.py:443）每步驱动 `schedule → execute_model → sample_tokens`。
+| 阶段 | 逻辑侧（引擎进程） | 物理侧（worker 进程） |
+|---|---|---|
+| 入队 | WAITING；`Request` 构造（前缀缓存关，**不预计算哈希**） | —（尚未涉及任何块） |
+| 首次调度 prefill | ① `get_computed_blocks`（恒空）→ ② `allocate_slots`（4 组各 1 块）→ 下发 `SchedulerOutput`（attn 新块 1） | `_zero_block_ids` 清零 attn 块 1 → forward：8 层写双池 1020 token KV、24 层状态初始化 → 采样第 1 个 token |
+| 续步 decode | `allocate_slots`：attn 组 0/1 块（跨块边界）、mamba 组恒 0 块 → 下发增量新块 | forward：full-attn 层读写双池 KV、linear 层就地步进 → 采样下一个 token |
+| ⋮ | 重复续步，直到 EOS 或 max_tokens | — |
+| 结束 | `free()`：逐组逆序归还，`ref_cnt` 归 0 才回收 | —（此后不再读写） |
 
-**一条请求的端到端过程（编号速览）**（示例 R：prompt = 70 token / max_tokens = 32 token）：
+**一条请求的端到端过程（编号速览）**（示例 R：prompt = 1020 token / max_tokens = 32）：
 
 <div style="font-family:ui-monospace,Consolas,'Courier New',monospace;line-height:1.55;font-size:13px">
 <div style="white-space:pre;background-color:#f0f0f0">入队 → 请求进入 WAITING 队列</div>
 <div style="white-space:pre">├─ 首次调度进行 prefill</div>
-<div style="white-space:pre;background-color:#e8f5e9">│  ├─ <span style="color:#1565c0">KVCacheManager.get_computed_blocks</span>（①）# 前缀缓存查找，遍历70//16=4个hash 查表 → hit_length=32
-│  │  └─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.find_longest_cache_hit</span>
-│  │     └─ <span style="color:#e65100">FullAttentionManager.find_longest_cache_hit</span>
-│  │        └─ <span style="color:#6a1b9a">BlockPool.get_cached_block</span> → 命中块 1/2（P 缓存的共享前缀块）</div>
-<div style="white-space:pre;background-color:#e3f2fd">│  ├─ <span style="color:#1565c0">KVCacheManager.allocate_slots</span>（②）
-│  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.get_num_blocks_to_allocate</span> # 计算本轮实际需要分配多少新块，检查空闲块是否足够
-│  │  │  └─ <span style="color:#e65100">FullAttentionManager.get_num_blocks_to_allocate</span> # 需要 3 块新块
-│  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.allocate_new_computed_blocks</span> # 处理已算 token（本地命中块 + 本轮新命中块 + 外部 connector 已算 token）
-│  │  │  └─ <span style="color:#e65100">FullAttentionManager.add_local_computed_blocks</span>
-│  │  │     └─ <span style="color:#6a1b9a">BlockPool.touch</span> # touch 命中块（2 命中）
-│  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.allocate_new_blocks</span> # 为待计算的 token（new + lookahead）分配新块
-│  │  │  └─ <span style="color:#e65100">FullAttentionManager.allocate_new_blocks</span>
-│  │  │     └─ <span style="color:#6a1b9a">BlockPool.get_new_blocks</span> # 从空闲队列弹出块 3/4/5，block_table=[命中1, 命中2, 新3, 新4, 新5]
-│  │  └─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.cache_blocks</span> # 缓存新块 3, 4 入哈希表，未满块 5 不入
-│  │     └─ <span style="color:#e65100">FullAttentionManager.cache_blocks</span>
-│  │        └─ <span style="color:#6a1b9a">BlockPool.cache_full_blocks</span>（新满块 3, 4 入哈希表；未满块 5 不入）</div>
-<div style="white-space:pre">│  ├─ SchedulerOutput # 调度输出，含清零块 id 3/4/5</div>
-<div style="white-space:pre;background-color:#fff3e0">│  └─ <span style="color:#c62828">NPUModelRunner.execute_model</span>: K/V 双池清零新块 → forward 写 70 token KV → sample → 第 1 token</div>
+<div style="white-space:pre;background-color:#e8f5e9">│  ├─ <span style="color:#1565c0">KVCacheManager.get_computed_blocks</span>（①）# 前缀查找：enable_prefix_caching=False → 恒返回空
+│  │  └─ <span style="color:#2e7d32">KVCacheCoordinatorNoPrefixCache.find_longest_cache_hit</span> # 4 组皆返回空块列表</div>
+<div style="white-space:pre;background-color:#e3f2fd">│  ├─ <span style="color:#1565c0">KVCacheManager.allocate_slots</span>（②）# 对 4 个 group 分别下钻
+│  │  ├─ <span style="color:#2e7d32">Coordinator.get_num_blocks_to_allocate</span> # attn 组 + mamba 组求和，检查空闲块
+│  │  │  ├─ <span style="color:#e65100">FullAttentionManager</span>（attn 组）# cdiv(1020,1024)=1 → 需 1 块
+│  │  │  └─ <span style="color:#e65100">MambaManager</span>（mamba 组）# cdiv(1020,32768)=1 → 需 1 状态块
+│  │  ├─ <span style="color:#2e7d32">Coordinator.allocate_new_computed_blocks</span> # 无命中 → 恒跳过（touch 不发生）
+│  │  ├─ <span style="color:#2e7d32">Coordinator.allocate_new_blocks</span> # 为待计算 token 分配
+│  │  │  └─ <span style="color:#6a1b9a">BlockPool.get_new_blocks</span> # attn 组弹块 1；3 个 linear 组各弹块 2/3/4 → attn=[1]、linear=[2/3/4]
+│  │  └─ <span style="color:#2e7d32">Coordinator.cache_blocks</span> # 前缀缓存关闭 → 不入哈希表（no-op）</div>
+<div style="white-space:pre">│  ├─ SchedulerOutput # 下发：清零块 id 仅 attn 组新块 1（mamba 块不进 new_block_ids）</div>
+<div style="white-space:pre;background-color:#fff3e0">│  └─ <span style="color:#c62828">NPUModelRunner.execute_model</span>（物理侧）：8 个 full-attn 层写双池 1020 token KV + 读历史；24 个 linear 层状态步进 → sample → 第 1 token</div>
 <div style="white-space:pre;background-color:#f0f0f0">→ 请求进入 RUNNING 队列</div>
-<div style="white-space:pre;background-color:#f3e5f5">├─ decode（③）# 续写 31 步：块5占6/16 → 步1~10 填满块5（0分配）；步11 申请块6，步12~26 填满块6；步27 申请块7；步28~31 块7占5/16未满）
-│  ├─ <span style="color:#1565c0">KVCacheManager.allocate_slots</span> # 每步一次；情况A · 当前块未满需 0 块（token 直接续写）/ 情况B · 已满需 1 块（token 落进下一块）
-│  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.get_num_blocks_to_allocate</span> # 需新块 = cdiv(需槽位数, 16) − 已有块数；A 算 0 / B 算 1
-│  │  │  └─ <span style="color:#e65100">FullAttentionManager.get_num_blocks_to_allocate</span>
-│  │  ├─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.allocate_new_blocks</span>
-│  │  │  └─ <span style="color:#e65100">FullAttentionManager.allocate_new_blocks</span>
-│  │  │     └─ <span style="color:#6a1b9a">BlockPool.get_new_blocks</span> # A: 需 0 块不调；B: 弹 1 空闲块 → block_table +1
-│  │  └─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.cache_blocks</span> # 每步都调
-│  │     └─ <span style="color:#e65100">FullAttentionManager.cache_blocks</span>
-│  │        └─ <span style="color:#6a1b9a">BlockPool.cache_full_blocks</span> # 恰写满当前块才入表；B 的新块未满不入
-│  ├─ SchedulerOutput # 调度输出，附清零块 id（新申请的块：步11 块6、步27 块7）；0 分配步（A）无清零
-│  └─ <span style="color:#c62828">NPUModelRunner.execute_model</span> # 每步一次：forward 依 block_table 读写双池 KV → sample → 1 个输出 token</div>
+<div style="white-space:pre;background-color:#f3e5f5">├─ decode（③）# 续写 31 步：attn 块 1 占 1020/1024 → 步 1~4 填满块 1（0 分配）；步 5 申请块 5；步 5~31 落块 5（27/1024 未满）
+│  ├─ <span style="color:#1565c0">KVCacheManager.allocate_slots</span> # 逻辑侧每步：attn 组 未满 0 块 / 已满 1 块；mamba 组恒 0 块（原地步进）
+│  │  └─ <span style="color:#2e7d32">Coordinator.allocate_new_blocks</span> # 跨块边界步才给 attn 组弹 1 块（步 5）
+│  ├─ SchedulerOutput # 下发清零块 id（步 5 的块 5）；0 分配步无清零
+│  └─ <span style="color:#c62828">NPUModelRunner.execute_model</span> # 物理侧每步：full-attn 层写/读双池 KV、linear 层步进状态 → sample → 1 个输出 token</div>
 <div style="white-space:pre;background-color:#f0f0f0">→ 请求生成结束（stop/EOS 或 max_tokens 满了 → FINISHED_*）→ 从 RUNNING 队列移除</div>
-<div style="white-space:pre;background-color:#ffebee">└─ 结束释放（④）# 命中块 1/2 为共享块 → 仅减引用计数 · 有哈希（3/4/5/6）→ 逆序 append 队尾 · 无哈希（7）→ prepend 队首
+<div style="white-space:pre;background-color:#ffebee">└─ 结束释放（④）# 逻辑侧：attn 组块 1/5、3 个 linear 组块 2/3/4 全部归还空闲队列
    └─ <span style="color:#1565c0">KVCacheManager.free</span>
-      └─ <span style="color:#2e7d32">UnitaryKVCacheCoordinator.free</span>
-         └─ <span style="color:#e65100">FullAttentionManager.free</span>
+      └─ <span style="color:#2e7d32">KVCacheCoordinatorNoPrefixCache.free</span> # 逐组下放
+         └─ <span style="color:#e65100">FullAttentionManager.free / MambaManager.free</span>
             └─ <span style="color:#6a1b9a">BlockPool.free_blocks</span> # ref_cnt--，归 0 才回收</div>
 </div>
 
-**总览时序图**：
+**总览时序图**（逻辑侧选块下发 → 物理侧建表读写）：
 
 ```mermaid
 %%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
@@ -141,52 +138,56 @@ sequenceDiagram
     participant NPUModelRunner
 
     Note over EngineCore,Scheduler: 入队（Client → LLMEngine 发起 generate）
-    EngineCore->>Scheduler: add_request()（预计算链式哈希 → 入 WAITING）
+    EngineCore->>Scheduler: add_request()（前缀缓存关闭，不预计算哈希 → 入 WAITING）
     Scheduler->>EngineCore: 已入队
 
-    Note over Scheduler,NPUModelRunner: 首次调度（prefill）
+    Note over Scheduler,NPUModelRunner: 首次调度（prefill）· 逻辑侧选块下发
     EngineCore->>Scheduler: schedule()（调度 WAITING 请求）
     Scheduler->>KVCacheManager: ① get_computed_blocks（前缀查找）
-    KVCacheManager-->>Scheduler: 命中块 1/2（hit_length=32）
-    Scheduler->>KVCacheManager: ② allocate_slots（分配块）
-    Note over KVCacheManager: 下钻链 KVCacheManager→UnitaryKVCacheCoordinator→<br/>FullAttentionManager→BlockPool；touch 命中块+申请新块 → block_table
-    KVCacheManager-->>Scheduler: 新块 3/4/5（block_table=[命中1, 命中2, 新3...]）
-    Note over Scheduler: 组装 SchedulerOutput（清零块 id 3/4/5）
-    Scheduler->>EngineCore: SchedulerOutput
+    KVCacheManager-->>Scheduler: 空（前缀缓存关闭，4 组皆无命中）
+    Scheduler->>KVCacheManager: ② allocate_slots（4 组分别分配）
+    Note over KVCacheManager: 下钻链 KVCacheManager→NoPrefixCacheCoordinator→<br/>FullAttentionManager + MambaManager→BlockPool；<br/>attn 组弹块 1、3 个 linear 组各弹状态块 2/3/4
+    KVCacheManager-->>Scheduler: attn_block_table=[1]、linear=[2/3/4]
+    Note over Scheduler: 组装 SchedulerOutput（清零块 id：attn 新块 1）
+    Scheduler->>EngineCore: SchedulerOutput（只带整数与标量）
 
-    Note over EngineCore,NPUModelRunner: NPU 写 KV
+    Note over EngineCore,NPUModelRunner: 物理侧建表、换算、读写
     EngineCore->>NPUModelRunner: execute_model(sched_out)
-    Note over NPUModelRunner: 新块在 K/V 两张池分别清零 → attention 算子<br/>reshape_and_cache 按 slot_mapping 把新 K、V 分别 scatter 进双池、<br/>注意力核按 block_table 读历史 KV（双池 dim0 gather）
+    Note over NPUModelRunner: attn 组新块清零（K/V 两池各自行）→ 8 个 full-attn 层<br/>reshape_and_cache 按 slot_mapping scatter 双池 + 按 block_table 读历史；<br/>24 个 linear 层就地步进 GDN 递归状态
     NPUModelRunner->>EngineCore: 返回
     EngineCore->>NPUModelRunner: sample_tokens()
     NPUModelRunner->>EngineCore: 第 1 个输出 token（进 RUNNING）
 
-    Note over Scheduler,NPUModelRunner: ③ decode 续写（循环 31 步）
+    Note over Scheduler,NPUModelRunner: ③ decode 续写（逻辑侧每步选块 → 物理侧每步读写，循环 31 步）
     loop 每步 1 个新 token，直到输出全部生成
         EngineCore->>Scheduler: schedule()（调度 RUNNING 请求）
-        Scheduler->>KVCacheManager: allocate_slots（不查前缀；当前块未满需0块/已满需1块）
+        Scheduler->>KVCacheManager: allocate_slots（不查前缀；attn 组 未满0/已满1 块；mamba 组 0 块）
         KVCacheManager-->>Scheduler: KVCacheBlocks
-        Note over Scheduler: 跨块边界的新块进 new_block_ids_to_zero<br/>（如步11 块6、步27 块7）；0 分配步无清零
+        Note over Scheduler: 跨块边界的新块进 new_block_ids_to_zero（如步 5 块 5）
         Scheduler->>EngineCore: SchedulerOutput
         EngineCore->>NPUModelRunner: execute_model
-        Note over NPUModelRunner: forward 依 block_table 读+写双池 KV<br/>（当步填满的块入哈希表）
+        Note over NPUModelRunner: forward：full-attn 层读写双池 KV、linear 层步进状态
         NPUModelRunner->>EngineCore: 返回
         EngineCore->>NPUModelRunner: sample_tokens
         NPUModelRunner->>EngineCore: 1 个输出 token
     end
 
-    Note over Scheduler,NPUModelRunner: ④ 结束释放
+    Note over Scheduler,NPUModelRunner: ④ 结束释放（逻辑侧）
     Note over Scheduler: 请求生成结束（stop/EOS 或 max_tokens 满 → FINISHED_*）<br/>从 RUNNING 队列移除
     Scheduler->>KVCacheManager: free(request)
-    Note over KVCacheManager: 逆序归还；ref_cnt 归 0 才回收，<br/>有哈希进队尾、无哈希进队首
+    Note over KVCacheManager: 逐组逆序归还；ref_cnt 归 0 才回收
     KVCacheManager-->>Scheduler: 完成
 ```
 
 ---
 
-## 4. 分阶段详解
+## 4. 分阶段详解（按侧）
 
-### 4.1 入队
+### 4.1 逻辑侧（引擎进程）：选块与下发
+
+逻辑侧全程**只认 `block_id`**（不触张量、零显存拷贝），负责入队、前缀查找、分配、下发与释放。编排链固定为 **`KVCacheManager → KVCacheCoordinatorNoPrefixCache →（attn 组）FullAttentionManager +（mamba 组）MambaManager → BlockPool`**（引擎进程内同一份代码、平台无关）。
+
+#### 4.1.1 入队
 
 ```mermaid
 %%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
@@ -198,261 +199,179 @@ sequenceDiagram
     Client->>LLMEngine: generate(prompt)
     LLMEngine->>EngineCore: add_request()
     EngineCore->>Scheduler: add_request()
-    Note over Scheduler: 构造 Request，update_block_hashes()<br/>预计算链式哈希 → block_hashes
-    Scheduler-->>EngineCore: 入 WAITING 队列
+    Note over Scheduler: 构造 Request → 入 WAITING 队列
+    Scheduler-->>EngineCore: 入队完成
 ```
 
 **要点**：
-- 入队即预计算：70 token → `70 // 16 = 4` 个满块有 hash（链式哈希），未满的第 5 块无 hash
-- `request.block_hashes` 存的是**纯 `BlockHash`**（不含 group id），group id 到 ① 前缀查找 / ② 分配落库时才临时拼上
-- 哈希只由 token 序列决定，与 NPU 的 K/V 双池布局无关（详见类型篇下篇 §1.3）
+- 混合模型前缀缓存关闭，Request **不生成** `block_hashes` 前缀哈希链；入队只需构造 `Request` 并置入 WAITING；
+- 哈希与 NPU 的"双形态物理布局"无关——它只由 token 序列决定，且本模型根本不参与前缀查找。
 
-**结合请求 R**：R 的 4 个满块 hash 在入队时算好，存于 `request.block_hashes`；
+#### 4.1.2 首次调度（prefill）：① 前缀查找（恒空）→ ② 分配 → 下发
 
-### 4.2 首次调度（WAITING → prefill）
+`schedule()`（scheduler.py:340）每步**先遍历 RUNNING（scheduler.py:378）再遍历 WAITING（scheduler.py:566）**；没有独立的 prefill / decode 全局阶段，只有一个共享 `token_budget`，按"先 running、后 waiting"填充。
 
-`schedule()`（scheduler.py:340）每步**先遍历 RUNNING（scheduler.py:378）再遍历 WAITING（scheduler.py:566）**。
+**① 前缀缓存查找（get_computed_blocks）——恒空**。混合模型前缀缓存关闭，工厂（kv_cache_coordinator.py:702）在 `enable_caching=False` 时直接返回 **`KVCacheCoordinatorNoPrefixCache`**（注释原文："supports arbitrary numbers of KV cache groups (including 0 groups). Does not implement any features related to prefix caching."）——它支持任意多组，但**不实现任何前缀缓存特性**：`find_longest_cache_hit` 固定返回"每组一个空列表 + 命中长度 0"，不做任何查表；因此 **S2（touch 命中块）在每一步都跳过**。**结合请求 R**：① 返回空 → `hit_length = 0`，R 的全部 1020 token 都需现算。
 
-> **调度顺序要点**：没有独立的 prefill / decode 全局阶段，只有一个共享 `token_budget`，按"**先 running、后 waiting**"填充：
-> - RUNNING 里也可能有 chunked prefill 的中间片（`is_prefill_chunk`），同样优先于新的 waiting 请求
-> - PD 分离由 KV 传输实现，P/D 实例跑同一个统一 `Scheduler`，上述"先 running、后 waiting"在每个实例内部都成立；NPU 上 P→D 的 KV 搬运正是靠注册过的双池 buffer（`swap_blocks`，attention_v1.py:114-126）完成
-
-KV 编排链固定为 `KVCacheManager → UnitaryKVCacheCoordinator → FullAttentionManager → BlockPool`（引擎进程内同一份代码），下面三个子步骤都走这条链。
-#### 4.2.1 ① 前缀缓存查找（get_computed_blocks）
+**② 分配物理块（allocate_slots）——4 组分别下钻**。协调器把每一步**同时下发给 4 个 manager**（`single_type_managers` 是"每 group 一个"的元组，kv_cache_coordinator.py:106-119）；内部四步：
 
 ```mermaid
 %%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     participant Scheduler
     participant KVCacheManager
-    participant UnitaryKVCacheCoordinator
-    participant FullAttentionManager
-    participant BlockPool
-    Scheduler->>KVCacheManager: get_computed_blocks(request)
-    Note over KVCacheManager: 若 prefix caching 关闭或模型跳过 KV 读<br/>→ 直接返回空，不进查找
-    KVCacheManager->>UnitaryKVCacheCoordinator: find_longest_cache_hit(block_hashes, max_len)
-    Note over UnitaryKVCacheCoordinator: 单组直通 single_type_managers[0]（主线只有 1 组）
-    UnitaryKVCacheCoordinator->>FullAttentionManager: find_longest_cache_hit()
-    Note over FullAttentionManager: 逐块查表，遇 miss 即 break<br/>hit_length = 命中块数 × block_size
-    FullAttentionManager->>BlockPool: get_cached_block(hash, [0])
-    Note over BlockPool: 临时构造 BlockHashWithGroupId 作查询 key<br/>查 cached_block_hash_to_block；<br/>任一 group miss → 整块 None
-    BlockPool-->>FullAttentionManager: 逐块返回 block 或 None
-    FullAttentionManager-->>UnitaryKVCacheCoordinator: (hit_blocks, hit_length)
-    UnitaryKVCacheCoordinator-->>KVCacheManager: (hit_blocks, hit_length, 0)
-    KVCacheManager-->>Scheduler: (KVCacheBlocks, num_tokens, boundary)
-```
-
-**要点**：
-- `max_cache_hit_length = request.num_tokens - 1`：即使全命中，最后 1 个 token 的 logits 仍需重算，故最多命中 N−1
-- 链式哈希从左到右**逐块比对，遇 miss 即 break**；命中的是**已满块**（未满尾块无 hash 不参与）
-- 本次查找**只读不写**：临时构造查询 key（`BlockHashWithGroupId` 用完即弃），不改 `ref_cnt`；真正的 `ref_cnt++` 要等 ② 的 touch
-
-**结合请求 R**：4 个 hash 逐块查表，假设前 2 块命中（仅标记可复用），`hit_length = 32`，剩余 `70 − 32 = 38` token 需重新计算。
-
-#### 4.2.2 ② 分配物理块（allocate_slots）
-
-```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
-sequenceDiagram
-    participant Scheduler
-    participant KVCacheManager
-    participant UnitaryKVCacheCoordinator
-    participant FullAttentionManager
+    participant NoPrefixCacheCoordinator
+    participant Managers as FullAttentionManager / MambaManager
     participant BlockPool
     Scheduler->>KVCacheManager: allocate_slots(request)
-    KVCacheManager->>UnitaryKVCacheCoordinator: S1 get_num_blocks_to_allocate（容量检查，kv_cache_manager.py:385）
-    UnitaryKVCacheCoordinator->>FullAttentionManager: get_num_blocks_to_allocate()
-    Note over FullAttentionManager: 纯计算：num_new = max(cdiv(需槽位数, block_size) − 已有块数, 0)<br/>num_local_computed = 已算块数 + 已持块数
-    KVCacheManager->>UnitaryKVCacheCoordinator: S2 allocate_new_computed_blocks（touch 命中块，kv_cache_manager.py:406）
-    Note over UnitaryKVCacheCoordinator: 仅存在已命中块 / 外部已算 token 时调用；两阶段：<br/>先 add_local_computed_blocks 逐组 touch，再 allocate_external_computed_blocks（主线无外部已算 token，跳过）
-    UnitaryKVCacheCoordinator->>FullAttentionManager: add_local_computed_blocks()
-    FullAttentionManager->>BlockPool: touch()
-    KVCacheManager->>UnitaryKVCacheCoordinator: S3 allocate_new_blocks（待计算新块，kv_cache_manager.py:413）
-    UnitaryKVCacheCoordinator->>FullAttentionManager: allocate_new_blocks()
-    FullAttentionManager->>BlockPool: get_new_blocks(num_new)
-    KVCacheManager->>UnitaryKVCacheCoordinator: S4 cache_blocks（缓存满块，kv_cache_manager.py:434）
-    UnitaryKVCacheCoordinator->>FullAttentionManager: cache_blocks()
-    FullAttentionManager->>BlockPool: cache_full_blocks
-    UnitaryKVCacheCoordinator-->>KVCacheManager: 完成
-    KVCacheManager-->>Scheduler: KVCacheBlocks
+    KVCacheManager->>NoPrefixCacheCoordinator: S1 get_num_blocks_to_allocate（容量检查，4 组求和）
+    NoPrefixCacheCoordinator->>Managers: 逐组 get_num_blocks_to_allocate()
+    Note over Managers: attn 组：cdiv(1020,1024)=1 块<br/>mamba 组：cdiv(1020,32768)=1 状态块
+    KVCacheManager->>NoPrefixCacheCoordinator: S2 allocate_new_computed_blocks（无命中 → 恒跳过）
+    KVCacheManager->>NoPrefixCacheCoordinator: S3 allocate_new_blocks（待计算新块）
+    NoPrefixCacheCoordinator->>Managers: 逐组 allocate_new_blocks()
+    Managers->>BlockPool: get_new_blocks(num_new)
+    Note over BlockPool: attn 组弹块 1；3 个 linear 组各弹块 2/3/4
+    KVCacheManager->>NoPrefixCacheCoordinator: S4 cache_blocks（关前缀缓存 → 不入表）
+    NoPrefixCacheCoordinator-->>KVCacheManager: 完成
+    KVCacheManager-->>Scheduler: KVCacheBlocks（4 组块表）
 ```
 
-**要点（S1-S4 为 `allocate_slots` 内部编号，区别于主流程的 ①-④）**：
+- **S1 容量检查**：遍历 4 组各自算需求并求和，`available_blocks = get_num_free_blocks() − reserved_blocks`，不够则 `return None` → 等待下轮调度。**attn 组** `num_new = max(cdiv(1020,1024) − 已持块数, 0) = 1`；**3 个 mamba 组** 各走基类逻辑 `cdiv(num_tokens, 32768)`，因 `mamba_block_size ≥ 序列长度` → **每组每请求恒 1 块**；
+- **S2 处理命中块**：**本模型恒跳过**（无命中块、`num_external_computed_tokens=0`）；
+- **S3 分配待计算块**：逐组 `get_new_blocks(num_new)`；**注意 mamba 组的块不进 `new_block_ids`**（基类只在 `FullAttentionSpec`/`MLAAttentionSpec` 等类型上登记，single_type_kv_cache_manager.py:284-289）——**mamba 状态块因此不参与"新块清零"**；
+- **S4 缓存满块**：前缀缓存关闭时 `BlockPool(enable_caching=False)` 不往哈希表写条目，S4 不产生任何缓存动作。
 
-- **S1 容量检查** `get_num_blocks_to_allocate`（kv_cache_manager.py:385，下钻 KVCacheCoordinator 基类 → single_type_kv_cache_manager.py:101）：
-  - FullAttentionManager 侧纯计算：`num_new = max(cdiv(num_tokens, block_size) − num_local_computed, 0)`，其中 `num_local_computed = 已算块数 + 已持块数`
-  - KVCacheManager 侧比较：`available_blocks = get_num_free_blocks() − reserved_blocks` vs `num_blocks_to_allocate`（S1 求和结果）；`num_blocks_to_allocate > available_blocks` → `return None` → 等待下轮调度
-- **S2 处理命中块** `allocate_new_computed_blocks`（kv_cache_manager.py:406，KVCacheCoordinator 两阶段）：仅当存在已命中块或 `num_external_computed_tokens > 0` 时调用；**先**逐组 `add_local_computed_blocks`（touch 命中块：从 free 队列摘出、`ref_cnt++`），**再**逐组 `allocate_external_computed_blocks`（主线 `num_external_computed_tokens=0`，跳过）
-- **S3 分配待计算块** `allocate_new_blocks`（kv_cache_manager.py:413 → single_type_kv_cache_manager.py:259）：`num_new = cdiv(num_tokens, block_size) − len(req_to_blocks[req_id])`
-- **S4 缓存满块** `cache_blocks`（kv_cache_manager.py:434 → single_type_kv_cache_manager.py:298 → `BlockPool.cache_full_blocks`）：`num_tokens_to_cache = min(total_computed + num_new, request.num_tokens)`，新块记入 `new_block_ids`，由 `take_new_block_ids` 取走清零
+**下发 SchedulerOutput**：② 分配完后，Scheduler 把"后处理指令"打包进 `SchedulerOutput`——**清零新块** `new_block_ids_to_zero`：新分配的 attn 块在 NPU 显存里可能残留上一请求的旧 K/V，必须先清零再写入；**只有 attn 组的新块进入该列表**。**结合请求 R**：attn 组新块 1 进 `new_block_ids_to_zero`（3 个 mamba 状态块 2/3/4 不清零）。
 
-**结合请求 R**：S1 容量检查通过后，S2 touch 前缀查找命中的前 2 块（即 P 缓存的共享前缀块 1/2，ref_cnt 0→1）；S3 剩余 38 token 按 16 切块需 3 块（16+16+6），`get_new_blocks(3)` → block_table 变 `[命中1, 命中2, 新3, 新4, 新5]`；S4 命中块 1/2 幂等早退，真正入表的是新满块 3、4，未满块 5 不入表。
+**4 组 block_table 并存**（混合模型与单组模型的直观差别）：
 
-**本步全程在引擎进程、零显存操作**——`allocate_slots` 到 `BlockPool` 为止只知道整数 `block_id`，不知道（也不需要知道）这个块在 K 池/V 池上对应第几行。
+| 组 | manager | block_size | 每请求块数（R） | block_table | 物理落点 |
+|---|---|---|---|---|---|
+| attn 组（8 层） | `FullAttentionManager` | 1024 | `cdiv(1020,1024)=1` | `[1]` | K/V 双池 `(nb×8,128,2,256)` 的对应行 |
+| linear 组 ×3（各 8 层） | `MambaManager` ×3 | 32768 | 各组 `cdiv(1020,32768)=1` | `[2]` / `[3]` / `[4]` | 单张量状态视图（conv + temporal），每层各一张 |
 
-#### 4.2.3 组装 SchedulerOutput
+> **为什么线性层是 3 组而非 1 组**：分组要求「每组层数相等」（`_get_kv_cache_groups_uniform_page_size`，kv_cache_utils.py:1074），取 `group_size = min(8 层 attn, 24 层 mamba) = 8` → attn 1 组、mamba `cdiv(24,8)=3` 组（`layers[i::3]` 交错切分）。详见启动篇 §2.3②。
 
-② 分配完物理块后，Scheduler 还需把"后处理指令"打包进 `SchedulerOutput`，交给 Worker 在 NPU forward 之前执行：
+4 组**共享同一个 `BlockPool`**（唯一块账本、`num_blocks ≈ 6003` 的 `block_id` 空间），但**各持一份 `req_to_blocks[req_id]`**；`block_id` 在 4 组间不互通，物理层按组分别解释。**本步全程在引擎进程、零显存操作**。
 
- **清零新块** `new_block_ids_to_zero`：新分配的物理块在 NPU 显存里可能残留上一请求的旧数据，必须先清零再写入
+#### 4.1.3 decode 续写（每步选块）
 
-**结合请求 R**：R 是首次 prefill，3 个新块 id（3/4/5）进 `new_block_ids_to_zero`。Worker 收到后先清零这 3 个块（**两张张量的对应行都要清**——清零按 `block_id * block_size` 定位 K 池与 V 池），再执行 forward 写入 KV。
+`schedule()` 每步**先遍历所有 RUNNING 请求**（`while req_index < len(running) and budget > 0`），每请求 append 1 token，全部处理完后**一次性** `execute_model + sample_tokens`（多请求共享同一 batch）。与 prefill 走**同一套** `allocate_slots`（内部 4 步 S1~S4），差异仅在量级：
 
-#### 4.2.4 附：BlockHash 的三级演变
+- **attn 组**：当前块未满则 0 块、写满则 1 块；
+- **mamba 组**：恒 0 块（整序列状态块只分一次，此后原地步进）；
+- **前缀缓存关闭 → 无"满块入表"**：decode 每步的 `cache_blocks` 都不往哈希表写条目（对比可缓存模型的持续积累，这里始终为空）；
+- 跨块边界的新块进 `new_block_ids_to_zero`（0 分配步无清零）。
 
-入队 → ① 前缀查找 → ② 分配落库，三个阶段中哈希形态逐步"升级"，但 `request.block_hashes` 始终是纯 `BlockHash`：
+**结合请求 R**：prefill 后 attn 块 1 装 1020 token，decode 步 1~4 填满块 1（0 分配）；步 5 申请块 5；步 5~31 的 27 个 token 落块 5（未满）；3 个 linear 组块 2/3/4 全程原地步进、块数不变。
 
-| 阶段 | 动作 | 哈希形态 | 位置 |
-|---|---|---|---|
-| 入队 | `update_block_hashes` 预计算链式哈希（request.py:233） | **纯 `BlockHash`** | `request.block_hashes`，只在此处生成 |
-| ① 查表 | `make_block_hash_with_group_id(hash, group_id)` **临时构造**查询 key | `BlockHashWithGroupId`（临时） | 仅作 `get_one_block(key)` 的查询 key，用完即弃，不回写 |
-| ② 落库 | `set_block_hash(key)` 存入块字段 + `insert(key, block)` 写映射表 | `BlockHashWithGroupId`（持久） | `KVCacheBlock.block_hash` 与 `cached_block_hash_to_block` 映射表 |
+#### 4.1.4 结束释放
 
-记忆口诀：**入队造纯哈希 → ① 拼临时 key 查 → ② 真正落库带 group id**。
-### 4.3 NPU 写 KV（NPUModelRunner forward）
+```mermaid
+%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
+sequenceDiagram
+    participant Scheduler
+    participant KVCacheManager
+    participant NoPrefixCacheCoordinator
+    participant Managers as FullAttentionManager / MambaManager
+    participant BlockPool
+    Scheduler->>KVCacheManager: free(request)
+    KVCacheManager->>BlockPool: free_blocks(pins)（先释放部分尾块 pin）
+    KVCacheManager->>NoPrefixCacheCoordinator: free(req_id)
+    NoPrefixCacheCoordinator->>Managers: 逐组 free(req_id)
+    Managers->>BlockPool: free_blocks(reversed(blocks))
+    Note over BlockPool: ref_cnt-- 逆序释放，归 0 才回收<br/>（关前缀缓存：块不携哈希，统一进空闲队列）
+    NoPrefixCacheCoordinator-->>KVCacheManager: 完成
+    KVCacheManager-->>Scheduler: 完成
+```
 
-**这一节是设备执行链（NPU 特有部分）**：逻辑侧前驱（SchedulerOutput 已带 block_table + 清零块 id）完成后，由 `NPUModelRunner` / `AscendAttentionBackendImpl` 在 K/V 双池张量上执行。
+**要点**：`free`（kv_cache_manager.py:438）内部由 `KVCacheCoordinator.free`（:446）**逐组下放**给 4 个 manager；每个 manager 在 `free(req_id)`（single_type_kv_cache_manager.py:363）内一次完成 `req_to_blocks.pop` + `free_blocks(reversed(blocks))`（**逆序释放**：尾块先归还）；`ref_cnt > 0` 的共享块仅减计数、归 0 才进空闲队列；**前缀缓存关闭 → 无"带哈希块 vs 无哈希块"的分流**，释放后统一回到空闲队列。**释放全程零显存操作**（NPU 上行内容原样留驻）。**结合请求 R**：逐组释放——attn 组块 5、1 逆序归还；3 个 linear 组块 2/3/4 归还。
+
+### 4.2 物理侧（worker 进程）：建表、换算、读写
+
+**这一节是设备执行链（NPU 特有部分）**：逻辑侧前驱（`SchedulerOutput` 已带4 组 block_table + 清零块 id）完成后，由 `NPUModelRunner.execute_model` 在 NPU 上执行。混合模型的关键点是**同一份 forward 里两类层走两条路径**。
 
 ```mermaid
 %%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
 sequenceDiagram
     participant EngineCore
     participant NPUModelRunner
-    participant AscendAttentionBackendImpl
+    participant AttnBackend as AscendAttentionBackendImpl（8 层）
+    participant GDNBackend as GDN 状态后端（24 层）
     EngineCore->>NPUModelRunner: execute_model(sched_out)
-    NPUModelRunner->>AscendAttentionBackendImpl: _zero_block_ids(ids)（K/V 两张池分别清零本轮新块）
-    NPUModelRunner->>AscendAttentionBackendImpl: prepare_model_input(...) → metadata builder（AscendMetadata）
+    NPUModelRunner->>AttnBackend: _zero_block_ids(attn 新块 1)（K/V 两池各自清零）
+    NPUModelRunner->>NPUModelRunner: _update_states：block_ids 写进 block_table
+    NPUModelRunner->>NPUModelRunner: _prepare_inputs：block_table → slot_mapping / attn_metadata
     EngineCore->>NPUModelRunner: forward(hidden_states)
-    Note over AscendAttentionBackendImpl: AscendMetadata 判状态（PrefillNoCache / PrefillCacheHit /<br/>DecodeOnly / ChunkedPrefill / SpecDecoding，attention_v1.py:147-152）：<br/>reshape_and_cache 按 slot_mapping 把新 K、V 分别 scatter 进<br/>key_cache / value_cache 双池（:1430-1454）+ notify_kv_cache_written；<br/>注意力核按 block_table 在两张池上各自沿 dim0 gather 历史行
-    AscendAttentionBackendImpl-->>NPUModelRunner: logits
+    Note over AttnBackend: full-attn 层：reshape_and_cache 按 slot_mapping<br/>把新 K、V 分别 scatter 进 key_cache / value_cache 双池<br/>+ 注意力核按 block_table 在双池沿 dim0 gather 历史行
+    Note over GDNBackend: linear 层：读取本请求的状态块（block 2/3/4），<br/>就地更新 conv/ssm 递归状态（无 block_table 读历史 token）
+    NPUModelRunner->>NPUModelRunner: compute_logits（只算本步要采样的位置）
     NPUModelRunner-->>EngineCore: 返回
     EngineCore->>NPUModelRunner: sample_tokens()
     NPUModelRunner-->>EngineCore: 第 1 个输出 token
 ```
 
-**要点**：
+**收到下发后按序完成四步**（与 [`0_kvcache_arch.md`](./0_kvcache_arch.md) §5 的一次前向全貌一致）：
 
-- **`_zero_block_ids` 清零的是 K、V 两张张量的对应行**：NPU 上一个块占两张张量各一行，清零必须两份都做，避免读到上一请求残留的旧 KV（`needs_kv_cache_zeroing` 模型则每步必清，见启动篇 §2.3/§2.1 边注）；
-- **写路径（`reshape_and_cache`，attention_v1.py:1430-1454）**：attention 实现拿到二元组后缓存两个引用（`self.key_cache, self.value_cache = kv_cache[0], kv_cache[1]`，:1441），再调 `DeviceOperator.reshape_and_cache(key, value, key_cache, value_cache, slot_mapping)`（:1444-1452）把新 token 的 K、V **按 `slot_mapping` 分别 scatter 进两张池**；写完调 `notify_kv_cache_written()`（:1453）通知 KV 传输层"本轮写入完成"（P/D 分离时消费）；
-- **`slot_mapping` 与 `block_table` 的关系**：`slot = block_id * block_size + 块内偏移`——每个 token 一个槽位，**同一个 slot 值同时定位 K 池与 V 池的同一位置**（两张池按同序号行空间对齐，这正是 4a 双池拆分时"行号语义相同"的回报）；
-- **读路径**：注意力核按 `block_table`（`req_to_blocks` 的 block_id 列表）在两张张量上**各自沿第 0 维 gather 对应行**：`k = kv_caches[l][0][block_ids]`、`v = kv_caches[l][1][block_ids]`；同一 `block_id` 在全模型 32 层（每 worker 16 层）对应同一逻辑块，全套层共用一份 block_table；
-- **`AscendMetadata` 状态机**（attention_v1.py:147-152）：`PrefillNoCache / PrefillCacheHit / DecodeOnly / ChunkedPrefill / SpecDecoding`——R 的首次调度命中共用前缀，prefill 走 `PrefillCacheHit` 分支（读命中前缀 K/V、写新 token KV），decode 每步走 `DecodeOnly`；
-- `sample_tokens` 由 **EngineCore** 调用（core.py:463），仅在 `execute_model` 未产出采样时补跑；
-- **NPUGraph（enforce_eager=False 时）**：capture 好的图按 token 数分档执行，KV 读写路径被固化进图里（`get_supported_kernel_block_sizes() = [128]` 是图分块的依据之一）；图捕获发生在启动 4d（见启动篇 §3.1 4d）。
+- `_update_states`：把下发的 block_ids 写进 `block_table`（新请求首行全量写入，老请求 `append_row` 追加增量）；
+- `_prepare_inputs`：由 `block_table` 换算 `slot_mapping` / `attn_metadata`，即 `slot = block_id × 128 + 细块内偏移`，padding 位填 `PAD_SLOT_ID`，且只覆盖本步新算的 token，历史不重算；
+- `_model_forward`：逐层先算 Q/K/V，用 `reshape_and_cache` 按 slot 写入本步 K/V，再按 `block_table` 读取历史 K/V（含本步刚写入的行）——写与读相邻但并非两个阶段：第 l 层写完即读，随后才进第 l+1 层；
+- `compute_logits`：只对本步要采样的位置算 logits，供后续采样。
 
-**结合请求 R**：3 个新块先清零（双池各自的行）；一次 forward 写 70 token 的 K/V 进 5 块（命中块 1/2 复用 P 的缓存、**K 行与 V 行都直接复用**、不重算）；`slot_mapping` 记录每个 token 落到哪个块的哪个 slot（同一值定位双池）。
+**两类层两条路径（混合模型核心）**：
 
-### 4.4 ③ decode 续写（RUNNING）
+- **full-attn 层（8 层）**：`reshape_and_cache`（attention_v1.py:1430-1454）把新 token 的 K、V 按 `slot_mapping` **分别 scatter 进两池**，随后注意力核按 `block_table` 在两张池上各自 `gather` 历史行 → **写 + 读历史**都在这一步；
+- **linear 层（24 层）**：GDN 只维护**每请求一个递归状态块**（每组块 2/3/4），每步在块内**原地步进**（conv 状态 + ssm 状态更新），**没有"按 block_table 读历史 token K/V"的路径**——这是混合模型解码只依赖定长状态、但前缀缓存不成立的根本原因；
+- **`_zero_block_ids` 清零只针对 attn 组的 K/V 双池**：mamba 状态块不进 `new_block_ids`，无需清零；
+- **attn 大块的 8 倍展开**：逻辑 `block_size=1024`、算子 `kernel_block_size=128`——一个逻辑大块物理上 `view` 成 8 个 128-token 细块（`get_supported_kernel_block_sizes()` 含 128），slot 映射走 128 粒度；
+- **`slot_mapping` 与 `block_table` 的关系**：`slot = block_id * 128 + 细块内偏移`——每个 token 一个槽位，**同一个 slot 值同时定位 K 池与 V 池的同一位置**；
+- **GDN 计算路径**：启动日志 `Using Triton/FLA GDN prefill kernel (head_k_dim=128)`；异步调度开启。
 
-`schedule()` 每步**先遍历所有 RUNNING 请求**（scheduler.py:378，外层是 `while req_index < len(running) and budget > 0` 的请求遍历，而非单请求），每请求 append 1 token，全部处理完后**一次性** `execute_model + sample_tokens`（多请求共享同一 batch）。与 prefill 走**同一套** `allocate_slots`（内部 4 步 S1~S4），差异仅在量级：无前缀命中（S2 跳过），当前块未满则 0 块、写满则 1 块。
+**结合请求 R**：attn 组新块 1 先清零（K/V 双池各自 8 个 128 细块）；一次 forward 里 8 个 full-attn 层写入 1020 token 的 K/V（无历史可读、全程新写），24 个 linear 层把 1020 token 压进块 2/3/4 的状态视图。
 
-```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
-sequenceDiagram
-    participant EngineCore
-    participant Scheduler
-    participant KVCacheManager
-    participant UnitaryKVCacheCoordinator
-    participant FullAttentionManager
-    participant BlockPool
-    participant NPUModelRunner
-    loop 遍历所有 RUNNING 请求（每请求 append 1 token）
-        EngineCore->>Scheduler: schedule()（调度 RUNNING 请求）
-        Scheduler->>KVCacheManager: ② allocate_slots(request, num_new_tokens=1)
-        Note over KVCacheManager: 与 prefill 同一套内部 4 步 S1~S4；续写无前缀命中<br/>S2 跳过，S1/S3/S4 照走
-        KVCacheManager->>UnitaryKVCacheCoordinator: S1 get_num_blocks_to_allocate（容量检查）
-        KVCacheManager->>UnitaryKVCacheCoordinator: S3 allocate_new_blocks（当前块满则 1 块）
-        UnitaryKVCacheCoordinator->>FullAttentionManager: allocate_new_blocks()
-        FullAttentionManager->>BlockPool: get_new_blocks(0 或 1)
-        KVCacheManager->>UnitaryKVCacheCoordinator: S4 cache_blocks（当步填满的块入哈希）
-        FullAttentionManager->>BlockPool: cache_full_blocks
-        UnitaryKVCacheCoordinator-->>KVCacheManager: 完成
-        KVCacheManager-->>Scheduler: KVCacheBlocks（token_budget 扣减）
-    end
-    EngineCore->>NPUModelRunner: execute_model（全部请求一次 forward，NPUGraph 分档执行）
-    EngineCore->>NPUModelRunner: sample_tokens
-```
+#### 4.2.1 prefill 与 decode 的统一
 
-**要点**：
-- 外层是请求遍历：每步调度**所有** RUNNING 请求（`while req_index < len(running)`），而非单请求
-- 每请求每轮只 append 1 token：当前块未满 → 0 块；写满 → 1 块
-- 所有请求分配完成后才一次性 `execute_model` + `sample_tokens`（共享同一 batch）
-- **新满块同样入缓存**：decode 每步的 `allocate_slots` 与 prefill 一样调 `cache_blocks`，某块当步填满即入哈希表，变为可命中的前缀缓存条目
-- NPU 侧每步的写 K/V 仍走 `reshape_and_cache` 双池 scatter（`DecodeOnly` 状态），清零只发生在新申请块的步（0 分配步无清零）
-
-**结合请求 R**（块号 1 起始，块 0 为 null_block，与总览一致）：prefill 后块 5 装 6 token，decode 步 1~10 填满块 5 并入表（0 分配）；步 11 申请块 6、步 26 填满入表；步 27 申请块 7，至步 31 装 5 slot（未满不入表）。31 步共落 31 个输出 KV：**块 5 补 10、块 6 装 16、块 7 装 5**（每 token 落 K、V 两张张量各自的同一 slot）；第 32 个输出达到 max_tokens 仅采样、不再落 KV。填满的块同样入缓存——这是前缀缓存持续增长的方式。
-
-#### prefill 与 decode 的统一
-
-> 首次 prefill（4.2）与 ③ decode 续写共用同一套 **`allocate_slots` 分配块 → forward 写 KV → 满块 `cache_blocks` 入哈希** 骨架，只是规模不同。**唯一的阶段差异**在前置：前缀查找 `get_computed_blocks` 是 prefill 独有的（首次带着整段 prompt 查可复用前缀），decode 跳过它（续写的是全新 token，无前缀可查）。
+> 首次 prefill（4.1.2）与 ④ decode 续写（4.1.3）在物理侧共用同一套 **建表 → 换算 → 写入 → 读取** 骨架，只是规模不同。**唯一的阶段差异**在量级：prefill 一次算整段 prompt（attn 组一次多块、mamba 组 1 块），decode 每步 1 个 token（attn 组 0/1 块、mamba 组 0 块）。
 
 | 维度 | prefill（WAITING 首次） | decode（RUNNING 续写） |
 |---|------|------|
-| 处理 token 数 | 一次整个 prompt（70 个） | 每步 1 个 |
-| 前缀查找 | 是（`get_computed_blocks`） | 否（续写无新命中） |
-| 分配块数 | 一次多块（3 新块） | 0 或 1 块 |
-| 内部 4 步 | S1~S4 全走（S2 touch 命中块） | S2 跳过，S1/S3/S4 照走 |
-| NPU 执行状态（AscendMetadata） | `PrefillCacheHit`（R 命中 32） | `DecodeOnly` |
+| 处理 token 数 | 一次整个 prompt（1020 个） | 每步 1 个 |
+| 逻辑侧前缀查找 | 调用了但恒空（`NoPrefixCacheCoordinator`） | 同样恒空 |
+| 逻辑侧 attn 组分配块数 | 一次 1 块（`cdiv(1020,1024)`） | 0 或 1 块 |
+| 逻辑侧 mamba 组分配块数 | 1 状态块（整序列） | 0 块（原地步进） |
+| 内部 4 步 | S1/S3/S4 走，S2 恒跳过 | 同左 |
+| 物理侧 full-attn 层 | 写入 prompt K/V（无历史可读） | 写本步 + 读历史（`DecodeOnly`） |
+| 物理侧 linear 层 | 状态初始化 | 状态原地步进 |
 | 状态机 | `WAITING → RUNNING` | 保持 `RUNNING` 直到完成 |
-
-### 4.5 ④ 请求结束 → 释放
-
-```mermaid
-%%{init: {"themeVariables": {"actorFontSize": "11px", "messageFontSize": "11px", "noteFontSize": "11px"}, "sequence": {"actorMargin": 40, "messageMargin": 16, "noteMargin": 8, "boxMargin": 8, "mirrorActors": true}}}%%
-sequenceDiagram
-    participant Scheduler
-    participant KVCacheManager
-    participant UnitaryKVCacheCoordinator
-    participant FullAttentionManager
-    participant BlockPool
-    Scheduler->>KVCacheManager: free(request)
-    KVCacheManager->>BlockPool: free_blocks(pins)（先释放部分尾块 pin）
-    KVCacheManager->>UnitaryKVCacheCoordinator: free(req_id)
-    UnitaryKVCacheCoordinator->>FullAttentionManager: free(req_id)
-    FullAttentionManager->>BlockPool: free_blocks(reversed(blocks))
-    Note over BlockPool: ref_cnt-- 逆序释放，归 0 才回收：<br/>有 hash → append 队尾(LRU 保护)<br/>无 hash → prepend 队首(优先复用)
-    UnitaryKVCacheCoordinator-->>KVCacheManager: 完成
-    KVCacheManager-->>Scheduler: 完成
-```
-
-**要点**：
-- `free`（kv_cache_manager.py:438）内部顺序：`KVCacheCoordinator.free`（kv_cache_manager.py:446）逐组下放
-- FullAttentionManager 侧在 `free(req_id)`（single_type_kv_cache_manager.py:363）内一次完成两步：`req_to_blocks.pop` 取出按分配顺序的块列表 + `free_blocks(reversed(blocks))`
-- **逆序释放**（`reversed`）：尾块先归还，利用 free 队列特性让最近用的块最先被重新分配
-- `ref_cnt > 0` 的共享块仅减计数不回收；归 0 才进 free 队列
-- 有哈希块 append 队尾（保护前缀缓存），无哈希块 prepend 队首（优先复用）
-- **释放全程零显存操作**：NPU 上两张张量的行内容原样留驻（"结束后张量内容保留，等待被同一 block_id 再次索引"），块池只改计数与链表；P/D 分离部署下，跨实例的块级搬运另由传输层经注册双池完成（`swap_blocks`，attention_v1.py:114-126），不在主线时序内
-
-**结合请求 R**：R 生成满 32 个输出（或命中 EOS）后结束，按释放顺序块 7→6→5→4→3→2→1：块 7 未满无哈希 → prepend 队首（优先复用）；块 6/5/4/3 填满带哈希 → append 队尾（LRU 保护）；命中块 1/2 为 P 缓存的共享前缀，仅 `ref_cnt--`，归零后带哈希进队尾（哈希条目保留），复用同一前缀的后续请求仍可命中。
 
 ---
 
-## 5. 小结：一条请求的 KVCache 全生命周期（NPU 视角）
+## 5. 小结：一条请求的 KVCache 全生命周期（两侧视角）
 
-全文以一条请求 R（Llama-3-8B pp2tp2 NPU，prompt 70 token / max_tokens 32）为主线，串起 KVCache 管理的端到端时序，可收拢为三个视角。
+全文以一条请求 R（Qwen3.5-4B pp2tp2 NPU，prompt 1020 token / max_tokens 32）为主线，按**两侧**串起 KVCache 管理的端到端时序。
 
 **流程视角——五个阶段一气呵成**：
 
-| 阶段 | 章节 | 调度侧 | KVCache 侧（下钻到 BlockPool） | 产物 |
-|---|---|---|---|---|
-| 入队 | 4.1 | `add_request` 入 WAITING | 预计算链式哈希 `block_hashes` | 4 个满块 hash 备查 |
-| 首次调度 prefill（①②） | 4.2 | ① 前缀查找 → ② 分配物理块 → 组装 SchedulerOutput | 命中块 1/2；`allocate_slots` 四步 S1~S4：容量检查 → touch 命中块 → 新分配块 3/4/5 → 满块 3/4 入哈希 | block_table 就绪，新块待清零 |
-| NPU 写 KV | 4.3 | `execute_model` + `sample_tokens` | K/V 双池清零新块 → `reshape_and_cache` 把 70 token 的 K、V 各自写进池 → 注意力核按 `block_table` 读历史（双池 dim0 gather） | 第 1 个输出 token，→ RUNNING |
-| ③ decode 续写 | 4.4 | 每步 1 token 循环调度 | 同一套 `allocate_slots`：未满 0 块、满则 1 块（块 6、7），满块持续入哈希 | 32 个输出全部生成 |
-| ④ 结束释放 | 4.5 | 移出 RUNNING | `free` 逆序 7→1：`ref_cnt--` 归零才回收，带哈希进队尾、无哈希进队首 | 块归池，前缀缓存留存 |
+| 阶段 | 章节 | 逻辑侧（引擎进程） | 物理侧（worker 进程） |
+|---|---|---|---|
+| 入队 | 4.1.1 | `add_request` 入 WAITING（前缀缓存关、不生成哈希链） | — |
+| 首次调度 prefill（①②） | 4.1.2 / 4.2 | 前缀查找（恒空）→ 4 组分配 → 下发 SchedulerOutput | 清零新块 → 写双池 / 状态初始化 → 采样第 1 token |
+| decode 续写 | 4.1.3 / 4.2 | 每步选块（attn 组 0/1、mamba 组 0） | 每步写读双池 / 步进状态 → 采样 |
+| 结束释放 | 4.1.4 | `free` 逐组逆序归还，`ref_cnt` 归零才回收 | —（不再读写） |
 
-状态机全路径：`WAITING →(首次调度) RUNNING →(持续 decode) → 完成 → 释放`，与入队、释放两节无缝衔接。
+状态机全路径：`WAITING →(首次调度) RUNNING →(持续 decode) → 完成 → 释放`。
 
-**结构视角——固定的四层下钻链 + NPU 双池物理底座**：
+**结构视角——逻辑侧一条下钻链，物理侧两类张量**：
 
-调度器对 KV 的每一次操作（查、分、存、放）都走同一条链 `KVCacheManager → UnitaryKVCacheCoordinator → FullAttentionManager → BlockPool`：上层管编排时机，中层按 KVCacheSpec 分派，底层 `BlockPool` 管逻辑块记账（free 队列 + 哈希表 + `ref_cnt`）。**整条链都在逻辑侧**——调度全程只认 `block_id`、零显存拷贝；物理存储是初始化时绑在各 NPU worker 上的双张量，靠 `block_id == 两张张量各自行号` 的两端约定桥接（一个 block_id 同时命名 K 行与 V 行）。记住这条链的职责切分，各阶段时序图只是它的重演。
+逻辑侧对 KV 的每一次操作（查、分、放）都走同一条链 `KVCacheManager → KVCacheCoordinatorNoPrefixCache → (FullAttentionManager + MambaManager) → BlockPool`：上层管编排时机，中层按 group **各管一摊**，底层 `BlockPool` 管唯一的逻辑块记账（free 队列 + `ref_cnt`）。**整条链只认 `block_id`、零显存拷贝**。物理侧是初始化时绑在各 NPU worker 上的两类张量（full-attn 的 K/V 双池 + linear 的单张量状态），靠 `block_id == 张量行号` 的约定与逻辑侧桥接。
 
-**数据视角——R 的 7 个块走完一生**（块 0 开池即摘作 `null_block`，实际分配从块 1 起；每块物理上横跨 K/V 两张张量的同一行）：
+**数据视角——R 的 4 个 group 各行其是**（块 0 开池即摘作 `null_block`）：
 
 ```
-块 1/2   P 服务时写入并带哈希入缓存 → R 前缀查找命中 → touch(ref_cnt++) → 释放仅减计数归零
-块 3/4/5 prefill 新分配承载 70 token → 满块 3/4 即入哈希 → 释放回收进队尾
-块 6/7   decode 步 11 / 步 27 申请 → 满块入哈希 → 释放：7 无哈希进队首、6 带哈希进队尾
+attn 组  块 1 承载 prompt 1020 token → decode 填满 → 块 5 承接 27 token（未满）→ 释放回收
+linear 组×3 块 2/3/4 承载整序列 GDN 递归状态（各 1 块，全程原地步进）→ 释放回收
 ```
 
-释放逆序 7→1——"最近使用的块最先回到可复用位置"；满块持续入哈希、带哈希块 LRU 保护，共同构成前缀缓存被下一个请求命中的机制闭环。**块的一生全部由引用计数与空闲队列决定，与张量形态无关。**
+- **两类层块数口径不同**：attn 组随序列增长（1024-token 一块），mamba 组恒 1 块（`block_size = max_model_len`）；
+- **前缀缓存关闭**：没有任何"满块入表 → 后续命中"的积累路径，块的复用只发生在**释放后重新分配**——这是混合 GDN 模型在 NPU 上的定态。

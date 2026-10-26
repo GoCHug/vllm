@@ -319,7 +319,7 @@ decode    下发 new_block_ids（增量）                                 _prep
 | | `attn_state` | `PrefillNoCache` / `PrefillWithCache` | `DecodeOnly` / `SpecDecoding` |
 | | 读路径算子 | FIA（无历史页表或读命中块） | PA（形状命中时）或 FIA |
 
-既然两个阶段同构，**只要搞懂一次前向中 KV Cache 是如何被管理的，prefill 与 decode 也就一并明白了**。一次前向的两侧分工全貌如下图：
+既然两个阶段同构，**只要搞懂一次前向中 KV Cache 是如何被管理的，prefill 与 decode 也就一并明白了**。NPU上，一次前向的两侧分工全貌如下图：
 
 ```
 ━━━━━━━━━━━━━━━━━━━━ 引擎进程 · 逻辑侧 ━━━━━━━━━━━━━━━━━━━━
@@ -344,7 +344,6 @@ NPUModelRunner.execute_model                  前向（本函数内不采样）
   │                      padding 位填 PAD_SLOT_ID；只覆盖本步新算 token，历史不重算
   ├─ _model_forward      逐层：算 Q/K/V → reshape_and_cache 按 slot 写入本步 K/V
   │                            → FIA/PA 按 block_table 读历史 K/V（含本步刚写入的行）
-  │                      写读相邻但非两个阶段：第 l 层写完即读，随后才进第 l+1 层
   └─ compute_logits      只对本步要采样的位置算 logits，供后续采样
 
 两侧唯一耦合：block_id == 物理张量第 0 维行号（K/V 双池各一套同序号行空间）
@@ -352,19 +351,36 @@ NPUModelRunner.execute_model                  前向（本函数内不采样）
   · SchedulerOutput 是唯一载体，只携带整数与标量
 ```
 
+整条流程可看作两侧接力：**逻辑侧先「选块、下发」，物理侧再「建表、换算、读写」**，中间仅靠 block_id 与标量参数衔接。
+
+**逻辑侧（引擎进程 · Scheduler）** 全程只认 block_id，不触张量、零显存拷贝：
+
+- `get_computed_blocks()`：仅新请求首步调用，沿哈希链逐块查前缀命中、遇 miss 即 break（上界为 `num_tokens − 1`），只读不写、不改 `ref_cnt`；
+- `allocate_slots()`：为本步新 token 追加 block，依次做容量检查 → `touch` 命中块 → 弹新块 → 满块入哈希；显存不足时，等待中的请求本步跳过、RUNNING 中的请求先被抢占，最终返回 `KVCacheBlocks`（不足则返回 `None`）；
+- 下发 `SchedulerOutput`：新请求带全量 `block_ids`（前缀命中 + 本步新增），老请求带增量 `new_block_ids`（仅本步新增），并附 `num_scheduled_tokens`——整包只有整数与标量，无任何对象引用。
+
+**物理侧（worker 进程 · `NPUModelRunner.execute_model`）** 收到后按序完成四步：
+
+- `_update_states`：把 block_ids 写进 `block_table`（新请求首行全量写入，老请求 `append_row` 追加增量）；
+- `_prepare_inputs`：由 `block_table` 换算 `slot_mapping` / `attn_metadata`，即 `slot = block_id × 128 + 块内偏移`，padding 位填 `PAD_SLOT_ID`，且只覆盖本步新算的 token，历史不重算；
+- `_model_forward`：逐层先算 Q/K/V，用 `reshape_and_cache` 按 slot 写入本步 K/V，再由 FIA/PA 按 `block_table` 读取历史 K/V（含本步刚写入的行）——写与读相邻但并非两个阶段：第 l 层写完即读，随后才进第 l+1 层；
+- `compute_logits`：只对本步要采样的位置算 logits，供后续采样。
+
+两侧唯一的耦合点是 `block_id == 物理张量第 0 维行号`（K/V 双池各一套同序号行空间）：block_id 是唯一编号，`block_table` 一表两用（写时换算 slot、读时当页表），而 `SchedulerOutput` 是唯一载体。
+
 ---
 
 ## 6. 扩展：其他注意力类型概览
 
-本文主线是最基础的 Full Attention 模型。vLLM V1 同样支持以下场景，它们都在上述五层骨架上做扩展；NPU 侧（vllm-ascend）为多数场景提供了对应的 Ascend 后端实现：
+本文讲解的 KV Cache 主要围绕 Full Attention 模型展开。vLLM V1 同样支持以下场景，它们都在上述五层骨架上做扩展——差异集中在 **KV Cache 存什么、留多久、怎么检索**三个维度，逐类对比如下：
 
-| 类型 | 代表模型 | 主要差异 | 扩展落点（代码层 · NPU） |
-|------|---------|---------|---------|
-| **Sliding Window Attention (SWA)** | Mistral-SA、Gemma2 | 只缓存最近 `sliding_window` 个 token 的 KV，更早的 block 可以驱逐；前缀查找从右往左找窗口内命中 | 第 3 层滑窗管理器、第 4 层协调器（平台无关）；FIA 算子 `sparse_mode=4`/`pre_tokens` 走滑窗分支（attention_v1.py:1317-1334） |
-| **Mamba/SSM** | Bamba、Jamba | 无 KV 只有 state，block 存 recurrent state 而非 K/V；缓存逻辑不同 | 第 3 层状态管理器；NPU 单张量分支（不走 K/V 双池），状态更新走 `npu_causal_conv1d_custom` / `npu_recurrent_gated_delta_rule` 算子 |
-| **混合模型 (Full + SWA/Mamba)** | Gemma3、Jamba、Llama4 | 多个 KV group，Coordinator 做跨组命中交集；所有 group 共享同一个 BlockPool 但 page size 必须统一 | 第 4 层 `HybridKVCacheCoordinator`（平台无关）；NPU 侧 spec 收集时把 attn 层 `page_size_padded` 对齐到 mamba 页（model_runner_v1.py:5034-5036） |
-| **MLA (Multi-head Latent Attention)** | DeepSeek-V2/V3 | KV 低秩压缩，物理张量形状不同 | 第 1 层 NPU 特有 `AscendMLAAttentionSpec` + `AscendMLABackend`（mla_v1.py:80）；nope/rope 拆成两张独立 4D 张量（支持 prefill 分离传输） |
-| **稀疏注意力 (DSA/SFA/C8)** | DeepSeek-V3.2 系 | attention 后含 indexer/稀疏选块逻辑，额外张量 | NPU `dsa_v1.py` / `sfa_v1.py` / `AscendC8AttentionBackendImpl`（attention_v1.py:1548），sparse MLA 额外分配 indexer/scale 张量 |
-| **Cross-Attention** | 编码器-解码器模型 | 额外的 encoder KV group，静态分配不释放 | 第 3 层 `CrossAttentionManager`（平台无关）；NPU `_forward_encoder_attention` 走 `npu_fusion_attention`（attention_v1.py:1384-1406） |
-| **投机解码 (EAGLE/MTP)** | EAGLE、Medusa | draft 层额外 group，需要 last-block drop 逻辑 | 第 4 层协调器与第 5 层门面；NPU PA 算子路径在 `using_paged_attention` 里对 speculative 直接关闭、回落 FIA（attention/utils.py:104-106） |
+| Attn 类型 | 代表模型 | 主要差异（相对 Full Attention 的 KV Cache 行为） |
+|------|---------|---------|
+| **Sliding Window Attention (SWA)** | Mistral-7B、Gemma-2 | 每个 token 只看最近 `sliding_window` 个 token，更早的 block 可被驱逐——缓存窗口随位置滚动前移、不随序列无限增长；前缀查找从右往左，只在窗口内匹配 |
+| **Mamba** | Mamba、Jamba、Bamba | 不使用 K/V，每层只保留一个固定大小的 recurrent state（无序列长度维、不随 token 增长）；前缀缓存改为缓存块边界（位置 i × block_size）上的 state，命中后从该 state 续算，block 存的是 state |
+| **混合模型 (Full + SWA/Mamba)** | Qwen3.5、Gemma-3 | 同一模型内含多个 KV group，各 group 缓存策略不同，命中需在协调器层做跨组交集；多 group 共享同一 BlockPool，故 page size 必须统一 |
+| **MLA (Multi-head Latent Attention)** | DeepSeek-V2、DeepSeek-V3 | K/V 被低秩压缩成 latent 向量后再缓存，物理张量形状与标准 MHA 不同（nope/rope 拆成两张张量）；单 token 的缓存体积显著更小 |
+| **稀疏注意力 (DSA/SFA/C8)** | DeepSeek-V3.2 | attention 前多一步 indexer 选块，除 KV Cache 外还需额外维护 indexer/scale 等辅助张量 |
+| **Cross-Attention** | T5、Whisper | 额外一个 encoder KV group：由编码结果静态填充、只读不写，随请求生命周期常驻、不参与回收 |
+| **投机解码 (EAGLE/MTP)** | EAGLE、Medusa、DeepSeek-MTP | draft 层引入额外 KV group；每步需对被拒绝的 draft token 做 last-block drop（回滚最新块），已写入的缓存可被撤销 |
 
