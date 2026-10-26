@@ -2,15 +2,13 @@
 
 > 主线是 **vllm-ascend 在昇腾 NPU 上的实现**（`NPUWorker` / `NPUModelRunner` / `AscendMLABackend`）。③ 做编排与 ⑤ 建逻辑层跑在引擎进程、平台完全无关；MLA 特有落点集中在 ① 算规格的 spec 类型（`AscendMLAAttentionSpec`）与 ④ 落张量的双池语义（latent/rope 8:1）。
 >
-> 文中统一示例环境：**切分策略 TP4，4 卡（Ascend NPU）环境**；三种 Attention 类型各配一个示例模型：
+> 文中统一示例环境：**切分策略 TP4，4 卡（Ascend NPU）环境**；示例模型为 MLA 架构的 **DeepSeek-V2-Lite**。
 
 | Attention 类型 | Spec（NPU 实际产出） | 示例模型 | 模型链接 |
 |----------------|------|----------|----------|
-| **MLA（本系列实战主线）** | **`AscendMLAAttentionSpec`（latent/rope 拆分）** | **DeepSeek-V2-Lite** | https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V2-Lite |
-| Full Attention | `FullAttentionSpec`（上游原类） | Meta-Llama-3-8B | https://www.modelscope.cn/models/LLM-Research/Meta-Llama-3-8B |
-| GDN | `MambaSpec`（单张量路径） | Qwen3.5-4B | https://www.modelscope.cn/models/Qwen/Qwen3.5-4B |
+| **MLA（本篇主线）** | **`AscendMLAAttentionSpec`（latent/rope 拆分）** | **DeepSeek-V2-Lite** | https://www.modelscope.cn/models/deepseek-ai/DeepSeek-V2-Lite |
 
-> **主线说明**：DeepSeek-V2-Lite 为本系列实战主线模型（2026-10-18 于 a3 4 卡 pod `gggtest2` TP4 全流程实测，见部署篇 [`3_deploy_deepseekv2lite_tp4.md`](./3_deploy_deepseekv2lite_tp4.md)）；Llama-3-8B 为纯 Full Attention 架构示例线，用于对照。MLA 的 **block size 装配链（16 → 128 直通，无级跳）与页数字链（147,456 B → 13,013 块 → 1,665,664 tokens 一字不差）** 专述于 §2.0。
+> **主线说明**：DeepSeek-V2-Lite 为本篇实战主线模型（2026-10-18 于 a3 4 卡 pod `gggtest2` TP4 全流程实测，见部署篇 [`3_deploy_deepseekv2lite_tp4.md`](./3_deploy_deepseekv2lite_tp4.md)）。MLA 的 **block size 装配链（16 → 128 直通，无级跳）与页数字链（147,456 B → 13,013 块 → 1,665,664 tokens 一字不差）** 专述于 §2.0。
 
 **章节顺序**：全文按「总览 → 三侧逐个详解 → 衔接 → 物理分布 → 速查」推进，各章如下：
 
@@ -33,7 +31,7 @@
 
 - **配置侧**（引擎进程发起、NPU worker 实测响应）：依次 ① 算规格、② 测预算、③ 做编排，产出唯一的容量仲裁结果 `KVCacheConfig`（含 `num_blocks`、分组方案、张量尺寸）——这一侧**全程不申请任何 KV 显存**；①② 的实现主体经 collective RPC 落在各 **NPUWorker**（vllm-ascend 插件），③ 做纯 Python 编排跑在引擎进程（上游代码）；
 - **物理侧**（worker 进程 · 每卡 NPU）：④ 落张量，按配置把每层 KV cache 物化为真正驻留在 NPU 显存上的张量——**MLA 层整池按 8:1 拆 latent、rope 两条独立 int8 字节池**（开 KV 传输时 2MiB 对齐）→ 零拷贝 `view` 成两张 4D → 绑定到 attention 层，并触发编译预热（NPUGraph）；
-- **逻辑侧**（引擎进程）：④ 的 RPC 全部返回后，⑤ 建逻辑层——`Scheduler → KVCacheManager → Coordinator → BlockPool + FullAttentionManager`，全部是纯元数据对象，**与平台完全无关**（MLA 单 group，形态与纯 FA 逐字同）。
+- **逻辑侧**（引擎进程）：④ 的 RPC 全部返回后，⑤ 建逻辑层——`Scheduler → KVCacheManager → Coordinator → BlockPool + FullAttentionManager`，全部是纯元数据对象，**与平台完全无关**（MLA 单 group）。
 
 物理侧与逻辑侧之间没有任何对象引用：同一份 `KVCacheConfig`（收口时 deepcopy 出 scheduler 版，见 §2.3 收口）保证两侧 `num_blocks` 容量对齐，靠"`block_id` 即物理张量行号"的编号约定，逻辑链凭整数 `block_id` 直接索引物理行——这正是上层零拷贝调度的物理基座。
 
@@ -234,7 +232,7 @@ def register_all_kvcache_specs(vllm_config):
 
 ### 2.0 前置一步：block size 装配链——16 → 128（MLA 直通，实测数字链一字不差）
 
-vllm 上游给出默认 **16**，vllm-ascend 把它抬到 **128**（平台层）。对 MLA 模型这条链**只有两级、无分叉**——对照混合（attn+mamba）模型的 16 → 128 → 1024 三级跳（兄弟系列 `../npu_hybrid/1_start_init.md` §2.0），MLA 直通的关键是**无第二种 spec 族需要对齐**（27 层同构）。①算规格读到的 `block_size` 只是这条链的结果。完整执行时序（按真实先后，三个分叉点逐一标注 MLA 的走向）：
+vllm 上游给出默认 **16**，vllm-ascend 把它抬到 **128**（平台层）。对 MLA 模型这条链**只有两级、无分叉**，直通的关键是**无第二种 spec 族需要对齐**（27 层同构）。①算规格读到的 `block_size` 只是这条链的结果。完整执行时序（按真实先后，逐段标注 MLA 的走向）：
 
 ```text
 vllm serve CLI（引擎入口）
@@ -246,12 +244,9 @@ EngineArgs.from_cli_args（--block-size 未传 → block_size = None）         
 EngineArgs.create_engine_config()（vllm/engine/arg_utils.py:1706）                          [vllm]
  │ 内部依次调用：
  ├→ current_platform.pre_register_and_update()（arg_utils.py:1712）                        [vllm 调用点]
- │   ★ 分叉点 1：current_platform 实例即 NPUPlatform，调用直接跨入插件
  │   └→ NPUPlatform.pre_register_and_update（vllm_ascend/platform.py）                      [vllm-ascend]
  │        └→ adapt_patch(is_global_patch=True)（vllm_ascend/utils.py）                      [vllm-ascend]
  │             └→ import patch/platform/*（patch/__init__.py:17-24）                        [vllm-ascend]
- │                  └→ monkey 替换 mamba 页对齐 patch——【MLA：不改本链，monkey 目标
- │                     是 HybridAttentionMambaModelConfig，DeepSeek-V2 不触发】
  │
  ├→ :1714 DeviceConfig(device=current_platform.device_type) → npu                        [vllm]
  │   :1716 envs.validate_environ（环境变量校验）
@@ -264,7 +259,7 @@ EngineArgs.create_engine_config()（vllm/engine/arg_utils.py:1706）            
  │
  ├→ :1740 _check_feature_supported()（特性支持检查）                                       [vllm]
  │   :1741 _set_default_chunked_prefill_and_prefix_caching_args(model_config)
- │   └→ V1 默认开 chunked prefill——"纯 FA 强制 128"的触发条件即来源于此
+ │   └→ V1 默认开 chunked prefill
  │   :1744-1748 sliding_window 解析（仅全滑窗模型生效）
  │   :1751-1753 resolve_kv_cache_dtype_string："auto" → 模型 dtype（本例 bf16）
  │
@@ -276,17 +271,13 @@ EngineArgs.create_engine_config()（vllm/engine/arg_utils.py:1706）            
 VllmConfig.__post_init__（vllm/config/vllm.py:847）                                         [vllm]
  │ 内部依次调用：
  ├→ self.try_verify_and_update_config()（vllm.py:856，def 于 :1880）                       [vllm]
- │    ├ 纯 FA / MLA（Llama-3-8B、DeepSeek-V2-Lite）：is_hybrid=False → mamba verify 分支不触发
- │    │   【MLA：与纯 FA 同路，16 原样带过】
- │    └ 混合（Qwen3.5-4B）：is_hybrid=True → mamba 页对齐 patch 抬到 1024
- │        【对比：GDN 系列在这里分岔出 1024 大页；MLA 全程无此分岔】
+ │    └ DeepSeek-V2-Lite：is_hybrid=False → 本步不改 block_size
+ │        【MLA：16 原样带过，无分岔】
  │
  └→ current_platform.check_and_update_config(self)（vllm.py:1335）                          [vllm 调用点]
-       ★ 分叉点 3：平台钩子重写
        └→ NPUPlatform.check_and_update_config（vllm_ascend/platform.py，:671 处内调）      [vllm-ascend]
             └→ refresh_block_size（vllm_ascend/utils.py:1369）                             [vllm-ascend]
-                 ├ 混合：is_hybrid → return（:1397-1400）→ 1024 保留
-                 └ 纯 FA / MLA：≠128 且开 prefix caching / chunked prefill（V1 默认开）
+                 └ MLA：≠128 且开 prefix caching / chunked prefill（V1 默认开）
                     → 强制 128（:1402-1406，日志"Block size is set to 128 ..."）
                     【MLA：block_size 16 → 128 就此定型，无第三级】
  │
@@ -294,17 +285,17 @@ VllmConfig.__post_init__（vllm/config/vllm.py:847）                           
 initialize_attn_backend → select_common_block_size（model_runner_v1.py:4759）              [vllm-ascend]
    管理块（128）与 AscendMLABackend.get_supported_kernel_block_sizes()=[128]（mla_v1.py:117-118）
    求公共分档 → 物理 kernel 128 粒度寻址
-   【MLA：管理块 == 物理块 == 128，无"两层粒度分离"现象（对照 GDN 的 1024/128 分离）】
+   【MLA：管理块 == 物理块 == 128，无"两层粒度分离"现象】
 ```
 
-**为什么 MLA 无级跳**：block size 级跳的动机是"多 spec 族 页字节统一"（mamba 状态页 vs attn token 页）；MLA 是**单一 spec 族**（27 层同构 `AscendMLAAttentionSpec`），无第二族可对齐，平台层 128 即终值。相应地：**无页 padding、无空洞账单、无 `Padding mamba page size` 日志、前缀缓存不被强制关闭**——这四条"混合税"MLA 全免（实测启动日志里均不存在）。
+**为什么 MLA 无级跳**：block size 级跳的动机是"多 spec 族 页字节统一"；MLA 是**单一 spec 族**（27 层同构 `AscendMLAAttentionSpec`），无第二族可对齐，平台层 128 即终值。相应地：**无页 padding、无空洞账单、无页对齐日志、前缀缓存不被强制关闭**——这四条 MLA 全免（实测启动日志里均不存在）。
 
-**MLA 页字节与容量数字链**（TP4 / bf16；数字与 gggtest2 启动日志逐字对齐；与类型篇速查段同源）：
+**MLA 页字节与容量数字链**（TP4 / bf16；数字与 gggtest2 启动日志逐字对齐）：
 
 | 量 | 计算 | 值 |
 |---|---|---|
 | 每 token 每层 latent+rope | (kv_lora_rank 512 + qk_rope 64) × 2B | **1,152 B** |
-| 等价 MHA 直存（对照） | 16 头 × (128 nope + 64 rope + 128 v) × 2B | 10,240 B（**压缩 8.89×**） |
+| 等价 MHA 直存（参考） | 16 头 × (128 nope + 64 rope + 128 v) × 2B | 10,240 B（**压缩 8.89×**） |
 | **page_size（层 · 块）** | 128 × num_kv_heads 1 × head_size 576 × 2B | **147,456 B** |
 | 每块全模型（27 层同构摊账本） | 27 × 147,456 | **3,981,312 B** |
 | 每 token 全模型 KV | 27 × 1,152 | **31,104 B** |
@@ -312,9 +303,9 @@ initialize_attn_backend → select_common_block_size（model_runner_v1.py:4759�
 | **GPU KV cache size（日志原文）** | 13,013 × 128 | **1,665,664 tokens**（一字不差） |
 | KVCacheTensor.size（每层） | 13,013 × 147,456 | 1,918,844,928 B ≈ 1.79 GiB |
 
-反向验证：`13,013 × 27 × 147,456 = 51,808,813,056 B = 48.25 GiB` 与日志一分不差。**这是三次实测（FA 51.96 GiB/GDN 51.90 GiB/MLA 48.25 GiB）中 spec→运维数字链路最短的一次**：无页对齐 patch、无多组 min 协调、图项不进②公式——MLA 的容量可纯手算复现。
+反向验证：`13,013 × 27 × 147,456 = 51,808,813,056 B = 48.25 GiB` 与日志一分不差。**这是 spec→运维数字链路最短的一次（MLA 48.25 GiB）**：无页对齐 patch、无多组 min 协调、图项不进②公式——MLA 的容量可纯手算复现。
 
-**gggtest2 实测**（2026-10-18；产物归档 [`./logs/startup_markers_1018.txt`](./logs/startup_markers_1018.txt) 等 9 件）：链上三处日志分叉点全部按上述走向出现——`Resolved architecture: DeepseekV2ForCausalLM`（无 `is_hybrid`、无 `Setting attention block size to 1024`/`Padding mamba page size` 行）→ `Block size is set to 128` 路径——最终 `GPU KV cache size: 1,665,664 tokens`。启动早期仅有的两条已知免责/告警：`Breakable cudagraph is force disabled … DeepSeek V4 PIECEWISE not supported`（平台对 V4 特性预防，不作用于本模型）与 yarn `rope_parameters' factor ... got 40` 序列化告警（无功能影响）。
+**gggtest2 实测**（2026-10-18；产物归档 [`./logs/startup_markers_1018.txt`](./logs/startup_markers_1018.txt) 等 9 件）：链上关键日志全部按上述走向出现——`Resolved architecture: DeepseekV2ForCausalLM` → `Block size is set to 128` 路径——最终 `GPU KV cache size: 1,665,664 tokens`。启动早期仅有的两条已知免责/告警：`Breakable cudagraph is force disabled … DeepSeek V4 PIECEWISE not supported`（平台对 V4 特性预防，不作用于本模型）与 yarn `rope_parameters' factor ... got 40` 序列化告警（无功能影响）。
 
 ### 2.1 第 ① 步 · 算规格：各层产出 KVCacheSpec
 
@@ -335,7 +326,7 @@ def get_kv_cache_spec(self) -> dict[str, KVCacheSpec]:
 | 层类型 | NPU 分支（model_runner_v1.py） | 产出 spec |
 |---|---|---|
 | **`MLAAttention`（DeepSeek 系，本主线）** | **:4948-5000** | **`AscendMLAAttentionSpec`**：non-sparse 路径取上游 spec 转包装（**:4987-4999**）；sparse（DSA/SFA）路径另带 `sparse_head_dim`、`cache_sparse_sfa_c8`、`sfa_dcp_replicated_indexer_size` 等字段（:4949-4986） |
-| decoder 普通 `Attention`（Llama 走此路） | :4943-4946 原样存入 | 上游 **`FullAttentionSpec`**（模型层自产） |
+| decoder 普通 `Attention` | :4943-4946 原样存入 | 上游 **`FullAttentionSpec`**（模型层自产） |
 | `MambaBase` | :5002-5003 先收集、:5027-5036 后统一处理 | 各 Mamba 自身 spec；并把同模型 attn 层 `page_size_padded` 对齐到 mamba 页（**MLA 模型无 mamba 层 → patch 不触发，27 层 spec 直通**） |
 | `CacheOnlyAttentionLayer`（extract_hidden_states） | :5005-5025 | **`HiddenStateCacheSpec`**（单独成组） |
 | `use_compress` 压缩 KV | :4939-4942 | 模块自身 spec 原样收 |
@@ -377,7 +368,7 @@ if any(getattr(spec, "non_causal", False)
     vllm_config.cache_config.enable_prefix_caching = False       # 前缀缓存一并关闭
 ```
 
-> 非因果层与 chunked prefill / 前缀缓存依赖的"因果注意力"假设冲突，会破坏 prefill 正确性；MLA 与纯 FA 同为全因果 → 此分支不触发（**实测 `enable_prefix_caching=True` 印证**——这是 MLA 与 GDN（递归状态被 mamba 分支强关前缀缓存）在启动配置上的关键分野）。这个开关会一路传导到⑤：`Scheduler.__init__` 里 `KVCacheManager(enable_caching=cache_config.enable_prefix_caching)`（§4.3）据此决定协调器走哪个分支。
+> 非因果层与 chunked prefill / 前缀缓存依赖的"因果注意力"假设冲突，会破坏 prefill 正确性；MLA 为全因果 → 此分支不触发（**实测 `enable_prefix_caching=True` 印证**）。这个开关会一路传导到⑤：`Scheduler.__init__` 里 `KVCacheManager(enable_caching=cache_config.enable_prefix_caching)`（§4.3）据此决定协调器走哪个分支。
 
 ### 2.2 第 ② 步 · 测预算：profile 量出可用显存
 
@@ -425,7 +416,7 @@ def profile_run(self) -> None:
     self.max_num_tokens = origin_max_num_tokens
 ```
 
-DeepSeek-V2-Lite **是 MoE 模型**（64 routed + 2 shared experts），`eplb_warmup` 与 MC2 容量检查真实执行（对照 Llama 纯 dense 只走 `super()` 路径）；但实测引擎配置 `Dynamic EPLB is False`、`redundant experts 0`——warmup 为通信路径预检，不改记账。
+DeepSeek-V2-Lite **是 MoE 模型**（64 routed + 2 shared experts），`eplb_warmup` 与 MC2 容量检查真实执行；但实测引擎配置 `Dynamic EPLB is False`、`redundant experts 0`——warmup 为通信路径预检，不改记账。
 
 4. **torch 峰值改走 npu API**：`torch.npu.memory_stats(self.device)["allocated_bytes.all.peak"]`（worker.py:567），同样取图捕获**之前**的预捕获值并覆写 `torch_peak_increase`（:571）——避免把图池重复计成激活。
 
@@ -471,7 +462,7 @@ for kv_cache_spec_one_worker in kv_cache_specs:
 
 > 同 PP stage 的不同 TP rank 提交同层 spec，断言检查必须等值（原因：**TP 切分后 MLA 的 `num_kv_heads=1`/`head_size=576` 仍全等**——TP 不切 latent，详见 §6）。**NPU 的 MLA 层在①阶段已经是 `AscendMLAAttentionSpec`**，也就是说"平台特有 spec"从这一步开始就进入平台无关的编排管线——编排对 spec 的具体类型不感知，只按 `page_size_bytes` 等抽象接口工作。
 
-**② 分组 `get_kv_cache_groups()`** —— MLA 走 `is_kv_cache_spec_uniform()` → `_get_kv_cache_groups_uniform_spec()` → 全模型**单 group**（与纯 FA 同路）。
+**② 分组 `get_kv_cache_groups()`** —— MLA 走 `is_kv_cache_spec_uniform()` → `_get_kv_cache_groups_uniform_spec()` → 全模型**单 group**。
 
 ```python
 # kv_cache_utils.py:874
@@ -486,7 +477,7 @@ def is_kv_cache_spec_uniform(kv_cache_spec) -> bool:
     return True
 ```
 
-> `merge()` 检查所有层 spec 字段（block_size / num_kv_heads / head_size / dtype 等）是否一致——MLA 27 层同构（`AscendMLAAttentionSpec.merge`，kv_cache_interface.py:191）→ **单 group**。对照：GDN 混合模型两类 spec merge 失败 → 多组 Hybrid；**MLA 在分组形态上与纯 FA 逐字同**——这是⑤逻辑层零改动的前提。
+> `merge()` 检查所有层 spec 字段（block_size / num_kv_heads / head_size / dtype 等）是否一致——MLA 27 层同构（`AscendMLAAttentionSpec.merge`，kv_cache_interface.py:191）→ **单 group**——这是⑤逻辑层零改动的前提。
 
 **③ 投影到各 worker：按 projected groups 计算 num_blocks**
 
@@ -513,7 +504,7 @@ if needed_memory > available_memory:
     raise ValueError(...)  # 建议调大 util 或调小 max_model_len
 ```
 
-MLA 主线 `--max-model-len 32768` → 单请求峰值 KV = 32,768 × 27 × 1,152 B ≈ 1.0 GiB，远小于 48.25 GiB 预算 → 校验通过（对照：同规格下无压缩等价模型需 32,768 × 27 × 10,240 B ≈ 8.8 GiB，也过，但并发容量差 8.89 倍）。
+MLA 主线 `--max-model-len 32768` → 单请求峰值 KV = 32,768 × 27 × 1,152 B ≈ 1.0 GiB，远小于 48.25 GiB 预算 → 校验通过（同规格无压缩等价模型需 ≈8.8 GiB，并发容量差 8.89 倍）。
 
 **⑤ 多 worker 对齐**——集中式调度下同一请求的 `block_table` 由所有 worker 共用：TP 各 rank 只读写本 rank 的张量子集，因此 `block_id` 必须在任意 rank 上都对应有效物理行。对齐策略：取各 worker `num_blocks` 的最小值作为全局统一值：
 
@@ -576,7 +567,7 @@ def initialize_from_config(self, kv_cache_config: KVCacheConfig) -> None:
         self.model_runner.initialize_kv_cache(kv_cache_config)           # :918 落张量主体
 ```
 
-   注意 config 路径下 NPUWorker **不回写** `cache_config.num_gpu_blocks`（旧 profile 路径的回写在 `initialize_cache()`，worker.py:391）；`eagle3 + num_speculative_tokens>1` 的 mamba 混合场景还会在 :930-937 检查 `_init_kv_zero_meta`（MLA 主线不涉及）。
+   注意 config 路径下 NPUWorker **不回写** `cache_config.num_gpu_blocks`（旧 profile 路径的回写在 `initialize_cache()`，worker.py:391）。
 
 2. `collective_rpc("compile_or_warm_up_model")` → `NPUWorker.compile_or_warm_up_model()`（worker.py:706），完成 4d 编译预热（见下）。
 
@@ -602,7 +593,7 @@ deepcopy(KVCacheConfig)（:3850，防止改动跨 worker 共享的配置对象�
 # k cache and v cache, and the addr of both are aligned by 2M
 ```
 
-dense attention 分支的拆分流程（:4147-4309）——MLA 与 Llama 走**同一段代码**，差异只在 `(k_dim, v_dim)` 的取值与拆分比例：
+dense attention 分支的拆分流程（:4147-4309）——差异只在 `(k_dim, v_dim)` 的取值与拆分比例：
 
 ```python
 # model_runner_v1.py:4082/4101/4213-4232/4249-4254（节选）
@@ -610,7 +601,6 @@ alignment = 2 * 1024 * 1024                                   # :4101 2MiB 对�
 ...
 k_dim, v_dim = self._get_attention_kv_cache_dims(layer_name, spec)     # :4213
 #     MLA: (kv_lora_rank, qk_rope_head_dim) = (512, 64)   ← :3987-3989，注释原文
-#     Llama: (head_size, head_size_v) = (128, 128)         ← :3997-3998
 kv_head_dim_list = [k_dim, v_dim]
 k_factor, v_factor = calc_split_factor(kv_head_dim_list)       # :4224；vllm_ascend/utils.py:1611
 k_tensor_size = int(kv_cache_tensor.size // k_factor)          # :4227 整池字节量按维宽比例拆
@@ -620,7 +610,7 @@ v_tensor = self._allocate_int8_cache_tensor(v_tensor_size, alignment)  # :4254 �
 kv_cache_raw_tensors[layer_name] = (k_tensor, v_tensor)        # :4309 登记为二元组
 ```
 
-**`_get_attention_kv_cache_dims` 的 MLA 分支**（:3979-3998）——dim 的来源不同是 MLA 与 dense 的关键分叉点（dense 层读 spec 的 head_size/head_size_v，MLA 层直接问 attention 模块要 lora 维度）：
+**`_get_attention_kv_cache_dims` 的 MLA 分支**（:3979-3998）——MLA 层读 spec 的 `head_size` 做兜底，主流路径直接问 attention 模块要 lora 维度：
 
 ```python
 # model_runner_v1.py:3980-3989（节选）
@@ -644,7 +634,6 @@ def calc_split_factor(num_list: list[int]):
 ```
 
 - MLA `[512, 64] → (1.125, 9.0)`：**latent 池占 8/9（≈1.59 GiB/层）、rope 池占 1/9（≈0.20 GiB/层）**——"V 池"按名义只分到 1/9，因为它装的是 64 维 k_rope 而非 512 维 latent，更非传统 value；
-- dense 等宽层 `[128, 128] → (2.0, 2.0)`：对半拆（Llama 对照）；
 - 断言兜底：分配完成后 `assert layer_names == set(kv_cache_raw_tensors.keys())`（:4316，"Some layers are not correctly initialized"）。
 
 对齐本身是条件性的（`_allocate_int8_cache_tensor`，model_runner_v1.py:4004；对齐切片助手 `_align_memory` 在 :3911-3915：`data_ptr` 向上取整再切片），**但 K/V 拆分对所有 dense 层无条件生效**：
@@ -658,17 +647,16 @@ def _allocate_int8_cache_tensor(self, numel, alignment):
     return self._align_memory(raw, alignment)[:numel]                            # 地址对齐后切片
 ```
 
-同样先按 int8 字节申请、reshape 时再 `view(dtype)`——"dtype 与存储解耦"的动机与主线一致。例外分支（不走 K/V 双分、仍是单张量）：`linear_attn`/mamba/`cache_only_layers`/hidden-state（:4118-4134）与 `use_compress` 压缩注意力（:4135-4146）——**MLA 主线的 27 层全部走 K/V 双分路径**；sparse MLA（DSA/SFA）在此之外还会额外分配 indexer/scale 张量（`_allocate_sparse_c8_indexer_tensors` 等，:4259-4276；登记形态为 2～4 元组，:4646-4680）——dense MLA（V2-Lite）不涉及。
+同样先按 int8 字节申请、reshape 时再 `view(dtype)`——"dtype 与存储解耦"的动机与主线一致。例外分支（不走 K/V 双分、仍是单张量，如 hidden-state / 压缩注意力等，:4118-4146）——**MLA 主线的 27 层全部走 K/V 双分路径**；sparse MLA（DSA/SFA）在此之外还会额外分配 indexer/scale 张量（`_allocate_sparse_c8_indexer_tensors` 等，:4259-4276；登记形态为 2～4 元组，:4646-4680）——dense MLA（V2-Lite）不涉及。
 
 **4b. 两张 4 维张量 `_reshape_kv_cache_tensors()`（:4353）——MLA 分支：nope/latent + rope 不等维双池**
 
 ```python
-# model_runner_v1.py:4605-4629（MLA 分支，节选；dense 对照见 :4592-4644）
+# model_runner_v1.py:4605-4629（MLA 分支，节选）
 kv_cache_shape = attn_backend.get_kv_cache_shape(        # AscendMLABackend：mla_v1.py:99-106
     num_blocks, current_kv_cache_spec.block_size,
     current_kv_cache_spec.num_kv_heads, current_kv_cache_spec.head_size)
 #     MLA 后端直接返回 4D (num_blocks, block_size, num_kv_heads, head_size)
-#     ——无 dense 后端描述符 dim0 的"2"（attention_v1.py:104-112 对照）
 ...
 else:
     # k_cache: nope_cache    v_cache: rope_cache          ← 源码注释原文（:4606）
@@ -686,7 +674,6 @@ kv_caches[layer_name] = (k_cache, v_cache)                # 每层绑定对象 =
 - **k_cache 是 nope/latent 池**（宽 512 = `kv_lora_rank`）、**v_cache 是 rope 池**（宽 64 = `qk_rope_head_dim`）——两张**不等维** 4D 张量，**"V 池"装的绝不是 value 值**：V 在 decode 由 latent 经 `W_UV` 即时上采样（`_v_up_proj`，mla_v1.py:898-906）；
 - 全程只有 `view`（int8 → bf16 → 4D），**无 `permute` 布局翻转**；
 - `block_id == 双池各自行号`：K 池、V 池各有一套 13,013 行的同序号行空间，同一个 `block_id` 同时命中两张张量各自的同一行；
-- dense 对照（Llama）：描述符 `(2, num_blocks, block_size, num_kv_heads, head_size)` 里的"2"在 dim0、且不落成物理维——被拆成两张等宽 4D；MLA 描述符从源头就是 4D（后端差分：`AscendMLABackend.get_kv_cache_shape` 直接返回 `(N, B, H, D)`，mla_v1.py:99-106）；
 - 跨层 KV 复用层在此挂共享引用（:3933-3935，`shared_kv_cache_layers`）；`deepseek_v4` 类型走专门排序装填（:3937-3948），主线不涉及。
 
 **4c. 绑定：直接复用上游 `bind_kv_cache`**
@@ -729,7 +716,7 @@ def compile_or_warm_up_model(self) -> CompilationTimes:
 
 ## 4. 逻辑侧：建逻辑层（引擎进程 · 纯元数据装配）
 
-④的 RPC 全部返回后，`_initialize_kv_caches`（core.py:317）把收口生成的 scheduler 版 `KVCacheConfig` 返回给 `EngineCore.__init__`，引擎进程随即执行⑤——装配逻辑四层（协调器 / 单类型管理 / 块池 / 门面，架构编号第 2～5 层，见 [`0_kvcache_arch.md`](./0_kvcache_arch.md)）。本侧特点：**全部对象都是纯元数据**（`KVCacheBlock` 只含 `block_id` 与引用计数等，不含任何 latent/rope 数据）、**启动期一次性建好**、**与平台完全无关**——**MLA 与纯 FA 在本侧逐字相同**。
+④的 RPC 全部返回后，`_initialize_kv_caches`（core.py:317）把收口生成的 scheduler 版 `KVCacheConfig` 返回给 `EngineCore.__init__`，引擎进程随即执行⑤——装配逻辑四层（协调器 / 单类型管理 / 块池 / 门面，架构编号第 2～5 层，见 [`0_kvcache_arch.md`](./0_kvcache_arch.md)）。本侧特点：**全部对象都是纯元数据**（`KVCacheBlock` 只含 `block_id` 与引用计数等，不含任何 latent/rope 数据）、**启动期一次性建好**、**与平台完全无关**——**MLA 在本侧逐字就是上游逻辑层**。
 
 ### 4.1 装配时点：物理先于逻辑
 
@@ -766,7 +753,7 @@ if len(groups) <= 1:  # Single group: block_size * dcp * pcp
 
 - **`scheduler_block_size`**：调度器的 token 对齐不变量（`num_computed_tokens` 取整、chunked prefill 分片粒度）。MLA 单 group 且 dcp/pcp 均为 1 → **128**；
 - **`hash_block_size`**：`Request.block_hashes` 的计算粒度（前缀缓存哈希链的步长）。单 group 时与 scheduler_block_size 相同 → **128**；
-- 多 group（混合模型）时分别取各组 block_size 的 LCM 与 GCD，此时二者允许不同——**MLA 单组无此问题**（对照 GDN 系列 1024 vs 128 的 LCM 推导）。
+- 多 group 时分别取各组 block_size 的 LCM 与 GCD，此时二者允许不同——**MLA 单组无此问题**。
 
 ### 4.3 `Scheduler.__init__` → 创建 `KVCacheManager`（第 5 层门面）
 
@@ -821,10 +808,10 @@ if not enable_caching:
     return KVCacheCoordinatorNoPrefixCache(...)          # 关前缀缓存：直通版，find_longest_cache_hit 恒空
 if len(kv_cache_config.kv_cache_groups) == 1:
     return UnitaryKVCacheCoordinator(...)                # 主线：单 group + 开前缀缓存（MLA 走此路）
-return HybridKVCacheCoordinator(...)                     # 混合模型：多组间命中求交（GDN 系列路线）
+return HybridKVCacheCoordinator(...)                     # 多 group：多组间命中求交
 ```
 
-MLA 主线走 **`UnitaryKVCacheCoordinator`**（kv_cache_coordinator.py:379）——与纯 FA **完全同路**。其基类 `KVCacheCoordinator.__init__`（kv_cache_coordinator.py:65-110）完成两件装配动作（粒度整除终检 + 5a 建块池[§4.5] + 5b 每 group 一个 manager[§4.6]）；Unitary 在基类之上追加两条断言（kv_cache_coordinator.py:413-428）：`assert not enable_caching or (hash_block_size == self.block_size)`、`assert len(...kv_cache_groups) == 1`。
+MLA 主线走 **`UnitaryKVCacheCoordinator`**（kv_cache_coordinator.py:379）。其基类 `KVCacheCoordinator.__init__`（kv_cache_coordinator.py:65-110）完成两件装配动作（粒度整除终检 + 5a 建块池[§4.5] + 5b 每 group 一个 manager[§4.6]）；Unitary 在基类之上追加两条断言（kv_cache_coordinator.py:413-428）：`assert not enable_caching or (hash_block_size == self.block_size)`、`assert len(...kv_cache_groups) == 1`。
 
 > 主线下三条断言全过：`128 % 128 == 0`、`hash_block_size == block_size == 128`、group 数为 1——这三条正是③编排"全模型单 group + uniform MLA spec"在逻辑侧的呼应。
 
@@ -883,7 +870,7 @@ self.req_to_blocks: defaultdict[str, list[KVCacheBlock]] = defaultdict(list)
                                                           # request_id → 块序列，运行期 block_table 的唯一数据源
 ```
 
-> `FullAttentionManager` 的核心运行期方法 `find_longest_cache_hit`（:521 起，前缀查找）等不在启动期执行，本篇不展开（见 `2_runtime_sequence.md`）。主线 manager 仅 1 个（单 group），混合模型下每 group 一个、共享同一 BlockPool——**MLA 复用 FA 的 manager 这件事本身就是"latent/rope 仍是逐 token 因果序列"的结构性证据**：前缀查找/分配/释放只依赖块语义，与池内装什么无关。
+> `FullAttentionManager` 的核心运行期方法 `find_longest_cache_hit`（:521 起，前缀查找）等不在启动期执行，本篇不展开（见 `2_runtime_sequence.md`）。主线 manager 仅 1 个（单 group）——**复用 `FullAttentionManager` 这件事本身就是"latent/rope 仍是逐 token 因果序列"的结构性证据**：前缀查找/分配/释放只依赖块语义，与池内装什么无关。
 
 ### 4.7 逻辑侧交付物与运行期消费方
 
@@ -924,7 +911,7 @@ rope   = kv_caches[layer][1][block_ids]          # rope 池：dim0 fancy indexin
 
 ## 6. DeepSeek-V2-Lite TP 下 KV cache 的 NPU 物理分布（实测走查）
 
-- **TP 按 Q 头切分、latent 不切**：`config/model.py` 的 `get_num_kv_heads()` 除法只作用于 Q 头（16 → 每 rank 4）；MLA 的 `c_KV = W_DKV·h` 与头无关，**latent/rope 池在 TP 各 rank 上完全相同**——每个 TP rank 独立分配**全尺寸**的 latent/rope 池（对照 GQA：头子集 → 池减半）。MLA 用 TP 换来的是**每卡算力并行**（Q 头 4 个 + MoE 分片），不是 KV 分片。
+- **TP 按 Q 头切分、latent 不切**：`config/model.py` 的 `get_num_kv_heads()` 除法只作用于 Q 头（16 → 每 rank 4）；MLA 的 `c_KV = W_DKV·h` 与头无关，**latent/rope 池在 TP 各 rank 上完全相同**——每个 TP rank 独立分配**全尺寸**的 latent/rope 池。MLA 用 TP 换来的是**每卡算力并行**（Q 头 4 个 + MoE 分片），不是 KV 分片。
 - **`num_key_value_heads=16` 只是兼容字段**：物理上 MLA 没有 16 份 KV——`num_kv_heads=1` 是 spec 的冻结值。
 
 **关键推论**：TP rank 的 spec `num_kv_heads=1 / head_size=576` 全等 → §2.3① 合并断言通过。**spec 相等 = 物理相同**（MLA 下四卡张量逐字节同构）；调度器只管 `block_id`，对 TP 内部布局透明。
@@ -968,27 +955,25 @@ rope   = kv_caches[layer][1][block_ids]          # rope 池：dim0 fancy indexin
 
 **物理分布（关键）**：4 张卡各存 27 层 KV 物理张量（每层 latent、rope 各一张，共 54 张/卡）；**4 个 TP rank 存逐字节同构的全尺寸双池**（MLA 不做头子集分片——相同 block_id 在 4 卡上对应同一段 latent/rope 数据的并行计算副本，不是数据分片）。同一请求的 KV 跨 TP 各 rank 冗余持有；调度器仍只认 `block_id`；`BlockPool` 在引擎进程**只有一份**。npu-smi 实测佐证：4 个 `VLLMWorker_TP` 进程（PID 1990-1993）分别持有 NPU3 die0/1 + NPU4 die0/1，进程内存 ≈58.66 GB/卡、HBM 61,498~61,744 / 65,536 MB（含 KV 48.25 GiB）——见 [`./logs/npu_smi_after_serve_1018.txt`](./logs/npu_smi_after_serve_1018.txt)。
 
-**与 Llama-3-8B pp2tp2 对照（基线）**：Llama TP2 切 8 KV 头 → 4 头/卡 → 池减半；TP 越大池越小（容量随卡数线性放大）。MLA TP4 切 Q 头不切 latent → **每卡池尺寸恒定**（13,013 块不随 TP 变化）——同一预算下 Llama 加卡放更多 tokens/请求，MLA 加卡放更多**并发计算通道**（Q 头 + MoE 专家分片）而非容量。这是两族模型在扩容语义上的本质差异。
-
 ## 7. 关键公式汇总（速查）
 
-沿三侧管线顺序排列；参数化示例（Llama-3-8B pp2tp2、block_size=16、num_kv_heads=4、head_size=128、bf16）与实测示例（**DeepSeek-V2-Lite TP4**）并列。
+沿三侧管线顺序排列；示例一律取实测示例（**DeepSeek-V2-Lite TP4**）。
 
-| 公式 | 所属阶段/侧 | 含义 | 参数化示例 | **MLA 实测示例** | 出处 |
-|------|------------|------|----------|----------|------|
-| `page_size_bytes = block_size × num_kv_heads × (head_size × dtype_size + scale维)` | ① 配置侧（MLA 形） | 一层一块的字节数；**与纯 FA 的 `2×B×H×D×dtype` 不同形——无 K/V 系数，576 已含 latent+rope** | （MLA 无参数化例） | `128 × 1 × 576 × 2B = 147,456 B` | kv_cache_interface.py:117-121 |
-| `每 token 全模型 KV = num_layers × (kv_lora_rank + qk_rope) × dtype_size` | ① 配置侧（MLA 特征量） | 决定容量上限与压缩率 | — | `27 × 576 × 2 = 31,104 B`（压缩 8.89×） | 实测推演 |
-| `available = total × util − weights − activations` | ② 配置侧 | 单卡 KV 显存预算；**NPU 无图项** | — | **48.25 GiB** | §2.2.1 |
-| `num_blocks = available // page_size // group_size` | ③ 配置侧 | per-worker 容量：除数是 projected 后每 worker 层数 | `2GiB//32KB//16 = 4096` | **`48.25GiB//147,456//27 = 13,013`**（×128=1,665,664 tokens，日志一字不差） | §2.3③ |
-| `k_factor, v_factor = calc_split_factor([k_dim, v_dim]) = [sum/num]` | ④ 物理侧（NPU 特有） | 整池字节量按维度宽比例拆分的因子 | `[128,128]→(2.0,2.0)` 对半 | **`[512,64]→(1.125,9.0)`——latent 8/9、rope 1/9** | utils.py:1611 |
-| `k_dim, v_dim = (kv_lora_rank, qk_rope_head_dim)` | ④ 物理侧（**MLA 特有**） | `_get_attention_kv_cache_dims` 的 MLA 返回——**V 位装 rope 非传统 V** | （Llama (128,128)） | **(512, 64)** | model_runner_v1.py:3987-3989 |
-| `k_tensor_size = size // k_factor`，`v_tensor_size = size // v_factor` | ④ 物理侧（NPU 特有） | 两张独立 int8 池各自的字节数 | 各 64MB | **latent ≈1.59 GiB / rope ≈0.20 GiB** | model_runner_v1.py:4227-4228 |
-| `开 KV 传输：申请 size + 2MiB，data_ptr 向上对齐后切片` | ④ 物理侧（NPU 特有） | 传输注册要求 buffer 地址 2MiB 对齐 | — | 本主线单机未开 | :4004/:3911 |
-| `KVCacheTensor.size = page_size_bytes × num_blocks` | ③ 配置侧 | 每层一张张量的字节数（NPU = latent+rope 合计） | `32KB × 4096 = 128MiB` | `147,456 × 13,013 ≈ 1.79 GiB` | §2.3③ |
-| `min(num_blocks)` + 等比缩 `KVCacheTensor.size` | ③ 配置侧 | 多 worker 对齐 | 4 卡统一为最小值 | 4 卡同值 13,013（TP 不切 latent → 无差） | §2.3⑤ |
-| `scheduler_block_size = block_size × dcp × pcp`（单组） | ⑤ 逻辑侧 | 调度对齐粒度；单 group 时亦即 `hash_block_size` | `16 × 1 × 1 = 16` | `128 × 1 × 1 = **128**` | §4.2 |
-| `non_kv_memory = weights + peak_activation + non_torch + npugraph + 150MiB` | 4d 物理侧（NPU 特有） | 图内存事后记账：给出两种 `--kv-cache-memory` 建议值 | — | `7.45+0.15+0.51+0.58+0.15 → 47.53 / 52.04 GiB` 两条建议 | worker.py:741-771 |
-| `逻辑块数 == 每张张量行数 == num_blocks` | ⑤ ↔ ④ | 同一份配置保证两侧容量一致（断言兜底） | 4095 个可分配块 | **13,012 个可分配块**（0 号为 null_block）；运行期复证 12 块=0.1% | §4.5/§5 |
+| 公式 | 所属阶段/侧 | 含义 | **MLA 实测示例** | 出处 |
+|------|------------|------|----------|------|
+| `page_size_bytes = block_size × num_kv_heads × (head_size × dtype_size + scale维)` | ① 配置侧（MLA 形） | 一层一块的字节数；**无 K/V 系数，576 已含 latent+rope** | `128 × 1 × 576 × 2B = 147,456 B` | kv_cache_interface.py:117-121 |
+| `每 token 全模型 KV = num_layers × (kv_lora_rank + qk_rope) × dtype_size` | ① 配置侧（MLA 特征量） | 决定容量上限与压缩率 | `27 × 576 × 2 = 31,104 B`（压缩 8.89×） | 实测推演 |
+| `available = total × util − weights − activations` | ② 配置侧 | 单卡 KV 显存预算；**NPU 无图项** | **48.25 GiB** | §2.2.1 |
+| `num_blocks = available // page_size // group_size` | ③ 配置侧 | per-worker 容量：除数是 projected 后每 worker 层数 | **`48.25GiB//147,456//27 = 13,013`**（×128=1,665,664 tokens，日志一字不差） | §2.3③ |
+| `k_factor, v_factor = calc_split_factor([k_dim, v_dim]) = [sum/num]` | ④ 物理侧（NPU 特有） | 整池字节量按维度宽比例拆分的因子 | **`[512,64]→(1.125,9.0)`——latent 8/9、rope 1/9** | utils.py:1611 |
+| `k_dim, v_dim = (kv_lora_rank, qk_rope_head_dim)` | ④ 物理侧（**MLA 特有**） | `_get_attention_kv_cache_dims` 的 MLA 返回——**V 位装 rope 非传统 V** | **(512, 64)** | model_runner_v1.py:3987-3989 |
+| `k_tensor_size = size // k_factor`，`v_tensor_size = size // v_factor` | ④ 物理侧（NPU 特有） | 两张独立 int8 池各自的字节数 | **latent ≈1.59 GiB / rope ≈0.20 GiB** | model_runner_v1.py:4227-4228 |
+| `开 KV 传输：申请 size + 2MiB，data_ptr 向上对齐后切片` | ④ 物理侧（NPU 特有） | 传输注册要求 buffer 地址 2MiB 对齐 | 本主线单机未开 | :4004/:3911 |
+| `KVCacheTensor.size = page_size_bytes × num_blocks` | ③ 配置侧 | 每层一张张量的字节数（NPU = latent+rope 合计） | `147,456 × 13,013 ≈ 1.79 GiB` | §2.3③ |
+| `min(num_blocks)` + 等比缩 `KVCacheTensor.size` | ③ 配置侧 | 多 worker 对齐 | 4 卡同值 13,013（TP 不切 latent → 无差） | §2.3⑤ |
+| `scheduler_block_size = block_size × dcp × pcp`（单组） | ⑤ 逻辑侧 | 调度对齐粒度；单 group 时亦即 `hash_block_size` | `128 × 1 × 1 = **128**` | §4.2 |
+| `non_kv_memory = weights + peak_activation + non_torch + npugraph + 150MiB` | 4d 物理侧（NPU 特有） | 图内存事后记账：给出两种 `--kv-cache-memory` 建议值 | `7.45+0.15+0.51+0.58+0.15 → 47.53 / 52.04 GiB` 两条建议 | worker.py:741-771 |
+| `逻辑块数 == 每张张量行数 == num_blocks` | ⑤ ↔ ④ | 同一份配置保证两侧容量一致（断言兜底） | **13,012 个可分配块**（0 号为 null_block）；运行期复证 12 块=0.1% | §4.5/§5 |
 
 ---
 
@@ -996,7 +981,7 @@ rope   = kv_caches[layer][1][block_ids]          # rope 池：dim0 fancy indexin
 
 1. **规格先行且平台透明**：所有显存计算源自 spec 的 `page_size_bytes`；MLA 的 spec 是上游 `MLAAttentionSpec` 的 NPU 重包装（`AscendMLAAttentionSpec` 冻结四字段），从①就进入平台无关管线——③编排对 spec 类型不感知（§2.1/§2.3）。
 2. **五阶段单向管线、每卡并行、物理先于逻辑**：`spec → profile → 编排 → 落张量 → 建逻辑`，①②④ 经 collective RPC 执行、各卡只处理本 rank 的配置；④编译预热完成后⑤才装配逻辑层，随后 `freeze_gc_heap` 封门（§3/§4）。
-3. **单 group 是 MLA 与纯 FA 的共同核心特征**：27 层同构 spec 可 merge → `is_kv_cache_spec_uniform=True` → 1 个 KV group（§2.3②）→ ⑤命中 `UnitaryKVCacheCoordinator` 分支且只建 1 个 manager（FullAttentionManager，MLA spec 注册指向它）（§4.4/§4.6）。
+3. **单 group 是 MLA 的核心结构特征**：27 层同构 spec 可 merge → `is_kv_cache_spec_uniform=True` → 1 个 KV group（§2.3②）→ ⑤命中 `UnitaryKVCacheCoordinator` 分支且只建 1 个 manager（FullAttentionManager，MLA spec 注册指向它）（§4.4/§4.6）。
 4. **容量是 per-worker 的**：`num_blocks = available // 147,456 // 27`，除数是 projected 后每 worker 层数；**TP 不切 latent → MLA 四卡 num_blocks 无差异、min 对齐恒等值**（§2.3③/§6）。
 5. **min 对齐 + 断言兜底**：以 KV 预算最小的 worker 为基准统一 `num_blocks`；`generate_scheduler_kv_cache_config` 入口断言保证下发两侧的配置必然相等；NPU 侧 worker 再 deepcopy 一份（model_runner_v1.py:3850）杜绝配置对象交叉污染（§2.3⑤/收口、§5）。
 6. **int8 字节池 + 零拷贝 reshape（双份 8:1）**：按字节申请与 dtype 解耦；MLA 层 `calc_split_factor([512,64])=(1.125,9.0)` 8:1 拆 latent/rope 两池、各自纯 `view` 成 4D **无 permute**；开 KV 传输时 2MiB 地址对齐（§3.1）。
@@ -1008,13 +993,12 @@ rope   = kv_caches[layer][1][block_ids]          # rope 池：dim0 fancy indexin
 
 ---
 
-## 扩展：其他注意力类型（NPU 视角，MLA 主位）
+## 扩展：MLA 相关的边界机制
 
 - **四种 group 划分**（`_get_kv_cache_groups_*`）：`uniform_spec`（**MLA 主线**：27 层 spec 可 merge，全模型 1 组，kv_cache_utils.py:981）/ `uniform_type`（按 KV 类型分组，同类型各层合成 `UniformTypeKVCacheSpecs`、保留各自页大小，:998）/ `uniform_page_size`（跨类型对齐到统一页大小，:1074）/ `uniform_groups`（MLA 主组 + 层元组切分，:1504）。
 - **num_blocks 三条配置路径**（`get_kv_cache_config_from_groups`，kv_cache_utils.py:1247）：① 单组 `UniformTypeKVCacheSpecs`（同类型异页大小）——不除层数，每层张量按自身页大小定尺寸；② DeepSeek V4 打包——各 group 同 slot 层共享一张张量；③ 通用路径（**MLA 主线**）——除以 projected 层数，组内第 i 层共享第 i 张张量。
-- **三种 block_size（scheduler / hash / 物理页）**：MLA 下三者相等（§4.2 单组路径 128/128/128）；混合模型由 `resolve_kv_cache_block_sizes()` 经 LCM/GCD 统一（GDN 系列的 1024 管理块 vs 128 物理块分离）。
-- **⑤ 工厂的其他分支**：`KVCacheCoordinatorNoPrefixCache`（关前缀缓存，前缀查找恒空——GDN 混合路线）与 `HybridKVCacheCoordinator`（多组命中求交集、共享同一 BlockPool，页大小必须统一），见 §4.4 工厂代码。
-- **Mamba/混合布局协调**：上游 `_update_hybrid_attention_mamba_layout()`（`block_dim==1→0` 的 `as_strided_` 布局翻转）不参与 NPU 路径——NPU 所有张量恒 dim0，无需布局翻转（MLA 主线`has_mamba_layers=False`，调度侧不调整）。
+- **三种 block_size（scheduler / hash / 物理页）**：MLA 下三者相等（§4.2 单组路径 128/128/128）。
+
 - **NPU 特有 spec 的物理侧分流**：**`AscendMLAAttentionSpec`（本主线）→ latent/rope 双 4D 8:1（§3.1 4b）**；sparse（DSA/SFA）形态产生 2～4 元组张量登记（model_runner_v1.py:4646-4680，indexer/scale）；`HiddenStateCacheSpec` → 单张量路径（:4118-4134）；`use_compress` 压缩注意力 → 同组共享单张量（:4135-4146）。
 - **V2 ModelRunner**：`NPUWorker.init_device` 支持切到 `v2/model_runner.py` 的 NPUModelRunnerV2（worker.py:514-518，警告"npu model runner v2 is in developing"），主线仍是 v1（model_runner_v1.py）。注意 `AscendMLABackend.get_name()` 在 V2 下返回 `"ASCEND_MLA"`、V1 下返回 `"FLASH_ATTN"`（mla_v1.py:84-88，规避上游名称断言的历史 hack）。
 - **sleep mode 与 KV 传输**：开 sleep mode 时④在 `CaMemAllocator` 的 `kv_cache` 内存池上下文内分配（worker.py:910-912）；开 KV 传输（P/D 分离）时 `ensure_kv_transfer_initialized` 先拉起传输组（:909）、张量按 2MiB 对齐、4c 后 `register_kv_caches` 登记双池（model_runner_v1.py:3883-3884）——**MLA P/D 分离搬运的"k/v 池"实为 latent 池/rope 池**，三件事共同构成 NPU 双池布局的动机闭环（§3.1）。

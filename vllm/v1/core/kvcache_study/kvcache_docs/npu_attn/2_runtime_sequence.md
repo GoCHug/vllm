@@ -40,7 +40,7 @@ vLLM侧 KV cache 配套参数（NPU 主线）：
 |---|---|---|---|
 | `page_size_bytes` | `2 × block_size × num_kv_heads × head_dim × 2B`<br>= `2 × 128 × 4 × 128 × 2` | 262,144 B<br>（256 KiB） | 单层单块字节数（TP2 后 4 头），因子 2 为 K、V 各一份 |
 | `num_blocks`（示例每卡实测 KV 可用显存 ≈51.96 GiB，四卡 min 对齐） | `≈51.96 GiB ÷ page_size_bytes ÷ 16` | 13291 | 跨 worker `min` 对齐后的逻辑块总数，`BlockPool` 建立 `KVCacheBlock(0..13290)`（块 0 开池即摘作 `null_block`，实际可分配 13290） |
-| `kv_caches[layer]` | 后端描述符 `(2, num_blocks, block_size, num_kv_heads, head_size)` 拆成两张 | `(13291, 128, 4, 128)` × 2 | 每层 K 池、V 池各一张 4D 张量（TP2 后 4 头），每 worker 16 层 → 32 张；**形状由 `AscendAttentionBackend.get_kv_cache_shape()`（attention_v1.py:105-112）的 dim0 "2" 拆解而来，K/V 双池落地**，与"换后端"的 GPU 场景不同，NPU dense 后端固定此形态 |
+| `kv_caches[layer]` | 后端描述符 `(2, num_blocks, block_size, num_kv_heads, head_size)` 拆成两张 | `(13291, 128, 4, 128)` × 2 | 每层 K 池、V 池各一张 4D 张量（TP2 后 4 头），每 worker 16 层 → 32 张；**形状由 `AscendAttentionBackend.get_kv_cache_shape()`（attention_v1.py:105-112）的 dim0 "2" 拆解而来，K/V 双池落地**，NPU dense 后端固定此形态 |
 
 ---
 
@@ -353,8 +353,7 @@ A5 设备上两个底层算子换成 `torch_npu.npu_scatter_pa_kv_cache`（devic
          input_batch.block_table.append_row(new_block_ids, req_index)（:1401）
 新/恢复  reqs_to_add → input_batch.add_request（:1436-1439，首行全量写入块表）
 收尾     condense()（:1443）→ refresh_metadata()（:1447）
-NPU 特有 KV-load-failure 回卷 guard（model_runner_v1.py:729-744）；
-         混合模型 mamba 状态事后处理 _update_states_after_model_execute（:746-787，align/all 两模式）
+NPU 特有 KV-load-failure 回卷 guard（model_runner_v1.py:729-744）
 ```
 
 即：**新请求整行全量写入，老请求按增量追加**——正是 §4.2.3 中"全量 / 增量"下发方式的物理侧落点。
@@ -370,10 +369,7 @@ slot 换算   compute_slot_mapping（:1283；PCP 布局提前在 :931）→ Trit
             无 CP：slot = block_table[req, pos // block_size] * block_size + pos % block_size
             有 CP：虚拟块按 block_size × cp_world_size 切分（:357-378），非本 rank 的偏移填 PAD_SLOT_ID
             未调度位置（padding）填 PAD_SLOT_ID（:343-351）
-逐 KV 组    多组时逐组换算块表与 slot 并挂到 cm（:3296，函数 :3092）；
-            MTP drafter 同样取 per-group 元数据（:3303）
-NPU 特有    GDN 组用未 pad 的 query_start_loc（:3288-3293）；
-            TND 布局要求 hidden_states 首维 == actual_seq_lengths_q 末值
+NPU 特有    TND 布局要求 hidden_states 首维 == actual_seq_lengths_q 末值
             → _pad_query_start_loc_for_fia（:813）
 ```
 
@@ -382,8 +378,7 @@ slot_mapping 只覆盖本步"新计算"的 token；历史 token 不重新换算�
 #### 4.3.4 计算 Q/K/V
 
 ```
-模型层        qkv_proj（qwen3.py:150）→ RoPE（:159）→ self.attn(q, k, v)（:160）
-              得到 q/k/v（[num_tokens, heads, head_size]）
+得到 q/k/v（[num_tokens, heads, head_size]）
 Attention.forward（vllm/model_executor/layers/attention/attention.py:437）
               output = torch.empty(...)（:478）
               query.view(-1, num_heads, head_size)（:483）
@@ -465,7 +460,7 @@ FIA  npu_fused_infer_attention_score[_v2]（:1283 / :1303 / :1318 / :1336）
 | DecodeOnly | 全表（:1219） | 双池 view（:1213-1218） | `seq_lens_list`（:1220） |
 | ChunkedPrefill | 全表（:1230） | 双池 view（:1223-1229） | `seq_lens_list`（:1231） |
 
-PA 的启用由 `using_paged_attention`（`attention/utils.py:104-120`）控制：投机解码直接关闭（`:105-106`，回落 FIA）；A5 设备关闭（`:107-108`）；仅当非投机、cudagraph 恰为 `FULL_DECODE_ONLY`（`:117-118`）且 decode batch 形状命中 `pa_shape_list` 注册表（`:120`）时才走 PA。因此 PA 是"decode 图模式形状命中的快路径"，其余一切（prefill、混合、滑窗、投机、未命中形状）由 FIA 兜底——本文各扩展类型的算子入口也都从 FIA 分支出发。
+PA 的启用由 `using_paged_attention`（`attention/utils.py:104-120`）控制：投机解码直接关闭（`:105-106`，回落 FIA）；A5 设备关闭（`:107-108`）；仅当非投机、cudagraph 恰为 `FULL_DECODE_ONLY`（`:117-118`）且 decode batch 形状命中 `pa_shape_list` 注册表（`:120`）时才走 PA。因此 PA 是"decode 图模式形状命中的快路径"，其余一切（prefill、混合、滑窗、投机、未命中形状）由 FIA 兜底。
 
 #### 4.3.7 时序图
 
@@ -496,11 +491,11 @@ sequenceDiagram
 ```
 
 **要点**：
-- `_zero_block_ids` 只清零**本轮新分配**的块，避免读到上一请求残留的旧 KV；纯 Full Attention 不强制清零（`needs_kv_cache_zeroing` 仅 Mamba/混合精度为真），S4 的 `take_new_block_ids` 决定哪些块要清
+- `_zero_block_ids` 只清零**本轮新分配**的块，避免读到上一请求残留的旧 KV；纯 Full Attention 不强制清零，S4 的 `take_new_block_ids` 决定哪些块要清
 - **写 KV**：`reshape_and_cache`（`DeviceOperator`，attention_v1.py:1422/:1444）把新 token 的 K、V 分别 scatter 进 k_cache / v_cache 两张池；`slot_mapping` = `block_id × block_size(128) + 块内偏移`，K 池、V 池用**同一组 slot** 各写一份
 - **读 KV 按 `attn_state` 分流**（`forward_impl`，attention_v1.py:1456）：
   - `DecodeOnly` 且无滑动窗口 且 `using_paged_attention(...)`（attention/utils.py:104：无投机解码、非 A5 代卡、图模式为 FULL_DECODE_ONLY、batch ∈ `pa_shape_list`）→ **PA 算子** `torch_npu._npu_paged_attention(query, key_cache, value_cache, block_table, context_lens, …)`（:1371）
-  - 其余 → **FIA 算子** `npu_fused_infer_attention_score / _v2`（TND 布局 + `block_table` + `block_size`，:1336/:1283；滑窗走 `sparse_mode=4` 分支 :1317-1334）；encoder 侧走 `npu_fusion_attention`（:1397）
+  - 其余 → **FIA 算子** `npu_fused_infer_attention_score / _v2`（TND 布局 + `block_table` + `block_size`，:1336/:1283；滑窗走 `sparse_mode=4` 分支 :1317-1334）
 - `block_table`（`req_to_blocks` 的 block_id 列表）作 K 池、V 池两张张量第 0 维的 fancy index，算子从 `k_cache[block_id]` / `v_cache[block_id]` 各 gather 对应行；同一 `block_id` 在全模型 32 层（每 worker 16 层）对应同一逻辑块，全套层共用一份 block_table
 - `sample_tokens` 由 **EngineCore** 调用（core.py:463），仅在 `execute_model` 未产出采样时补跑
 

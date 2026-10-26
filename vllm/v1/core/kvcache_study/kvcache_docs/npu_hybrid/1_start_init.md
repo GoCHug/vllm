@@ -27,7 +27,7 @@
 
 ## 1. 系统启动期初始化总览
 
-启动期的 KV cache 初始化分为**两侧**（对齐 [`0_kvcache_arch.md`](./0_kvcache_arch.md) §4 的两部分——物理张量初始化 / 逻辑管理器初始化）：
+启动期的初始化分为两部分——物理张量初始化 / 逻辑管理器初始化：
 
 - **物理侧 —— 物理张量初始化**：`EngineCore._initialize_kv_caches()` 完成的四步（① 算规格 → ② 测预算 → ③ 做编排 → ④ 落张量），**横跨引擎进程与 worker 进程**——①②④ 经 collective RPC 落在各 **NPUWorker**（vllm-ascend 插件）实测/执行，③ 在引擎进程做纯 Python 编排。前三步**全程不申请任何 KV 显存**，只产出容量仲裁结果 `KVCacheConfig`；第四步才把层 KV cache 物化为真正驻留 NPU 显存的张量。混合模型下**同一模型两种物理形态并存**：full-attn 层是**单张连续张量 `2,072 KB × num_blocks`**（切头 padding 后对半切成 K 池 / V 池，各自 `view` 成 4D），linear 层走**单张量路径**（按 `MambaSpec.shapes` 切成 conv/temporal 状态视图）；随后触发编译预热（NPUGraph）。**物理侧的产物是"张量 + 配置"**；
 - **逻辑侧 —— 逻辑管理器初始化**：④ 的 RPC 全部返回后，⑤ 在引擎进程装配 `Scheduler → KVCacheManager → Coordinator → BlockPool + Manager×2`，**全部是纯元数据对象**（不含任何 K/V 数据）、**与平台完全无关**。**逻辑侧的产物是"管理对象"**。

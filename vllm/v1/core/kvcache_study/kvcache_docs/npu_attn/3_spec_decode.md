@@ -2,7 +2,7 @@
 
 > 承接 [0_kvcache_arch.md](0_kvcache_arch.md) 的五层架构：L5 `KVCacheManager` → L4 `KVCacheCoordinator` → L3 `SingleTypeKVCacheManager` → L2 `BlockPool` → L1 物理张量。
 >
-> 主线是 **NPU（昇腾 Ascend，经 vllm-ascend 接入 vLLM V1）**，模型以 **EAGLE / MTP** 为主，兼顾 draft model、ngram、DFlash；上游 vLLM 的 GPU 实现作为对照。基础模型先按 **纯 Full Attention** 讨论，混合模型（Full + SWA / Mamba）在第 5、6 节单列。
+> 主线是 **NPU（昇腾 Ascend，经 vllm-ascend 接入 vLLM V1）**，模型以 **EAGLE / MTP** 为主，兼顾 draft model、ngram、DFlash。基础模型按 **纯 Full Attention** 讨论。
 >
 > 本文所有结论都对应到具体源码文件与行号；未在代码中出现的机制不做推断。
 
@@ -148,12 +148,10 @@ token 预算不够时，draft 会被截断（只调度前几个），未调度�
 ├─────────────────────────────────────────────────────────────────────┤
 │ L4 · KVCacheCoordinator                                              │
 │  · eagle_group_ids：哪些 group 需要 last-block drop                  │
-│  · Unitary：直接透传 drop；Hybrid：定点迭代 + eagle_verified 收敛    │
+│  · Unitary：直接透传 drop                                            │
 ├─────────────────────────────────────────────────────────────────────┤
 │ L3 · SingleTypeKVCacheManager × N                                    │
 │  · Full：命中后 pop 最后一块并重新对齐                                │
-│  · SWA：命中所需连续块数 +1（多"peek"一块再 pop）                     │
-│  · Mamba：额外 num_speculative_blocks 个 state block                 │
 ├─────────────────────────────────────────────────────────────────────┤
 │ L2 · BlockPool                                                       │
 │  · 只有"完整且已验证"的块进入链式哈希                                 │
@@ -168,8 +166,8 @@ token 预算不够时，draft 会被截断（只调度前几个），未调度�
 | 层 | 投机解码下新增/改变的职责 | 关键实现 |
 |---|---|---|
 | L5 `KVCacheManager` | 把 `new` 与 `lookahead` 分开：前者要算，后者只占位；哈希只到已验证 token | `kv_cache_manager.py:369-435` |
-| L4 Coordinator | 决定哪些 group 做 EAGLE drop；多 group 时保证各 group 命中长度一致 | `kv_cache_coordinator.py:98-104, 430-448, 554-674` |
-| L3 Manager | 各注意力类型分别实现 drop；Mamba 额外分配 speculative state blocks | `single_type_kv_cache_manager.py:521-1191` |
+| L4 Coordinator | 决定哪些 group 做 EAGLE drop | `kv_cache_coordinator.py:98-104, 430-448` |
+| L3 Manager | 命中后 drop 最后一块并重新对齐 | `single_type_kv_cache_manager.py:559-568` |
 | L2 `BlockPool` | 不缓存未验证块；被拒 draft 的块继续被请求引用 | `block_pool.py:211-250` |
 | L1 物理层 | 关闭 PA、走 FIA；`slot_mapping` 覆盖多 token；proposer 步单独更新 slot | `attention/utils.py:104-106`、`spec_decode/utils.py:26-83` |
 
@@ -287,7 +285,7 @@ if use_eagle and not self.eagle_group_ids:
     self.eagle_group_ids = set(range(len(kv_cache_config.kv_cache_groups)))
 ```
 
-`is_eagle_group` 来自 `KVCacheGroupSpec`（`kv_cache_interface.py:851`）。如果模型没有显式标注，而上层传了 `use_eagle=True`，则**保守地把所有 group 都标成 eagle group**。这个兜底很关键：漏标会导致某个 group 不做 drop，多 group 命中长度无法收敛。
+`is_eagle_group` 来自 `KVCacheGroupSpec`（`kv_cache_interface.py:851`）。如果模型没有显式标注，而上层传了 `use_eagle=True`，则**保守地把所有 group 都标成 eagle group**。这个兜底很关键：漏标会导致某个 group 不做 drop。
 
 ### 5.2 为什么要丢掉最后一个命中块
 
@@ -319,84 +317,9 @@ return hit_blocks, len(hit_blocks[0]) * self.block_size
 
 单 group 下每个 manager 只被调用一次，drop 只发生一次，行为正确。
 
-### 5.4 Hybrid：`SpecGroup` 合并与定点迭代
-
-混合模型有多个 group。Coordinator 先按 spec 把同规格 group 合并成 `SpecGroup`（`kv_cache_coordinator.py:451-463, 512-552`）：
-
-```python
-class SpecGroup(NamedTuple):
-    spec: KVCacheSpec
-    group_ids: list[int]
-    manager_cls: type[SingleTypeKVCacheManager]
-    use_eagle: bool
-```
-
-合并规则：
-
-- 同 spec 的 group 一次 `find_longest_cache_hit` 查完，命中长度天然一致。
-- 只要组内有一个 group 是 eagle group，整个 `SpecGroup.use_eagle = True`，并把 `use_eagle` 传播给组内**所有** manager（`kv_cache_coordinator.py:548-552`）。上游另有 NPU 补丁处理 DeepSeek-V4 的同规格兄弟 group（第 10.3 节）。
-- Full Attention 排第一位，因为它从左到右扫描、能给出最紧的初始上界。
-
-多 group 的命中长度必须一致：某个 group 命中 3 块、另一个命中 5 块，请求只能复用 `min = 3` 块。因此 `find_longest_cache_hit` 采用**定点迭代**（`kv_cache_coordinator.py:582-674`）：
-
-```python
-eagle_verified: set[int] = set()
-while True:
-    curr_hit_length = hit_length
-    for idx, (spec, group_ids, manager_cls, use_eagle) in enumerate(self.attention_groups):
-        drop_eagle_block = use_eagle and idx not in eagle_verified
-        _max_length = curr_hit_length
-        if drop_eagle_block:
-            # Eagle needs to match one more block and then pop the last.
-            _max_length = min(curr_hit_length + spec.block_size, max_cache_hit_length)
-        hit_blocks = manager_cls.find_longest_cache_hit(
-            ...
-            drop_eagle_block=drop_eagle_block,
-            alignment_tokens=self.scheduler_block_size,
-        )
-        _new_hit_length = len(hit_blocks[0]) * spec.block_size
-        if drop_eagle_block:
-            eagle_verified.add(idx)
-        elif _new_hit_length < curr_hit_length:
-            # length shrunk; invalidate previous eagle verifications
-            eagle_verified.clear()
-        curr_hit_length = _new_hit_length
-    if curr_hit_length >= hit_length:
-        break
-    hit_length = curr_hit_length
-```
-
-三个细节：
-
-1. **drop 时先多查一块**：`_max_length = curr_hit_length + spec.block_size`。EAGLE 需要"匹配到边界之后再 peek 一块，然后丢掉它"，所以查询范围要比目标长度多一块。
-2. **`eagle_verified` 防止重复 drop**：每轮迭代长度可能被其他 group 缩短，重跑时如果对同一 group 再 drop 一次，命中长度会被连续砍掉两块。`eagle_verified` 记录"在当前候选长度上已经 drop 过"，每个 eagle group 最多 drop 一次。
-3. **长度回退时清空验证记录**：`elif _new_hit_length < curr_hit_length: eagle_verified.clear()`。候选长度变了，之前的验证作废，必须在新长度上重新判断。
-
-这就是 issue #32802 的修复点（第 10.2 节）。
-
-### 5.5 Hybrid 的 `cache_blocks`：让 peek 块可被缓存
-
-写路径也要配合读路径。Hybrid 的命中粒度是 `scheduler_block_size` 的整数倍，但 EAGLE 会 peek 到对齐边界之后一块。`cache_blocks` 因此对 eagle manager 放宽一个块（`kv_cache_coordinator.py:554-580`）：
-
-```python
-aligned_num_computed_tokens = (
-    num_computed_tokens // self.scheduler_block_size * self.scheduler_block_size
-)
-for manager in self.single_type_managers:
-    num_tokens_to_cache = aligned_num_computed_tokens
-    if manager.use_eagle and aligned_num_computed_tokens > 0:
-        num_tokens_to_cache = min(
-            num_computed_tokens,
-            aligned_num_computed_tokens + manager.block_size,
-        )
-    manager.cache_blocks(request, num_tokens_to_cache, ...)
-```
-
-如果只缓存到对齐边界，读路径 peek 的那一块永远不存在，SWA group 就永远命中不了，整个 hybrid 命中长度会被压到 0。NPU 补丁里对这一点有更长的说明（`patch_kv_cache_coordinator.py:216-227`）。
-
 ---
 
-## 6. L3 `SingleTypeKVCacheManager`：各注意力类型的 drop 方式
+## 6. L3 `SingleTypeKVCacheManager`：Full Attention 的 drop 与对齐
 
 ### 6.1 Full Attention：pop 最后一块并重新对齐
 
@@ -416,89 +339,8 @@ while (
 ```
 
 - `drop_eagle_block`：丢掉最后一块，强制重算。
-- 对齐循环：hybrid 下 `alignment_tokens = scheduler_block_size`，块大小可能不是它的整数倍，pop 之后还要继续裁到对齐边界。
 
-### 6.2 Sliding Window：命中所需连续块数 +1
-
-SWA 的前缀命中要求"窗口内有一段连续块"。开了 EAGLE 后要多 peek 一块再丢掉，因此命中门槛直接提高一块（`single_type_kv_cache_manager.py:587-599`）：
-
-```python
-@classmethod
-def _contiguous_blocks_for_hit(cls, window_size, block_size, use_eagle):
-    blocks = cdiv(window_size - 1, block_size)
-    if use_eagle:
-        # Need to drop the last matched block if eagle is enabled. For
-        # sliding window layer, we achieve this by increasing the number of
-        # contiguous blocks needed for prefix cache hit by one and dropping
-        # the last matched block.
-        blocks += 1
-    return blocks
-```
-
-`find_longest_cache_hit` 从右往左扫描，凑够 `blocks` 个连续命中就停，然后裁掉尾部（`single_type_kv_cache_manager.py:619-676`）。drop 之后的重新对齐也要做（`673-676`）：
-
-```python
-if drop_eagle_block and computed_blocks[0]:
-    for computed in computed_blocks:
-        computed.pop()
-    # Re-align after eagle pop: the pop may break the alignment
-```
-
-写路径同样要记住这个 `+1` 和 `shift=1`：`reachable_block_mask` 用 `use_eagle` 决定保留哪一段块尾（`single_type_kv_cache_manager.py:687-734`）。这是 SWA + EAGLE 最容易写错的地方——读路径 peek 一块，写路径必须让这一块可被缓存。
-
-### 6.3 Mamba：额外 `num_speculative_blocks`
-
-Mamba 没有 K/V，block 存的是 recurrent state；state 无法像 K/V 那样按 token 局部覆盖，所以投机解码需要额外的 state block 做回滚。`MambaSpec` 新增字段（`kv_cache_interface.py:608-614`）：
-
-```python
-@dataclass(frozen=True)
-class MambaSpec(KVCacheSpec):
-    shapes: tuple[tuple[int, ...], ...]
-    dtypes: tuple[torch.dtype]
-    page_size_padded: int | None = None
-    mamba_type: MambaAttentionBackendEnum = ...
-    mamba_cache_mode: str = "none"
-    num_speculative_blocks: int = 0
-```
-
-内存预算按模式分别计算（`kv_cache_interface.py:626-636`）：
-
-```python
-if mamba_cache_mode == "all":
-    return (cdiv(max_model_len, block_size) + num_speculative_blocks) * page_size_bytes
-elif mamba_cache_mode == "align":
-    return page_size_bytes * (2 + num_speculative_blocks)
-else:
-    return page_size_bytes * (1 + num_speculative_blocks)
-```
-
-`MambaManager` 的行为分两种模式：
-
-- **非 align 模式**：`get_num_blocks_to_allocate` 直接把 `block_size * num_speculative_blocks` 加进 token 数（`single_type_kv_cache_manager.py:1073-1087`），并在 `allocate_new_blocks` 里同样放大（`1126-1129`），最后断言单步新增不超过 `num_speculative_blocks + 1`（`1191`）。
-- **align 模式**：忽略 lookahead（draft 模型本身没有 Mamba 层），按 `cdiv(num_tokens, block_size) + num_speculative_blocks` 估算上界；老请求每步最多只新分配 1 块，复用上一步的 speculative blocks（`1088-1119`）。
-
-`remove_skipped_blocks` 在释放时做**保守回滚**（`single_type_kv_cache_manager.py:1018-1026`）：
-
-```python
-# NOTE (tdoublep) with async scheduling, the num_computed_tokens can contain
-# draft tokens from the previous step that may or may not be rejected later.
-# ... assume that all tokens are rejected so we don't free blocks ...
-num_computed_tokens = max(0, num_computed_tokens - self.num_speculative_blocks)
-```
-
-因为异步调度下，调度器回报的 `num_computed_tokens` 可能还包含尚未被拒绝的 draft；释放时先按"全部被拒"处理，宁可少释放，也不能释放掉下一步还要复用的 state。
-
-### 6.4 Chunked Local Attention：不支持 EAGLE drop
-
-`ChunkedLocalAttentionManager.find_longest_cache_hit` 直接断言（`single_type_kv_cache_manager.py:862`）：
-
-```python
-assert drop_eagle_block is False, (...)
-```
-
-即"chunked local attention + EAGLE"当前不支持。选择这类后端时，`use_eagle` 不能落在这个 manager 上。
-
-### 6.5 分配数量可以是负数：`max(..., 0)`
+### 6.2 分配数量可以是负数：`max(..., 0)`
 
 被拒 draft 的块不会立即释放，下一步请求持有的块数可能**多于**按当前 token 数算出的需求。`get_num_blocks_to_allocate` 因此对运行中的请求做了下限保护（`single_type_kv_cache_manager.py:148-154`）：
 
@@ -543,10 +385,6 @@ if request_id in self.num_cached_block:
 4. 只有请求结束或被抢占时才 `free(request)`，块回到 LRU 队列。
 
 这样做避免了"释放—重新分配"的抖动：如果每拒绝一个 draft 就释放块，下一步几乎必然要重新申请同样数量的块，而 `BlockPool` 的哈希与 LRU 结构都会被无谓地扰动。
-
-### 7.3 对齐粒度
-
-Hybrid 下 coordinator 用 `scheduler_block_size`（各 group block size 的最小公倍数）作为命中粒度；`BlockPool` 侧另有 `hash_block_size`（`kv_cache_coordinator.py:499-507`）。`cache_blocks` 在 hybrid 中先把 token 数向下取整到 `scheduler_block_size`（`kv_cache_coordinator.py:560-562`），保证读路径按同样粒度查询时能命中。粒度不一致会表现为"块明明在池里，但前缀命中率接近 0"。
 
 ---
 
@@ -634,9 +472,8 @@ vllm-ascend 的 proposer 每个 draft step 都更新 `positions`、`num_computed
 
 | 位置 | 作用 |
 |---|---|
-| `model_runner_v1.py:4783` | `max_num_blocks_per_req += kv_cache_spec.num_speculative_blocks`，图捕获时给 Mamba state 预留额外块 |
 | `model_runner_v1.py:759` | `num_accepted_tokens = (output_token_ids != -1).sum(dim=1)`，统计接受数 |
-| `core/single_type_kv_cache_manager.py:30-50` | `CompressAttentionManager` 对 `num_tokens` / `num_tokens_main_model` 做 `// compress_ratio` 折算，保证 spec 下的压缩注意力仍按压缩后的 token 数分块 |
+
 | `distributed/kv_transfer/kv_pool/ascend_store/config_data.py:831-845` | P/D 传输时把尾部 `num_speculative_blocks` 个 block id 置 0，避免远端读到未验证的 draft block；计算可跳过块数时也先扣掉 speculative blocks |
 | `spec_decode/llm_base_proposer.py:1556-1577` | 断言所有 draft attention 层属于同一个 KV cache group，否则 `kv_cache_gid` 无法唯一确定 |
 
@@ -696,58 +533,20 @@ Step N：请求结束
 
 ## 10. 不变量与已知故障
 
-### 10.1 五条不变量
+### 10.1 四条不变量
 
 | # | 不变量 | 违反后果 |
 |---|---|---|
 | 1 | 前缀缓存只收录 `request.num_tokens` 以内的完整块 | 命中到被拒 draft 的 KV，输出错误 |
 | 2 | 每个 eagle group 在同一候选长度上最多 drop 一次 | 命中长度被连续砍块，前缀缓存命中率骤降 |
-| 3 | 多 group 的命中长度必须按 `scheduler_block_size` 对齐并取交集 | 某 group 读到未对齐块，或命中长度算大 |
-| 4 | 被拒 draft 的块在下一步之前不能释放 | 重新分配导致块号变化，已写入的 KV 读不到 |
-| 5 | `num_computed_tokens` 的"先加后减"必须成对 | 下一步 query 长度错误，位置越界或重复计算 |
+| 3 | 被拒 draft 的块在下一步之前不能释放 | 重新分配导致块号变化，已写入的 KV 读不到 |
+| 4 | `num_computed_tokens` 的"先加后减"必须成对 | 下一步 query 长度错误，位置越界或重复计算 |
 
-### 10.2 issue #32802：drop 被叠乘
-
-单 group 时，drop 只执行一次，没有问题。Hybrid 的定点迭代最初把 drop 放在每一轮里，于是：
-
-- 第 1 轮：长度 10 → drop 后 9
-- 第 2 轮：另一个 group 把长度压到 8，重新检查时 eagle group 又 drop 一次 → 7
-
-每轮都砍一块，最终命中长度被压到远低于实际值；在 DeepSeek 这类 Full + SWA 混合模型上，表现为前缀缓存命中率接近 0。
-
-修复方式就是第 5.4 节的 `eagle_verified`：记录"当前候选长度上已 drop 过的 attention group"，每轮只对尚未验证的 group 执行 drop；一旦有 group 缩短了长度，`eagle_verified.clear()` 让所有 group 在新长度上重新验证。
-
-### 10.3 DeepSeek-V4 MTP + SWA：`use_eagle` 必须传播到同规格兄弟 group
-
-`_annotate_eagle_groups_deepseek_v4` 只把"包含 MTP 层的那一个 group"标成 eagle group（`kv_cache_utils.py:1604-1625`）。但同一 spec 的其他 group（例如多个 SWA 层）读路径会把 `drop_eagle_block` 应用到合并后的整个 attention group。
-
-如果这些兄弟 group 的 `manager.use_eagle` 还是默认的 `False`：
-
-- 写路径（`cache_blocks` → `reachable_block_mask`）按 `shift=0` 保留块尾；
-- 读路径按 `shift=1` 多 peek 一块；
-- 两边差一块，SWA group 永远不命中，hybrid 的交集命中长度变成 0。
-
-vllm-ascend 因此在 patch 中把 eagle 位传播到 attention group 内所有 gid（`patch_kv_cache_coordinator.py:202-230`）：
-
-```python
-self.eagle_attn_group_indices = {
-    i for i, (_, group_ids, _) in enumerate(self.attention_groups)
-    if any(gid in self.eagle_group_ids for gid in group_ids)
-}
-for idx in self.eagle_attn_group_indices:
-    for gid in self.attention_groups[idx][1]:
-        self.single_type_managers[gid].use_eagle = True
-```
-
-### 10.4 P/D + EAGLE：lookahead 必须为 0
+### 10.2 P/D + EAGLE：lookahead 必须为 0
 
 第 4.4 节已经给出代码。如果保留 `K` 个 lookahead slot，本地分配的块数会比远端多；P/D 传输按 block id 对齐时两边数量不一致，轻则多传空块，重则越界。因此只在 `load_kv_async and use_eagle` 时压成 0，普通 EAGLE 不受影响。
 
-### 10.5 Chunked Local + EAGLE 直接断言
-
-`ChunkedLocalAttentionManager` 不支持 `drop_eagle_block`（`single_type_kv_cache_manager.py:862`）。如果模型同时使用 chunked local attention 与 EAGLE，要在启动期就发现，而不是在运行期得到错误的前缀命中。
-
-### 10.6 NPU 上 PA 关闭的性能含义
+### 10.3 NPU 上 PA 关闭的性能含义
 
 `using_paged_attention` 在 spec 下恒为 `False`（`attention/utils.py:104-106`），意味着：
 
@@ -775,23 +574,13 @@ for idx in self.eagle_attn_group_indices:
 | 前缀命中上界 `num_tokens - 1` | `vllm/v1/core/kv_cache_manager.py` | 215-226 |
 | `eagle_group_ids` | `vllm/v1/core/kv_cache_coordinator.py` | 98-104 |
 | Unitary drop | `vllm/v1/core/kv_cache_coordinator.py` | 430-448 |
-| `SpecGroup` 合并 | `vllm/v1/core/kv_cache_coordinator.py` | 451-552 |
-| Hybrid `cache_blocks` | `vllm/v1/core/kv_cache_coordinator.py` | 554-580 |
-| Hybrid 定点迭代 + `eagle_verified` | `vllm/v1/core/kv_cache_coordinator.py` | 582-674 |
 | `use_eagle` 默认值 | `vllm/v1/core/single_type_kv_cache_manager.py` | 95 |
 | 分配数下限保护 | `vllm/v1/core/single_type_kv_cache_manager.py` | 148-154 |
 | `cache_blocks` 完整块 | `vllm/v1/core/single_type_kv_cache_manager.py` | 297-340 |
 | Full drop + 对齐 | `vllm/v1/core/single_type_kv_cache_manager.py` | 559-568 |
-| SWA `+1` 连续块 | `vllm/v1/core/single_type_kv_cache_manager.py` | 587-599 |
-| SWA drop 与对齐 | `vllm/v1/core/single_type_kv_cache_manager.py` | 619-676 |
-| SWA 写路径 `shift` | `vllm/v1/core/single_type_kv_cache_manager.py` | 687-734 |
-| Chunked local 断言 | `vllm/v1/core/single_type_kv_cache_manager.py` | 862 |
-| Mamba `num_speculative_blocks` | `vllm/v1/core/single_type_kv_cache_manager.py` | 955-1191 |
-| `MambaSpec` 字段与内存预算 | `vllm/v1/kv_cache_interface.py` | 608-636 |
 | `cache_full_blocks` | `vllm/v1/core/block_pool.py` | 211-250 |
 | `touch` / `free_blocks` | `vllm/v1/core/block_pool.py` | 402-440 |
 | `num_tokens` / `num_tokens_with_spec` | `vllm/v1/request.py` | 243-248 |
-| spec metadata 计算 | `vllm/v1/worker/gpu_model_runner.py` | 2136-2174, 2730-2808 |
 | EAGLE proposer slot kernel | `vllm/v1/spec_decode/utils.py` | 26-83 |
 | draft 层同 group 断言 | `vllm/v1/spec_decode/llm_base_proposer.py` | 1556-1577 |
 | NPU 关闭 PA | `vllm-ascend/vllm_ascend/attention/utils.py` | 104-106 |
@@ -799,9 +588,6 @@ for idx in self.eagle_attn_group_indices:
 | NPU `SpecDecoding` 状态 | `vllm-ascend/vllm_ascend/attention/attention_v1.py` | 152, 246-250 |
 | NPU FIA 调用 | `vllm-ascend/vllm_ascend/attention/attention_v1.py` | 601-618 |
 | NPU proposer 元数据 | `vllm-ascend/vllm_ascend/spec_decode/llm_base_proposer.py` | 570-660, 1557-1605 |
-| NPU 图捕获 block 上界 | `vllm-ascend/vllm_ascend/worker/model_runner_v1.py` | 4783 |
-| NPU `use_eagle` 传播补丁 | `vllm-ascend/vllm_ascend/patch/platform/patch_kv_cache_coordinator.py` | 202-230 |
-| NPU 压缩注意力折算 | `vllm-ascend/vllm_ascend/core/single_type_kv_cache_manager.py` | 30-50 |
 | P/D 屏蔽未验证块 | `vllm-ascend/vllm_ascend/distributed/kv_transfer/kv_pool/ascend_store/config_data.py` | 831-843 |
 
 ---
@@ -811,8 +597,8 @@ for idx in self.eagle_attn_group_indices:
 投机解码没有改变 KV Cache 的分层结构，但把"一步一个 token"的假设逐层拆开了：
 
 - **L5** 用 `num_tokens_need_slot` 覆盖 `new + lookahead`，用 `request.num_tokens` 卡住缓存上界；
-- **L4** 用 `eagle_group_ids` 决定谁 drop，用 `eagle_verified` 保证多 group 定点迭代只 drop 一次；
-- **L3** 按注意力类型分别实现 drop（Full pop、SWA +1、Mamba 额外 state block）；
+- **L4** 用 `eagle_group_ids` 决定谁 drop，用 `eagle_verified` 保证只 drop 一次；
+- **L3** 实现 drop（Full：pop 最后一块并重新对齐）；
 - **L2** 只把已验证的完整块写进哈希，被拒 draft 的块保持引用、下一步覆盖；
 - **L1** 在 NPU 上关闭 PA、统一走 FIA，用 `1 + K` 的 `decode_threshold` 和变长 `slot_mapping` 承接多 token 写入。
 

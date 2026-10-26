@@ -2,13 +2,13 @@
 
 > 主线：**MLA 模型 DeepSeek-V2-Lite（TP4，4 卡 Ascend NPU 环境，gggtest2 pod 2026-10-18 实测）**，一个 KVCacheGroupSpec，类型为 `AscendMLAAttentionSpec`。用时序图串起一条请求从进入 Scheduler 到最终释放的全过程。
 >
-> **编排与逻辑侧（引擎进程）平台无关，且与纯 Full Attention 逐字相同**，本篇照主线展开；**设备执行链是 NPU + MLA 实现**（`NPUModelRunner` / `AscendMLAImpl`，latent/rope 双池张量）——分配决策层不碰显存，"写 KV / 读 KV"的算子层是 NPU 特有实现，**写的"K/V"实为 (c_KV latent, k_rope)，传统 value 不落池**。
+> **编排与逻辑侧（引擎进程）平台无关**，本篇照主线展开；**设备执行链是 NPU + MLA 实现**（`NPUModelRunner` / `AscendMLAImpl`，latent/rope 双池张量）——分配决策层不碰显存，"写 KV / 读 KV"的算子层是 NPU 特有实现，**写的"K/V"实为 (c_KV latent, k_rope)，传统 value 不落池**。
 
 > **部署拓扑**：TP4 = 4 卡，每个 worker 负责全部 27 层（PP=1）、4 个 Q 头；**latent/rope 池不切分**（TP 各 rank 全尺寸持有）。调度器视角下全模型仍为单 group（27 层），对 TP 布局透明。
 
 > 数字约定：示例数字**全部取自 gggtest2 真实实验**（[`./logs/runtime_prefix_test_1018.txt`](./logs/runtime_prefix_test_1018.txt) 原始输出 + 服务端 metrics/stats；实验脚本 [`./logs/runtime_test_scripts_1018.py`](./logs/runtime_test_scripts_1018.py)）：`block_size=128`、`num_blocks=13,013`、每层 `k_cache=(13013,128,1,512)`（latent 池）与 `v_cache=(13013,128,1,64)`（rope 池）bf16——机制推导见 [`1_start_init.md`](./1_start_init.md) §6。
 
-> **实战主线注记（与兄弟路线上四点差异）**：本篇按主线骨架讲时序（请求样本用 MLP 实测样本）；MLA 主线下四点特征——① **单 KV group**（27 层 `AscendMLAAttentionSpec` 同构 merge，Unitary 协调器直通，与 GDN 混合多组对照）；② **前缀缓存开箱可用**（`enable_prefix_caching=True`：latent+rope 逐 token 因果——§4.2.1 前缀查找正常走，实测命中 61.3%→68.9% token 级闭环，与 GDN 强关前缀对照）；③ **写的"K/V"= latent+rope**（`unified_mla_kv_cache_update` 把 (c_KV, k_rope) scatter 进双池；读历史=读 latent+rope 行，decode 吸收式：latent 经 `W_UK/W_UV` 即时展开 16 头 K(nope)/V，**value 从不落地 cache**）；④ **块粒度单一 128**（管理块==物理块==128，无 GDN 的 1024/128 两层粒度分离；运行期 KV usage 复证 0.1%=12 块/13,013 一字不差）。
+> **实战主线注记（MLA 主线四点特征）**：本篇按主线骨架讲时序（请求样本用 MLP 实测样本）；MLA 主线下四点特征——① **单 KV group**（27 层 `AscendMLAAttentionSpec` 同构 merge，Unitary 协调器直通）；② **前缀缓存开箱可用**（`enable_prefix_caching=True`：latent+rope 逐 token 因果——§4.2.1 前缀查找正常走，实测命中 61.3%→68.9% token 级闭环）；③ **写的"K/V"= latent+rope**（`unified_mla_kv_cache_update` 把 (c_KV, k_rope) scatter 进双池；读历史=读 latent+rope 行，decode 吸收式：latent 经 `W_UK/W_UV` 即时展开 16 头 K(nope)/V，**value 从不落地 cache**）；④ **块粒度单一 128**（管理块==物理块==128；运行期 KV usage 复证 0.1%=12 块/13,013 一字不差）。
 
 ---
 
@@ -34,7 +34,7 @@ DeepSeek-V2-Lite 采用 **MLA（Multi-head Latent Attention）**，其模型级 
 | 切分维度 | 全模型 | 每 worker | 说明 |
 |----------|--------|-----------|------|
 | TP4（按 Q 头切） | 16 Q 头 | 4 Q 头 | `get_num_kv_heads()` 等价除法只作用于 Q 头；MLA 的 `c_KV=W_DKV·h` 与头无关 |
-| latent/rope 池 | — | **不切分（全尺寸）** | 对照 GQA：TP 切 KV 头 → 池减半；MLA 池尺寸恒定，TP 只换并发算力 |
+| latent/rope 池 | — | **不切分（全尺寸）** | MLA 池尺寸恒定，TP 只换并发算力 |
 | PP | 27 层 | 27 层（PP=1） | 无层切分 |
 
 vLLM 侧 KV cache 配套参数：
@@ -49,10 +49,10 @@ vLLM 侧 KV cache 配套参数：
 
 | 派生量 | 计算式 | 值 | 说明 |
 |---|---|---|---|
-| `page_size_bytes` | `block_size × num_kv_heads × head_size × 2B = 128 × 1 × 576 × 2` | **147,456 B** | 单层单块字节数；576=512 latent+64 rope 拼接语义（**与 FA `2×B×H×D×dtype` 不同形，无 K/V 系数**） |
+| `page_size_bytes` | `block_size × num_kv_heads × head_size × 2B = 128 × 1 × 576 × 2` | **147,456 B** | 单层单块字节数；576=512 latent+64 rope 拼接语义 |
 | `num_blocks` | `48.25 GiB ÷ 147,456 ÷ 27` | **13,013** | 4 卡同值（TP 不切 latent → min 对齐无差）；日志 `GPU KV cache size: 1,665,664 tokens` = 13,013 × 128 一字不差 |
 | `kv_caches[layer]` | **二元组** `(latent_cache, rope_cache)`，两张**不等维** 4D | K 池 `(13013, 128, 1, 512)`；V 池 `(13013, 128, 1, 64)` | 每层两张独立张量（`k_cache: nope_cache    v_cache: rope_cache`，model_runner_v1.py:4606）；**同一个 `block_id` 命中两张张量各自的同一行**；两池存储不连续（8:1 整池拆分申请） |
-| 每 token 全模型 KV | `27 × 576 × 2B` | **31,104 B** | 对照等价 MHA 直存 16 头 × 320 元素 = 10,240 B/层 → **压缩 8.89×** |
+| 每 token 全模型 KV | `27 × 576 × 2B` | **31,104 B** | **压缩 8.89×** |
 
 ---
 
@@ -192,7 +192,7 @@ sequenceDiagram
     Scheduler-->>EngineCore: 入 WAITING 队列
 ```
 
-**要点（MLA 与纯 FA 逐字同）**：
+**要点**：
 - 入队即预计算：970 token → `970 // 128 = 7` 个满块有 hash（链式哈希），**未满的第 8 块（70 token）无 hash**
 - `request.block_hashes` 存的是**纯 `BlockHash`**（不含 group id），group id 到 ① 前缀查找 / ② 分配落库时才临时拼上
 - **哈希只由 token 序列决定，与 latent/rope 双池布局无关**——这是 MLA 前缀缓存可用的语义根基（块内容的"指纹"由 token 决定，块里存 latent 还是 K/V 对哈希层不可见）
@@ -205,7 +205,7 @@ sequenceDiagram
 
 > **调度顺序要点**：没有独立的 prefill / decode 全局阶段，只有一个共享 `token_budget`，按"**先 running、后 waiting**"填充；MLA 主线开启 chunked prefill / asynchronous scheduling（实测日志双开），长 prompt 的 prefill 可分片（本实验 970 token 远小于 max_num_tokens 一片通过）。PD 分离由 KV 传输实现，NPU 上 P→D 的 KV 搬运靠注册过的 latent/rope 双池 buffer 完成。
 
-KV 编排链固定为 `KVCacheManager → UnitaryKVCacheCoordinator → FullAttentionManager → BlockPool`（引擎进程内同一份代码——**MLA 单 group 直通，与纯 FA 同链**），下面三个子步骤都走这条链。
+KV 编排链固定为 `KVCacheManager → UnitaryKVCacheCoordinator → FullAttentionManager → BlockPool`（引擎进程内同一份代码——**MLA 单 group 直通**），下面三个子步骤都走这条链。
 
 #### 4.2.1 ① 前缀缓存查找（get_computed_blocks）
 
@@ -218,7 +218,7 @@ sequenceDiagram
     participant FullAttentionManager
     participant BlockPool
     Scheduler->>KVCacheManager: get_computed_blocks(request)
-    Note over KVCacheManager: MLA 主线 enable_prefix_caching=True<br/>（GDN 混合路线在此直接返回空）
+    Note over KVCacheManager: MLA 主线 enable_prefix_caching=True
     KVCacheManager->>UnitaryKVCacheCoordinator: find_longest_cache_hit(block_hashes, max_len)
     Note over UnitaryKVCacheCoordinator: 单组直通 single_type_managers[0]
     UnitaryKVCacheCoordinator->>FullAttentionManager: find_longest_cache_hit()
@@ -308,7 +308,7 @@ sequenceDiagram
 
 **要点（MLA 四特色 + 三通用）**：
 
-- **写的不是 K/V 而是 (c_KV, k_rope)**：hidden_states 经 `W_DKV` 投影出 512 维 latent（每层唯一、全头共享）、经 `W_KR` 投影出 64 维 rope；`unified_mla_kv_cache_update` 双池入参 scatter——slot 公式 `slot = block_id × 128 + 块内偏移` 与纯 FA 全同
+- **写的不是 K/V 而是 (c_KV, k_rope)**：hidden_states 经 `W_DKV` 投影出 512 维 latent（每层唯一、全头共享）、经 `W_KR` 投影出 64 维 rope；`unified_mla_kv_cache_update` 双池入参 scatter——slot 公式 `slot = block_id × 128 + 块内偏移`
 - **value 不落池**：cache 里没有传统 V——decode 时由 latent 经 `W_UV` 即时上采样（`_v_up_proj`，mla_v1.py:898-906）；prefill 并行注意力核同样只在 latent+rope 上展开（`unified_mla_attention_with_output`，头投影在算子内做）
 - **`slot_mapping` 与双池对齐**：每 token 一个 slot，**同一个 slot 值同时定位 latent 池与 rope 池的同一位置**（两池按同序号行空间对齐——这正是 4a 8:1 拆分时"行号语义相同"的回报）；R 的 74 个新 token 全落块 9 的 0..73 槽
 - **读路径（吸收式）**：注意力核按 `block_table`（8 元素）在两张张量上**各自沿第 0 维 gather 对应行**——`latent = kv_caches[l][0][block_ids]`、`rope = kv_caches[l][1][block_ids]`；同一 `block_id` 在 27 层对应同一逻辑块，全套层共用一份 block_table
@@ -324,7 +324,7 @@ sequenceDiagram
 
 **结合请求 R（MLA decode 的块账本）**：prefill 后尾块装 74 token，decode 步 1..47 每步 append 1 token：**74 + 47 = 121 < 128**——47 步全部 0 次块分配（S1 算 0、S3 跳过），每步的写 KV 走吸收式核（latent 大 GEMM 展开 + rope 逐头点积 + 写 1 token 进双池槽位 74..120）。第 48 个输出达到 max_tokens 仅采样（`finish_reason=length` 实测值）不再落 KV。
 
-> **MLA decode 的算力画像**（吸收式路径）：每步每层 = 读 27 组 latent/rope 行 + `W_UK`(7168×512·rank) / `W_UV` 两个大 GEMM + flash attention 16 头（nope+rope 拼接 q）——计算被权重矩阵吸收，cache 侧零展开存储。这是 8.89× 压缩率的运行期代价与收益：**显存省 8.9 倍，decode 每 token 多两次 GEMM 投影**（与 GQA 的逐头 K/V 直读对照）。
+> **MLA decode 的算力画像**（吸收式路径）：每步每层 = 读 27 组 latent/rope 行 + `W_UK`(7168×512·rank) / `W_UV` 两个大 GEMM + flash attention 16 头（nope+rope 拼接 q）——计算被权重矩阵吸收，cache 侧零展开存储。这是 8.89× 压缩率的运行期代价与收益：**显存省 8.9 倍，decode 每 token 多两次 GEMM 投影**。
 
 #### prefill 与 decode 的统一
 
@@ -385,7 +385,7 @@ sequenceDiagram
 
 **结构视角——固定的四层下钻链 + NPU latent/rope 双池底座**：
 
-调度器对 KV 的每一次操作（查、分、存、放）都走同一条链 `KVCacheManager → UnitaryKVCacheCoordinator → FullAttentionManager → BlockPool`——**这条链与纯 FA 逐字相同、MLA 零定制**：上层管编排时机，中层按 KVCacheSpec 分派（MLA spec 注册指向 FA manager），底层 `BlockPool` 管逻辑块记账。**整条链都在逻辑侧**——调度全程只认 `block_id`、零显存拷贝；物理存储是初始化时绑在各 NPU worker 上的 latent/rope 双张量，靠 `block_id == 两张张量各自第 0 维行号` 桥接。
+调度器对 KV 的每一次操作（查、分、存、放）都走同一条链 `KVCacheManager → UnitaryKVCacheCoordinator → FullAttentionManager → BlockPool`——**这条链 MLA 零定制**：上层管编排时机，中层按 KVCacheSpec 分派（MLA spec 注册指向 FA manager），底层 `BlockPool` 管逻辑块记账。**整条链都在逻辑侧**——调度全程只认 `block_id`、零显存拷贝；物理存储是初始化时绑在各 NPU worker 上的 latent/rope 双张量，靠 `block_id == 两张张量各自第 0 维行号` 桥接。
 
 **数据视角——实测 token 级账本与 R 的 8 个块走完一生**（左列块一生，右列服务端计数器对账）：
 

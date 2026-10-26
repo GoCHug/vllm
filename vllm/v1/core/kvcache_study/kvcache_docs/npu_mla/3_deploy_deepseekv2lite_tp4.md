@@ -2,7 +2,7 @@
 
 > 本篇是 KV Cache 学习系列 MLA 路线的**实战篇**：在昇腾 A3 4 卡 pod 上以 **TP4** 部署 **DeepSeek-V2-Lite** 并冒烟验证，记录全流程与关键实测数字，并把每一步启动日志证据回挂到系列文档的三侧五阶段模型上。
 >
-> 与系列各篇的关系：理论篇 [`0_kvcache_arch.md`](./0_kvcache_arch.md)（五层架构 + §6 MLA 扩展行）、类型篇 [`1_kvcache_type.md`](../../kvcache_docs_v2/1_kvcache_type.md)（`AscendMLAAttentionSpec` 冻结值 + latent/rope 双池）、启动篇 [`1_start_init.md`](./1_start_init.md)（五阶段全链 + 数字一字不差推演）、运行篇 [`2_runtime_sequence.md`](./2_runtime_sequence.md)（一条请求端到端 + 前缀缓存实测闭环）——本篇只做**部署操作与日志实录**，MLA 机制结论引用前四篇不复述。对照兄弟路线的 GDN 混合模型部署篇 [`../npu_hybrid/3_deploy_qwen35_pp2tp2.md`](../npu_hybrid/3_deploy_qwen35_pp2tp2.md)。
+> 与系列各篇的关系：理论篇 [`0_kvcache_arch.md`](./0_kvcache_arch.md)（五层架构 + §6 MLA 扩展行）、类型篇 [`1_kvcache_type.md`](../../kvcache_docs_v2/1_kvcache_type.md)（`AscendMLAAttentionSpec` 冻结值 + latent/rope 双池）、启动篇 [`1_start_init.md`](./1_start_init.md)（五阶段全链 + 数字一字不差推演）、运行篇 [`2_runtime_sequence.md`](./2_runtime_sequence.md)（一条请求端到端 + 前缀缓存实测闭环）——本篇只做**部署操作与日志实录**，MLA 机制结论引用前四篇不复述。
 
 **实测环境一览**：
 
@@ -33,7 +33,7 @@
 | `max_position_embeddings` / yarn | 163840 / factor 40（orig 4096） | 部署用 `--max-model-len 32768` |
 | `torch_dtype` / vocab | bfloat16 / 102400 | KV dtype 跟随 bf16 |
 
-按类型篇的分类：27 层 `MLAAttention` 均产出 **`AscendMLAAttentionSpec`**（`num_kv_heads=1, head_size=576, block_size=128`，dense 路径 :4987-4999 转换）→ 同构 merge → **单 KV cache group，走 `UnitaryKVCacheCoordinator`**（对照 GDN 混合路线的 `HybridKVCacheCoordinator` 多组）。
+按类型篇的分类：27 层 `MLAAttention` 均产出 **`AscendMLAAttentionSpec`**（`num_kv_heads=1, head_size=576, block_size=128`，dense 路径 :4987-4999 转换）→ 同构 merge → **单 KV cache group，走 `UnitaryKVCacheCoordinator`**。
 
 **TP4 切分推演**（进程名 + npu-smi 实测印证）：TP 按 Q 头切 16 → 每 rank 4 头；**MLA 的 latent 是全头共享、不在头维切分**——每 rank 仍持有全部 27 层、`num_kv_heads=1` 不变，切分只作用于 Q 头与权重矩阵（MoE 专家分片）。4 个 worker：`W0..W3 = TP0..TP3`（进程名 `VLLMWorker_TP`、无 PP 后缀）。
 
@@ -78,17 +78,16 @@ itask exec gggtest2 -- bash -c 'mkdir -p /a3_inference/itask/workdir/wsl02075301
 - **`setsid nohup … & sleep 5`** 缺一不可——`itask exec` 断连会杀普通后台进程，`sleep 5` 保证 setsid 脱离完成；
 - 日志重定向用**全新文件名**（NFS 覆盖旧句柄会静默失败）；
 - 单机 4 rank 由 vllm 自行 spawn（`multiproc_executor`，HCCL 走 `127.0.0.1`），无需手动配 master。
-- 与 GDN 篇的唯一参数差：单 `--tensor-parallel-size 4`、无 `--pipeline-parallel-size`——MLA latent 全头共享不切、PP 切层无收益，走 TP 对齐全纯 FA 主线（Llama-3-8B）部署形态对照。
 
 ### 2.4 Step 4：监控启动（marker 驱动）
 
-启动 10 秒后开始 `tail` 日志，按 marker 判断阶段（MLA 主线 marker 与纯 FA 同套；完整时间线见 [`./logs/startup_markers_1018.txt`](./logs/startup_markers_1018.txt)、日志头 [`./logs/startup_head_1018.txt`](./logs/startup_head_1018.txt)）。本次完整时间线（pod UTC；五阶段对照解析见启动篇 §1/§2.0）：
+启动 10 秒后开始 `tail` 日志，按 marker 判断阶段（完整时间线见 [`./logs/startup_markers_1018.txt`](./logs/startup_markers_1018.txt)、日志头 [`./logs/startup_head_1018.txt`](./logs/startup_head_1018.txt)）。本次完整时间线（pod UTC；五阶段对照解析见启动篇 §1/§2.0）：
 
 | 时刻（pod UTC） | marker | 对应阶段 |
 |---|---|---|
 | 16:13:07 | `Platform plugin ascend is activated`；`Breakable cudagraph is force disabled … DeepSeek V4 PIECEWISE not supported`（免责行） | 插件激活 |
 | 16:13:15 | vllm 0.23.0 横幅；`non-default args: TP=4, port=8100, max_model_len=32768` | — |
-| 16:13:26 | `Resolved architecture: DeepseekV2ForCausalLM`（**无 `is_hybrid`/无 mamba 页对齐 patch 行**） | 架构解析 |
+| 16:13:26 | `Resolved architecture: DeepseekV2ForCausalLM` | 架构解析 |
 | 16:13:38 | EngineCore init：`tensor_parallel_size=4`、**`enable_prefix_caching=True, enable_chunked_prefill=True`**、`splitting_ops` 含 **`vllm::unified_mla_attention_with_output / unified_mla_kv_cache_update / mla_forward**`（另共存 DSA 系算子） | 引擎 config |
 | 16:14:00~08 | 4 worker HCCL init：`world_size=4 rank=0..3, backend=hccl, tcp://127.0.0.1:48609` | worker 拉起 |
 | 16:14:08~14 | `Starting to load model` ×4 → **`Loading model weights took 7.4549 GB`** ×4（四卡一致） | 权重加载 |
@@ -100,7 +99,7 @@ itask exec gggtest2 -- bash -c 'mkdir -p /a3_inference/itask/workdir/wsl02075301
 | 16:14:50 | `Asynchronous scheduling is enabled`；`Dynamic EPLB is False`、`redundant experts 0`；`fusions: norm_quant, act_quant`；`No quantization signature → float` | ⑤ 逻辑层 |
 | 16:14:51 | `Application startup complete` | **服务就绪** |
 
-总启动耗时 ≈ **96 秒**（16:13:15 横幅 → 16:14:51 ready；EngineCore 段 71 s，其中 init engine 35.27 s / compilation 7.26 s）——对照 GDN 篇的 ≈2.5 分钟：**MLA 无多模态 warmup、无 mamba 页对齐 patch**，启动管线与纯 FA 最接近。
+总启动耗时 ≈ **96 秒**（16:13:15 横幅 → 16:14:51 ready；EngineCore 段 71 s，其中 init engine 35.27 s / compilation 7.26 s）——**MLA 无多模态 warmup、无需页对齐 patch 等混合阶段**。
 
 ### 2.5 Step 5：冒烟测试
 
@@ -122,7 +121,7 @@ itask exec gggtest2 -- bash -c "curl -s http://localhost:8100/v1/chat/completion
 
 ## 3. 启动日志 × 三侧五阶段对照（本篇核心）
 
-把启动篇 §1 的五阶段管线与本实例日志逐段对上（单机 TP4，无 PD 分离、无 KV 传输组 → 无 2MiB 对齐/`register_kv_caches` 环节；单 spec 族 → 无 mamba 页对齐 patch、无`is_hybrid` 分岔）：
+把启动篇 §1 的五阶段管线与本实例日志逐段对上（单机 TP4，无 PD 分离、无 KV 传输组 → 无 2MiB 对齐/`register_kv_caches` 环节）：
 
 | 阶段 | 代码入口（系列文档行号） | 本实例日志/行为证据 |
 |---|---|---|
@@ -131,46 +130,25 @@ itask exec gggtest2 -- bash -c "curl -s http://localhost:8100/v1/chat/completion
 | ② 测预算 | worker.py:527 → :593 | `Available KV cache memory: 48.25 GiB`；４d 事后分解：weights 7.45 + peak act 0.15 + non-torch 0.51 + graph 0.58 ≈ 8.69 GiB（61.27×0.92 − 8.69 ≈ 47.5 → profile 实测 48.25，公式无图项取整差在图项事后记账核销）；profile 前真实跑 `eplb_warmup` + MC2 容量试跑（MoE 模型新增预检，`Dynamic EPLB is False`） |
 | ③ 做编排 | kv_cache_utils.py:1956 | `GPU KV cache size: 1,665,664 tokens`；**推演**（启动篇 §2.0 数字链）：`num_blocks = 51,808,813,056 B ÷ (27 × 147,456) = 13,013 块`，`13,013 × 128 = 1,665,664` ✓ 与日志**一字不差**；四卡同 spec → min 对齐恒等值 |
 | ④ 落张量 | model_runner_v1.py:4605-4629 | MLA 双池：**k_cache=(13013,128,1,512) nope/latent、v_cache=(13013,128,1,64) rope**（源码注释 `k_cache: nope_cache    v_cache: rope_cache`），整层 1.79 GiB 按 `calc_split_factor([512,64])=(1.125,9.0)` **8:1 拆**两条独立 int8 字节池 → `view(bf16).view(4D)` 无 permute；block_id == 双池各自行号 |
-| 4d 图捕获 | worker.py:706-776 | `0.57~0.58 GiB for NPU graph memory` + 两条 `--kv-cache-memory` 建议（47.53 / 52.04 GiB）——机制与 FA/GDN 两路线完全一致 |
-| ⑤ 建逻辑层 | core.py:145-157 | `enable_prefix_caching=True`（**MLA 支持前缀缓存——与 GDN 自动关闭的关键分野，运行期实测命中 61.3%→68.9%**）、`Asynchronous scheduling is enabled`；单 group → `UnitaryKVCacheCoordinator` 直通 + `BlockPool(13013)` + 1 个 `FullAttentionManager`（注册表 :305-315 为 MLA spec 指到它）——第 2~5 层与纯 FA 逐字同 |
+| 4d 图捕获 | worker.py:706-776 | `0.57~0.58 GiB for NPU graph memory` + 两条 `--kv-cache-memory` 建议（47.53 / 52.04 GiB） |
+| ⑤ 建逻辑层 | core.py:145-157 | `enable_prefix_caching=True`（**MLA 支持前缀缓存，运行期实测命中 61.3%→68.9%**）、`Asynchronous scheduling is enabled`；单 group → `UnitaryKVCacheCoordinator` 直通 + `BlockPool(13013)` + 1 个 `FullAttentionManager`（注册表 :305-315 为 MLA spec 指到它） |
 
-**佐证进程布局**（`npu-smi info` 全文：[`./logs/npu_smi_after_serve_1018.txt`](./logs/npu_smi_after_serve_1018.txt)）：4 个 `VLLMWorker_TP` 进程（PID 1990-1993）分别持有 NPU3 die0/1 + NPU4 die0/1；**TP4 全尺寸双池**（MLA 不切 latent，无"每卡头子集"现象——对照 Llama pp2tp2 的"同层不同头子集"）；HBM 61,498~61,744 / 65,536 MB（含 KV 48.25 GiB），进程内存 ≈58.66 GB/卡；服务空载时 AICore 0%。
+**佐证进程布局**（`npu-smi info` 全文：[`./logs/npu_smi_after_serve_1018.txt`](./logs/npu_smi_after_serve_1018.txt)）：4 个 `VLLMWorker_TP` 进程（PID 1990-1993）分别持有 NPU3 die0/1 + NPU4 die0/1；**TP4 全尺寸双池**（MLA 不切 latent，无"每卡头子集"现象）；HBM 61,498~61,744 / 65,536 MB（含 KV 48.25 GiB），进程内存 ≈58.66 GB/卡；服务空载时 AICore 0%。
 
 ---
 
 ## 4. MLA 特有行为（部署期实测到的 6 个点）
 
-1. **KV 容量数字即 MLA 压缩率的最直接证据**：48.25 GiB ÷ 27 层 ÷ (576×2B) = 1,665,664 tokens（13,013 块）。对照"等价 MHA 直存"（16 头 × 320 元素 → 每 token 10,240 B/层）仅能容纳 ~187K tokens——同预算**容量放大 8.9 倍**（启动篇 §2.0 完整算式）。
+1. **KV 容量数字即 MLA 压缩率的最直接证据**：48.25 GiB ÷ 27 层 ÷ (576×2B) = 1,665,664 tokens（13,013 块）。相对"等价 MHA 直存"（16 头 × 320 元素 → 每 token 10,240 B/层）仅能容纳 ~187K tokens——同预算**容量放大 8.9 倍**（启动篇 §2.0 完整算式）。
 2. **K/V 维宽 8:1 的"反直觉"拆分静默完成**：`_get_attention_kv_cache_dims`（:3987-3989，注释 `DeepSeek MLA: K=kv_lora_rank, V=qk_rope_head_dim`）→ **"V 池"装的不是 value 而是 k_rope**（value 在 decode 由 latent 经 `W_UV` 即时上采样，mla_v1.py:898-906）。日志侧不可见（默默完成），源码 + 容量数字闭环佐证（类型篇中篇）。
-3. **前缀缓存开箱即用**：`enable_prefix_caching=True` 默认生效。latent/rope 逐 token 因果 → 链式哈希照常成立；实测三连发 + 长请求命中 61.3%→68.9%（token 账 2,925/1,792 → 3,900/2,688）——对照 Qwen3.5 GDN 篇的 `enable_prefix_caching=False` 自动关闭，两条扩展路线在逻辑侧的第一分野点（运行篇 §4）。
+3. **前缀缓存开箱即用**：`enable_prefix_caching=True` 默认生效。latent/rope 逐 token 因果 → 链式哈希照常成立；实测三连发 + 长请求命中 61.3%→68.9%（token 账 2,925/1,792 → 3,900/2,688）。
 4. **MLA 专属编译图切分算子指纹**：`compilation_config.splitting_ops` 实测含 `vllm::unified_mla_attention_with_output`、`vllm::unified_mla_kv_cache_update`（写 KV）、`vllm::mla_forward`（吸收式 decode）；同列表共存 DSA 路线算子（`dsa_forward / deepseek_v4_attention / sparse_attn_indexer`）——**判断"跑的是 dense MLA 还是 sparse DSA 路线"看日志这一行**。
 5. **DeepSeek 系启动即出现的两条已知噪声**（排障先排除）：`Breakable cudagraph is force disabled … DeepSeek V4 PIECEWISE cudagraph is not supported yet`（平台侧对 V4 特性预防性禁用，不作用于本模型的 FULL_AND_PIECEWISE 图）；`rope_parameters' factor field must be a float >= 1, got 40` ×多次（yarn factor 40 序列化告警，无功能影响）。
 6. **MoE 侧平行状态**：`Dynamic EPLB is False`、`The number of redundant experts is 0`（专家不扩块账本——num_blocks 公式不因专家数变化）；`No quantization signature detected → float`（bf16 原精度，KV dtype auto→bf16）；cpu_binding global_slice 把 4 worker 各钉 NUMA 0/2/4/6（每 worker 主核 76 + acl 核 1）。
 
 ---
 
-## 5. 与 Llama-3-8B / Qwen3.5-4B 主线实测对照（同规格 A3 4 卡、同镜像 0.23.0）
-
-| 量 | Llama-3-8B 纯 FA（2_start_init §6） | Qwen3.5-4B GDN 混合（GDN 篇） | **DeepSeek-V2-Lite MLA（本篇）** |
-|---|---|---|---|
-| 每卡 KV 可用显存 | 51.96 GiB | 51.90 GiB | **48.25 GiB**（权重 7.45 GB + MoE 激活更贵） |
-| block_size | 128 | 1024（mamba 页对齐 patch） | **128**（与纯 FA 一致，无级跳） |
-| 每层 KV 物理 | K/V 等宽双 4D（128/128 对半） | attn 1024 大页 + GDN 状态张量并存 | **latent(512)/rope(64) 双 4D，8:1 拆** |
-| KV 容量 | 13,291 块 / ~1.7M tokens | 6,147,276 tokens（~6003 大页） | **13,013 块 / 1,665,664 tokens** |
-| 每 token 全模型 KV | 131,072 B（128 KiB） | —（跨类型不可比） | **31,104 B**（27 层 × 576 × 2B） |
-| 每 token KV 压缩率 | 基线 | — | **×0.24（≈8.89× 放大）vs 等价 MHA** |
-| 每 worker 权重 | ~8 GB（8B/TP4） | 2.70 GB（4B/PP2TP2 均摊） | **7.4549 GB**（15.7B/TP4：MoE 分片） |
-| KV group | 1（Unitary） | 多（Hybrid 协调器） | **1（Unitary，与主线同形）** |
-| 前缀缓存 | 可开 | 自动关（`enable_prefix_caching=False`） | **默认开 + 实测命中 61.3%→68.9%** |
-| NPUGraph 事后建议 | 有 | 51.19/55.69 GiB | **47.53/52.04 GiB**（0.57~0.58 GiB 图内存，同机制） |
-| 总启动耗时 | ~3 分钟 | ≈2.5 分钟 | **≈96 秒**（无多模态/无 mamba patch） |
-| 冒烟 fingerprint | tp4 | tp2-pp2 | **tp4-44ad530f** |
-
-三列之差异即三条路线的代价结构：纯 FA 吃层数与 KV 头数、GDN 吃状态页对齐与多组协调、**MLA 把显存压力从 KV 侧挪到权重/激活侧**（16B 级 MoE 权重 7.45 GB/卡换 8.89× KV 容量）。
-
----
-
-## 6. 常用运维命令（本次实测汇总）
+## 5. 常用运维命令（本次实测汇总）
 
 ```bash
 itask list                                  # pod 状态（Running/Healthy）
@@ -203,9 +181,9 @@ yes | itask delete gggtest2
 
 ---
 
-## 7. 小结
+## 6. 小结
 
 1. **部署结论**：DeepSeek-V2-Lite 在 A3 单机 4 卡 TP4 下经 vllm 0.23.0 + vllm-ascend 0.23.0**一次拉起成功**，启动 ≈96 秒，冒烟推理通过（`tp4-44ad530f` fingerprint 印证切分生效），中文回复内容正常；运行期前缀缓存与容量账全部闭环。
-2. **系列结论被逐条实证**：MLA → `AscendMLAAttentionSpec`（① :4987-4999 冻结四字段）✓；物理张量 **latent/rope 双 4D 8:1**（④ :4605-4629，"V 池"装 k_rope 非 value）✓；单 KV group 走主线逻辑层 + `FullAttentionManager` ✓；**前缀缓存默认开且实测命中**（61.3%→68.9%，与 GDN 强关相对）✓；②测预算无图项 + 4d 事后记账并给 `--kv-cache-memory` 建议（47.53/52.04 GiB）✓。
-3. **数字闭环（全系列的实证核心）**：`48.25 GiB ÷ 27 层 ÷ 147,456 B/层/块 = 13,013 块`，`×128 = 1,665,664 tokens` 与日志一字不差；运行期再添两组——`0.1% = 12 块/13,013`（long 请求峰值）与 `68.9% = 2,688/3,900`（累计命中）。**这是三次实测（FA 51.96 GiB / GDN 51.90 GiB / MLA 48.25 GiB）中 spec→运维数字链路最短的一次**：无页对齐 patch、无多组协调、图项不进②公式——MLA 的容量可纯手算复现。
-4. **复现路径**：第 2 章六步命令从空 pod 到冒烟（+运行期实验）顺序可复跑；原始证据 9 件归档于 [`./logs/`](./logs/)（startup_markers / startup_head / smoke_test / npu_smi / config.json / runtime 前缀实验与解读 / metrics / stats / 实验脚本）。换模型复现对照见 §6 注意事项。
+2. **系列结论被逐条实证**：MLA → `AscendMLAAttentionSpec`（① :4987-4999 冻结四字段）✓；物理张量 **latent/rope 双 4D 8:1**（④ :4605-4629，"V 池"装 k_rope 非 value）✓；单 KV group 走逻辑层 + `FullAttentionManager` ✓；**前缀缓存默认开且实测命中**（61.3%→68.9%）✓；②测预算无图项 + 4d 事后记账并给 `--kv-cache-memory` 建议（47.53/52.04 GiB）✓。
+3. **数字闭环（全系列的实证核心）**：`48.25 GiB ÷ 27 层 ÷ 147,456 B/层/块 = 13,013 块`，`×128 = 1,665,664 tokens` 与日志一字不差；运行期再添两组——`0.1% = 12 块/13,013`（long 请求峰值）与 `68.9% = 2,688/3,900`（累计命中）。**本次 MLA 部署的 spec→运维数字链路最短**：无页对齐 patch、无多组协调、图项不进②公式——MLA 的容量可纯手算复现。
+4. **复现路径**：第 2 章六步命令从空 pod 到冒烟（+运行期实验）顺序可复跑；原始证据 9 件归档于 [`./logs/`](./logs/)（startup_markers / startup_head / smoke_test / npu_smi / config.json / runtime 前缀实验与解读 / metrics / stats / 实验脚本）。换模型复现详见 §5 注意事项。
