@@ -48,7 +48,7 @@ vLLM 侧 KV cache 配套参数：
 | `hash_block_size` | **32768** | 前缀缓存关闭 → 退回等于 scheduler_block_size（kv_cache_utils.py:633-634） |
 | `kernel_block_size`（attn 组） | **128** | 算子寻址粒度；一个大块虚拟切成 8×128 |
 | `enable_prefix_caching` | **False** | 混合模型强制关闭 |
-| `mamba_cache_mode` | `none` | 前缀缓存关闭 → `none`；仅走 KV store 连接器（AscendStore 及其 MultiConnector）时强制 `align`（`patch_mamba_config.py:136-142`，仅 PD 分离不触发）——三模式语义（none/all/align）见启动篇 §2.0.3 |
+| `mamba_cache_mode` | `none` | 前缀缓存关闭 → `none`；仅走 KV store 连接器（AscendStore 及其 MultiConnector）时强制 `align`（`patch_mamba_config.py:136-142`，仅 PD 分离不触发）——三模式语义（none/all/align）见启动篇 §2.0；`align` 的 prefill/decode 逐轮运行流程见 §4.3 |
 
 **`page_size_bytes`（统一页）**：patch 把两族 spec 的对外页垫到全等 **2,072 KB（= attn 页 2 MB + conv 页 24 KB，padding 1.16%）**——这是4 组能共享同一 `BlockPool`（同一个 block 账本）的前提（数字链见启动篇 §2.0.2）。
 
@@ -345,6 +345,27 @@ sequenceDiagram
 | 物理侧 linear 层 | 状态初始化 | 状态原地步进 |
 | 状态机 | `WAITING → RUNNING` | 保持 `RUNNING` 直到完成 |
 
+### 4.3 对照：`align` 模式下 mamba 状态块的 prefill / decode 运行流程
+
+> 主线部署为 `none`（§1 配置表）；`align` 仅在接入 KV store 连接器（AscendStore 及其 MultiConnector）时被强制启用，三模式语义与“谁持有块”见启动篇 [`1_start_init.md`](./1_start_init.md) §2.0。`align` 复用逻辑侧同一套 `allocate_slots` 骨架（§4.1.2 的 S1~S4），差异集中在 mamba 组——状态块的分配、快照与回收随 prefill / decode 逐轮推进。为便于算术，下表设 `block_size = 64`、无投机解码（只说明机制）。
+
+**prefill 阶段（首次调度起，逐 chunk 推进）**：
+
+| 轮次 | num_computed | 新分配 | 状态块 | 发生的事 | 机制细节（出处） |
+|---|---|---|---|---|---|
+| 首 chunk 写入 | 0 → 64 | 块 A（idx0） | A | 状态写在 A（恰落在对齐位置 64）；A 满块入哈希表 | 同一块内**原地覆盖写**：`allocate_new_blocks` 首句即 `if num_required_blocks <= len(req_blocks): return []`（single_type_kv_cache_manager.py:1148-1149） |
+| 跨界 chunk 拷贝（每越过一个对齐位置重复） | 64 → 100 | 块 B（idx1） | A → B | `preprocess_mamba` 把 A 的运行态拷入 B；**A 保留“位置 64 的快照”**——这正是它可被命中的原因 | 只有跨块边界才“分配 + 拷贝”，拷贝以 `prev_state_idx != curr_state_idx` 为门（mamba_utils.py:690）；`preprocess_mamba` 仅在 `align` 模式被调用（gpu_model_runner.py:4159-4177） |
+
+**decode 阶段（每步续写，跨界步触发“释放 → 分配 → 拷贝”）**：
+
+| 轮次 | num_computed | 新分配 | 状态块 | 发生的事 | 机制细节（出处） |
+|---|---|---|---|---|---|
+| 稳态步（未跨界） | 每步 +1（未越界） | 0 块 | B | 状态在当前块内原地覆盖写，无分配、无拷贝 | 同 prefill 首 chunk：块内原地覆盖写（single_type_kv_cache_manager.py:1148-1149） |
+| 跨界步 · 释放旧块 | 100 → 150 | 块 C（idx2） | B | `remove_skipped_blocks` 释放 A（`ref_cnt→0`，`req_to_blocks[0]=null_block`）；**A 仍在哈希表里可被命中** | **释放滞后一步**：`allocate_slots` 里 `remove_skipped_blocks`（kv_cache_manager.py:381）排在 `allocate_new_blocks`（:413）之前，上一轮记下的 `last_state_block_idx` 要等下一轮才回收（single_type_kv_cache_manager.py:1034-1046 与 :1154-1163 注释互见）→ **旧块与新块短暂并存**，`align` 内存上界 = `page_size_bytes × (2 + num_spec)`（kv_cache_interface.py:633-634，启动篇 §2.0 三模式表“峰值”列的出处） |
+| 跨界步 · 拷贝运行态（同一步） | 同上 | — | B → C | 分配 C 后 `preprocess_mamba` 把 B 的运行态拷入 C | 同 prefill 跨界 chunk：拷贝以 `prev_state_idx != curr_state_idx` 为门（mamba_utils.py:690） |
+| 旧块去向（每轮释放后） | — | — | — | A 不是丢弃，而是退回块池当缓存条目（**best-effort prefix-cache entries**）：既可能被前缀命中复用，也可能被当普通块取走 | `free_blocks` 只 `ref_cnt--` 并入队：默认 append **队尾**，而 `get_new_blocks` 从**队头** pop（block_pool.py:419-441、:347）；哈希要等真正复用时才清（:350-352、:365）；无哈希的 scratch 块 `prepend` 队头优先复用（single_type_kv_cache_manager.py:497-501、:764） |
+| `none` 模式对照 | — | — | — | `none` 完全不参与本机制：kernel 侧直接原地读写同一批块，无快照（即 §4.1.3 / §4.2 主线的 mamba 组行为） | 注释原文 "Without caching, read and write in-place to the same blocks"，判据 `is_mamba_cache_all = mamba_cache_mode == "all"`（mamba_mixer2.py:985-988、:689）；`postprocess_mamba_all` 只在 `all` 模式调用（gpu_model_runner.py:1542-1551），`preprocess_mamba` 只在 `align`（见 prefill 跨界 chunk 行） |
+
 ---
 
 ## 5. 小结：一条请求的 KVCache 全生命周期（两侧视角）
@@ -361,6 +382,8 @@ sequenceDiagram
 | 结束释放 | 4.1.4 | `free` 逐组逆序归还，`ref_cnt` 归零才回收 | —（不再读写） |
 
 状态机全路径：`WAITING →(首次调度) RUNNING →(持续 decode) → 完成 → 释放`。
+
+**`align` 模式对照**：以上主线为 `none`；`align`（接入 KV store 连接器时强制启用）下 mamba 组按“每对齐位置快照 + 跨界步分配、滞后释放”循环推进，prefill / decode 逐轮流程见 §4.3。
 
 **结构视角——逻辑侧一条下钻链，物理侧两类张量**：
 

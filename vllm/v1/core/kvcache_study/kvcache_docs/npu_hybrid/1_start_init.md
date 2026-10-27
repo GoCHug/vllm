@@ -210,23 +210,25 @@ EngineCore.__init__（承上，:145 起）                    # engine/core.py:1
 
 物理侧的四步横跨两侧进程：①②④ 的实现主体经 collective RPC 落在各 worker 进程（vllm-ascend 的 `NPUWorker` / `NPUModelRunner`），③ 做纯 Python 编排跑在引擎进程 `_initialize_kv_caches`（core.py:236-317）内。前三步全程不申请任何 KV 显存，产出**唯一的容量仲裁结果** `KVCacheConfig`：一份完整版 list（供 ④ 逐卡落张量）+ 一份 scheduler 版（供逻辑侧 ⑤ 装配）；第四步才把张量落到 NPU 显存。而四步开始**之前**，`cache_config.block_size` 与两族页大小已在更早的 VllmConfig 构造期定型（§2.0.1）。
 
-### 2.0 装配前置：block size 装配链与 page_size_bytes 统一（Qwen3.5-4B 实测）
+### 2.0 装配前置：mamba_cache_mode 三模式、block size 装配链与页统一（Qwen3.5-4B 实测）
 
 §2.0 只盯住"**两个 token 粒度 + 一个字节量**"，它们都在 §1.1 全栈图的 config 期（+ ① 算规格）定型，先于 §2.1—§2.4 物理侧各步：
 
 | 量 | 单位 | 含义 | 本模型（Qwen3.5-4B）取值 | 出处 |
 |---|---|---|---|---|
 | `block_size`（attn 组 8 层，= `cache_config.block_size`） | **token** | 一个块装多少 token——缓存/编号/前缀命中的粒度 | **1024**（页对齐链 16 → 128 → 1024） | §2.0.1 |
-| `mamba_block_size`（mamba 组 24 层 → 3 组，= `MambaSpec.block_size`） | **token** | 同为"每块多少 token"；但 mamba 的页字节与它无关，故它实际表示**状态快照间隔**而非容量 | **32768**（`none` 分支；`align` 时为 1024） | patch :143-146、§2.0.3 |
+| `mamba_block_size`（mamba 组 24 层 → 3 组，= `MambaSpec.block_size`） | **token** | 同为"每块多少 token"；但 mamba 的页字节与它无关，故它实际表示**状态快照间隔**而非容量 | **32768**（`none` 分支；`align` 时为 1024） | patch :143-146、见下 |
 | `page_size_bytes` | **字节** | 一个块占多少字节——物理账本（张量 dim0 行大小、显存预算的乘数） | **2,072 KB**（两族统一页，两族 spec 全等） | patch :113-117、§2.0.2 |
 
-**mamba 组的取值由 `mamba_cache_mode` 决定**（三档定义 `vllm/config/cache.py:133-141`；自动选择逻辑 `vllm/model_executor/models/config.py:350-395`）：
+**`mamba_cache_mode` 三模式语义（none / all / align）：谁在“对齐”、谁持有块**
 
-| 模式 | 何时被选中 | NPU 上的 `mamba_block_size` | 本部署 |
-|---|---|---|---|
-| `none` | 前缀缓存关闭（强制） | `max_model_len` = **32768** | ✅ 本部署 |
-| `all` | 开缓存 **且** 模型声明 `supports_mamba_prefix_caching`（`interfaces.py:954-957`，由 registry 探测，`registry.py:776`） | `max_model_len` = **32768**（NPU patch 只让 `align` 跟随 `block_size`，见下 ⚠️；上游 GPU 取 `attn_block_size`） | ⚠️ 名义可选，NPU 上实际退化 |
-| `align` | 开缓存但模型不支持 `all`（降级），或走 KV store 连接器强制（`patch_mamba_config.py:136-142`，仅 PD 分离不触发） | `cache_config.block_size` = **1024**，与 attn 组一致 → 两组块边界重合、`scheduler_block_size = LCM(1024) = 1024` | — |
+| 模式 | 何时被选中 | 缓存什么 | NPU 上的 `mamba_block_size` | 每请求持有的 mamba 物理块 | 前缀命中 |
+|---|---|---|---|---|---|
+| `none` | 前缀缓存关闭（默认） | 不缓存，只保留当前运行态 | `max_model_len` = **32768**（一个块 = 整序列） | **`1 + num_spec`**，恒定到请求结束（`ref_cnt>0`） | 无 |
+| `all` | 开缓存 **且** 模型声明 `supports_mamba_prefix_caching`——⚠️ **名义可选，NPU 上实际退化** | **每个** `i * block_size` 位置的状态 | `max_model_len` = **32768** | **`cdiv(num_tokens, bs) + num_spec`**（块表宽度按 `max_model_len` 预留，mamba_attn.py:111-120） | 命中集合 = 全部块边界；**强保证**（请求持有期间不可被驱逐） |
+| `align` | 开缓存但模型不支持 `all`（降级） | **只**缓存“每步最后一个 token、且落在 `i * block_size`”的状态 | `cache_config.block_size` = **1024**（与 attn 组一致） | **命中块数 + `2 + num_spec`（峰值）**；状态块逐块前移，旧块滞后一步交还块池 | 命中集合 = 全部块边界；**best-effort**（`ref_cnt=0`，随时可被驱逐） |
+
+**`align` 运行时机制（状态块的分配、快照与回收）**：逐轮的 prefill / decode 运行流程见运行期篇 [`2_runtime_sequence.md`](./2_runtime_sequence.md) §4.3。
 
 #### 2.0.1 block size 装配链——attn 组 16 → 128 → 1024
 
@@ -365,73 +367,6 @@ Case 2（:308-327）：否则收集全部 backend 的 int 档位，从大到小�
 [P4] FullAttentionSpec.page_size_bytes（NPU ① 垫页后）= 2,072 KB（= 2 MB + 24 KB）
 [P5] 两族全等: True | 统一页 = 2,072 KB（= 2 MB + 24 KB） | padding = 1.16%
 ```
-
-#### 2.0.3 mamba_cache_mode 三模式语义（none / all / align）——谁在"对齐"、谁持有块
-
-§2.0.1 那条 `mamba_block_size` 分叉的上游开关就是 `cache_config.mamba_cache_mode`（三档定义见 `vllm/config/cache.py:133-141`）。下表"每请求持有块数"一列在上游有唯一权威来源——`MambaSpec.max_memory_usage_bytes`（kv_cache_interface.py:627-636）按模式分别给出 `(cdiv(max_model_len, bs)+num_spec) × page`、`(2+num_spec) × page`、`(1+num_spec) × page`：
-
-| 模式 | 缓存什么 | "对齐 checkpoint"由谁产生 | 每请求持有的 mamba 物理块 | 前缀命中 |
-|---|---|---|---|---|
-| `none` | 不缓存，只保留当前运行态 | — | **`1 + num_spec`**，恒定到请求结束（`ref_cnt>0`） | 无 |
-| `all` | **每个** `i * block_size` 位置的状态 | **kernel**：除"序列末端状态"外，再按 `block_size_to_align` 写入额外的对齐状态（mamba_mixer2.py:800-806、:822；触发它用的 `block_idx_*` 仅在 `all` 模式非 None，mamba_attn.py:425-435） | **`cdiv(num_tokens, bs) + num_spec`**（块表宽度按 `max_model_len` 预留，mamba_attn.py:111-120） | 命中集合 = 全部块边界；**强保证**（请求持有期间不可被驱逐） |
-| `align` | **只**缓存"每步最后一个 token、且落在 `i * block_size`"的状态 | **框架**：kernel 只写序列末端，`preprocess_mamba` 在跨块边界时把运行态拷进下一块，从而在边界上留下快照（mamba_utils.py:640-703） | **命中块数 + `2 + num_spec`（峰值）**；状态块逐块前移，旧块滞后一步交还块池 | 命中集合 = 全部块边界；**best-effort**（`ref_cnt=0`，随时可被驱逐） |
-
-**① 取值怎么来（上游自动选 + NPU patch 追加）**
-
-```python
-# vllm/model_executor/models/config.py:350-395（MambaModelConfig.verify_and_update_config 节选）
-if cache_config.enable_prefix_caching:                     # 开缓存
-    if cache_config.mamba_cache_mode == "none":            # 默认档 → 自动选
-        cache_config.mamba_cache_mode = (
-            "all" if model_config.supports_mamba_prefix_caching else "align")
-    if (cache_config.mamba_cache_mode == "all"
-            and not model_config.supports_mamba_prefix_caching):
-        cache_config.mamba_cache_mode = "align"            # 不支持 all → 降级
-else:
-    cache_config.mamba_cache_mode = "none"                 # 关缓存 → 强制 none
-```
-
-```python
-# vllm-ascend/patch/platform/patch_mamba_config.py:136-146（NPU 追加两条）
-if using_kv_store_with_hybrid and not is_extract_hidden_states:
-    cache_config.mamba_cache_mode = "align"    # 走 AscendStore（含其 MultiConnector）强制 align；仅 PD 分离不触发
-if cache_config.enable_prefix_caching and cache_config.mamba_cache_mode == "align":
-    cache_config.mamba_block_size = cache_config.block_size        # ← §2.0.1 的 1024 分支
-else:
-    cache_config.mamba_block_size = model_config.max_model_len     # ← 本部署分支：32768
-```
-
-- **本部署**：关前缀缓存 → `none`，`mamba_block_size = 32768`（一个块 = 整序列），运行期 mamba 组每请求恒占 1 块（§3.6、运行期篇 §4.1.3）。
-- **若开缓存 / 走 KV store**：`align` → `mamba_block_size = 1024`（与 attn 组一致）→ 两组块边界重合、`scheduler_block_size = LCM(1024) = 1024`，且 `hash_block_size` 可细到块粒度（§3.2）；反之非 `align` 时 mamba 块与 attn 块不整除 → 哈希退回 `scheduler_block_size`（kv_cache_utils.py:636-644）。
-- 上游 GPU 路径对 `all` 另有 `mamba_block_size = attn_block_size` 的处理（`vllm/platforms/interface.py:649-659`）；NPU 本部署走 patch 的 `else` 分支，实测 **32768**（§2.0.1 日志 [4]）。
-- 例外：`extract_hidden_states`（只迁移 hidden state 的连接器）不强制 `align`，保持上游推导结果——否则会被路由到 Ascend 编不过的 fused postprocess Triton 路径（patch 注释 :125-135）。
-
-**② `align` 的状态块怎么"走"（运行时机制）**
-
-> 为便于算术，下表设 `block_size = 64`、无投机解码（口径与本模型 1024 无关，只说明机制）。
-
-| 步骤 | num_computed | 新分配 | 状态块 | 发生的事 |
-|---|---|---|---|---|
-| 1 | 0 → 64 | 块 A（idx0） | A | 状态写在 A（恰落在对齐位置 64）；A 满块入哈希表 |
-| 2 | 64 → 100 | 块 B（idx1） | A → B | `preprocess_mamba` 把 A 的运行态拷入 B；**A 保留"位置 64 的快照"**——这正是它可被命中的原因 |
-| 3 | 100 → 150 | 块 C（idx2） | B | `remove_skipped_blocks` 释放 A（`ref_cnt→0`，`req_to_blocks[0]=null_block`）；**A 仍在哈希表里可被命中** |
-
-四条机制要点：
-
-1. **同一块内是原地覆盖写，只有跨块边界才"分配 + 拷贝"**：`allocate_new_blocks` 首句即 `if num_required_blocks <= len(req_blocks): return []`（single_type_kv_cache_manager.py:1148-1149），`preprocess_mamba` 的拷贝以 `prev_state_idx != curr_state_idx` 为门（mamba_utils.py:690）。
-2. **释放滞后一步**：`allocate_slots` 里 `remove_skipped_blocks`（kv_cache_manager.py:381）排在 `allocate_new_blocks`（:413）之前，上一轮记下的 `last_state_block_idx` 要等下一轮才回收（single_type_kv_cache_manager.py:1034-1046 与 :1154-1163 注释互见）。**旧块与新块会短暂并存**，这正是上游把 `align` 的内存上界记成 `page_size_bytes × (2 + num_spec)` 的原因（kv_cache_interface.py:633-634）——上表"峰值"一列的出处。
-3. **旧状态块不是丢弃，而是退回块池当缓存条目**：`free_blocks` 只 `ref_cnt--` 并入队（block_pool.py:419-441，默认 append 到**队尾**，而 `get_new_blocks` 从**队头** pop，block_pool.py:347），哈希要等它被真正复用时才清（:350-352、:365）。代码注释把这类块称作 **best-effort prefix-cache entries**，并把无哈希的 scratch 块 `prepend` 到队头优先复用（single_type_kv_cache_manager.py:497-501、:764）。
-4. **`none` 完全不参与这套**：kernel 侧直接原地读写同一批块（mamba_mixer2.py:985-988 注释原文 "Without caching, read and write in-place to the same blocks"，判据 `is_mamba_cache_all = mamba_cache_mode == "all"`，:689）；`preprocess_mamba` 只在 `align` 模式被调用（gpu_model_runner.py:4159-4177），`postprocess_mamba_all` 只在 `all` 模式（:1542-1551）。
-
-**③ 为什么叫 align——命名三层含义**
-
-1. **状态检查点必须落在 `i * block_size`**：`cache.py:139-140` 的定义原文即"only cache … when the token is at position `i * block_size`"；命中长度也必须落在对齐边界——`find_longest_cache_hit` 对不落在边界的块直接 `continue`（single_type_kv_cache_manager.py:999-1006，注释 "the prefix hit length aligned at block"）。
-2. **mamba 块粒度与 attn 块粒度对齐**：`mamba_block_size = cache_config.block_size`（patch :143-144；vllm/platforms/interface.py:676-677）——两组块边界重合，协调器才能在各组之间取统一命中长度。
-3. **"对齐"这个动作由框架承担**（区别于 `all` 由 kernel 承担）：即 ② 的拷贝机制——内核只写末端，框架负责把它搬到边界上。该模式来自上游 PR #30877《[V1][Hybrid] Mamba Prefix Caching with align mode》。
-
-配套的调度侧硬约束（都是为"每步结束能落在对齐点"）：必须开 chunked prefill（models/config.py:371-374）；`block_size <= max_num_batched_tokens`、`long_prefill_token_threshold >= block_size`、`disable_chunked_mm_input=False`、不支持 V2 model runner（vllm/config/vllm.py:2110-2128）；**不给 lookahead/draft token 分配块**，因为 `x * block_size + num_lookahead` 会破坏对齐（single_type_kv_cache_manager.py:1089-1093、:1134-1138）。
-
-**④ 与本模型的接口**：本部署 `none` 一口气推出三处已在本篇出现的结论——§2.0.1 的 `mamba_block_size = 32768`、§3.2 的哈希粒度退回 `scheduler_block_size`、§6 的 `num_new(mamba 组) = cdiv(num_tokens, 32768) − 已持块数`（恒 0~1）。若切到 `align`（`mamba_block_size = 1024`），这三处同时改口径：mamba 块边界与 attn 相同、哈希可到块粒度、mamba 组也和 attn 组一样逐块增长（前缀命中块 + 1 个状态块）。
 
 ### 2.1 第 ① 步 · 算规格：各层产出 KVCacheSpec
 
@@ -907,7 +842,7 @@ PP2 按层切成两段，每段 16 层（**12 linear + 4 full attn**）：
 | `attn_block_size = kernel_block_size × cdiv(ssm_page, kernel_block_size × attn_k_page)` | 前置 patch | 按 mamba ssm 状态页反推 attn 块 token 数 | `128 × cdiv(1MB, 128×1KB) = 128×8 = 1024` | patch_mamba_config.py:94 |
 | `统一页 = attn 页 + conv 页` | 前置 patch | 两族 `page_size_bytes` 全等（多组共享 block 账本的前提） | `2 MB + 24 KB = 2,072 KB`（padding 1.16%） | patch_mamba_config.py:113-117 |
 | `mamba_block_size = max_model_len`（前缀缓存关闭） | 前置 patch | mamba 组每请求只占 1 个整序列状态块 | `32768` | patch_mamba_config.py:146 |
-| 每请求 mamba 状态块数：`none`→`1+num_spec`；`all`→`cdiv(num_tokens, bs)+num_spec`；`align`→`命中块数+2+num_spec`（峰值） | 前置 patch / ⑤ 逻辑侧 | 三模式内存账的唯一权威来源 = `MambaSpec.max_memory_usage_bytes`（`all` 的块表宽度按 `max_model_len` 预留；`align` 的旧块滞后一步释放，故比稳态多算 1 块） | 本模型 `none`：恒 1 块 | kv_cache_interface.py:627-636、§2.0.3 |
+| 每请求 mamba 状态块数：`none`→`1+num_spec`；`all`→`cdiv(num_tokens, bs)+num_spec`；`align`→`命中块数+2+num_spec`（峰值） | 前置 patch / ⑤ 逻辑侧 | 三模式内存账的唯一权威来源 = `MambaSpec.max_memory_usage_bytes`（`all` 的块表宽度按 `max_model_len` 预留；`align` 的旧块滞后一步释放，故比稳态多算 1 块） | 本模型 `none`：恒 1 块 | kv_cache_interface.py:627-636、§2.0 |
 | `available = total × util − weights − activations` | ② 物理侧 | 单卡 KV 显存预算（profile_run 实测）；**NPU 无图项** | **51.90 GiB** | §2.2.1 |
 | `num_blocks = 多组统一 block 空间协调 → min 对齐` | ③ 物理侧 | per-worker 容量：attn 大页与 mamba 状态页共享预算后取 min | ≈ **6003** | §2.3③ |
 | `KVCacheTensor.size = page_size_bytes × num_blocks` | ③ 物理侧 | 每层一张张量的字节数（统一页） | `2,072 KB × 6003` | §2.3③ |
@@ -925,7 +860,7 @@ PP2 按层切成两段，每段 16 层（**12 linear + 4 full attn**）：
 1. **规格先行且平台透明**：所有显存计算源自 spec 的 `page_size_bytes`；NPU 的 Runner 重写负责两类 spec 分流与页对齐，③编排因此完全平台无关。
 2. **五阶段单向管线、每卡并行、物理先于逻辑**：`spec → profile → 编排 → 落张量 → 建逻辑层`，①②④ 经 collective RPC 执行；④编译预热完成后⑤才装配逻辑层，随后 `freeze_gc_heap` 封门。
 3. **多 group 是 GDN 混合模型的核心特征**：两类 spec 无法 merge → 全模型 **4 个 KV group**（1 组 attn 8 层 + 3 组 linear 各 8 层；切分规则 `group_size = min(8,24) = 8`，见 §2.3②）；⑤因此走"每 group 一个 manager"路径（4 个 manager），且因前缀缓存关闭命中 **`KVCacheCoordinatorNoPrefixCache`**（支持多组但无缓存特性）。
-4. **两类层 block_size 不同**：attn `1024`（页对齐产物）、mamba `32768`（= max_model_len）→ `scheduler_block_size = LCM = 32768`，且这一数字决定调度对齐与 hash 粒度。mamba 组的取值由 `mamba_cache_mode` 决定：`align` → 1024（与 attn 组对齐、状态按块入哈希），`none` / `all` → 32768（本部署 `none`）——三模式语义、块账与命名由来见 §2.0.3。
+4. **两类层 block_size 不同**：attn `1024`（页对齐产物）、mamba `32768`（= max_model_len）→ `scheduler_block_size = LCM = 32768`，且这一数字决定调度对齐与 hash 粒度。mamba 组的取值由 `mamba_cache_mode` 决定：`align` → 1024（与 attn 组对齐、状态按块入哈希），`none` / `all` → 32768（本部署 `none`）——三模式语义、块账与命名由来见 §2.0。
 5. **容量是 per-worker、且跨组协调的**：`num_blocks` 在统一 block 空间下由 attn 大页与 mamba 状态页共享预算后取 min，再跨 worker `min` 对齐并等比缩 `KVCacheTensor.size`；收口断言保证下发两侧的配置必然相等。
 6. **两种物理形态并存**：full-attn 层单张连续张量 → 切头 padding → 对半切 K/V 双池 → `view(nb×8,128,2,256)`（逻辑 1024-token、物理 8×128 细块）；linear 层单张量 → 状态视图。**`block_id == dim0 行号` 契约在两种形态上同时成立**。
 7. **`block_id == 行号` 桥接、物理-逻辑分离**：调度决策零显存拷贝，对 PP/TP 布局与两种物理形态完全透明（§4/§5）。
