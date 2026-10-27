@@ -50,7 +50,7 @@ vLLM 侧 KV cache 配套参数：
 | `enable_prefix_caching` | **False** | 混合模型强制关闭 |
 | `mamba_cache_mode` | `none` | 前缀缓存关闭 → `none`；仅走 KV store 连接器（AscendStore 及其 MultiConnector）时强制 `align`（`patch_mamba_config.py:136-142`，仅 PD 分离不触发）——三模式语义（none/all/align）见启动篇 §2；`align` 的 prefill/decode 逐轮运行流程见 §4.3 |
 
-**`page_size_bytes`（统一页）**：patch 把两族 spec 的对外页垫到全等 **2,072 KB（= attn 页 2 MB + conv 页 24 KB，padding 1.16%）**——这是4 组能共享同一 `BlockPool`（同一个 block 账本）的前提（数字链见启动篇 §2.2）。
+**`page_size_bytes`（统一页）**：patch 把两族 spec 的对外页垫到全等 **2,072 KB（= attn 页 2 MB + conv 页 24 KB，padding 1.16%）**——这是4 组能共享同一 `BlockPool`（同一个 block 账本）的前提（数字链见启动篇 §2.4）。
 
 基于上述参数，**每 worker** 的 KV cache 物理规模：
 
