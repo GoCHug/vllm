@@ -384,9 +384,6 @@ hybrid模型cache的物理布局（model_runner_v1.py:4495-4579）：
     - **conv 状态**：按 **卷积通道维**切 → `divide(2·k头·k头维 + v头·v头维, tp)`（短卷积作用在 q/k/v 上），kernel 长度维（`conv_kernel−1 + num_spec`）**不切**。
   - 因头内维度完整，**每个 rank 只更新自己那部分头的状态 → 无跨 TP 通信**（与 full-attn "按 KV 头切、无通信"同性质）。
 
-
-**关键推论**：同一 PP stage 的不同 TP rank `num_kv_heads` 相同 → `FullAttentionSpec` 相等 → §3.3① 合并断言通过。但 **spec 相等 ≠ 物理相同**：每个 TP rank 独立分配自己的 `1/tensor_parallel_size` 份张量；调度器只管 `block_id`，对 TP 内部头分布透明。
-
 **主线部署 · PP2 × TP2 = 4 卡（Ascend NPU）**（Qwen3.5-4B：32 层 = 24 linear + 8 full attn，`full_attention_interval=4`）
 
 PP2 按层切成两段，每段 16 层（**12 linear + 4 full attn**）：
@@ -398,6 +395,12 @@ PP2 按层切成两段，每段 16 层（**12 linear + 4 full attn**）：
 | W2 | 1 | 0 | L16–L31 | 12 linear + 4 full attn | 2 |
 | W3 | 1 | 1 | L16–L31 | 12 linear + 4 full attn | 2 |
 
+**分流规则：一轮遍历即产出两类 spec**，页对齐也在本步完成：
+
+| 本卡的层 | 分流分支（model_runner_v1.py） | 产出 spec |
+|---|---|---|
+| **4 × full-attn** | :4943-4946 取到 attn 模块 spec 后**原样存入** | **`FullAttentionSpec`**：`block_size = 1024`、`num_kv_heads = 2`（4 头 ÷ TP2）、`head_size = 256`、bf16 |
+| **12 × linear（GDN）** | :5002-5003 先收集 → :5027-5036 统一构造 | **`MambaSpec`**：`block_size = mamba_block_size = 32768`（关缓存分支）、`page_size_padded = 2,072 KB`；同一步里把 4 个 attn 层也垫到该页（:5034-5036） |
 
 **调用链**：
 
@@ -411,21 +414,23 @@ EngineCore._initialize_kv_caches(vllm_config)                       vllm/v1/engi
       │       一行转发 → return self.model_runner.get_kv_cache_spec()
       │
       └─ NPUModelRunner.get_kv_cache_spec()                          vllm_ascend/worker/model_runner_v1.py:4909（重写上游同名方法）
-         ├─ 只遍历本卡 16 层（AttentionLayerBase，kv_sharing 跳过）                        :4922
-         ├─ 12 层 linear（GDN）→ MambaSpec（block_size=32,768、page=2,072 KB）           :5002-5036
-         ├─ 4 层 full-attn → FullAttentionSpec（block_size=1,024、2 头、256 维、bf16）    :4943-4946
-         ├─ 4 个 attn 层 page_size_padded 垫到 mamba 页（object.__setattr__）             :5034-5036
-         └─ 返回 dict[layer_name, KVCacheSpec]（本卡 16 条 = 12 MambaSpec + 4 FullAttentionSpec）
+         ├─ 遍历本卡 16 层（AttentionLayerBase，kv_sharing 跳过）                        :4922
+         ├─ 4 层 full-attn → FullAttentionSpec（block_size=1,024、2 头、256 维、bf16）    :4943-4946（循环内当场写入）
+         ├─ 12 层 linear（GDN）→ 先暂存 mamba_layers，循环结束再统一构造 MambaSpec      :5002-5031（尾块写入）
+         ├─ 4 个 attn 层 page_size_padded 垫到 mamba 页（object.__setattr__）             :5033-5036
+         └─ 返回 dict[layer_name, KVCacheSpec]（本卡 16 条 = 4 FullAttentionSpec 在前 + 12 MambaSpec 在后）
 ```
 
-有两条分流，页对齐在 ① 阶段即完成：
+**返回顺序是契约的一部分：attn 先、mamba 后**（注意：不是层号顺序）
 
-| 本卡的层 | 分流分支（model_runner_v1.py） | 产出 spec |
-|---|---|---|
-| **12 × linear（GDN）** | :5002-5003 先收集 → :5027-5036 统一构造 | **`MambaSpec`**：`block_size = mamba_block_size = 32768`（关缓存分支）、`page_size_padded = 2,072 KB`；同一步里把 4 个 attn 层也垫到该页（:5034-5036） |
-| **4 × full-attn** | :4943-4946 取到 attn 模块 spec 后**原样存入** | **`FullAttentionSpec`**：`block_size = 1024`、`num_kv_heads = 2`（4 头 ÷ TP2）、`head_size = 256`、bf16 |
+源码注释把原因写死了（model_runner_v1.py:4923-4924）：“Must process Attention/MLAAttention before MambaBase to maintain ordering expected by graph parameter update logic in attention backends.” 落到本模型：
 
+- **顺序怎么形成**：attn 层在循环内就写进 `kv_cache_spec`（:4943-4946），而 mamba 层只暂存进 `mamba_layers`，要等循环结束后的尾块（:5027-5031）才写入 → 本模型 layer 0 虽是 GDN，它的 spec 仍排在 4 个 attn spec 之后；返回 16 条 = **4 attn 在前 + 12 mamba 在后**。
+- **为什么不能乱**：ACL Graph 回放用 `zip(forward_context.attn_metadata, graph_params.attn_params[num_tokens], ...)` **按位置配对**（attention_v1.py:474-491），而捕获时记录的参数顺序 = spec 注册顺序；顺序一变，`key_cache / block_table / seq_lens` 全部错位。
+- **顺序即 group id**：跨 worker 合并时按层名首次出现顺序拼接（kv_cache_utils.py:1994-2011），分组函数又按 spec **首次出现顺序**建组（`defaultdict(list)`，kv_cache_utils.py:1142-1144）→ 本模型 **group 0 = attn 组（8 层）、group 1~3 = mamba 三组（各 8 层）**，对应 `block_sizes = [1024, 32768, 32768, 32768]`、`kernel_block_sizes = [[128], [0], [0], [0]]`（model_runner_v1.py:4731-4769）。
+- **group id 被谁消费**：每 group 一个 manager（kv_cache_coordinator.py:101-120）、`attn_groups[group_id]`（model_runner_v1.py:4756）、前缀缓存块哈希编入 group id（kv_cache_utils.py:56-65）、物理张量按“组内第 i 层”跨组共享（kv_cache_utils.py:1319-1326）。唯一不依赖编号的是上游 Hybrid 协调器——它自己按类型把 attn 组提到最前（kv_cache_coordinator.py:547）。
 
+**关键推论**：同一 PP stage 的不同 TP rank `num_kv_heads` 相同 → `FullAttentionSpec` 相等 → §3.3① 合并断言通过。但 **spec 相等 ≠ 物理相同**：每个 TP rank 独立分配自己的 `1/tensor_parallel_size` 份张量；调度器只管 `block_id`，对 TP 内部头分布透明。
 
 ### 3.2 第 ② 步 · 测预算：profile 量出可用显存
 
@@ -494,7 +499,7 @@ def is_kv_cache_spec_uniform(kv_cache_spec) -> bool:
 > - **attn**：`cdiv(8, 8) = 1` 组（8 层）；
 > - **mamba**：`cdiv(24, 8) = 3` 组，按 `layers[i::3]` **交错切分**（每组 8 层）——交错而非顺序切片，是为 PP 下各 stage 的 group 仍均衡（注释给出的 stage 0/1 例子）。
 >
-> 合计 **1 组 attn + 3 组 mamba = 4 个 group**；页大小经 §2.4 统一，故 4 组的页相等，满足 `get_uniform_page_size` 的页唯一断言。
+> 合计 **1 组 attn + 3 组 mamba = 4 个 group**；编号为 **group 0 = attn、group 1~3 = mamba**（建组按 spec 首次出现顺序，来源见 §3.1「返回顺序是契约的一部分」）。页大小经 §2.4 统一，故 4 组的页相等，满足 `get_uniform_page_size` 的页唯一断言。
 
 **③ 投影到各 worker：按 projected groups 计算 num_blocks**
 
