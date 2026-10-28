@@ -59,7 +59,7 @@ $ vllm serve <qwen3.5-4b> --pipeline-parallel-size 2 --tensor-parallel-size 2 --
 │     ├─ build_async_engine_client(args)                  api_server.py:679      [P0] [vllm]
 │     │  └─ build_async_engine_client_from_engine_args(...) api_server.py:99      [P0] [vllm]
 │     │     ├─ AsyncEngineArgs.from_cli_args(args)（参数搬移，block_size=None） api_server.py:94   [P0]
-│     │     ├─ engine_args.create_engine_config()  ★config 期整个栈        api_server.py:123 → §2.2 逐帧树
+│     │     ├─ engine_args.create_engine_config()  ★config 期整个栈        api_server.py:123 → §2.1 · 0a 逐帧树
 │     │     └─ AsyncLLM.from_vllm_config(vllm_config, ...)                api_server.py:135  [P0] [vllm]
 │     │        └─ ★进程边界 1：P0 spawn 子进程 →
 │     │           ══ 进程 [P1 EngineCore 20736] ══ EngineCoreProc.run_engine_core
@@ -224,26 +224,26 @@ EngineCore.__init__（承上，:145 起）                    # engine/core.py:1
        └─ freeze_gc_heap() / enable_envs_cache()（core.py:228 / :233，启动装配冻结，运行期进入定态）
 ```
 
-## 2. 配置初始化（物理侧 / 逻辑侧之前）
+## 2. 配置初始化：物理侧 / 逻辑侧之前
 
-§2 讲三类量**怎么定**：`block_size` 与 `mamba_block_size` 在 config 期定型；`page_size_bytes` 在 config 期只给出数值（`cache_config.mamba_page_size_padded`），到 S1 算规格才成为两族全等的 `spec.page_size_bytes`。§3 再讲它们在物理侧怎么用（S1 垫值 → S3 断言 → S4 消费）。
+### 2.1 S0 页对齐
 
-### 2.1 量总表
+本节对应启动链的 **S0**（config 期，物理侧／逻辑侧都还没开始），下分三个子步：**0a** 装配 `block_size`、**0b** 定 `mamba_block_size`、**0c** 统一 `page_size_bytes`，前附一张量总表。三类量**怎么定**：`block_size` 与 `mamba_block_size` 在 config 期定型；`page_size_bytes` 在 config 期只给出数值（`cache_config.mamba_page_size_padded`），到 S1 算规格才成为两族全等的 `spec.page_size_bytes`。§3 再讲它们在物理侧怎么用（S1 垫值 → S3 断言 → S4 消费）。
 
-三类量 + 两个派生量（`kernel_block_sizes`、`scheduler_block_size` / `hash_block_size`）：
+**量总表**：三类量 + 两个派生量（`kernel_block_sizes`、`scheduler_block_size` / `hash_block_size`）：
 
 | block_size | 层 | 单位 | 含义 | 本模型（Qwen3.5-4B）取值 | 使用者 | 出处 |
 |---|---|---|---|---|---|---|
-| `cache_config.block_size` | **attn** | **token** | 一个块装多少 token——缓存/编号/前缀命中的粒度；1 个逻辑块 = 1024 token = 2,072 KB | **1024**（上游默认 **16** → 混合模型抬到 `kernel_block_size`（128）的整数倍 → 实测 1024） | BlockPool / KVCacheManager（`block_id` 编号、`num_blocks`）、调度器块对齐分片 | §2.2 |
-| `cache_config.mamba_block_size` | **mamba** | **token** | 与 attn 组同义（每块装多少 token）；但 mamba 的页字节与它无关，故它实际表示**状态快照间隔**而非容量；1 块 = 整序列状态（= `max_model_len`），每请求 1 块 | **32768**（`none` / `all`）；`align` 降为 **1024**（见 §2.3） | 同上 | patch :143-146 |
-| `spec.page_size_bytes` | **attn + mamba**（共用） | **字节** | `KVCacheSpec.page_size_bytes`（`@property`）：一个块占多少字节——物理账本（张量 dim0 行大小、显存预算的乘数）；**由 attn 组 `block_size` 决定**（= `block_size` × 每 token 页 + conv 页），**与 `mamba_block_size` 无关**；`AttentionSpec` 版在 `page_size_padded` 非空时直接返回 padded | **2,072 KB**（两族统一页，两族 spec 全等） | 全部 KV cache 张量：每层 `size = page_size_bytes × num_blocks` | kv_cache_interface.py:105、:168-180、patch :110-117、§2.4 |
+| `cache_config.block_size` | **attn** | **token** | 一个块装多少 token——缓存/编号/前缀命中的粒度；1 个逻辑块 = 1024 token = 2,072 KB | **1024**（上游默认 **16** → 混合模型抬到 `kernel_block_size`（128）的整数倍 → 实测 1024） | BlockPool / KVCacheManager（`block_id` 编号、`num_blocks`）、调度器块对齐分片 | 0a |
+| `cache_config.mamba_block_size` | **mamba** | **token** | 与 attn 组同义（每块装多少 token）；但 mamba 的页字节与它无关，故它实际表示**状态快照间隔**而非容量；1 块 = 整序列状态（= `max_model_len`），每请求 1 块 | **32768**（`none` / `all`）；`align` 降为 **1024**（见 0b） | 同上 | patch :143-146 |
+| `spec.page_size_bytes` | **attn + mamba**（共用） | **字节** | `KVCacheSpec.page_size_bytes`（`@property`）：一个块占多少字节——物理账本（张量 dim0 行大小、显存预算的乘数）；**由 attn 组 `block_size` 决定**（= `block_size` × 每 token 页 + conv 页），**与 `mamba_block_size` 无关**；`AttentionSpec` 版在 `page_size_padded` 非空时直接返回 padded | **2,072 KB**（两族统一页，两族 spec 全等） | 全部 KV cache 张量：每层 `size = page_size_bytes × num_blocks` | kv_cache_interface.py:105、:168-180、patch :110-117、0c |
 | `self.kernel_block_sizes` | **attn** | **token** | 逐组一项的 `list[list[int]]`；attn 组取 `select_common_block_size(kv_manager_block_size, backends)` 的结果，算子寻址粒度：大块内部再按 128-token 行切（大块展开 8×128）；`1024 % 128 == 0` 是选档底线（选档链路见 §3.4） | **128** | `reshape_and_cache`（写）、`npu_fused_infer_attention_score`（读）、slot mapping | model_runner_v1.py:4758-4762、patch :58 |
 | `self.kernel_block_sizes` | **mamba** | **token** | 同列表的 mamba 组项，固定 `[0]`——源码注释原文“set kernel_block_sizes to 0 to disable slotmapping computation of mamba block”；无子粒度，状态整块读写 | **0** | GDN 状态算子（conv / temporal 就地步进） | model_runner_v1.py:4766-4769 |
 | `scheduler_block_size` / `hash_block_size` | **全局**（跨组） | **token** | `resolve_kv_cache_block_sizes(kv_cache_config, vllm_config)` 返回的二元组，再作为 `Scheduler(block_size=…, hash_block_size=…)` 传入；多组时调度取各组 block_size 的 **LCM**、哈希取 **GCD**（本模型两者相等），跨组 token 对齐不变量；关缓存时 hash 粒度退回同值（§4.2） | **32768** / **32768** | Scheduler → KVCacheManager → 协调器 / managers | kv_cache_utils.py:593-609、core.py:155-156 |
 
-### 2.2 block size：16 → 128 → 1024 的装配链
+#### 0a block size：16 → 128 → 1024 的装配链
 
-各量的取值、使用者与出处见 §2.1 表，此处只展开 config 期装配链（截至 patch 结束）：
+各量的取值、使用者与出处见 §2.1 量总表，此处只展开 config 期装配链（截至 patch 结束）：
 
 ```text
 │（承接 §1.1 全栈图：run_server_worker → build_async_engine_client）
@@ -275,7 +275,7 @@ EngineCore.__init__（承上，:145 起）                    # engine/core.py:1
                   └─ 混合：is_hybrid=True → return，1024 保留（平台层不覆盖）                       vllm-ascend/utils.py:1397-1400
 ```
 
-### 2.3 mamba_block_size：mamba_cache_mode 三模式
+#### 0b mamba_block_size：mamba_cache_mode 三模式
 
 `cache_config.mamba_block_size` 由 `mamba_cache_mode` 决定（patch :143-146）：`align` → 取 attn 组同值 **1024**；`none` / `all` → 取 `max_model_len` **32768**。三种模式的差别不止块大小，还体现在缓存内容与每请求持有块数上：
 
@@ -285,9 +285,9 @@ EngineCore.__init__（承上，:145 起）                    # engine/core.py:1
 | `all` | 开缓存 **且** 模型声明 `supports_mamba_prefix_caching`——⚠️ **名义可选，NPU 上实际退化** | **每个** `i * block_size` 位置的状态 | `max_model_len` = **32768** | **`cdiv(num_tokens, bs) + num_spec`**（块表宽度按 `max_model_len` 预留，mamba_attn.py:111-120） | 命中集合 = 全部块边界；**强保证**（请求持有期间不可被驱逐） |
 | `align` | 开缓存但模型不支持 `all`（降级） | **只**缓存“每步最后一个 token、且落在 `i * block_size`”的状态 | `cache_config.block_size` = **1024**（与 attn 组一致） | **命中块数 + `2 + num_spec`（峰值）**；状态块逐块前移，旧块滞后一步交还块池（逐轮 prefill / decode 流程见运行期篇 §4.3） | 命中集合 = 全部块边界；**best-effort**（`ref_cnt=0`，随时可被驱逐） |
 
-### 2.4 page_size_bytes：两族统一为 2,072 KB
+#### 0c page_size_bytes：两族统一为 2,072 KB
 
-Qwen3.5-4B的4 个 group 要共用一个 `BlockPool`，必须要统一页大小 page_size_bytes，让mamba组可以把状态页塞进 attn 定义的页中，attn 页 = `block_size × 每 token 字节`，随 attn 的 block size 线性增长，mamba 的状态页则是固定的 1,048 KB，与任何 block size 都无关，所以一个页 page_size_bytes的大小需要由attn 的 block size 决定。vllm-ascend中的patch 用 `assert 每 token K 页 × attn_block_size == ssm 状态页`要求 attn 的 K 页存放 mamba 的 ssm 页，由此推出Qwen3.5-4B 的attn的block size=1024，统一页为2,072 KB。Qwen3.5-4B 页统一数字链（TP2 / KV bf16 / ssm fp32）：
+Qwen3.5-4B 的 4 个 group 共用一个 `BlockPool`，前提是**统一页大小 `page_size_bytes`**，让 mamba 组把状态页塞进 attn 定义的页中。attn 页 = `block_size × 每 token 字节`，随 attn 的 block size 线性增长；mamba 的状态页固定 1,048 KB，与任何 block size 都无关——所以页大小只能**由 attn 的 block size 决定**。vllm-ascend 的 patch 用 `assert 每 token K 页 × attn_block_size == ssm 状态页`，要求 attn 的 K 页正好盛下 mamba 的 ssm 页，由此反推出 Qwen3.5-4B 的 attn block size = 1024、统一页 = 2,072 KB。数字链如下（TP2 / KV bf16 / ssm fp32）：
 
 | 量 | 计算 | 值 |
 |---|---|---|
@@ -350,18 +350,19 @@ block-beta
 [P5] 两族全等: True | 统一页 = 2,072 KB（= 2 MB + 24 KB） | padding = 1.16%
 ```
 
-最后几个问题：
-为什么 mamba ssm 状态不能摊用 K+V 两段省掉空洞（设计取舍）：
-① ssm 状态视图 `(16,128,128)` 要求**单段连续嵌入**（GDN 算子 state buffer 布局）；
-② V 段语义被双池算子 API 固化（`reshape_and_cache` 双池入参、`slot→偏移` 线性）；
-③ 两族同构三段式 `[24KB | 1,024KB | 1,024KB]` 使块级操作（swap/注册/清零/块表）跨层一套逻辑；
+**最后几个设计问题**
 
-为什么双池（NPU）：
-NPU 双池的直接动机是 **PD 分离 KV 传输注册**——`model_runner_v1.py:4087-4088` 注释原文："To support prefill disaggregation, we need to split kvcache tensor into k cache and v cache, and the addr of both are aligned by 2M"：
+**为什么 mamba ssm 状态不能摊用 K+V 两段省掉空洞（设计取舍）**：
+
+- ① ssm 状态视图 `(16,128,128)` 要求**单段连续嵌入**（GDN 算子 state buffer 布局）；
+- ② V 段语义被双池算子 API 固化（`reshape_and_cache` 双池入参、`slot→偏移` 线性）；
+- ③ 两族同构三段式 `[24KB | 1,024KB | 1,024KB]` 使块级操作（swap/注册/清零/块表）跨层一套逻辑。
+
+**为什么是 K/V 双池（NPU）**：NPU 双池的直接动机是 **PD 分离 KV 传输注册**——`model_runner_v1.py:4087-4088` 注释原文："To support prefill disaggregation, we need to split kvcache tensor into k cache and v cache, and the addr of both are aligned by 2M"：
 传输层注册 buffer 要求 **dim0 = num_blocks + 地址 2MiB 对齐**；
 Ascend 注意力算子链（`reshape_and_cache` → `npu_fused_infer_attention_score`）的生态本来就是 K、V 两张独立 4D 入参。单机无 KV 传输时不强制 2MiB，但双池布局形态保留（含 `swap_blocks`/`copy_blocks` 双池搬行，attention_v1.py:114-140）。
 
-hybrid模型cache的物理布局（model_runner_v1.py:4495-4579）：
+**hybrid 模型 cache 的物理布局**（model_runner_v1.py:4495-4579）：
 混合模式下 full-attn 层**不走纯 FullAttn 的"K/V 双独立池"两次独立申请**——而是**单张连续张量 `2,072 KB × num_blocks`**（:4503），reshape 时先切掉头部 conv padding（`raw[24KB×nb:]`，:4576-4577）再对半切成 K 池（`:attn页`）与 V 池（`[attn页:]`，:4578-4579），各自 `view` 成 `(num_blocks×8, 128, 2, 256)` bf16（:4561-4570）——管理块 1024-token、物理 block_table **展开 8 份 128-token 细块**；mamba 层同张量格式按状态切片成视图。头部集中的 padding 字节与 mamba 尾部 V 位空洞**物理分配但永不访问**。
 
 ## 3. 物理侧：物理张量初始化
@@ -1135,7 +1136,7 @@ if not (cache_config.enable_prefix_caching or connector_enabled):
 | **序列位置 → block_id 的换算** | **各组自己的 `spec.block_size`**（`single_type_kv_cache_manager.py:66`，分配时 `cdiv(num_tokens, self.block_size)`） | attn 组按 1024 算、mamba 组按 32768 算 → 4 张 `block_table` 长度不同（序列 L：`cdiv(L,1024)` vs `cdiv(L,32768)`）；**同一个 `block_id=3` 在 attn 表里是第 3 个 1024-token 块，在 mamba 表里是第 3 个整序列状态块——同号不同义** |
 | **每格多少字节（容量刻度）** | **attn 的 block size**（mamba 页被垫到同值） | attn 页 = `block_size × 每 token 字节`；patch 用 `assert 每 token K 页 × attn_block_size == ssm 页`（patch :95）反推出 1024 再垫成统一页，故 `num_blocks = 预算 ÷ 统一页 ÷ 组内层数` 的"格"由 attn 定 |
 
-> 一句话：**编号共享、映射各算、刻度由 attn 定**——`block_id` 本身不含"这个块多大"的信息，块的 token 跨度必须按组查各组的 `block_size`（§2.1 表）。`scheduler_block_size`（32768）只用于命中/缓存边界，也不参与编号。
+> 一句话：**编号共享、映射各算、刻度由 attn 定**——`block_id` 本身不含"这个块多大"的信息，块的 token 跨度必须按组查各组的 `block_size`（§2.1 量总表）。`scheduler_block_size`（32768）只用于命中/缓存边界，也不参与编号。
 
 ### 5.4 运行期怎么读：一次 forward 的取数路径
 
