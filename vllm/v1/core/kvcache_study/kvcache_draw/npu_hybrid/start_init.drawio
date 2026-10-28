@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="p5a_step0" name="7-1 ⓪ 页对齐（config 期）">
-        <mxGraphModel dx="1004" dy="449" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="910" math="0" shadow="0">
+        <mxGraphModel dx="728" dy="604" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="910" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -134,7 +134,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="p5b_step1" name="7-2 ① 算规格 / ② 测预算（每卡 spec + available 51.90 GiB）">
-        <mxGraphModel dx="2108" dy="942" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="670" math="0" shadow="0">
+        <mxGraphModel dx="1528" dy="1268" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="670" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -379,7 +379,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="p5c_step2" name="7-3 ② 合并 spec / 按 stride=4 切 4 组">
-        <mxGraphModel dx="2342" dy="1047" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="400" math="0" shadow="0">
+        <mxGraphModel dx="1698" dy="1409" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="400" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -633,7 +633,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="p5d_step3" name="7-4 ③ 投影到本 worker / num_blocks ≈ 6,003">
-        <mxGraphModel dx="2635" dy="1178" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="546" math="0" shadow="0">
+        <mxGraphModel dx="1910" dy="1585" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="546" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -908,7 +908,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="p5e_step4" name="7-5 ④ 落张量（每卡 4 张量 · 6,003 × 2,072KB）">
-        <mxGraphModel dx="1054" dy="471" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="658" math="0" shadow="0">
+        <mxGraphModel dx="1698" dy="1409" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="658" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1342,7 +1342,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="p5f_step5" name="7-6 ⑤ 逻辑侧（BlockPool 6,003 块 + 4 manager）">
-        <mxGraphModel dx="1054" dy="471" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="638" math="0" shadow="0">
+        <mxGraphModel dx="1910" dy="1585" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="638" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1437,7 +1437,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="p6_mamode" name="8-GDN·mamba_cache_mode三模式">
-        <mxGraphModel dx="1054" dy="471" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1010" math="0" shadow="0">
+        <mxGraphModel dx="3056" dy="2536" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1010" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
