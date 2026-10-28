@@ -34,17 +34,23 @@ def create_app(root, data, page_dir, auto=True):
     """装配 FastAPI 应用(所有 GET 路由)."""
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import FileResponse
+    from fastapi.middleware.cors import CORSMiddleware
 
     root, data, page_dir = Path(root), Path(data), Path(page_dir)
     app = FastAPI(title="kv_visualizer", docs_url="/docs")
+    # 允许任意来源读 /api(跨 host/端口兜底: 如页面在 localhost 而后端在 127.0.0.1)
+    app.add_middleware(CORSMiddleware, allow_origins=["*"],
+                       allow_methods=["GET"], allow_headers=["*"])
     data_abs = str(data.resolve())
+    _NOCACHE = {"Cache-Control": "no-store, must-revalidate"}
 
     @app.get("/", include_in_schema=False)
     @app.get("/viz.html", include_in_schema=False)
     def index():
         dist = page_dir / "dist" / "index.html"
         if dist.is_file():
-            return FileResponse(dist, media_type="text/html")
+            # no-store: 每次取最新 bundle, 避免旧页面/旧报错文本被缓存
+            return FileResponse(dist, media_type="text/html", headers=_NOCACHE)
         raise HTTPException(404, "frontend 构建产物缺失: cd frontend_vue && npm install && npm run build")
 
     @app.get("/api/verify")
@@ -68,6 +74,7 @@ def create_app(root, data, page_dir, auto=True):
 
 
 def _serve_fastapi(root, data, page_dir, port, bind, auto):
+    """bind="::" 为 IPv6 双栈(同时接受 ::1 与 127.0.0.1), 避免 localhost 走 IPv6 打不到 IPv4 监听。"""
     """启动 FastAPI + uvicorn; 阻塞直至 Ctrl+C. 返回退出码 0."""
     import uvicorn
 

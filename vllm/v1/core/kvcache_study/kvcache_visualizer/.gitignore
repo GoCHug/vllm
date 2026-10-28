@@ -6,3 +6,15 @@ __pycache__/
 *.pyc
 # kv_datasets_root/ 13 个 JSON 在 git HEAD 中已被跟踪(原 viz_data 改名而来), 默认继续随库;
 # 不想入库可自行加行: kv_datasets_root/
+
+# 反向放行实现层: 仓库根 .gitignore 的 `lib/` 会忽略一切 lib/ 目录,
+# 曾致 backend_fastapi/lib/ 与 frontend_vue/src/lib/ 从未入库(本工具实现层丢失的根因)。
+!backend_fastapi/lib/
+!backend_fastapi/lib/**
+!frontend_vue/src/lib/
+!frontend_vue/src/lib/**
+# 新鲜度签名缓存(生成物)
+.viz_sig.json
+
+# 反向规则会连带放行 lib 下的 pyc, 这里重新排除
+backend_fastapi/lib/__pycache__/

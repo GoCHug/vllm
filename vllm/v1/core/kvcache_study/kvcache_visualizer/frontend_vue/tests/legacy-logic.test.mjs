@@ -9,9 +9,10 @@ const L = await import('../src/lib/legacy.js')
 const P22 = { model: { num_layers: 32, kv_heads: 8, head_dim: 128, dtype: 'bf16', block_size: 128, max_model_len: 8192 },
               parallel: { pp: 2, tp: 2 }, memory: { mode: 'measured', availableList: [51.96, 51.97, 51.92, 51.93] } }
 
-test('TABS 7 tabs 顺序(含 sandbox)', () => {
-  assert.equal(L.TABS.length, 7)
-  assert.deepEqual(L.TABS.map(t => t.id), ['overview', 'flow', 'sandbox', 'kvc', 'p1d', 'matrix', 'browser'])
+test('TABS 8 tabs 顺序(含 sandbox/qwen35)', () => {
+  assert.equal(L.TABS.length, 8)
+  assert.deepEqual(L.TABS.map(t => t.id),
+    ['overview', 'flow', 'sandbox', 'kvc', 'p1d', 'matrix', 'qwen35', 'browser'])
 })
 
 test('sbCompute 本机实测 PP2×TP2 算术', () => {

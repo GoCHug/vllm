@@ -10,15 +10,21 @@
 > └── README.md             # 本文件
 > ```
 
-## 快速开始（一条命令）
+## 快速开始（两步）
 
 ```bash
+# ① 构建前端页面产物（dist/ 是生成物、不入库；首次或改过前端后都要跑）
+cd frontend_vue && npm install && npm run build && cd ..
+
+# ② 启动后端（数据懒生成：实验产物一变自动重导）
 cd backend_fastapi
 python3 main.py serve
 # 浏览器打开 http://localhost:8000/ （Ctrl+C 停止）
 ```
 
-后端模式：数据懒生成、实验产物一变自动重导、顶部显示数据源、总览页可一键在线核验（A~D 60 项）。
+> 只想看页面、不想起后端：`python3 main.py pack` 生成单文件 `viz_standalone.html`，双击即开（数据内嵌）。
+> 页面自带数据源探测：`standalone(数据内嵌)` / `后端 /api(自动重导)` / `静态目录`，顶栏徽章显示当前来源。
+> 后端模式：数据懒生成、实验产物一变自动重导、总览页可一键在线核验（A~D 60 项）。
 
 ## 四个子命令（cd backend_fastapi && python3 main.py \<cmd\>）
 
@@ -30,15 +36,18 @@ python3 main.py serve
 | `pack` | 按需生成 `viz_standalone.html`（数据内嵌单文件，双击即开；用完可删 3s 再生） | `--out` |
 
 路径默认按 `config.py` 位置解析（任意 CWD 可运行）：
-`ROOT_DEF=../kv_experiment`（四个实验源目录所在地，2026-10-21 增 qwen35）、`PAGE_DIR=../frontend_vue`、`DATA_ROOT=../kv_datasets_root`。
+`ROOT=../../kvcache_experiment`（实验源根，只读）、`PAGE_DIR=../frontend_vue`（前端工程，serve 从这里取 `dist/index.html`）、`DATA_ROOT=../kv_datasets_root`（导出数据，后端读这里）。
+
+场景 key → 实验源子目录由 `config.SRC` 映射（2026-10 目录改名，旧名 `kv_experiment/kvc…` 已作废）：
+`kvc→kvcache_mix`、`p1d→kvcache_1p1d`、`matrix→kvcache_1p1d_prefix`、`qwen35→qwen35`。
 
 ## 数据链路
 
 ```
-kv_experiment/{kvc, kvc_1p1d, kvc_1p1d_prefix, qwen35}/   实验产物（.pt 归档 · [KVC] 日志 · PCM 六打点；qwen35=hybrid A/B/C 三轮）
+kvcache_experiment/{kvcache_mix, kvcache_1p1d, kvcache_1p1d_prefix, qwen35}/   实验产物（.pt 归档 · [KVC] 日志 · PCM 六打点；qwen35=hybrid A/B/C 三轮）
         │
         ▼  backend_fastapi/lib/exporter.py 五场景导出(kvc / p1d / matrix / kvcFlow / qwen35)
-kv_visualizer/kv_datasets_root/   manifest + 12 归档 JSON（DATA_ROOT，后端读取这里；qwen35 场景数据内嵌 manifest 不落独立文件）
+kvcache_visualizer/kv_datasets_root/   manifest + 12 归档 JSON（DATA_ROOT，后端读取这里；qwen35 场景数据内嵌 manifest 不落独立文件）
         │
         ▼  frontend_vue/dist/index.html（Vue bundle · embedded / api / static 三模式 fetch 懒加载）
 浏览器 ／ main.py(FastAPI)·lib.server_stdlib 后端 ／ pack 单文件
@@ -52,8 +61,8 @@ backend_fastapi/                 Python 后端
 ├── config.py                   全局配置（路径 ROOT/PAGE_DIR/DATA_ROOT · HEAT_N/POOLS · SOURCE_GLOBS）
 ├── requirements.txt            python 依赖（fastapi/uvicorn · torch/numpy）
 └── lib/                        业务包
-    ├── tensor_reader.py        .pt 归档读取与基础张量/统计（11 个共享函数，exporter/verify 共用）
-    ├── utils.py                工具：路径校验 safe_api_rel · 目录遍历 sources_signature · write_json
+    ├── tensor_reader.py        .pt 归档读取与基础张量/统计（load_pt/blocks_of/starts_of/stats_of/heat_of/pearson/rebuild 等，exporter 共用；verify 自带一份独立实现以保核验独立性）
+    ├── utils.py                工具：路径校验 safe_api_rel · 目录签名 sources_signature · write_json
     ├── dataset_loader.py       kv_datasets_root 数据集层（LOCK · ensure_fresh 新鲜度 · api_verify）
     ├── exporter.py             五场景导出（kvc / p1d / matrix / kvcFlow / qwen35）· build()
     ├── verify.py               独立核验器（A~D 60 项断言）· run()
@@ -65,12 +74,12 @@ frontend_vue/                    Vue3 + Vite 前端工程
 ├── src/App.vue                  页面骨架（8 个 view 区 + errbox + heatTip；onMounted 调 boot）
 ├── src/main.js                  入口（createApp → mount）
 ├── src/style.css                全量样式
-├── src/lib/legacy.js            页面 JS 逻辑层（自原单页版搬运+升级；legacy 只挂 TABS/boot 两处）
-├── src/lib/qwen35.js            第五场景主装配（实验画框/轮次对照/K≡ssm 几何 toggle 三卡 + 挂卡④流程/卡⑤实采双卡）
-├── src/lib/q35flow.js           卡④（prefill+1次 decode）逐层填充流程——SIM 48 步状态机 + 单行轨道/K(1)/V(1) 倍宽浮块 + 先读后写标记
-├── src/lib/q35real.js           卡⑤ 真实数据逐步回放——v1.4 STEP-TRACE J/K 轮实采驱动 + SIM↔REAL 对账板 + 数值含义图例
+├── src/lib/legacy.js            页面 JS 逻辑层（自原单页版 viz.html 搬运+升级；含 8 tab 渲染 + 启动沙盘纯函数 + 三模式数据源 embedded/api/static）
+├── src/lib/qwen35.js            第五场景主装配（7 卡：①画框②轮次③几何④流程⑤实采⑥逐层热条⑦根因实证；①徽章跳转）
+├── src/lib/q35flow.js           卡④ 逐层填充流程——SIM 48 步状态机 + 每池 3 轨道(conv/K≡ssm/V) + K(1)/V(1) 倍宽浮块 + 读写标记 + 卡内 toggle/重置/横幅/冲突日志条 + SIM/REAL 终态 diff
+├── src/lib/q35real.js           卡⑤ 真实数据逐步回放——STEP-TRACE J/K 实采(attn[j]+mb[j/6+j/12+j] 接线) + 池级 NaN 分级 + SIM↔REAL 一致率/首破零 + 数值含义图例
 ├── tests/legacy-logic.test.mjs  node:test 单测（13 项：沙盘算术/日志解析/阶段映射）
-└── dist/index.html              构建产物（~158KB 单文件 bundle；npm run build 生成）
+└── dist/index.html              构建产物（~146KB 单文件 bundle；npm run build 生成，不入库）
 
 kv_datasets_root/                DATA_ROOT —— vLLM 导出的 KV 数据（后端读取这里）
 ├── manifest.json                五场景索引（qwen35 场景数据内嵌 manifest，不落独立文件）
@@ -87,12 +96,12 @@ kv_datasets_root/                DATA_ROOT —— vLLM 导出的 KV 数据（后
 | 单机 PP2×TP2 · kvc | 块表 + 前缀复用逐位核验矩阵（256/256 torch.equal = 零篡改） |
 | PD 分离 1P1D · P→D 传输 | P→mooncake→D 链路 + Tx/重算/D独有 分区条 + 逐层逐块网格（Tx 64/64 = 传输无损） |
 | Prefix 四象限矩阵 | 2×2 象限卡 + 行为对照条形图 + 铁律核验表 + PCM 时间线 |
-| Hybrid 混合 · qwen35 | Qwen3.5-0.8B(hybrid 18 GDN+6 attn) 三轮 A/B/C(1024✅/2048❌/2048+PR15408✅)：实验画框 + 轮次对照表 + **K≡ssm 池几何 1024↔2048 toggle 主视觉**（2048 时 K(1) 红斜纹踩 ssm 行2/3 ↯ + cov 楔子 + 写序时间线）+ **④（prefill+1次 decode）逐层填充流程卡**（prefill 24 步写 24 个块 + decode 24 步读写 24 个块；6 池各一行，每池 3 条**单行轨道**：conv 底格[仅 mamba] / **K≡ssm 轨道 = ssm 块底格(恒 1MiB/格) + K(1) 浮块宽度随 block_size 倍增——1024=1 格宽≡ssm 块宽·画成一样大·恰好不覆盖；2048=2 格宽=2×ssm·红斜纹整段覆盖 ssm(2)(3)!** / V 段[V(1) 浮块同样倍宽但独占不撞]；decode **先读后写**[蓝R=读·金框=写]；可单步/自动播放/⏭跳decode；1024 全绿零覆盖 vs 2048：覆盖→decode ssm 重写反咬 K 前/后半→attn 读 K 混 fp32→NaN 乱码全链）+ **卡⑤ 真实数据逐步回放**（紧邻卡④ 下方对照；08 v1.4 STEP-TRACE · gggtest4 J/K 双轮实采——真实 forward 序[1 prefill+9 decode]逐层真实统计步进：J 轮全程绿零 NaN=SIM 零覆盖判据一致；K 轮 prefill 完成即检 K ✕2030×6 池→decode 起 pool1-5 ✕全NaN、探针 prms 14×——SIM 必炸判据一致且实测检出早于层序推演；含 SIM↔REAL 对账板 + 数值含义图例[蓝格=crms/srms 有效·K/V 浮块红✕=NaN 计数·pool0 幸存 vs pool1-5 全毁实测标注]）+ 逐层统计三轮 viridis 热条（B 轮 NaN=✕）+ 根因实证表（ssm 12×/Pearson 0.086/K 未写区基线破零/C 逐位回归）+ 8 项导出自检徽章 |
+| Hybrid 混合 · qwen35 | Qwen3.5-0.8B(hybrid 18 GDN+6 attn) 三轮 A/B/C(1024✅/2048❌/2048+PR15408✅) **共 7 卡**：①实验画框(A✅B❌C✅ 徽章，点击跳对应轮次) ②轮次对照(blockSize/prefix/块表/cov/输出) **③K≡ssm 池几何(单池三段 conv/K≡ssm/V + 写序时间线 + 1024↔2048 toggle；2048 时 K(1) 2 格宽压 ssm(2)∪(3) 红斜纹，V(1) 同落位但独占=绿)** **④逐层填充流程(SIM 48 步 = prefill 24 + decode 24；每池 3 轨道 conv/K≡ssm/V；K(1)/V(1) 绝对定位浮块宽随 blockSize 倍增；decode 蓝R读/金框写；卡内 1024/2048 + ⏭跳 decode + ⟲重置 + 完成横幅 + 冲突日志条；SIM/REAL 模式与 terminalMap 终态逐格 diff 火花标)** **⑤真实数据逐步回放(v1.4 STEP-TRACE J/K 双轮；按 attn[j]+mb[j/6+j/12+j] 接线，per-pool K/V/探针 NaN 分级 clean/幸存/全毁；J 全绿 ↔ K prefill 即破零 pool0幸存;附逐池 SIM↔REAL 一致率(并标注『实测检出早于 SIM 推演』)+ 整轮对账板 + 数值含义图例)** **⑥逐层统计(6 attn + 18 mamba × A/B/C viridis 热条，B 轮 NaN 打红斜纹)** **⑦根因实证(evidence 表: K 块/已写区/未写区 RMS、NaN 计数、ssm 12.03×、conv Pearson、C↔A 逐位回归 + 8 项导出自检徽章 + terminalMap 终态墨迹)** |
 | 张量浏览器 | 选文件→K/V→块→层；viridis 热图 + hover 查值 |
 
 ## 前端工程与构建链
 
-日常使用**不需要** node（`dist/` 已就绪；需要免后端单文件时 `python3 main.py pack` 现场生成——产物不驻留工作区，3 秒再生）。
+日常使用**不需要**改前端（`dist/` 是 `npm run build` 的生成物、不入库；仓库里若没有 `dist/`，须先按下文构建一次再 `serve`）。需要免后端单文件时 `python3 main.py pack` 现场生成——产物不驻留工作区，3 秒再生。
 修改前端时：
 
 ```bash
@@ -100,7 +109,7 @@ cd frontend_vue
 npm install            # 首次
 npm run build          # 构建 → dist/index.html（vite + singlefile 单文件 bundle）
 npm run dev            # 开发模式 :5173（/api 自动代理到 :8000）
-node --test tests/     # 前端单测 13 项（纯函数层）
+node --test tests/legacy-logic.test.mjs   # 前端单测 13 项（纯函数层）
 ```
 
 - `package.json` 只声明依赖范围（如 `vue: ^3.5`）；`package-lock.json` 把整棵依赖树的精确版本+完整性
@@ -132,7 +141,7 @@ node --test tests/     # 前端单测 13 项（纯函数层）
 
 | 操作 | 命令（当前目录 = backend_fastapi/） |
 |---|---|
-| 启动 | `python3 main.py serve` |
+| 启动 | `python3 main.py serve`（前置：`frontend_vue/dist/` 存在，否则首页 404 —— 先 `cd frontend_vue && npm install && npm run build`） |
 | 看活 | 浏览器开 `http://localhost:8000/` 或 `curl -I`；`lsof -nP -iTCP:8000 -sTCP:LISTEN` 查端口 |
 | 换端口 | `--port 8001` → 地址同步改（默认 bind 127.0.0.1 仅本机） |
 | API 文档 | `http://localhost:8000/docs`（FastAPI 自动生成） |
@@ -165,4 +174,22 @@ node --test tests/     # 前端单测 13 项（纯函数层）
   kv_datasets_root 承接原 viz_data 的 13 个 JSON（git rename 呈现）。
 - 生成物不入库（见 .gitignore）：node_modules、dist、viz_standalone.html、__pycache__。
   可再生成物已清理出工作区（viz_standalone.html 11M / __pycache__ 140K / .DS_Store），需要时 `pack` 即重出。
-- 实验源在 `../kv_experiment/{kvc, kvc_1p1d, kvc_1p1d_prefix, qwen35}`，本工具只读不写。
+- 实验源在 `../../kvcache_experiment/{kvcache_mix, kvcache_1p1d, kvcache_1p1d_prefix, qwen35}`，本工具只读不写。
+  仅在 `config.SRC` 中登记改名(`kvc`→`kvcache_mix` 等), 不动实验源本身。
+- **2026-10-28 实现层重建**: 此前仓库只提交了 `kv_visualizer` 的骨架(`main.py`/`config.py`/`App.vue`),
+  `backend_fastapi/lib/` 与 `frontend_vue/src/lib/` **从未入库**(`serve` 直接 `ModuleNotFoundError: No module named 'lib'`)。
+  本次按 git 历史里的可跑前身 `kvcache_docs_v2/viz/`(`viz_export.py` / `verify_tensors.py` / `viz.html`)
+  + `docs/design-2026-10-21-*.md` 移植重建: 后端 7 模块 + 前端 4 模块(legacy/qwen35/q35flow/q35real),
+  并修正 `config.py` 路径。**根因**: 仓库根 `.gitignore` 有一条 `lib/`(第 43 行)会忽略
+  一切名为 `lib` 的目录, 导致 `backend_fastapi/lib/`、`frontend_vue/src/lib/` 从未被跟踪;
+  已在 `kvcache_visualizer/.gitignore` 用 `!.../lib/` 反向放行这两个目录(并排除其下 `__pycache__`)。
+  qwen35 导出为数据驱动(rounds/evidence/selfCheck 由真实 `.pt` 重算,
+  frame 数值项由 meta 推导, 文案/trace 沿用既有 manifest); 其余场景源缺失时 `build()` 合并保护不丢数据。
+- **2026-10-28 qwen35 场景按 3 篇设计文档补齐**（`docs/design-2026-10-21-*.md`）：
+  后端 `export_qwen35` 现产出 `frame{nAttn,nMamba,groups,pools,…}` + `rounds[].attnLayers{K,V:{rms,written,unwritten,mean,max,hasNaN,nan}}` +
+  `evidence`（K 块/已写区/未写区 RMS · NaN 计数 · ssm 12.03× · conv Pearson · C↔A 逐位回归）+ **`terminalMap`**（一期 B：每轮×每池×每段的终态墨迹 + 值偏移判据）；
+  前端补齐 7 卡、卡④ 三轨道/卡内 toggle/重置/横幅/日志条/SIM-REAL diff、卡⑤ 字段接线修正与一致率、卡⑥ 逐层 viridis 热条。
+  实测对齐文档：`attn K 块 RMS` A=0.49855(=文档 0.4985) · 未写区 A=0/B=NaN · ssm 0.02791→0.33573(**12.03×**) ·
+  `terminalMap` A 全 clean / B K 全 polluted;卡⑤ K 轮首破零在 **prefill(fwd0)**、pool0 NaN=2030、终态 pool0 幸存 vs pool1-5 全毁。
+  **两处未 1:1 复现**：① `conv Pearson` 实测 0.3859(逐层均)/0.4444(全层拼接)，文档写 0.607 —— 口径未查明，保留实测值并标注口径；
+  ② `trace` 无法重算——二期 STEP-TRACE 归档 `tensors/step1024|step2048` 不在本机，导出时沿用既有 manifest 的 trace 并写 `trace.source` 标注。
