@@ -421,22 +421,56 @@ EngineCore._initialize_kv_caches(vllm_config)                       vllm/v1/engi
          └─ 返回 dict[layer_name, KVCacheSpec]（本卡 16 条 = 4 FullAttentionSpec 在前 + 12 MambaSpec 在后）
 ```
 
-**返回顺序是契约的一部分：attn 先、mamba 后**（注意：不是层号顺序）
+**契约 · 返回顺序是"attn 先、mamba 后"**（注意：**不是层号顺序**）——Qwen3.5-4B 的层序从 layer 0 起就是 GDN（mamba 在前），但 `get_kv_cache_spec()` 的返回顺序由契约规定：
 
-源码注释把原因写死了（model_runner_v1.py:4923-4924）：“Must process Attention/MLAAttention before MambaBase to maintain ordering expected by graph parameter update logic in attention backends.” 落到本模型：
+> 源码注释（model_runner_v1.py:4923-4924）："Must process Attention/MLAAttention before MambaBase to maintain ordering expected by graph parameter update logic in attention backends."
 
-- **顺序怎么形成**：attn 层在循环内就写进 `kv_cache_spec`（:4943-4946），而 mamba 层只暂存进 `mamba_layers`，要等循环结束后的尾块（:5027-5031）才写入 → 本模型 layer 0 虽是 GDN，它的 spec 仍排在 4 个 attn spec 之后；返回 16 条 = **4 attn 在前 + 12 mamba 在后**。
-- **为什么不能乱**：ACL Graph 回放用 `zip(forward_context.attn_metadata, graph_params.attn_params[num_tokens], ...)` **按位置配对**（attention_v1.py:474-491），而捕获时记录的参数顺序 = spec 注册顺序；顺序一变，`key_cache / block_table / seq_lens` 全部错位。
-- **顺序即 group id**：跨 worker 合并时按层名首次出现顺序拼接（kv_cache_utils.py:1994-2011），分组函数又按 spec **首次出现顺序**建组（`defaultdict(list)`，kv_cache_utils.py:1142-1144）→ 本模型 **group 0 = attn 组（8 层）、group 1~3 = mamba 三组（各 8 层）**，对应 `block_sizes = [1024, 32768, 32768, 32768]`、`kernel_block_sizes = [[128], [0], [0], [0]]`（model_runner_v1.py:4731-4769）。
-- **group id 被谁消费**：每 group 一个 manager（kv_cache_coordinator.py:101-120）、`attn_groups[group_id]`（model_runner_v1.py:4756）、前缀缓存块哈希编入 group id（kv_cache_utils.py:56-65）、物理张量按“组内第 i 层”跨组共享（kv_cache_utils.py:1319-1326）。唯一不依赖编号的是上游 Hybrid 协调器——它自己按类型把 attn 组提到最前（kv_cache_coordinator.py:547）。
+落到本模型：
 
-**关键推论**：同一 PP stage 的不同 TP rank `num_kv_heads` 相同 → `FullAttentionSpec` 相等 → §3.3① 合并断言通过。但 **spec 相等 ≠ 物理相同**：每个 TP rank 独立分配自己的 `1/tensor_parallel_size` 份张量；调度器只管 `block_id`，对 TP 内部头分布透明。
+- **顺序怎么形成**：attn 层**循环内当场写入** `kv_cache_spec`（:4943-4946）；mamba 层只先暂存 `mamba_layers`，等循环结束由尾块统一构造（:5027-5031）→ 本卡 16 条 = **4 attn 在前 + 12 mamba 在后**，layer 0 虽是 GDN 仍排在 4 个 attn 之后（见上树）。
+- **为什么不能乱**：ACL Graph 回放**按位置配对** —— `zip(forward_context.attn_metadata, graph_params.attn_params[num_tokens], ...)`（attention_v1.py:474-491），而捕获时记录的参数顺序就是 spec 注册顺序；顺序一变，`key_cache / block_table / seq_lens` 全部错位。
+- **顺序即 group id**：合并各 worker 时按层名**首次出现顺序**拼接（kv_cache_utils.py:1994-2011），分组函数按 spec **首次出现顺序**建组（`defaultdict(list)`，kv_cache_utils.py:1142-1144）→ 本模型固定为：
+
+| group id | 内容 | `block_size` | `kernel_block_size` |
+|---|---|---|---|
+| **0** | attn 组（8 层） | 1024 | `[128]` |
+| **1 ~ 3** | mamba 三组（各 8 层） | 32768 | `[0]` |
+
+（即 `block_sizes = [1024, 32768, 32768, 32768]`、`kernel_block_sizes = [[128], [0], [0], [0]]`，model_runner_v1.py:4731-4769）
+
+- **group id 被谁消费**：每 group 一个 manager（kv_cache_coordinator.py:101-120）、`attn_groups[group_id]`（model_runner_v1.py:4756）、前缀缓存块哈希编入 group id（kv_cache_utils.py:56-65）、物理张量按"组内第 i 层"跨组共享（kv_cache_utils.py:1319-1326）；唯一不依赖编号的是上游 Hybrid 协调器——它自己按类型把 attn 组提到最前（kv_cache_coordinator.py:547）。
 
 ### 3.2 第 ② 步 · 测预算：profile 量出可用显存
 
-这一步在每个 worker 上跑一次 dummy forward，量出权重+激活之外还剩多少字节给 KV cache。RPC 骨架相同（`ModelExecutor.determine_available_memory()`，core.py:257），Worker 实现即 `NPUWorker`（§3.2.1），核心特性在**图内存推迟记账**。
+这一步在每个 worker 上跑一次 dummy forward，量出权重+激活之外还剩多少字节给 KV cache。
 
-#### 3.2.1 测预算实现（vllm-ascend）：复用上游 profiling 工具，图内存推迟到 4d 记账
+**调用链**：
+
+```text
+EngineCore._initialize_kv_caches(vllm_config)                       vllm/v1/engine/core.py:236
+│
+└─ ② 测预算  model_executor.determine_available_memory()              :257
+   │        （[P1 引擎] RPC 下发 collective_rpc("determine_available_memory") → 逐 worker）
+   │
+   └─ ══ worker 进程 [P2..P5] ══  NPUWorker.determine_available_memory()   vllm-ascend/worker/worker.py:527
+      │        （覆写上游 Worker 同名方法，骨架见 vllm/v1/worker/gpu_worker.py:372）
+      ├─ 快路径：--kv-cache-memory 已指定 → 只 profile_run()（触发编译）、跳过记账 → 直接返回该值   :540-553
+      └─ 常规路径：
+         ├─ with memory_profiling(init_snapshot, weights_memory=权重占用)：                     :557-560
+         │     └─ NPUModelRunner.profile_run()                                                  vllm-ascend/worker/model_runner_v1.py:3684
+         │        ├─ eplb_warmup() + MC2 容量判断（本模型不命中，走 super() 主路径）              :3685-3690
+         │        ├─ PCP 时按 pcp_size 缩放 max_num_tokens（本模型 pcp=1 → 跳过）                :3694-3695
+         │        └─ super().profile_run()  ← 上游 max-token dummy forward                      vllm/v1/worker/gpu_model_runner.py:6168
+         │              （NPU 版不在此处估图内存：上游的 profile_cudagraph_memory() 未调用）
+         ├─ context 内、图捕获前取 torch 峰值  torch.npu.memory_stats(...)["…all.peak"]           :567
+         └─ 出 context 后记账                                                                    :569-574
+            ├─ 覆写 torch_peak_increase = 预捕获峰值 − 记账前峰值（避免把图池算成激活）
+            ├─ non_kv_cache_memory = non_torch_increase + torch_peak_increase + weights_memory
+            ├─ available = requested_memory − non_kv_cache_memory                               :590
+            ├─ 存 peak_activation_memory / non_torch_memory（供 4d 事后记账复用）                :577-578
+            ├─ 断言 init.free > profile 后 free（防同容器他进程腾显存）                           :581
+            └─ 日志 info_once("Available KV cache memory: %.2f GiB", scope="local")             :593-595
+```
 
 `NPUWorker.determine_available_memory()`（vllm_ascend/worker/worker.py:527）整体结构沿用上游框架，多处直接复用上游工具：
 
@@ -454,18 +488,65 @@ available_kv_cache_memory = requested_memory                （total × gpu_memo
                               + weights_memory)
 ```
 
-NPUGraph 此刻还没 capture（它发生在 4d `compile_or_warm_up_model()`，worker.py:732），自然无法在这一步预留。图内存改为**事后记账**：4d capture 拿到 `npugraph_memory_bytes` 后，worker.py:734-771 打印一条建议日志，把 `权重 + 峰值激活 + non-torch + NPUGraph + 150 MiB 余量`重算一遍，给出两种 `--kv-cache-memory` 建议值——这正是 NPU 上推荐用 `--kv-cache-memory` 而非只调利用率的原因。
+**显存分配示意**（每卡一条账，宽度仅示意、非严格按比例）：
 
-其余细节：
+```mermaid
+block-beta
+  columns 8
+  T["设备 total_memory"]:8
+  R["requested = total × util ｜ vLLM 的记账范围"]:7
+  G["total − requested<br/>未计入余量<br/>（4d 图内存出处）"]:1
+  W["权重<br/>weights_memory"]:2
+  P["峰值激活<br/>torch_peak_increase"]:2
+  NT["非 torch<br/>HCCL / 驱动 / ACL"]:1
+  AV["available_kv_cache_memory<br/>→ ③ 算 num_blocks"]:2
+  space:1
+  S["4d 实测 npugraph_memory_bytes 后重算并给建议：<br/>--kv-cache-memory = requested − non_kv − 150 MiB"]:8
+  classDef budget fill:#e3f2fd,stroke:#1e88e5,color:#0d47a1
+  classDef used fill:#e8f5e9,stroke:#4caf50,color:#1b5e20
+  classDef kv fill:#fff3e0,stroke:#ff9800,color:#e65100
+  classDef hole fill:#eeeeee,stroke:#bdbdbd,stroke-dasharray:4 3,color:#757575
+  class T,R budget
+  class W,P,NT used
+  class AV kv
+  class G hole
+```
 
-- 快照一致性断言用严格大于（`init.free > profile 后 free`，worker.py:581）；
-- 结果日志用 `logger.info_once("Available KV cache memory: %.2f GiB", ..., scope="local")`（worker.py:593-595）——本仓库实验启动日志里的 `[worker.py:593] Available KV cache memory: 51.90 GiB` 即此行。
+**那"没算图内存"为什么通常也不会 OOM？**——先把账分成两类：**② 只记"此刻已确定"的开销（权重 / 峰值激活 / 非 torch）；图内存属于"还没发生"的那类**——它要到 4d `capture_model()` 才产生，而 ② 跑在 ④ 分配 KV **之前**，此刻物理上无从测量。既然记不了，就靠下面三道兜底，按发生顺序排列：
+
+1. **分配前 · util 自带的隐式余量**：`requested = total × util`，只要 util < 1，`total − requested`（util=0.92 时即约 8% 的 total）就**从未被任何一项计入**；图池落地时优先从这块缓冲里出——所以"没记"不等于"没地方放"；
+2. **捕获后 · 4d 用实测值校正并给建议**：`capture_model()` 返回真实 `npugraph_memory_bytes`（:732），立即把它并进 non_kv 重算，并打印两个建议值 `--kv-cache-memory = requested − non_kv − 150 MiB`（塞进 requested）/ `= init.free − non_kv − 150 MiB`（吃满空闲）（:743-751）；那 **150 MiB 冗余**正是给 `memory_profiling` 可能低估的 non-torch 分配留的（ACL context / HCCL buffer / 驱动层，:737-742）；
+3. **万一仍不够 · 失败点在前**：④ 的顺序是**先落 KV 张量（4a-4c）再 capture（4d）**，所以真不够就是**启动期在 capture 处 OOM**——报错可见、可定位、可重试，不会拖到运行期才崩。
+
+> 因此准确的说法是：**它不是"不算也安全"，而是"util 余量 + 事后校正"这套概率性方案**——余量托底，日志给出建议值，通常两次启动即可收敛到安全值。要一次性拿到确定性，就走 `--kv-cache-memory` 快路径（:540-553）：用户显式把图内存算进预算，整套记账直接跳过。
+
+**结果日志**：`logger.info_once("Available KV cache memory: %.2f GiB", ..., scope="local")`（worker.py:593-595）——启动日志里的 `[worker.py:593] Available KV cache memory: 51.90 GiB` 即此行。
 
 ### 3.3 第 ③ 步 · 做编排：合并 / 分组 / num_blocks / 对齐 / 收口（平台无关）
 
-**调用链**：`EngineCore` → `get_kv_cache_configs()`（kv_cache_utils.py:1956），顶层入口，依次五步（PP 下含投影），最后在 EngineCore 侧收口生成 scheduler 版配置。**本节全部跑在引擎进程**（①② 上报的 spec / 预算是什么，它就编排什么）。本节内部小步①～⑤指编排的五小子步（见 §1 引言「小步编号约定」）。
+**调用链**：
 
-**① 合并全 worker spec**
+```text
+EngineCore._initialize_kv_caches(vllm_config)                              vllm/v1/engine/core.py:236
+│
+└─ ③ 做编排  get_kv_cache_configs(vllm_config, kv_cache_specs, available)   vllm/v1/core/kv_cache_utils.py:1956
+   │        （全部跑在引擎进程 [P1]，无 RPC——消费 ①② 上报的 spec / 预算）
+   │
+   ├─ 3a 合并全 worker spec（同层跨 TP 断言等值）                              :1994-2003
+   ├─ ※ 注册表终检 KVCacheSpecRegistry.check_kv_cache_spec_registry()         :2007
+   ├─ 3b 分组  get_kv_cache_groups(vllm_config, merged)                       :2011
+   │     ├─ is_kv_cache_spec_uniform()：merge 试探 → 混合模型判 False          :874
+   │     └─ unify_kv_cache_spec_page_size() → _get_kv_cache_groups_uniform_page_size()   :1074
+   ├─ 3c 投影到每 worker（PP 分片）_project_kv_cache_groups_to_worker()        :2016-2019
+   │     ├─ num_gpu_blocks_override：available ← override × 每块字节           :2027-2041
+   │     └─ 自适应 max_model_len（仅 original_max_model_len == -1）             :2043-2046
+   ├─ 3d 逐 worker 预算校验  _check_enough_kv_cache_memory()                   :2049-2057 → :713
+   ├─ 3e 生成配置  get_kv_cache_config_from_groups()                          :2059-2070 → :1247
+   │     └─ num_blocks = available // page_size // group_size                 :1309-1326
+   └─ 3f 跨 worker 对齐：min(num_blocks) + tensor.size 等比缩                   :2075-2085
+```
+
+**3a 合并全 worker spec**
 
 ```python
 # kv_cache_utils.py:1994（节选）
@@ -477,7 +558,7 @@ for kv_cache_spec_one_worker in kv_cache_specs:
 
 > 不同 PP stage 层名不同，合并天然不覆盖；同 PP stage 的不同 TP rank 提交同层 spec，断言检查必须等值。**NPU 的 Mamba 层在①阶段已是 `MambaSpec`、"平台特有 spec"从这一步就进入平台无关的编排管线——编排对 spec 的具体类型不感知，只按 `page_size_bytes` 等抽象接口工作。**
 
-**② 分组 `get_kv_cache_groups()`** —— 混合模型两类 spec **无法 merge** → `is_kv_cache_spec_uniform()` 返回 False → 走通用多组路径（先 `unify_kv_cache_spec_page_size` 统一页，再 `_get_kv_cache_groups_uniform_page_size` 分组），得到 **4 个 group**：
+**3b 分组 `get_kv_cache_groups()`** —— 混合模型两类 spec **无法 merge** → `is_kv_cache_spec_uniform()` 返回 False → 走通用多组路径（先 `unify_kv_cache_spec_page_size` 统一页，再 `_get_kv_cache_groups_uniform_page_size` 分组），得到 **4 个 group**：
 
 ```python
 # kv_cache_utils.py:874
@@ -501,9 +582,33 @@ def is_kv_cache_spec_uniform(kv_cache_spec) -> bool:
 >
 > 合计 **1 组 attn + 3 组 mamba = 4 个 group**；编号为 **group 0 = attn、group 1~3 = mamba**（建组按 spec 首次出现顺序，来源见 §3.1「返回顺序是契约的一部分」）。页大小经 §2.4 统一，故 4 组的页相等，满足 `get_uniform_page_size` 的页唯一断言。
 
-**③ 投影到各 worker：按 projected groups 计算 num_blocks**
+**3c 投影到各 worker（PP 分片）**
 
-`num_blocks` 是 **per-worker 容量**——每个 worker 只物化本 rank 负责的层（PP 切层；TP 切头已折进各 worker spec 的 `page_size_bytes`）。`get_kv_cache_configs()` 先执行 `_project_kv_cache_groups_to_worker()`，把 global groups（4 组：1 attn 8 层 + 3 linear 各 8 层）投影为各 worker 的 **projected groups**（仍 4 组：1 attn 4 层 + 3 linear 各 4 层），再传入 `get_kv_cache_config_from_groups()`（kv_cache_utils.py:1247）：
+`num_blocks` 是 **per-worker 容量**——每个 worker 只物化本 rank 负责的层（PP 切层；TP 切头已折进各 worker spec 的 `page_size_bytes`）。`get_kv_cache_configs()` 先执行 `_project_kv_cache_groups_to_worker()`，把 global groups（4 组：1 attn 8 层 + 3 linear 各 8 层）投影为各 worker 的 **projected groups**（仍 4 组：1 attn 4 层 + 3 linear 各 4 层）：
+
+```python
+# kv_cache_utils.py:2016-2019
+projected_groups_per_worker = [
+    _project_kv_cache_groups_to_worker(global_kv_cache_groups, worker_spec)
+    for worker_spec in kv_cache_specs
+]
+```
+
+> 同一步里还有两处**预算校准**：`num_gpu_blocks_override` 生效时把 `available_memory` 改成 `override × 每块字节`（:2027-2041）；`original_max_model_len == -1` 时用 projected groups 自适应 `max_model_len`（:2043-2046）。
+
+**3d 校验 `_check_enough_kv_cache_memory()`**
+
+```python
+# kv_cache_utils.py:713（节选）
+needed_memory = get_needed_memory()  # max_model_len 下需要的 KV cache
+if needed_memory > available_memory:
+    estimated_max_len = estimate_max_model_len(available_memory)
+    raise ValueError(...)  # 建议调大 util 或调小 max_model_len
+```
+
+**3e 生成配置：`get_kv_cache_config_from_groups()` 与 `num_blocks`**
+
+逐 worker 按 projected groups 生成配置（kv_cache_utils.py:2059-2070 → `get_kv_cache_config_from_groups` :1247），`num_blocks` 在函数内算出：
 
 ```python
 # kv_cache_utils.py:1309-1326（节选）
@@ -516,17 +621,7 @@ num_blocks = available_memory // page_size // group_size
 
 > 混合模型下 `num_blocks` 是**跨组 + 跨 worker 协同**的结果：attn 大页与 mamba 状态页在**统一 block 空间**下协调、取最小可行值——本仓库实测最终 **`num_blocks ≈ 6003`**（≈ 6,147,276 tokens ÷ 1024），即 mamba 状态占用与 attn 大页共享同一 51.9 GiB 预算后的结果（部署篇 §3③ 的粗算差值即 mamba 状态占用）。
 
-**④ 校验 `_check_enough_kv_cache_memory()`**
-
-```python
-# kv_cache_utils.py:713（节选）
-needed_memory = get_needed_memory()  # max_model_len 下需要的 KV cache
-if needed_memory > available_memory:
-    estimated_max_len = estimate_max_model_len(available_memory)
-    raise ValueError(...)  # 建议调大 util 或调小 max_model_len
-```
-
-**⑤ 多 worker 对齐**——集中式调度下，同一请求的 4 组 `block_table` 由所有 worker 共用：PP 各 stage 按段索引本 rank 的层，TP 各 rank 只读写本 rank 的 KV 头子集，因此 `block_id` 必须在任意 rank 上都对应有效物理行。对齐策略：取各 worker `num_blocks` 的最小值作为全局统一值：
+**3f 多 worker 对齐**——集中式调度下，同一请求的 4 组 `block_table` 由所有 worker 共用：PP 各 stage 按段索引本 rank 的层，TP 各 rank 只读写本 rank 的 KV 头子集，因此 `block_id` 必须在任意 rank 上都对应有效物理行。对齐策略：取各 worker `num_blocks` 的最小值作为全局统一值：
 
 ```python
 # kv_cache_utils.py:2074（节选）
@@ -632,6 +727,14 @@ kv_caches[layer_name] = (k_cache, v_cache)       # 每层 = (K, V) 二元组
 **4d. 编译与预热：NPUGraph `NPUWorker.compile_or_warm_up_model()`（worker.py:706）**
 
 逐 size `_dummy_run`（:728）触发编译 → `capture_model()`（:732）捕获 NPUGraph → **图内存事后记账**（:734-771）：把 `权重 + 峰值激活 + non-torch + NPUGraph + 150 MiB` 从 requested（或整机 free）里扣掉，打印两种 `--kv-cache-memory` 建议值 → ATB 首算预热（:775-776）→ 绑核（:779-783）→ 重置随机种子（:786）。
+
+**图内存的"三层归属"**（最容易混的一点）：
+
+- **量法**：`capture_model()` 靠**设备空闲差**度量 —— `start_free − end_free`（`gpu_model_runner.py:6547/6565/6583`），与 torch / non-torch 的分类无关；NPU 只是包了一层并透传返回值（`model_runner_v1.py:5101-5111`，内部 `torch.cuda.*` 经 `_torch_cuda_wrapper()` 桥接到 `torch.npu.*`）。
+- **物理归因 → torch 侧**：图池由 torch_npu 的 graph pool 承载（`current_platform.graph_pool_handle()`，`gpu_model_runner.py:6415/6561`），会体现在 `torch_memory = memory_reserved()`；而 `non_torch_memory = cuda_memory − torch_memory` **不含**它。
+- **账本归因 → 两个都不进，单独第四项**：不算 `torch_peak_increase`（② 取的是**图捕获前**峰值，worker.py:567 注释），也不算 `non_torch_increase`（其时间窗早于本步的 capture），而是这里**单列**加到 non_kv（worker.py:743-748）。
+
+> 与 §3.2 分配图里"把它画在 `total − requested` 那块余量上"不矛盾：那里说的是**预算出处**（util 预留），这里说的是**归因口径**——它由 torch 申请，只是迟到于 ② 的记账窗口。
 
 至此 NPU 物理侧就绪：每 worker **两种形态并存**——full-attn 4 层的 K/V 双池（各 `(nb×8,128,2,256)` bf16）+ linear 12 层的状态张量。
 
@@ -880,8 +983,8 @@ state = state_cache[layer][state_blocks]          # 按状态视图读写，每�
 | `mamba_block_size = max_model_len`（前缀缓存关闭） | 前置 patch | mamba 组每请求只占 1 个整序列状态块 | `32768` | patch_mamba_config.py:146 |
 | 每请求 mamba 状态块数：`none`→`1+num_spec`；`all`→`cdiv(num_tokens, bs)+num_spec`；`align`→`命中块数+2+num_spec`（峰值） | 前置 patch / ⑤ 逻辑侧 | 三模式内存账的唯一权威来源 = `MambaSpec.max_memory_usage_bytes`（`all` 的块表宽度按 `max_model_len` 预留；`align` 的旧块滞后一步释放，故比稳态多算 1 块） | 本模型 `none`：恒 1 块 | kv_cache_interface.py:627-636、§2 |
 | `available = total × util − weights − activations` | ② 物理侧 | 单卡 KV 显存预算（profile_run 实测）；**NPU 无图项** | **51.90 GiB** | §3.2.1 |
-| `num_blocks = 多组统一 block 空间协调 → min 对齐` | ③ 物理侧 | per-worker 容量：attn 大页与 mamba 状态页共享预算后取 min | ≈ **6003** | §3.3③ |
-| `KVCacheTensor.size = page_size_bytes × num_blocks` | ③ 物理侧 | 每层一张张量的字节数（统一页） | `2,072 KB × 6003` | §3.3③ |
+| `num_blocks = 多组统一 block 空间协调 → min 对齐` | ③ 物理侧 | per-worker 容量：attn 大页与 mamba 状态页共享预算后取 min | ≈ **6003** | §3.3e（公式）、§3.3f（min 对齐） |
+| `KVCacheTensor.size = page_size_bytes × num_blocks` | ③ 物理侧 | 每层一张张量的字节数（统一页） | `2,072 KB × 6003` | §3.3e |
 | `scheduler_block_size = LCM(各组 block_size)` | ⑤ 逻辑侧 | 跨组 token 对齐不变量（命中掩码/缓存边界/offload 粒度；**非**调度分片——分片用 `cache_config.block_size`） | `LCM(1024, 32768) = 32768` | kv_cache_utils.py:627、sched/scheduler.py:319 |
 | `hash_block_size = scheduler_block_size`（关缓存无 connector） | ⑤ 逻辑侧 | 哈希粒度；关前缀缓存时退回 | `32768` | kv_cache_utils.py:633-634 |
 | `num_new(attn 组) = max(cdiv(num_tokens, 1024) − 已持块数, 0)` | ⑤ 逻辑侧 | attn 组每步新块数 | prefill 1 / decode 0~1 | §4.6、运行期篇 §4.1.3 |
@@ -895,7 +998,7 @@ state = state_cache[layer][state_blocks]          # 按状态视图读写，每�
 
 1. **规格先行且平台透明**：所有显存计算源自 spec 的 `page_size_bytes`；NPU 的 Runner 重写负责两类 spec 分流与页对齐，③编排因此完全平台无关。
 2. **五阶段单向管线、每卡并行、物理先于逻辑**：`spec → profile → 编排 → 落张量 → 建逻辑层`，①②④ 经 collective RPC 执行；④编译预热完成后⑤才装配逻辑层，随后 `freeze_gc_heap` 封门。
-3. **多 group 是 GDN 混合模型的核心特征**：两类 spec 无法 merge → 全模型 **4 个 KV group**（1 组 attn 8 层 + 3 组 linear 各 8 层；切分规则 `group_size = min(8,24) = 8`，见 §3.3②）；⑤因此走"每 group 一个 manager"路径（4 个 manager），且因前缀缓存关闭命中 **`KVCacheCoordinatorNoPrefixCache`**（支持多组但无缓存特性）。
+3. **多 group 是 GDN 混合模型的核心特征**：两类 spec 无法 merge → 全模型 **4 个 KV group**（1 组 attn 8 层 + 3 组 linear 各 8 层；切分规则 `group_size = min(8,24) = 8`，见 §3.3b）；⑤因此走"每 group 一个 manager"路径（4 个 manager），且因前缀缓存关闭命中 **`KVCacheCoordinatorNoPrefixCache`**（支持多组但无缓存特性）。
 4. **两类层 block_size 不同**：attn `1024`（页对齐产物）、mamba `32768`（= max_model_len）→ `scheduler_block_size = LCM = 32768`，且这一数字决定调度对齐与 hash 粒度。mamba 组的取值由 `mamba_cache_mode` 决定：`align` → 1024（与 attn 组对齐、状态按块入哈希），`none` / `all` → 32768（本部署 `none`）——三模式语义、块账与命名由来见 §2。
 5. **容量是 per-worker、且跨组协调的**：`num_blocks` 在统一 block 空间下由 attn 大页与 mamba 状态页共享预算后取 min，再跨 worker `min` 对齐并等比缩 `KVCacheTensor.size`；收口断言保证下发两侧的配置必然相等。
 6. **两种物理形态并存**：full-attn 层单张连续张量 → 切头 padding → 对半切 K/V 双池 → `view(nb×8,128,2,256)`（逻辑 1024-token、物理 8×128 细块）；linear 层单张量 → 状态视图。**`block_id == dim0 行号` 契约在两种形态上同时成立**。
