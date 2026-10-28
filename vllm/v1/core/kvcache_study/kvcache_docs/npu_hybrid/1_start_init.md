@@ -293,20 +293,20 @@ Qwen3.5-4B的4 个 group 要共用一个 `BlockPool`，必须要统一页大小 
 |---|---|---|
 | 每 token K 页 | head_dim(256) × num_kv_heads(TP2 后 4÷2=2) × bf16(2B) | 1 KB |
 | temporal 状态页（ssm） | value 头(32÷TP2=16) × 128 × 128 × fp32(4B) | 1 MB（1,024 KB） |
-| conv 状态页 | (16×128) × (conv_kernel−1 = 3) × 4B | 24 KB |
+| conv 状态页 | 卷积通道(2×k头16×128 + v头32×128) ÷ TP2 = 4,096 × (conv_kernel−1 = 3) × bf16(2B) | 24 KB（24,576 B） |
 | **attn 块大小** | 128 × ⌈1 MB ÷ (128 × 1 KB)⌉ = 128 × 8 | **1024 token** |
 | attn 原生页 | 2(K/V) × 1024 × 2 头 × 256 × 2B | 2 MB（2,048 KB） |
 | mamba 原生页 | conv(24 KB) + ssm(1 MB) | 1,048 KB（= 1 MB + 24 KB） |
 | **统一页（两族 `page_size_bytes` 全等）** | **attn 页 + conv 页**（patch :113-117） | **2,072 KB（= 2 MB + 24 KB）** |
 | padding 比例 | conv 24 KB ÷ 2,072 KB | **1.16%**（= 日志原值） |
 
-**成型时点与落地位置**：2,072 KB 只在 **config 期计算一次**，① 期只把该值**附着**到两个 spec 上（附着动作本身发生在 ①），③ 只断言、④ 只消费：
+**成型时点与落地位置**：2,072 KB 只在 **config 期计算一次**，物理侧初始化 ① 期只把该值**附着**到两个 spec 上，③ 只断言、④ 只消费：
 
 | 时点 | 发生什么 | 出处 |
 |---|---|---|
-| **config 期（唯一一次计算）** | patch 算出 `cache_config.mamba_page_size_padded = attn 页 + conv 页 = 2,072 KB`，并用 `assert` 保证 attn 块的 K 半区正好罩住 ssm 页；此时**还没有任何 spec 实例** | patch :95、:110-117 |
+| **config 期** | patch 算出 `cache_config.mamba_page_size_padded = attn 页 + conv 页 = 2,072 KB`，并用 `assert` 保证 attn 块的 K 半区正好罩住 ssm 页；此时**还没有任何 spec 实例** | patch :95、:110-117 |
 | **① 算规格 · mamba 侧** | `MambaSpec(..., page_size_padded=cache_config.mamba_page_size_padded)` 构造即带值；`page_size_bytes` 断言 padded ≥ 原生 1,048 KB 后返回 2,072 KB | abstract.py:45-51、kv_cache_interface.py:616-625 |
-| **① 算规格 · attn 侧** | `FullAttentionSpec` 不带 padded，原生页 2,048 KB；NPU 侧 `object.__setattr__(spec, "page_size_padded", 2,072 KB)` **事后垫上**（绕 frozen dataclass）→ 两族 `spec.page_size_bytes` 首次全等 | model_runner_v1.py:5030-5036 |
+| **① 算规格 · attn 侧** | `FullAttentionSpec` 不带 padded，原生页 2,048 KB；NPU 侧 `object.__setattr__(spec, "page_size_padded", 2,072 KB)` **事后垫上** → 两族 `spec.page_size_bytes` 首次全等 | model_runner_v1.py:5030-5036 |
 | **③ 编排** | `get_uniform_page_size` 断言 `len(page_sizes) == 1`，按 2,072 KB 给 4 组算 `num_blocks`（详见 §3.3） | kv_cache_utils.py:977、:1688 |
 | **④ 落张量** | `page_stride = page_size_padded // dtype_size` 定块步长，切头部 conv padding 后对半切 K/V 双池（详见 §3.4.1） | model_runner_v1.py:4522-4531、:4576-4579 |
 
@@ -334,20 +334,6 @@ block-beta
   class ac,mv hole
 ```
 
-为什么 mamba 不能摊用 K+V 两段省掉空洞（设计取舍）：
-① ssm 状态视图 `(16,128,128)` 要求**单段连续嵌入**（GDN 算子 state buffer 布局）；
-② V 段语义被双池算子 API 固化（`reshape_and_cache` 双池入参、`slot→偏移` 线性）；
-③ 两族同构三段式 `[24KB | 1,024KB | 1,024KB]` 使块级操作（swap/注册/清零/块表）跨层一套逻辑；
-④ 摊用方案仅省 24 KB/块（空洞 37.3%→36.6%），不划算。
-
-为什么双池（NPU）：
-NPU 双池的直接动机是 **PD 分离 KV 传输注册**——`model_runner_v1.py:4087-4088` 注释原文："To support prefill disaggregation, we need to split kvcache tensor into k cache and v cache, and the addr of both are aligned by 2M"：
-传输层注册 buffer 要求 **dim0 = num_blocks + 地址 2MiB 对齐**；
-Ascend 注意力算子链（`reshape_and_cache` → `npu_fused_infer_attention_score`）的生态本来就是 K、V 两张独立 4D 入参。单机无 KV 传输时不强制 2MiB，但双池布局形态保留（含 `swap_blocks`/`copy_blocks` 双池搬行，attention_v1.py:114-140）。
-
-hybrid模型cache的物理布局（model_runner_v1.py:4495-4579）：
-混合模式下 full-attn 层**不走纯 FullAttn 的"K/V 双独立池"两次独立申请**——而是**单张连续张量 `2,072 KB × num_blocks`**（:4503），reshape 时先切掉头部 conv padding（`raw[24KB×nb:]`，:4576-4577）再对半切成 K 池（`:attn页`）与 V 池（`[attn页:]`，:4578-4579），各自 `view` 成 `(num_blocks×8, 128, 2, 256)` bf16（:4561-4570）——管理块 1024-token、物理 block_table **展开 8 份 128-token 细块**；mamba 层同张量格式按状态切片成视图。头部集中的 padding 字节与 mamba 尾部 V 位空洞**物理分配但永不访问**。
-
 **Qwen3.5 4B 实测**：
 
 ```
@@ -364,19 +350,40 @@ hybrid模型cache的物理布局（model_runner_v1.py:4495-4579）：
 [P5] 两族全等: True | 统一页 = 2,072 KB（= 2 MB + 24 KB） | padding = 1.16%
 ```
 
+最后几个问题：
+为什么 mamba ssm 状态不能摊用 K+V 两段省掉空洞（设计取舍）：
+① ssm 状态视图 `(16,128,128)` 要求**单段连续嵌入**（GDN 算子 state buffer 布局）；
+② V 段语义被双池算子 API 固化（`reshape_and_cache` 双池入参、`slot→偏移` 线性）；
+③ 两族同构三段式 `[24KB | 1,024KB | 1,024KB]` 使块级操作（swap/注册/清零/块表）跨层一套逻辑；
+
+为什么双池（NPU）：
+NPU 双池的直接动机是 **PD 分离 KV 传输注册**——`model_runner_v1.py:4087-4088` 注释原文："To support prefill disaggregation, we need to split kvcache tensor into k cache and v cache, and the addr of both are aligned by 2M"：
+传输层注册 buffer 要求 **dim0 = num_blocks + 地址 2MiB 对齐**；
+Ascend 注意力算子链（`reshape_and_cache` → `npu_fused_infer_attention_score`）的生态本来就是 K、V 两张独立 4D 入参。单机无 KV 传输时不强制 2MiB，但双池布局形态保留（含 `swap_blocks`/`copy_blocks` 双池搬行，attention_v1.py:114-140）。
+
+hybrid模型cache的物理布局（model_runner_v1.py:4495-4579）：
+混合模式下 full-attn 层**不走纯 FullAttn 的"K/V 双独立池"两次独立申请**——而是**单张连续张量 `2,072 KB × num_blocks`**（:4503），reshape 时先切掉头部 conv padding（`raw[24KB×nb:]`，:4576-4577）再对半切成 K 池（`:attn页`）与 V 池（`[attn页:]`，:4578-4579），各自 `view` 成 `(num_blocks×8, 128, 2, 256)` bf16（:4561-4570）——管理块 1024-token、物理 block_table **展开 8 份 128-token 细块**；mamba 层同张量格式按状态切片成视图。头部集中的 padding 字节与 mamba 尾部 V 位空洞**物理分配但永不访问**。
+
+
 
 ## 3. 物理侧：物理张量初始化
 
-物理侧的四步横跨两侧进程：①②④ 的实现主体经 collective RPC 落在各 worker 进程（vllm-ascend 的 `NPUWorker` / `NPUModelRunner`），③ 做纯 Python 编排跑在引擎进程 `_initialize_kv_caches`（core.py:236-317）内。前三步全程不申请任何 KV 显存，产出**唯一的容量仲裁结果** `KVCacheConfig`：一份完整版 list（供 ④ 逐卡落张量）+ 一份 scheduler 版（供逻辑侧 ⑤ 装配）；第四步才把张量落到 NPU 显存。而四步开始**之前**，`cache_config.block_size` 与 `cache_config.mamba_page_size_padded` 已在 VllmConfig 构造期定型（§2），两族页的最终对齐值在 ① 附着到 spec 上（§2.4）。
+物理侧的四步横跨两侧进程：①②④ 的实现主体经 collective RPC 落在各 worker 进程（vllm-ascend 的 `NPUWorker` / `NPUModelRunner`），③ 做纯 Python 编排跑在引擎进程 `_initialize_kv_caches`（core.py:236-317）内。前三步全程不申请任何 KV 显存，产出**唯一的容量仲裁结果** `KVCacheConfig`：一份完整版 list（供 ④ 逐卡落张量）+ 一份 scheduler 版（供逻辑侧 ⑤ 装配）；第四步才把张量落到 NPU 显存。
 
 ### 3.1 第 ① 步 · 算规格：各层产出 KVCacheSpec
 
-这一步遍历本 worker 模型里的每个 Attention 层，问出"你需要什么形状的 KV cache"。RPC 骨架平台无关（同一个 `ModelExecutor.get_kv_cache_specs()`，core.py:243），Worker / ModelRunner 的实现由 vllm-ascend 提供（§3.1.1）；对本模型，最终产出的是**两类 spec**：full-attn 层的上游 `FullAttentionSpec` + linear 层的 `MambaSpec`。
+这一步遍历本 worker 模型里的每个 Attention 层，问出"你需要什么形状的 KV cache"。对本模型，最终产出的是**两类 spec**：full-attn 层的 `FullAttentionSpec` + linear 层的 `MambaSpec`。
 
 **可见范围：PP 切层、TP 切头**——① 只遍历本 worker 负责的层，故每卡只产出 16 层 spec；切分规则如下：
 
 - **PP 按层切分**：`config/model.py:1307-1320` `get_layers_start_end_indices()` 按 `pp_rank` 切层范围，`get_kv_cache_spec()` 只返回本 worker 负责的层（NPU 的 `NPUModelRunner.get_kv_cache_spec` 同样只遍历本 worker 层，model_runner_v1.py:4922）。
-- **TP 按 KV 头切分**（仅 full-attn 组）：`config/model.py:1284-1295` `get_num_kv_heads()` 除以 `tensor_parallel_size`，同一 PP stage 的不同 TP rank 存同层但不同头子集；linear 组的 GDN 状态另按 value 头切分。
+- **TP 按"头"切分**（两类层都切，但**切维不同**）：同一 PP stage 的不同 TP rank 存**同层、不同头子集**，且都**不复制**状态——
+  - **full-attn 组**：按 **KV 头**切——`config/model.py:1284-1295` `get_num_kv_heads()` 除以 `tensor_parallel_size`（本模型 4÷2 = **2 头/卡**）；
+  - **linear 组（GDN）**：两族状态的切维不同：
+    - **temporal / SSM 状态**：按 **value 头**切 → `(num_v_heads/tp, head_v_dim, head_k_dim)`，**头内两维完整不切**（本模型 32÷2 = **16 头** × 128 × 128，即"页统一"一节里的 ssm 页）；
+    - **conv 状态**：按 **卷积通道维**切 → `divide(2·k头·k头维 + v头·v头维, tp)`（短卷积作用在 q/k/v 上），kernel 长度维（`conv_kernel−1 + num_spec`）**不切**。
+  - 因头内维度完整，**每个 rank 只更新自己那部分头的状态 → 无跨 TP 通信**（与 full-attn "按 KV 头切、无通信"同性质）。
+
 
 **关键推论**：同一 PP stage 的不同 TP rank `num_kv_heads` 相同 → `FullAttentionSpec` 相等 → §3.3① 合并断言通过。但 **spec 相等 ≠ 物理相同**：每个 TP rank 独立分配自己的 `1/tensor_parallel_size` 份张量；调度器只管 `block_id`，对 TP 内部头分布透明。
 
@@ -391,30 +398,34 @@ PP2 按层切成两段，每段 16 层（**12 linear + 4 full attn**）：
 | W2 | 1 | 0 | L16–L31 | 12 linear + 4 full attn | 2 |
 | W3 | 1 | 1 | L16–L31 | 12 linear + 4 full attn | 2 |
 
-#### 3.1.1 NPU 主线（vllm-ascend）：Worker 直接转发，Runner 有重写且分流两类 spec
 
-**调用链**：`EngineCore` → `ModelExecutor.get_kv_cache_specs()`（core.py:243）→ RPC 到各 worker（平台插件选到 `NPUWorker`）→ `NPUWorker.get_kv_cache_spec()`（vllm_ascend/worker/worker.py:891）——**一行转发，自身零逻辑**：
+**调用链**：
 
-```python
-# worker.py:891
-def get_kv_cache_spec(self) -> dict[str, KVCacheSpec]:
-    return self.model_runner.get_kv_cache_spec()
+```text
+EngineCore._initialize_kv_caches(vllm_config)                       vllm/v1/engine/core.py:236
+│
+└─ ① 算规格  model_executor.get_kv_cache_specs()                      :243
+   │        （[P1 引擎] RPC 下发 collective_rpc("get_kv_cache_spec")：引擎进程 → 逐 worker）
+   │
+   └─ ══ worker 进程 [P2..P5] ══  NPUWorker.get_kv_cache_spec()       vllm_ascend/worker/worker.py:891
+      │       一行转发 → return self.model_runner.get_kv_cache_spec()
+      │
+      └─ NPUModelRunner.get_kv_cache_spec()                          vllm_ascend/worker/model_runner_v1.py:4909（重写上游同名方法）
+         ├─ 只遍历本卡 16 层（AttentionLayerBase，kv_sharing 跳过）                        :4922
+         ├─ 12 层 linear（GDN）→ MambaSpec（block_size=32,768、page=2,072 KB）           :5002-5036
+         ├─ 4 层 full-attn → FullAttentionSpec（block_size=1,024、2 头、256 维、bf16）    :4943-4946
+         ├─ 4 个 attn 层 page_size_padded 垫到 mamba 页（object.__setattr__）             :5034-5036
+         └─ 返回 dict[layer_name, KVCacheSpec]（本卡 16 条 = 12 MambaSpec + 4 FullAttentionSpec）
 ```
 
-`NPUModelRunner.get_kv_cache_spec()`（vllm_ascend/worker/model_runner_v1.py:4909）**重写**了上游 Runner 的同名方法。遍历骨架（`AttentionLayerBase` → 逐层问 spec → kv_sharing 跳过）沿用上游，多出的是 NPU 特有的分流：
+有两条分流，页对齐在 ① 阶段即完成：
 
-| 层类型 | NPU 分支（model_runner_v1.py） | 产出 spec |
+| 本卡的层 | 分流分支（model_runner_v1.py） | 产出 spec |
 |---|---|---|
-| decoder 普通 `Attention`（**full-attn 层走此路**） | :4943-4946 `if spec := attn_module.get_kv_cache_spec(...)` 后**原样存入** | 上游 **`FullAttentionSpec`**（block_size=1024、num_kv_heads=2、head_size=256、bf16） |
-| `MambaBase`（**GDN linear 层走此路**） | :5002-5003 先收集、:5027-5036 后统一处理 | **`MambaSpec`**（GDN 状态页，`block_size=mamba_block_size=32768`、`page_size_padded=2,072 KB`）；并把同模型 attn 层的 `page_size_padded` 对齐到 mamba 页（:5034-5036 `object.__setattr__(..., "page_size_padded", ...)`） |
-| `CacheOnlyAttentionLayer`（extract_hidden_states） | :5005-5025 | **`HiddenStateCacheSpec`**（重建为可 pickle 的新对象，单独成组） |
-| MLA / sparse / `use_compress` | :4948-5000 / :4939-4942 | 各自 NPU spec（本模型不涉及） |
+| **12 × linear（GDN）** | :5002-5003 先收集 → :5027-5036 统一构造 | **`MambaSpec`**：`block_size = mamba_block_size = 32768`（关缓存分支）、`page_size_padded = 2,072 KB`；同一步里把 4 个 attn 层也垫到该页（:5034-5036） |
+| **4 × full-attn** | :4943-4946 取到 attn 模块 spec 后**原样存入** | **`FullAttentionSpec`**：`block_size = 1024`、`num_kv_heads = 2`（4 头 ÷ TP2）、`head_size = 256`、bf16 |
 
-另有两个边界行为：EC 传输 producer 直接返回 `{}`（:4918-4919）；`kv_sharing_target_layer_name` 同样登记后跳过（:4928-4938）。
 
-> **对 Qwen3.5-4B 的结论**：同一模型里两类层拿到两类 spec——full-attn 层是 dense 原类 `FullAttentionSpec`，linear 层是 `MambaSpec`；两者字段无法 merge，因此 §3.3 会把全模型拆成 **4 个 group**，并在 ① 阶段就完成 attn 层的页对齐（:5034-5036）。
-
-**※ 边注 · 扫描 `non_causal`（平台无关）**——specs 收集齐后，EngineCore 检查是否有层标记 `non_causal=True`（如 Prefix LM attention），这段在 EngineCore 进程内生效：若命中，会关闭 chunked prefill 并**关闭前缀缓存**。本模型前缀缓存已被混合约束强制关闭，此分支不额外触发。
 
 ### 3.2 第 ② 步 · 测预算：profile 量出可用显存
 
