@@ -25,7 +25,8 @@
 | 并行策略 | PP2 × TP2 |
 
 服务启动命令如下：
-```
+
+```bash
 vllm serve /xxx/qwen3-5-4b --pipeline-parallel-size 2 --tensor-parallel-size 2 --served-model-name qwen3.5-4b --port 8100 --max-model-len 32768 > vllm_qwen35_pp2tp2.log 2>&1 &
 ```
 
@@ -121,7 +122,7 @@ sequenceDiagram
     ModelExecutor->>NPUWorker: collective_rpc("initialize_from_config")
     NPUWorker->>NPUWorker: ensure_kv_transfer_initialized()（P/D 分离传输组）
     NPUWorker->>NPUModelRunner: initialize_kv_cache(config)
-    Note over NPUModelRunner: 4a full-attn 层按整块（2,072 KB×nb）申请单张连续张量<br/>4b 切头 conv padding → 对半切 K/V 双池 → view(nb×8,128,2,256)<br/>4c 复用上游 bind_kv_cache；linear 层按状态切片
+    Note over NPUModelRunner: 4a 每张共享张量按整块（2,072 KB×nb）申请单张连续张量<br/>4b attn 切头 conv padding → 对半切 K/V 双池 → view(nb×8,128,2,256)；linear 层切 conv/ssm 状态<br/>4c 复用上游 bind_kv_cache
     NPUModelRunner-->>NPUWorker: 完成（张量落卡）
     NPUWorker-->>ModelExecutor: 完成
     ModelExecutor->>NPUWorker: collective_rpc("compile_or_warm_up_model")
@@ -262,7 +263,7 @@ EngineCore.__init__（承上，:145 起）                    # engine/core.py:1
          │
          └─ VllmConfig.__post_init__（pydantic 自动触发）                                          vllm/config/vllm.py:847
             ├─ self.try_verify_and_update_config()                                                :856
-            │  └ is_hybrid=True（混合模型）
+            │  └─ is_hybrid=True（混合模型）
             │     └─ HybridAttentionMambaModelConfig.verify_and_update_config(self)               :1903
             │        └─ verify_and_update_config（patch 版）                                      vllm-ascend/patch/platform/patch_mamba_config.py:31
             │           ├─ kernel_block_size = 128                                                :58
@@ -336,7 +337,7 @@ block-beta
 
 **Qwen3.5 4B 实测**：
 
-```
+```text
 [1] vllm CacheConfig() default block_size = 16
 [2] refresh_block_size(hybrid, block=16) untouched -> 16           # is_hybrid 跳过，交给模型层
 [3] attn_block_size = 1024 | attn_page = 2 MB | conv_page = 24 KB | padding = 1.16%
@@ -488,7 +489,7 @@ EngineCore._initialize_kv_caches(vllm_config)                       vllm/v1/engi
 
 **核心公式——没有图内存项**（worker.py:572-574 / :590）：
 
-```
+```text
 available_kv_cache_memory = requested_memory                （total × gpu_memory_utilization）
                            − (non_torch_increase
                               + torch_peak_increase          （预捕获峰值）
@@ -665,8 +666,6 @@ return create_kv_cache_group_specs(kv_cache_spec, grouped_layers)
 - `kv_cache_spec`：组内 8 层 merge 后的 spec（group 0 为 `FullAttentionSpec`，group 1~3 为 `MambaSpec`）；
 - `is_eagle_group = False`（本模型未启投机解码）。
 
-这份结果就是 3c 的入参 `global_kv_cache_groups`，随后被 `_project_kv_cache_groups_to_worker()` 投影成各 worker 上的 4 组。
-
 #### 3c 自适应 + 校验：先投影到 per-worker，再过三道预算门
 
 3b 的 4 组是**全模型视角**（每组 8 层），而 `num_blocks` 是 **per-worker 容量**——每个 worker 只物化本 rank 负责的层（PP 切层；TP 切头已折进各卡 spec 的 `page_size_bytes`）。所以先投影、再逐 worker 预算：
@@ -692,8 +691,6 @@ for group in global_kv_cache_groups:
                          is_eagle_group=group.is_eagle_group and bool(worker_layer_names))
     )
 ```
-
-> 函数里另有 `UniformTypeKVCacheSpecs` 的重建分支，本模型 4 组都是普通 spec，不触发。
 
 本模型投影结果（PP2：PP0 = L0–15、PP1 = L16–31；TP 不切层，同 stage 两卡完全相同）：
 
@@ -727,9 +724,9 @@ if needed_memory > available_memory:
 | mamba（3 组） | `mamba_cache_mode=none` → 恒 1 块状态 | 1 × 3 = 3 |
 | **合计** | — | **35 块** |
 
-`needed = group_size(4) × 2,072 KB × 35 ≈ 283 MB`——不到 `available` 的 1%，**校验通过，`max_model_len` 保持 32768**（不触发任何降档）。
+`needed = group_size(4) × 2,072 KB × 35 ≈ 283 MB`——不到 `available` 的 1%，校验通过。
 
-#### 3d 生成配置：4 张共享张量 + `num_blocks = 6003`
+#### 3d 生成配置：各 worker 4 张共享张量 + `num_blocks`
 
 逐 worker 用 projected groups 调 `get_kv_cache_config_from_groups()`（:2059-2070 → :1247）。该函数按 groups 形态分四支，本模型走**通用分支**：
 
@@ -753,13 +750,13 @@ kv_cache_tensors = [
 ]
 ```
 
-`get_num_blocks`（:967）就是一行整除：`available_memory // page_size // num_layers`（`num_layers` 即 `group_size`）；`may_override_num_blocks` 在本模型是空操作。
+`get_num_blocks`（:967）就是一行整除：`available_memory // page_size // num_layers`（`num_layers` 即 `group_size`）；
 
 本模型四个量的落点：
 
 | 量 | 计算式 | 本模型 |
 |---|---|---|
-| `group_size` | 投影后最大组层数 | **4** |
+| `group_size` | 投影后各个 worker 上最大组层数 | **4** |
 | `page_size` | 两族统一页 | **2,072 KB** |
 | `num_blocks` | `available // 2,072 KB // 4` | **6003**（启动日志实测） |
 | `kv_cache_tensors` | `group_size` 张 | **4 张**，每张 `2,072 KB × 6003 ≈ 11.9 GiB` |
@@ -775,9 +772,9 @@ kv_cache_tensors = [
 
 > 这张表是 4a 的直接前提：`_allocate_kv_cache_tensors` 遍历每张张量的 `shared_by`，一旦同时看到 `MambaSpec` 与 `AttentionSpec` 就把 `hybrid_with_attn_and_mamba` 置 True（model_runner_v1.py:4106-4114），于是**该张量的所有共享层（连 attn 层）都走单张量路径**，不做 K/V 两次独立申请。
 
-#### 3e 对齐：4 张卡取 `min(num_blocks)`，张量等比缩
+#### 3e 对齐：各 worker 4 张卡取 `min(num_blocks)`，张量等比缩
 
-同一请求的 4 组 `block_table` 被所有 worker 共用（PP 按段索引、TP 只读本头子集），所以 `block_id` 必须在**每张卡**上都对应有效物理行。4 张卡的 profiling 结果可能因显存碎片略有差异，统一取最小值：
+同一请求的 4 组 `block_table` 会被所有 worker 共用（PP 按段索引、TP 只读本头子集），所以 `block_id` 必须在**每张卡**上都对应有效物理行。4 张卡的 profiling 结果可能因显存碎片略有差异，需要统一取最小值：
 
 ```python
 # kv_cache_utils.py:2075-2085（节选）
@@ -790,17 +787,19 @@ for kv_cache_config in kv_cache_configs:
         tensor.size = tensor.size // num_blocks_old * min_num_blocks
 ```
 
-本例四卡实测 `num_blocks` 一致（**6003**），`min` 即 6003、4 张张量的 `size` 不变；若某卡偏少，其余卡按 `min / old` 等比缩——先整除再乘，保证 `size` 仍是 `page_size` 的整数倍。
+本例四卡实测 `num_blocks` 一致（**6003**），4 张张量的 `size` 不变；若某卡偏少，其余卡按 `min / old` 等比缩——先整除再乘，保证 `size` 仍是 `page_size` 的整数倍。
 
 **收口 · 生成 scheduler 版配置并回写（core.py:265-287）**
 
-`list[KVCacheConfig]` 就绪后，`_initialize_kv_caches` 在发起 S4 之前做三件收口的事：
+`list[KVCacheConfig]` 就绪后、S4 发起前，`_initialize_kv_caches` 依次做三件事：
 
-1. **max_model_len 自适应同步**（core.py:265-277）：若 S3 的预算校验触发了 max_model_len 自动调小，需 `collective_rpc("update_max_model_len")` 把新值同步下去（NPUWorker 的实现见 worker.py:894-905）；
-2. **生成 scheduler 版配置**（core.py:279）——`generate_scheduler_kv_cache_config(kv_cache_configs)`（kv_cache_utils.py:1698）：断言各份 `num_blocks` 相等后 `deepcopy(kv_cache_configs[0])`，`UniformTypeKVCacheSpecs` 组折叠为组内任一 spec（本模型 4 组分别是 `FullAttentionSpec` / `MambaSpec`，不触发折叠）；
-3. **回写与校验**（core.py:280-287）：`vllm_config.cache_config.num_gpu_blocks = scheduler_kv_cache_config.num_blocks`（容量对外可见）；`cache_config.block_size` 回写为各组最小 block_size；`vllm_config.validate_block_size()` 终检。
+| # | 动作 | 位置 | 做什么 | 本模型落点 |
+|---|---|---|---|---|
+| 1 | max_model_len 同步 | core.py:265-277 | S3 若自动调小过 max_model_len，用 `collective_rpc("update_max_model_len")` 下发新值（worker 实现 worker.py:894-905） | 预算够，未触发 |
+| 2 | 生成 scheduler 版 | core.py:279 → kv_cache_utils.py:1698 | 断言各份 `num_blocks` 相等 → `deepcopy(kv_cache_configs[0])`；`UniformTypeKVCacheSpecs` 组折叠为组内任一 spec | 4 组均为普通 spec，不折叠，直接 deepcopy |
+| 3 | 回写与终检 | core.py:280-287 | `cache_config.num_gpu_blocks = num_blocks`（容量对外可见）；`cache_config.block_size` 取各组最小值；`validate_block_size()` | `num_gpu_blocks = 6003`、`block_size = 1024` |
 
-**产出数据结构**（`KVCacheConfig` / `KVCacheTensor` / `KVCacheGroupSpec`，kv_cache_interface.py:854 起）：`kv_cache_groups` 本模型为 **4 个**：1 组持 `FullAttentionSpec`（8 层），另 3 组各持 `MambaSpec`（每组 8 层、合计 24 层；两组 spec 无法 merge，且分组要求每组层数相等 → 取 `min(8,24)=8`）；`kv_cache_tensors` 的 `size = 2,072 KB × num_blocks`（统一页）。
+产出 `KVCacheConfig`（kv_cache_interface.py:854 起）：`kv_cache_groups` **4 个**——1 组 `FullAttentionSpec`（8 层）+ 3 组 `MambaSpec`（各 8 层，合计 24 层；两族 spec 无法 merge，且要求每组层数相等，故取 `min(8,24)=8`）；`kv_cache_tensors` **4 张**，每张 `size = 2,072 KB × 6,003`。
 
 ### 3.4 S4 · 落张量 + 编译预热（NPU worker 进程）
 
@@ -810,8 +809,6 @@ S4 与前两步走相同的 RPC 骨架——`ModelExecutor.initialize_from_confi
 ModelExecutor.initialize_from_config()                        core.py:290
 ├─ collective_rpc("initialize_from_config")                   → 4 个 NPUWorker
 │  └─ NPUWorker.initialize_from_config()                      worker.py:907
-│     ├─ ensure_kv_transfer_initialized()                     :909       P/D 传输组（本模型未开）
-│     ├─ CaMemAllocator.use_memory_pool(tag="kv_cache")       :910-912   sleep mode（本模型未开）
 │     └─ NPUModelRunner.initialize_kv_cache(config)           model_runner_v1.py:3843
 │        ├─ deepcopy(config)                                  :3850      不污染引擎进程共享对象
 │        ├─ initialize_attn_backend(config)                   :3857
@@ -819,7 +816,7 @@ ModelExecutor.initialize_from_config()                        core.py:290
 │        │  └─ select_common_block_size(...)                  :4759      → kernel_block_size = 128
 │        ├─ initialize_kv_cache_tensors(config)               :3865      ← 4a + 4b + 4c
 │        │  ├─ 4a _allocate_kv_cache_tensors()                :4082      4 张 int8 张量
-│        │  ├─ 4b _reshape_kv_cache_tensors()                 :4353      切 K/V 双池、view 4D
+│        │  ├─ 4b _reshape_kv_cache_tensors()                 :4353      切 K/V 双池 / conv+ssm 状态视图
 │        │  └─ 4c bind_kv_cache()                             :3950-3953 按层名填入 kv_caches
 │        └─ register_kv_caches()                              :3883-3884 有传输组时注册
 └─ collective_rpc("compile_or_warm_up_model")                 → 4 个 NPUWorker
@@ -827,61 +824,85 @@ ModelExecutor.initialize_from_config()                        core.py:290
       ├─ _dummy_run(size) × 多档                              :728       触发编译
       ├─ capture_model()                                     :732       捕获 NPUGraph
       ├─ 图内存记账                                          :734-771   打印 --kv-cache-memory 建议值
-      ├─ ATB 首算预热                                        :775-776
-      ├─ 绑核                                                :779-783
-      └─ 重置随机种子                                         :786
 ```
 
-落张量是在initialize_kv_cache_tensors中，四步各自做什么（每 worker 独立执行，4 张卡同构）：
+落张量是在 `initialize_kv_cache_tensors` 中，四步各自做什么（每 worker 独立执行，4 张卡同构）：
 
 | 步 | 动作 | 本模型落点 |
 |---|---|---|
 | 4a 分配 | 按 `kv_cache_tensors` 逐张 `torch.zeros(int8)` | **4 张**，各 `2,072 KB × 6003 ≈ 11.9 GiB` |
-| 4b reshape | 切 conv padding → 对半切 K/V → view 4D | attn 4 层各得 `(48,024, 128, 2, 256)` 的 K/V 双池 |
-| 4c 绑定 | 复用上游 `bind_kv_cache` | 16 个层名（4 attn + 12 mamba）填入 `kv_caches` |
+| 4b reshape | attn：切 conv padding → 对半切 K/V → view 4D<br>mamba：按 `MambaSpec.shapes` 顺序切 conv / ssm | attn 4 层各得 `(48,024, 128, 2, 256)` 的 K/V 双池；mamba 12 层各得 conv `(6,003, 3, 4,096)` bf16（24 KB/块）+ ssm `(6,003, 16, 128, 128)` fp32（1 MiB/块） |
+| 4c 绑定 | 复用上游 `bind_kv_cache` | 16 个层条目（attn 各 `(K, V)`、mamba 各 `[conv, ssm]`）填入 `kv_caches` |
 | 4d 编译预热 | `_dummy_run` + `capture_model` + 图内存记账 | 启动日志里的 `--kv-cache-memory` 建议行 |
 
-**唯一的分支点 · kernel 粒度取 128 而非 1024**：`may_reinitialize_input_batch` 调 `select_common_block_size`（vllm/v1/worker/utils.py:262-328），规则是"取所有 backend 都支持、且能整除 manager 大块的最大档位"——
+**4a 之前的偏离点 · kernel 粒度取 128 而非 1024**：`initialize_kv_cache` 先调 `may_reinitialize_input_batch`（:3864），其中 `select_common_block_size`（vllm/v1/worker/utils.py:262-328）负责"取所有 backend 都支持、且能整除 manager 大块的最大档位"：
 
-- Case 1（:303-306）：manager 块 1024 本身被所有 backend 支持 → 直接返回、免切分；
-- Case 2（:308-327）：否则把 backend 的 int 档位从大到小试"能整除 1024 + 被所有 backend 支持"，命中即返回；都不满足 → `ValueError`。
+| 分支 | 条件 | 本模型 |
+|---|---|---|
+| Case 1（:303-306） | manager 块 1024 本身被所有 backend 支持 → 直接返回、免切分 | **落空**——`AscendAttentionBackend` 只声明 `[128]`（attention_v1.py:143-144） |
+| Case 2（:308-327） | 否则把 int 档位从大到小试"能整除 1024 + 被所有 backend 支持"，命中即返回；都不满足 → `ValueError` | 命中 **128**（`1024 % 128 == 0` 且 128 被支持） |
+| `MambaSpec` 组 | 走 else 分支 | `kernel_block_sizes = [0]`（:4763-4769），不参与 slot 映射 |
 
-本模型的 **attn 后端** `AscendAttentionBackend` 只声明支持 `[128]`（attention_v1.py:143-144），1024 不在其中 → Case 1 落空，走 Case 2：`1024 % 128 == 0` 且 128 被支持 → 命中 **128**。于是 **manager 以 1024 大块记账、kernel 以 128 写读**，一个大块虚拟切成 8 个细块——即 4b 中 `view(nb×8, 128, 2, 256)` 的 8 倍来源。`MambaSpec` 组走 else，直接给 `kernel_block_sizes = [0]`（:4763-4769），不参与 slot 映射。
+结论：**manager 以 1024 大块记账、kernel 以 128 写读**，一个大块被虚拟切成 8 个细块——这就是 4b 中 `view(nb×8, 128, 2, 256)` 的 8 倍来源；mamba 组不受影响，状态整块读写。
 
-#### 4a 分配：4 张共享张量 → 16 个层视图 `_allocate_kv_cache_tensors()`（model_runner_v1.py:4082）
+#### 4a 分配：4 张共享张量 → 16 个层视图
 
-3d 下发的 `kv_cache_config` 里只有 **4 张 `KVCacheTensor`**，每张的 `shared_by` = 1 attn + 3 mamba（见 3d 表）。分配函数逐张判形态（:4106-4134）：
+3d 下发的 `kv_cache_config` 里只有 **4 张 `KVCacheTensor`**，每张的 `shared_by` = 1 attn + 3 mamba。函数内部有 A / B / C 三条分配分支，hybrid模型**只走 A**：
 
-```python
-# model_runner_v1.py:4107-4134（节选）
-for kv_cache_tensor in kv_cache_config.kv_cache_tensors:
-    use_mamba = any(isinstance(layer_kv_cache_spec[n], MambaSpec)
-                    for n in kv_cache_tensor.shared_by)
-    use_attn = any(isinstance(layer_kv_cache_spec[n], AttentionSpec)
-                   for n in kv_cache_tensor.shared_by)
-    self.hybrid_with_attn_and_mamba |= (use_mamba and use_attn)      # 本模型每张都为 True
-    ...
-    if "linear_attn" in layer_name or self.hybrid_with_attn_and_mamba or ...:
-        tensor = torch.zeros(kv_cache_tensor.size, dtype=torch.int8, device=self.device)
-        for inner in kv_cache_tensor.shared_by:
-            kv_cache_raw_tensors[inner] = tensor                     # 4 层共用同一块
+```text
+_allocate_kv_cache_tensors(kv_cache_config)                             # model_runner_v1.py:4082
+│
+├─ (1) alignment = 2 MiB · layer_kv_cache_spec = 16 层 spec          # :4101-4102
+│
+├─ (2) for kv_cache_tensor in kv_cache_config.kv_cache_tensors        # 本模型 4 张
+│      │
+│      ├─ 判形态：use_mamba / use_attn                               # :4108-4113；两者均 True
+│      │  hybrid_with_attn_and_mamba = True                           # :4114，一置恒真
+│      │
+│      └─ for idx, layer_name in enumerate(shared_by)                # :4115；[attn, mamba, mamba, mamba]
+│             │
+│             ├─ A 单张量路径                                        # :4118-4134  ★ 本模型唯一命中
+│             │    条件：hybrid_with_attn_and_mamba
+│             │    动作：tensor = torch.zeros(kv_cache_tensor.size, dtype=torch.int8, device=self.device)
+│             │          for layer_name_inner in kv_cache_tensor.shared_by:
+│             │              # shared the kvcache for all shared layers
+│             │              kv_cache_raw_tensors[layer_name_inner] = tensor
+│             ├─ B 单张量路径（压缩注意力）                          # :4135-4146
+│             │    条件：attn∈名 and use_compress and 尚未登记
+│             │    ✗ use_compress = hasattr(hf_config, "compress_ratios") → False（:283-285）
+│             │
+│             ├─ C K/V 分开申请（纯 FA / 稀疏 MLA / DSA）            # :4147-4309
+│             │    条件：attn∈名 and 尚未登记 and not use_mamba
+│             │    ✗ use_mamba = True → 不进
+│             │
+│             └─ 否则：无动作（已被前一轮登记覆盖）                  # idx 1..3 的 3 个 mamba 层
+│
+└─ (3) 断言：4 组层名集合 == kv_cache_raw_tensors 键集合              # :4310-4316；16 == 16
+        return kv_cache_raw_tensors
 ```
 
-本模型在这个函数里的三个落点：
+**这一步的产物**：`kv_cache_raw_tensors` 里 **16 个层名 → 4 张张量**（4 层/张）。分支 A 只在每张张量的 `idx=0`（attn 层）触发一次，一次就把 `shared_by` 的 4 个层名全部登记到同一张——所以全函数只分配 4 次，却生成了 16 条层名映射：
 
-| 判断 | 本模型取值 | 结果 |
-|---|---|---|
-| `hybrid_with_attn_and_mamba` | **True**（每张都同时含两类 spec） | 4 个共享层**全部**走单张量路径，含 attn 层——不做纯 FA 的"K/V 两次独立申请" |
-| `layer_name` 命中 `"linear_attn"` | 12 个 mamba 层命中 | 也走同一路径，与 attn 层共用张量 |
-| `kv_transfer_config is None` | **True**（未开 P/D 分离） | 直接 `torch.zeros(size)`，不申请 2 MiB 对齐冗余；开启时才 `size + 2 MiB` 再 `_align_memory` 截回（:4127-4130） |
+| 值（张量，`kv_cache_raw_tensors` 的 value） | W0（PP0·TP0）的键 | W1（PP0·TP1）的键 | W2（PP1·TP0）的键 | W3（PP1·TP1）的键 |
+|---|---|---|---|---|
+| **T0**（`2,072 KB × 6003` ≈ 11.9 GiB） | attn L3 · mamba L0 / L1 / L2 | attn L3 · mamba L0 / L1 / L2 | attn L19 · mamba L16 / L17 / L18 | attn L19 · mamba L16 / L17 / L18 |
+| **T1**（≈ 11.9 GiB） | attn L7 · mamba L4 / L5 / L6 | attn L7 · mamba L4 / L5 / L6 | attn L23 · mamba L20 / L21 / L22 | attn L23 · mamba L20 / L21 / L22 |
+| **T2**（≈ 11.9 GiB） | attn L11 · mamba L8 / L9 / L10 | attn L11 · mamba L8 / L9 / L10 | attn L27 · mamba L24 / L25 / L26 | attn L27 · mamba L24 / L25 / L26 |
+| **T3**（≈ 11.9 GiB） | attn L15 · mamba L12 / L13 / L14 | attn L15 · mamba L12 / L13 / L14 | attn L31 · mamba L28 / L29 / L30 | attn L31 · mamba L28 / L29 / L30 |
 
-每张 `2,072 KB × 6003 ≈ 11.9 GiB`，4 张共 ≈47.4 GiB；`kv_cache_raw_tensors` 里 **16 个层名 → 4 个张量**（4 层/张）。到 4b reshape 才展开成 **20 个层视图**（attn 4 层 × K/V = 8 + mamba 12 状态 = 20）。
+> 键写法：`attn L<i>` = `model.language_model.layers.<i>.self_attn`，`mamba L<i>` = `…layers.<i>.linear_attn`；每格 4 个键按 `shared_by` 的登记顺序（attn 先、3 个 mamba 后）全部指向本行那张张量，每 worker 合计 16 条 `layer_name → tensor`。W0/W1 同属 PP0、层名与 spec 相同，但各进程独立分配自己的 4 张张量。
 
-> 函数头保留了纯 FA 双池拆分的动机（`# NOTE: To support prefill disaggregation ...`，:4087-4088）；混合模式把"拆分"从分配阶段挪到 4b 的 reshape 阶段。
+- **表读法**：每行是一张池（本 worker 的一张 `int8` 张量），格内的 4 个层名就是 `kv_cache_raw_tensors` 中指向同一张量的 4 个键——它们拿到的是同一段内存的 4 个 **view**。
+- 每格的 3 个 mamba 层分别来自 **mamba 组 1 / 2 / 3**——共享规则是"第 `i` 张池 = 各组第 `i` 层"，所以同一格 4 层的组内下标相同；
+- **容量**：4 张池共 ≈47.4 GiB = 本 worker 的全部 KV 预算。
+
+**与纯 FA 的差别**：`use_mamba=False` 的张量会落到分支 C，为每个 attn 层单独申请 K、V 两张 int8 张量；混合模型则把"拆分"推迟到 4b 的 reshape——4a 只分配一张整张量，K/V 与状态的分界由 4b 的切片决定。
 
 #### 4b reshape：切头 → 对半切 K/V 双池 → view 4D `_reshape_kv_cache_tensors()`（:4353）
 
-full-attn 层（混合专用格式，:4495-4579）：
+同一函数按 spec 类型分两支，**两支切的是同一张 `raw` 张量**。
+
+**full-attn 层**（混合专用格式，:4495-4579）：
 
 ```python
 # model_runner_v1.py:4561-4579（节选，混合 full-attn）
@@ -894,9 +915,39 @@ v_cache = v_pool.view(bf16).view((nb*8, 128, 2, 256))
 kv_caches[layer_name] = (k_cache, v_cache)       # 每层 = (K, V) 二元组
 ```
 
-- 逻辑 `block_size=1024`、算子 `kernel_block_size=128` → 物理 block_table **展开 8 份 128-token 细块**；
-- 全程只有 `view`（int8 → bf16 → 4D），**无 `permute`**；
-- **linear 层**：同张量格式，按 `MambaSpec.shapes` 切出 conv / temporal 状态视图。
+**mamba 层（12 个 linear 层）**（:4683-4716）：
+
+```python
+# model_runner_v1.py:4683-4716（节选，MambaSpec 分支）
+num_blocks = raw.numel() // spec.page_size_bytes         # 2,072 KB 整除 → 6,003
+for shape, dtype in zip(spec.shapes, spec.dtypes):       # 顺序固定：(conv, ssm)
+    target_shape = (num_blocks, *shape)
+    target_idx += math.prod(target_shape) * get_dtype_size(dtype)
+    tensor = raw[start_idx:target_idx].view(dtype).view(target_shape)
+    start_idx = target_idx
+    state_tensors.append(tensor)
+kv_caches[layer_name] = state_tensors                    # 每层 = [conv, ssm] 列表
+```
+
+GDN 两段 shape 由 `get_state_shape()` 给出（qwen_gdn_linear_attn.py:421-432 → mamba_utils.py:213-234，本模型 TP2）：
+
+- **conv**：`(conv_kernel−1, conv_dim/tp) = (3, 4,096)`，记 bf16 → **24 KB/块**
+- **ssm（temporal）**：`(num_v_heads/tp, head_v_dim, head_k_dim) = (16, 128, 128)`，记 fp32 → **1 MiB/块**
+
+`MambaSpec.page_size_bytes` 已被前置 patch 对齐成 2,072 KB（§2.1 · 0c），所以 `num_blocks` 与 attn 层算出同一个 6,003，两块视图按块号一一对齐。
+
+**一页 2,072 KB 的字节分工**——两族各取所需：
+
+| 页内偏移 | 宽度 | attn 层 | mamba 层 |
+|---|---|---|---|
+| `[0, 24 KB)` | 24 KB | **跳过**（conv padding，:4576-4577） | conv state `(3, 4,096)` bf16 |
+| `[24 KB, 24 KB + 1 MiB)` | 1 MiB | K：`1024 tok × 2 头 × 256 × bf16` | ssm `(16, 128, 128)` fp32 |
+| `[24 KB + 1 MiB, 2,072 KB)` | 1 MiB | V | **未用**（mamba padding） |
+
+- 头部 24 KB 不是浪费，而是留给 mamba 的 conv state；attn 的 K 段与 mamba 的 ssm 段**同起点、同宽度**，两族才能共享同一物理页。
+- 逻辑 `block_size=1024`、算子 `kernel_block_size=128` → attn 视图把物理 block_table **展开 8 份 128-token 细块**；mamba 组 `block_size=32768`，每请求 1 块，不展开。
+- 全程只有 `view`（int8 → bf16 / fp32 → 多维），**无 `permute`**。
+- 哪一页归谁用由 4 组各自的 block_table 决定：同一块号只会分给其中一个组（3d 的 `shared_by` + 5c 的单 `BlockPool`）。
 
 #### 4c 绑定：直接复用上游 `bind_kv_cache`
 
@@ -918,7 +969,7 @@ kv_caches[layer_name] = (k_cache, v_cache)       # 每层 = (K, V) 二元组
 
 > 与 §3.2 分配图里"把它画在 `total − requested` 那块余量上"不矛盾：那里说的是**预算出处**（util 预留），这里说的是**归因口径**——它由 torch 申请，只是迟到于 S2 的记账窗口。
 
-至此 NPU 物理侧就绪：每 worker **两种形态并存**——full-attn 4 层的 K/V 双池（各 `(nb×8,128,2,256)` bf16）+ linear 12 层的状态张量。
+至此 NPU 物理侧就绪：每 worker **两种形态并存**——full-attn 4 层的 K/V 双池（各 `(nb×8,128,2,256)` bf16）+ linear 12 层的状态张量（每层 conv `(nb,3,4,096)` bf16 与 ssm `(nb,16,128,128)` fp32 两视图）。
 
 **不变的存储契约**（所以上层零改动）：同一份 `KVCacheConfig` 与跨 worker `min(num_blocks)` 对齐；一律从字节池起步、与 dtype 解耦；都用同一个 `bind_kv_cache` 绑定；逻辑侧 `block_id == 物理张量 dim0 行号` 的约定恒成立——S5 逻辑层（§4）、`BlockPool`、`KVCacheManager` 的分配/释放逻辑对此完全无感。
 
@@ -1175,7 +1226,7 @@ state = state_cache[layer][state_blocks]          # 按状态视图读写，每�
 | mamba 组 block_size | `patch_mamba_config.py:146`（前缀缓存关闭） | **32768**（= max_model_len） |
 | `num_blocks` | `available // page(2,072 KB) // group_size(4)`，再跨 worker 取 min | **6003**（= 6,147,072 tokens ÷ 1024） |
 | scheduler / hash block_size | `resolve_kv_cache_block_sizes`（多组 LCM / 关缓存退回） | **32768 / 32768** |
-| 每 worker 张量 | S3 下发 **4 张**共享张量（每张 1 attn + 3 mamba 层）→ 4b 展开 | 分配 4 张（各 ≈11.9 GiB）、reshape 后 **20 个视图**（8 K/V + 12 状态） |
+| 每 worker 张量 | S3 下发 **4 张**共享张量（每张 1 attn + 3 mamba 层）→ 4b 展开 | 分配 4 张（各 ≈11.9 GiB）、reshape 后 **16 个层条目 / 32 个张量视图**（8 K/V + 24 状态 = 12 层 × (conv, ssm)） |
 | full-attn 单张 shape | `view(num_blocks×8, 128, 2, 256)` bf16 | 逻辑块 1024-token、物理 8 细块 |
 
 ## 6. 关键公式汇总（速查）
