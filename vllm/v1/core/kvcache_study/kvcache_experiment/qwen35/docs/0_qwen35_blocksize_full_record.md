@@ -1,11 +1,9 @@
-# Qwen3.5-0.8B hybrid 模型 block-size 精度问题全流程记录：现象 → 根因几何 → 修复验证 → 物理层核证
-
+# Qwen3.5-0.8B 精度问题：block-size 未对齐导致 KVCache 存在覆盖现象
 
 ## 元信息（环境）
 
 | 项 | 内容 |
 |----|------|
-| 实验日期 | 行为层（A/B/C 主实验）：2026-10-19；物理层（A/B/C 归档）：2026-10-20 04:18~04:53；追加轮 F~K：2026-10-20 ~ 10-21 |
 | 平台 | itask 容器 **gggtest4**（A3, 4× hpu910a3, 贵安集群, 节点 10.30.14.68 / Pod 172.16.145.250, 身份 gch02599191） |
 | 镜像 | `hcr.meta-guian02.guian.hw-a3.local/antsys/vllm:v0.23.0-a3-openeuler-20260818163431_aarch64` |
 | 模型 | `modelhub_41900013_qwen3.5-0.8b:112800048_20260304125902`（容器内 `/home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/`；24 层 = 6 attn + 18 GDN） |
@@ -28,49 +26,28 @@
 | 乱码与修复的行为证据（响应 + 日志） | §6 |
 | 张量级铁证（RMS / Pearson / 字节指纹 / 覆写四层） | §7 |
 | 实验矩阵补全与证据精细化（F~K 轮） | §8 |
+| 结论与边界（含 F~K 加深结论） | §9 |
 | 怎么自己复现一遍 | §10（操作）+ §12（巡检） |
+| 踩坑清单 / 与 kvc 工作区差异 | §11 + §13 |
 
 ---
 
 ## 0. 结论速览
 
-**三句话**：
-
-1. **现象**：Qwen3.5-0.8B（hybrid mamba+attention）以 `--block-size 2048` 启动输出乱码，默认 1024 正常。
-2. **根因**：混合模型 attention K 视图与 mamba ssm 视图**跨组共享同一张物理张量、同一基址**；正确性依赖不变量 **`K 段宽 ≡ SSM 段宽`（1024 token×1 KiB = 1 MiB）**。旧逻辑只拦"过小/未设置"，2048 被放行 → K 步进翻倍到 2 MiB，一个 K 块必然横跨 2 个 ssm slot 领地 → 同段字节被两族按不同语义互写 → `Q·K^T` 读到 ssm 的 fp32 位型（bf16 解释为 NaN）→ 乱码。
-3. **修复**：[PR 15408](https://github.com/vllm-project/vllm-ascend/pull/15408) 把 `patch_mamba_config.py` 的矫正条件 `<` 改为 `!=`，2048 一律拉回 1024。**验证通过，可放心引入。**
-
-**主实验三轮一句话**：
-
-| 轮 | 启动 | 响应 | 判定 | 物理层一句话 |
-|----|------|------|------|--------------|
-| **A** | 默认（矫正→1024） | `1+14=15` | ✅ 通过 | 新建块基线干净：K 已写区 RMS=1.3992 / 未写区全零 |
-| **B** | `--block-size 2048` | `1!!!!!!!!!` | ❌ 失败 | K 与 ssm 池内互相覆写：K 全段 NaN、ssm RMS×12 且 Pearson=0.086 |
-| **C** | 2048 + PR 15408 | `1+14=15` | ✅ 通过 | `!=` 强制矫正回 1024，归档与轮 A **逐位一致** |
-
-**追加轮（矩阵补全与证据精细化）一句话**：
-
-| 轮 | 配置 | 结论 |
-|----|------|------|
-| **F** | prefix=on（`MambaSpec(mamba_cache_mode='align')`）+ 2048 | 仍乱码 → **prefix/align 救不了，根因在启动期页宽级联**，与运行期复用路径正交 |
-| **G** | 默认 1024 | v1.2 组级块表落地：`group_block_tables=[[2],[3],[4]]`、[KVS] 横幅组级化 |
-| **H** | 默认 1024 + v1.3 SEG 三段窗口 | ✅ 正确（K[1]=1.3992、ssm[2]=0.0279、六池哨兵全零） |
-| **I** | 2048 + v1.3 SEG | ❌ 错误（K[1] 全 NaN、ssm[2]=0.3357），并暴露三项窗口级新发现 |
-| **J** | 默认 1024 + v1.4 STEP-TRACE | ✅ 10 步全绿（每 forward 逐层 wrms≈0.96 / brms=0） |
-| **K** | 2048 + v1.4 TRACE | ❌ prefill 完成即破零（早于层序推演预期），decode 首 token pool1-5 全 NaN |
-
----
+1. **现象**：Qwen3.5-0.8B（hybrid mamba+attention）以 `--block-size 2048` 启动后输出乱码——除首个 token 外全部退化（`1+14=15` → `1!!!!!!!!!`）；不传该参数则正常。
+2. **根因**：attention K 视图与 mamba ssm 视图**跨组共享同一张物理张量、同一起始偏移**，正确性依赖不变量 **`K 段宽 ≡ SSM 段宽`（1024 token × 1 KiB = 1 MiB）**。`patch_mamba_config.py` 的页对齐只拦"过小 / 未设置"，`2048 > 1024` 被放行 → K 步进翻倍到 2 MiB，一个 K 块必然横跨 2 个 ssm slot 的领地 → 同段字节被两族按不同语义互写 → `Q·K^T` 读到 ssm 的 fp32 位型（按 bf16 解释即 NaN），部分层的 ssm 又读到 K 数据 → 乱码。
+3. **修复**：[PR 15408](https://github.com/vllm-project/vllm-ascend/pull/15408) 把矫正条件 `<` 改为 `!=`，任何非 1024 的取值一律拉回 1024。**已验证通过。**
 
 ## 1. 问题现象
 
-用 `--block-size 2048` 启动 Qwen3.5-0.8B（hybrid mamba+attention 混合架构）时，模型输出乱码：
+用 `--block-size 2048` 启动 Qwen3.5-0.8B（hybrid mamba+attention）时，模型输出乱码：
 
-- 期望输出：`1+14=15`
-- 实际输出：`1!!!!!!!!!`（且 `finish_reason=length`，吐满 `max_tokens=10` 仍未停止）
+- 期望：`1+14=15`
+- 实际：`1!!!!!!!!!`（`finish_reason=length`，吐满 `max_tokens=10` 也未收敛）
 
-不带 `--block-size`（默认值）启动则一切正常。
+不传 `--block-size`（默认值）则一切正常。
 
-关键点：**服务能正常启动、无任何报错/警告**，仅在推理结果上表现为精度崩塌——这是本案最容易误判的地方，也是根因（§4.3）的入口。
+容易被误判的点：**服务能正常启动、无任何报错或警告**，问题只体现在推理结果上——这正是本案的隐蔽之处，也是 §4.3 的入口。
 
 ---
 
@@ -80,18 +57,20 @@
 
 判定对象是一个固定请求：prompt 给出等差序列 `1+1=2, 1+2=3, … , 1+13=14`，末尾追问 `1+14=?`。序列逐项自洽、答案唯一，模型只需续写一个两位数，因此**任何非数字输出都是明确的异常信号**，无需比对参考答案即可肉眼判读。实测 prompt 121 token、completion 10 token。
 
-采样参数统一如下，目的是关闭随机性、关闭提前终止，使"正常"与"异常"的差异只来自 KVCache 本身：
+采样参数统一如下，目的是关闭随机性、关闭提前终止，更利于查看"正常"与"异常"的差异：
 
 | 参数 | 取值 | 作用 |
-|------|------|------|
+|---|---|---|
 | `temperature` | `0` | 贪心解码，排除采样随机性 |
 | `max_tokens` | `10` | 答案上限 10 token；退化时吐满不收敛 |
 | `ignore_eos` | `true` | 不因 EOS 提前结束，完整暴露退化过程 |
 | `enable_thinking` | `false` | 关闭思维链，只看最终答案 |
 
-请求体有两种，按该轮是否开启 prefix cache 选用：
+> 口径提示：传了 `ignore_eos=true`，`finish_reason` 就应恒为 `length`；若某轮记录为 `stop`，说明该轮脚本漏传了它，需按实际脚本口径判读（§6.1 用到此条）。
 
-**请求 1（prefix off 轮次：R1 / R2 / R3）**——标准判定请求，前缀固定，输出可与历史 A/B/C 轮逐位对齐：
+两条请求体分别对应 prefix off 与 prefix on 两组轮次：
+
+**请求 1（prefix off 轮次：R1 / R2 / R3）**：
 
 ```bash
 curl -s http://127.0.0.1:8340/v1/chat/completions \
@@ -113,7 +92,7 @@ curl -s http://127.0.0.1:8340/v1/chat/completions \
   }'
 ```
 
-**请求 2（prefix on 轮次：R4 / R5）**——把 prompt 前缀改为「请你直接给出答案：…」，使其 KV 前缀哈希与请求 1 不同，**不命中已缓存的块**，避免 prefix 复用掩盖本次写入的真实状态：
+**请求 2（prefix on 轮次：R4 / R5）**——把 prompt 前缀改为「请你直接给出答案：…」，前缀哈希与请求 1 不同、不命中已缓存的块，用于验证第二次请求同样正常：
 
 ```bash
 curl -s http://127.0.0.1:8340/v1/chat/completions \
@@ -136,8 +115,6 @@ curl -s http://127.0.0.1:8340/v1/chat/completions \
 ```
 
 > 两个请求仅前缀措辞不同，问句与采样参数完全一致，故输出可直接横向对比：正常时都应得到 `1+14=15`。
->
-> ⚠ 口径提示：`ignore_eos=true` 表示忽略 EOS、直到 `max_tokens` 才停，理论上 `finish_reason` 恒为 `length`；若某轮记录为 `stop`，说明该轮所用脚本版本与此不同，重跑前须先对齐脚本，否则"是否吐满"这条判据不可比。
 
 ### 2.2 验证实验矩阵
 
@@ -145,59 +122,59 @@ curl -s http://127.0.0.1:8340/v1/chat/completions \
 |------|------|----------|----------|
 | **R1** | 不传 `--block-size`；prefix off | block_size **1024**；`mamba_cache_mode`=`none` | `1+14=15` |
 | **R2** | `--block-size 2048`；prefix off | block_size **2048**；`mamba_cache_mode`=`none` | `1!!!!!!!!!` |
-| **R2** | `--block-size 2048`；prefix off | block_size **2048**；`mamba_cache_mode`=`none` | `1!!!!!!!!!` |
 | **R3** | `--block-size 2048`；prefix off；＋PR 15408 | block_size **1024**；`mamba_cache_mode`=`none` | `1+14=15` |
 | **R4** | 不传 `--block-size`；prefix on | block_size 1024；`mamba_cache_mode`=`align` | `1+14=15` |
 | **R5** | `--block-size 2048`；prefix on | block_size 2048；`mamba_cache_mode`=`align` | `1!!!!!!!!!` |
 
-## 3. 前置知识：block id → 物理字节全链路
+## 3. 前置知识
 
-> 本章按"管理层 → 物理层 → 映射链 → 不变量 → 管理器"递进，是读懂 §4 与 §7 的前提。
-> 所有结论均来自本模型（Qwen3.5-0.8B）实测，非通用推断。
+### 3.1 分组管理：1 个 attn 组 + 3 个 mamba 组
 
-### 3.1 管理层：24 层 → 4 个 kv_cache_groups
+Qwen3.5-0.8B 的 24 层分成 4 个组：**6 个 full-attention**（layers.3/7/11/15/19/23.self_attn）+ **18 个 GDN/linear_attn**（每 4 层按 `[3 GDN, 1 attn]` 模式重复 6 次）。
 
-24 层 = **6 个 full-attention**（layers.3/7/11/15/19/23.self_attn）+ **18 个 GDN/linear_attn**（每 4 层按 `[3 GDN, 1 attn]` 模式重复 6 次）。
+| 组 | 层数 | spec 类型 | 管理器 | 块粒度 |
+|---|---|---|---|---|
+| attn | 6 | FullAttentionSpec | `FullAttentionManager` | 2048 |
+| mamba 1 | 6 | MambaSpec | `MambaManager` | 一个 slot（= attn 层的 1024 tokens） |
+| mamba 2 | 6 | MambaSpec | `MambaManager` | 一个 slot（= attn 层的 1024 tokens） |
+| mamba 3 | 6 | MambaSpec | `MambaManager` | 一个 slot（= attn 层的 1024 tokens） |
 
-管理侧由 `kv_cache_utils.py:1684 → _get_kv_cache_groups_uniform_page_size` 分为 **4 个组**：
+虽然模型结构上 mamba 层在 attn 层之前，但 kv_cache_groups 分组后，attn 组在前，mamba 组在后。
 
-| group | 层数 | spec 类型 | 管理器 | 块粒度 |
-|-------|------|-----------|--------|--------|
-| 0 | 6 | FullAttentionSpec | `FullAttentionManager` | 管理块 **1024 tokens** |
-| 1 | 6 | MambaSpec | **`MambaManager`** | slot = 1 套递推状态 |
-| 2 | 6 | MambaSpec | **`MambaManager`** | slot |
-| 3 | 6 | MambaSpec | **`MambaManager`** | slot |
-
-分组源码逻辑（`kv_cache_utils.py:1124-1193`）：
-
-1. 按 spec 类型归类：`{FullAttentionSpec: [6 attn 层], MambaSpec: [18 mamba 层]}`
-2. `group_size = min(6, 18) = 6`（:1158-1159）
-3. mamba 层 interleaved 拆分：`layers[0::3]` / `layers[1::3]` / `layers[2::3]` → 3 组 × 6 层
-
-**为什么 mamba 要拆 3 个组**——`_bucket_layers_by_page_size`（`kv_cache_utils.py:1196-1218`）让不同 group 的同 slot_idx 层共用同一物理 tensor：每张恰好 `[1 attn 层 + 3 个 mamba 组各 1 个对应层]` = **4 层/张 × 6 张 = 24 层**（跨组配对见 §3.3），保证 NPU 上 cache 张量 contiguous 布局。
-
-### 3.2 每请求 4 个 block id，且四组 id 不重号
-
-`NewRequestData.block_ids[i]` 下标与组序一一对应：attn 组 1 个管理块 id + 3 个 mamba 组各 1 个 slot id。各组 block table **独立**（`kv_cache_utils.py:1201-1202` "independent block tables"），但**同一池上四组的 id 互不重号**。
-
-分配顺序 = **组注册序**（group 0 attn → mamba A/B/C），由**共享 BlockPool** 的 free list 顺序发号（null block 占 0，首请求从 1 起连续）：**attn 组先拿 1，mamba A/B/C 依次拿 2/3/4**（机制首证 `kv_cache_coordinator.py:257` `for manager in single_type_managers` 按注册序迭代）。
-
-> 这个"id 不重号"正是 1024 布局下 K/ssm 每行只有单一写入者的保障（§4.5）。
-
-**为什么 group 0 是 attn（而非模型层序在前的 mamba）**——qwen3.5 建模每 4 层 `[3 GDN, 1 attn]` 重复、layers.0 即 GDN，若按模型构造序（static_forward_context 登记序）mamba 本应在前；但 **vllm-ascend 的 NPU 采集覆写** `model_runner_v1.py:4909 get_kv_cache_spec` **显式重排 attn-first**：主循环把 Attention/MLA 层立即写入 spec dict（:4927-5000），Mamba 层暂存独立 `mamba_layers` dict（:5002-5003），循环结束后才统一追加（:5027-5030）——
+**为什么 attn 组排在最前（而非模型层序在前的 mamba）**——qwen3.5 建模每 4 层 `[3 GDN, 1 attn]` 重复、layers.0 即 GDN，若按模型构造序（static_forward_context 登记序）mamba 本应在前；但 **vllm-ascend 的 NPU 采集覆写** `model_runner_v1.py:4909 get_kv_cache_spec` **显式重排 attn-first**：主循环把 Attention/MLA 层立即写入 spec dict（:4927-5000），Mamba 层暂存独立 `mamba_layers` dict（:5002-5003），循环结束后才统一追加（:5027-5030）——
 
 ```
 :4923-4924 注释原文："Must process Attention/MLAAttention before MambaBase to maintain
 ordering expected by graph parameter update logic in attention backends"
 ```
 
-（NPU 图参数更新逻辑的次序要求）。故 `kv_cache_spec` dict 序 = `[6 attn 层(3/7/11/15/19/23) ⊕ 18 mamba 层]`，`_get_kv_cache_groups_uniform_page_size` 值归桶按插入序（:1142-1144）→ **FullAttention 桶首个注册 → group 0 = attn**，mamba 桶按 interleaved `layers[0::3]/[1::3]/[2::3]` 构造序依次成为 group 1/2/3。
+（NPU 图参数更新逻辑的次序要求）。故 `kv_cache_spec` dict 序 = `[6 attn 层(3/7/11/15/19/23) ⊕ 18 mamba 层]`，`_get_kv_cache_groups_uniform_page_size` 值归桶按插入序（:1142-1144）→ **FullAttention 桶首个注册 → attn 组排 0 号位**，mamba 桶按 interleaved `layers[0::3]/[1::3]/[2::3]` 构造序依次成为 mamba 组 1/2/3。
 
-**多轮归档组级实测评**（`scripts/analysis/group_slots.py` 从 M 层键按组还原；v1.2 起 meta 直录 `group_block_tables`）：A/B/C/F/G 五轮全部 `attn组=[1] mambaA=[2] mambaB=[3] mambaC=[4]`；**G 轮起 meta 直录组级表正式落地**（`[[2],[3],[4]]`，§8.2），枚举/直录两路径结果一致。
+### 3.2 逻辑侧：每请求 4 个 block id，且四组 id 不重号
 
-> v1.1 归档缺陷备注：`meta.mamba.block_table` 仅记首组 `[2]`（补丁 `if not mb_bt: mb_bt=blocks` 首组赋值后不再更新，组 B/C 的 slot 表被丢弃）——已由 v1.2 `group_block_tables` 修复（§7.1）。
+4 个组共享同一个 BlockPool，但各持独立 block table：**attn 组 1 个管理块 id + 3 个 mamba 组各 1 个 slot id = 每请求 4 个 block id**，且四组 id 互不重号。这条"id 不重号"正是 K/ssm 每行只有单一写入者的保障。
 
-### 3.3 物理层：6 张跨组共享 tensor（4 层/张）
+**分配顺序 = 组注册序**（attn 组 → mamba 组 1/2/3）：`allocate_new_blocks` 按 `for manager in single_type_managers` 逐组向共享 free list 取号（`kv_cache_coordinator.py:238-247`）；块 0 留给 null block，首个请求从 1 起连续发号，于是 **attn 先拿 1，mamba 组 1/2/3 依次拿 2/3/4**。
+
+**示意 · 首请求的 4 个 id 从哪来**：
+
+```text
+① 分配顺序（组注册序；allocate_new_blocks 逐组取号）
+   attn 组 ──▶ mamba 1 ──▶ mamba 2 ──▶ mamba 3
+      │           │           │           │
+      ▼           ▼           ▼           ▼
+② 共享 BlockPool（free list 从头发号，0 号留给 null 块）
+   块号    0       1        2        3        4       5 …
+   归属   null    attn    mamba 1  mamba 2  mamba 3   下一请求
+                   │        │        │        │
+                   ▼        ▼        ▼        ▼
+③ 各组 block table（互相独立，id 不重号 ⇒ 每行单一写入者）
+   attn:[1]    mamba1:[2]    mamba2:[3]    mamba3:[4]
+```
+
+读法：① 谁先取号 → ② 取到池里的哪个块 → ③ 记进各自的 block table。一次请求只有 4 个 id，第二个请求从块 5 起续发。
+
+### 3.3 物理侧：6 张跨组共享 tensor（4 层/张）
 
 每张 `KVCacheTensor`（`9,513,443,328 B = 9072.73 MiB`）被 **4 层共享**（跨组配对：1 attn 层 + 3 个 mamba 组各 1 层）。NPU0 上共 **6 张 raw**（24 层 ÷ 4 层/张）。
 
@@ -228,14 +205,14 @@ L1 实测（`[KVC][L1] _allocate_kv_cache_tensors[hybrid]`）tensor-0 实例：
 
 ```
 shared_by = ['layers.3.self_attn.attn',                       ← attn 组, block 1
-            'layers.0.linear_attn', 'layers.1.linear_attn',   ← mamba A/B/C 组 各 slot 2/3/4
+            'layers.0.linear_attn', 'layers.1.linear_attn',   ← mamba 组 1/2/3 各 slot 2/3/4
             'layers.2.linear_attn']
 ```
 
 **图 1 · 6 张 raw 池全景**（跨组配对 = 四组按下标对齐共用同一张 raw）：
 
 ```
-             attn 组(1 层/张)          mamba A   mamba B   mamba C（各 1 层/张）
+             attn 组(1 层/张)          mamba 1   mamba 2   mamba 3（各 1 层/张）
   tensor-0 │ layers.3.self_attn.attn │ layers.0 │ layers.1 │ layers.2 │  ← shared_by L1 实测 ✓
   tensor-1 │ layers.7.self_attn.attn │ layers.4 │ layers.5 │ layers.6 │
   tensor-2 │ layers.11.self_attn.attn│ layers.8 │ layers.9 │ layers.10│
@@ -267,10 +244,11 @@ shared_by = ['layers.3.self_attn.attn',                       ← attn 组, bloc
    conv_block_padding_size——同一个数的三重身份，§3.5 基址代数）
 ```
 
-"padding"命名的对称性即设计核心：**A 段对 attn 是 padding、C 段对 mamba 是 padding，B 段两族都在用**（K/ssm 必须同基址对齐共存——1024 同步进 + id 不重号 → 安全；2048 K 步进翻倍 → 越界互写）。
+"padding" 命名的对称性即设计核心：**A 段对 attn 是 padding、C 段对 mamba 是 padding，B 段两族都在用**——1024 时同步进 + id 不重号 → 安全；2048 时 K 步进翻倍 → 越界互写。
+
 ### 3.5 映射链：block id → 第 0 维行 → 池内字节（核心几何）
 
-block id 与 `_reshape_kv_cache_tensors` 返回（`model_runner_v1.py:4720 return kv_caches`）的物理 tensor 的对应分**三层**：
+block id 到 `_reshape_kv_cache_tensors` 返回（`model_runner_v1.py:4720`）的物理 tensor，映射关系分**三层**：
 
 **第 ① 层：池分配与跨组共享**（`_allocate_kv_cache_tensors` :4107-4134）
 
@@ -339,14 +317,14 @@ raw_k, raw_v = raw_kv[:K_total], raw_kv[K_total:]           # :4578-4579 K 在�
 ```
 A 段 conv 段（36 KiB/行；仅 mamba 视角；行号 = slot id）
    ┌──────┬──────┬──────┬──────┬ ⋯ ┌──────┐
-   │conv 0│conv 1│conv 2│conv 3│   │conv 4│   本请求实占: 行2(A) 行3(B) 行4(C) 各 36 KiB
+   │conv 0│conv 1│conv 2│conv 3│   │conv 4│   本请求实占: 行2(1) 行3(2) 行4(3) 各 36 KiB
    └──────┴──────┴──────┴──────┴   ┴──────┘   （同一 slot 的 conv 在此、ssm 落 B 段同号行）
 
 B 段 K≡ssm 段（1 MiB/行；同一行两族视角叠加）
    行(id):       0       1       2       3       4     ⋯ N=4458
    attn 视角:   K(0)   K(1)◆   K(2)   K(3)   K(4)      ← 块 g=kernel 行段[8g,8g+8)，步进随 block_size
    mamba视角: ≡ssm(0) ≡ssm(1) ≡ssm(2)◇ ≡ssm(3)◇ ≡ssm(4)◇   ← slot s=整行 1 个 state，步进恒 1 MiB
-   本请求实占:   —     attn 块1  mambaA  mambaB  mambaC    ← 四组 id 不重号 → 每行单一写入者
+   本请求实占:   —     attn 块1  mamba1  mamba2  mamba3    ← 四组 id 不重号 → 每行单一写入者
 
    K(1)◆ 行内细分（1 MiB = 8 kernel 行 = 1024 token × 1 KiB/token）：
    ┌ ker8 ┬ ker9 ┬ ker10 ┬ ker11 ┬ ker12 ┬ ker13 ┬ ker14 ┬ ker15 ┐
@@ -424,7 +402,10 @@ class MambaManager(SingleTypeKVCacheManager):
 - 默认启动此模型 **mamba prefix=off** → 每请求 1 slot 全新分配（`enable_prefix_caching=true` 时 mamba 组 block_size 才被拉齐 attn 组实现哈希复用 → 见 §8.1 F 轮实验）
 
 ---
+
 ## 4. 根因分析
+
+本章把 §3 的几何推导落到因果上：先给 6 步根因链，再解释门卫为何放行 2048、服务为何毫无报错，然后用页内切窗与步进图示复现污染过程，最后补源码证据并澄清一个常见误解。
 
 ### 4.1 根因链
 
@@ -567,7 +548,7 @@ ssm 行 2:       ├─────────[=SSM 1MiB=]─────┤   
 | 7 | 守护条件只拦"过小"，2048 放行 | `patch_mamba_config.py:99-107` |
 | 8 | `mamba_page_size_padded` 无条件重算拉平页宽（故服务能起来） | `patch_mamba_config.py:110-117`、`model_runner_v1.py:5027-5036` |
 | 9 | 组注册序 → 4 组 id 不重号 | `kv_cache_coordinator.py:257` |
-| 10 | attn-first 重排（故 group 0 = attn） | `model_runner_v1.py:4909/4923-4924/5027-5030` |
+| 10 | attn-first 重排（故 attn 组在首位） | `model_runner_v1.py:4909/4923-4924/5027-5030` |
 | 11 | 实验：2048→乱码；补丁拉回 1024→正常 | §6（行为）、§7（张量） |
 
 ### 4.7 破除一个常见误解
@@ -575,7 +556,10 @@ ssm 行 2:       ├─────────[=SSM 1MiB=]─────┤   
 网络上流传的"两组完全独立、不共享内存"的直觉**不成立**——**共享的是物理张量，独立的是块表**。两族共存于同页正是该布局的设计前提（为保持 NPU 上 cache 张量 contiguous），也正因如此才需要 `K段宽 ≡ SSM段宽` 这条强约束。用户传入的 2048 破坏了它。
 
 ---
+
 ## 5. PR 15408 的修复
+
+改动只有一处条件判断（`patch_mamba_config.py`）：
 
 ```python
 # The contiguous hybrid cache layout requires the attention K block
@@ -601,6 +585,8 @@ if cache_config.block_size != attn_block_size:
 
 ## 6. 行为层验证：A/B/C 三轮实测
 
+取 §2.2 矩阵的前三轮（R1/R2/R3 ≡ A/B/C），只看行为侧三件套：**响应文本、启动日志矫正行、页几何**。
+
 ### 6.1 三轮对照结果
 
 | 阶段 | 补丁 | `--block-size` | 启动日志矫正行为 | 输出 | finish_reason | 结果 |
@@ -610,6 +596,8 @@ if cache_config.block_size != attn_block_size:
 | C. 修复 | PR 15408 | 2048 | `2048 → 1024`（新逻辑 `!=` 命中） | `1+14=15` | stop | **修复成功** |
 
 指纹一致性：A/C 轮 response fingerprint 均为 `95daf0c5`；B 轮 `a86348cd`。
+
+> `finish_reason` 口径：A/C 记为 `stop`、B 记为 `length`，说明 A/C 所用脚本未传 `ignore_eos`（见 §2.1 提示）——不影响"是否乱码"这条主判据。
 
 ### 6.2 关键日志证据
 
@@ -671,7 +659,7 @@ if cache_config.block_size != attn_block_size:
 | **v1.3** | H/I | **SEG 三段窗口**：`bundle["SEG"]={"win":8,"pools":[...]}`，每池三区段前 8 个 block/slot 的窗口归档（A 段 `conv (8,3,6144) bf16`；B 段双视角 `k (8×ratio,128,H,D) bf16` + `ssm (8,16,128,128) fp32`；C 段 `v` 同 k）；meta 增 `req_ids`（如 `[1,2,3,4]`）+ `seg{win,pools}`；判读 `seg_check.py` 按 id 直切三段；升级工具 `fix_08_v13.py` 留档于 patchs/ |
 | **v1.4** | J/K | **STEP-TRACE**：`fix_08_v14.py` 五式（rel_snapshot (d) 循环每 forward 钩子 + `_kvc_trace` 方法[6 attn 层 K/V 块窗 写区/基线/NaN + 18 mamba 层 state + 跨组探针 ss(2:5)] + bundle `"TRACE"`）；patch 工件 601 行（md5 `bbe1f4a7`） |
 
-**bundle 结构**：`{"K","V","M","meta"}`（+ v1.3 起 `"SEG"`、v1.4 起 `"TRACE"`）；meta 含 attn 块表（v1.2 兼容保留）+ `kernel_size(128)/kernel_ratio(8|16)` + `block_size(管理块 1024/2048)`；`M[li]` 按归档序号（组优先：`M[0..5]`=A 组、`M[6..11]`=B 组、`M[12..17]`=C 组）为 mamba 视图列表下标，**dict 键即 slot id**——旧 v1.1 归档可由 `scripts/analysis/group_slots.py` 离线完整还原 4 组分配。
+**bundle 结构**：`{"K","V","M","meta"}`（+ v1.3 起 `"SEG"`、v1.4 起 `"TRACE"`）；meta 含 attn 块表（v1.2 兼容保留）+ `kernel_size(128)/kernel_ratio(8|16)` + `block_size(管理块 1024/2048)`；`M[li]` 按归档序号（组优先：`M[0..5]`=mamba 1 组、`M[6..11]`=mamba 2 组、`M[12..17]`=mamba 3 组）为 mamba 视图列表下标，**dict 键即 slot id**——旧 v1.1 归档可由 `scripts/analysis/group_slots.py` 离线完整还原 4 组分配。
 
 **布局**：`tensors/req{seq}_{rid尾8}/kv_pp0tp0.pt`（单 worker 单卡 TP1，每请求 1 份）。
 
@@ -816,6 +804,7 @@ K block 1 (2 MiB, 2048 tokens) = ┬ 前半 1 MiB ≡ M[0] slot 2（mamba 归档
 **机制链**：K 写区读到 ssm fp32 位型 → bf16 指数位坍缩出 NaN/Inf/1e37 量级值 → `Q·K^T` 全线失真 → 采样只吐 `!` → `1!!!!!!!!!`。
 
 ---
+
 ## 8. 加深实验：实验矩阵补全与证据精细化（F~K）
 
 > §7 的结论建立在 A/B/C 三轮（prefix 关、归档粒度 = 整块/整 slot）。本章两个目的：
@@ -859,7 +848,7 @@ K block 1 (2 MiB, 2048 tokens) = ┬ 前半 1 MiB ≡ M[0] slot 2（mamba 归档
 |---|---|---|---|
 | ① K[1] 写区 RMS | 1.3992（=A 基线） | **NaN** | attn 已写 token 被反向污染 |
 | ① K[1] 未写区 RMS | 0.000000 | **NaN** | 未写槽位也非零（越界写入者） |
-| ② ssm[2] RMS | 0.0279（=A 基线） | **0.3357（12×）** | mamba A 状态被 K 踩踏 |
+| ② ssm[2] RMS | 0.0279（=A 基线） | **0.3357（12×）** | mamba 1 组的状态被 K 踩踏 |
 | ② ssm[3] RMS | 0.0101 | 0.0103（**≈ 基线复现**） | 名义领地内但实际写入未触——亮点见下 |
 | ③ conv[2] RMS | 1.6359 | 1.1787 | A 段两轮同量级（独立区不受伤） |
 | ④ K[0] 哨兵 RMS | 0.000000 | 0.000000 | 无主行全零——双轮池净基线 |
@@ -911,6 +900,8 @@ K block 1 (2 MiB, 2048 tokens) = ┬ 前半 1 MiB ≡ M[0] slot 2（mamba 归档
 
 ## 9. 实验结论
 
+> 三层递进：§9.1 行为层回答"坏没坏、修没修好"；§9.2 物理层回答"坏在哪、为什么"；§9.3 给出 F~K 加深后的边界结论。
+
 ### 9.1 行为层
 
 1. **问题确认**：vllm-ascend v0.23.0 上，Qwen3.5-0.8B（hybrid）以 `--block-size 2048` 启动时输出乱码。根因见 §4。
@@ -925,11 +916,12 @@ K block 1 (2 MiB, 2048 tokens) = ┬ 前半 1 MiB ≡ M[0] slot 2（mamba 归档
 
 ### 9.3 边界与加深结论
 
-4. **prefix 无关（F）**：`mamba_cache_mode='align'` 无法改变启动期页布局 → on+2048 仍污染；根因在页宽级联，与运行期复用路径正交。
-5. **证据粒度可再下沉（H/I）**：SEG 三段窗口把"越界几何"与"实际写入范围"区分开——K(1) 名义覆盖两行，实际只写 130 KiB，行 3 完整逃逸（ssm[3] 0.0103 ≈ 基线 0.0101）。
-6. **污染时序早于预期（J/K）**：真实 forward 逐步实测显示 **prefill 完成（forward 0）即已破零**，早于 SIM 层序推演的 decode 阶段；decode 首 token 起 pool1-5 整窗全 NaN；探针 prms 0.0185→0.2618（14×）为跨组混型的独立指标。
+1. **prefix 无关（F）**：`mamba_cache_mode='align'` 无法改变启动期页布局 → on+2048 仍污染；根因在页宽级联，与运行期复用路径正交。
+2. **证据粒度可再下沉（H/I）**：SEG 三段窗口把"越界几何"与"实际写入范围"区分开——K(1) 名义覆盖两行，实际只写 130 KiB，行 3 完整逃逸（ssm[3] 0.0103 ≈ 基线 0.0101）。
+3. **污染时序早于预期（J/K）**：真实 forward 逐步实测显示 **prefill 完成（forward 0）即已破零**，早于 SIM 层序推演的 decode 阶段；decode 首 token 起 pool1-5 整窗全 NaN；探针 prms 0.0185→0.2618（14×）为跨组混型的独立指标。
 
 ---
+
 ## 10. 复现规程
 
 ### 10.0 环境准备：itask 身份统一为 gch
@@ -1047,6 +1039,8 @@ tar -czf qwen35_hybrid_bundle.tar.gz tensors/{normal,abnormal,fixed} \
 
 ## 11. 踩坑与注意事项
 
+> 均为本次实验实际踩到的坑，按"服务启停 → 补丁与日志 → 归档与分析"分三组。
+
 ### 11.1 服务启停
 
 1. **pkill 会"自杀"**：`pkill -9 -f "vllm serve"` 会匹配到执行它的 `bash -c` 命令行自身（exit 137）。改用精确 `pgrep` 再 kill。
@@ -1069,6 +1063,8 @@ tar -czf qwen35_hybrid_bundle.tar.gz tensors/{normal,abnormal,fixed} \
 ---
 
 ## 12. 巡检命令速查（本地已拉回）
+
+> 产物已全部回传本地，下面命令可直接在工作区执行；标注"容器内"的需先 `itask exec`。
 
 ```bash
 # 归档单件
@@ -1098,7 +1094,7 @@ for s in tr["steps"][:3]:
 EOF
 ```
 
-### 可视化（kv_visualizer 第五场景「Hybrid 混合 · qwen35」）
+### 12.1 可视化：`kv_visualizer` 第五场景「Hybrid 混合 · qwen35」
 
 2026-10-21 上线，七卡布局：
 
