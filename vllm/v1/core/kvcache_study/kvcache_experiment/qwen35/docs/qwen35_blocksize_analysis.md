@@ -4,15 +4,15 @@
 
 | 项 | 内容 |
 |----|------|
-| 平台 | itask 容器 **gggtest4**（A3, 4× hpu910a3, 贵安集群, 节点 10.30.14.68 / Pod 172.16.145.250, 身份 gch02599191） |
-| 镜像 | `hcr.meta-guian02.guian.hw-a3.local/antsys/vllm:v0.23.0-a3-openeuler-20260818163431_aarch64` |
-| 模型 | `modelhub_41900013_qwen3.5-0.8b:112800048_20260304125902`（容器内 `/home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/`；24 层 = 6 attn + 18 GDN） |
-| vllm | 0.23.0，容器 `/vllm-workspace/vllm` + `/vllm-workspace/vllm-ascend` |
-| 修复补丁 | [vllm-ascend PR #15408](https://github.com/vllm-project/vllm-ascend/pull/15408) |
-| 容器工作区 | `/a3_inference/itask/workdir/gch02599191/kv_experiment/qwen35`（NFS 持久化） |
-| 本地工作区 | `vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/`（本文档所在） |
-| 工具链 | `scripts/patchs/01~08`（01~07 为 KVC 管理侧打点，08 为 hybrid 归档补丁，v1.4 达 601 行）+ `scripts/analysis/{inspect_kv_tensors,inspect_prefix,compare_modes,overwrite_evidence,group_slots,seg_check}.py` + `tensors/view_pt.py` |
-| 产物包 | `qwen35_hybrid_bundle.tar.gz` 44,950,963 B（md5 `30356c79613352ce3a3d57d65a8f6e`，容器与本地校验一致） |
+| **平台** | itask 容器 **gggtest4**（A3，4× hpu910a3，贵安集群，节点 `10.30.14.68` / Pod `172.16.145.250`，身份 `gch02599191`） |
+| **镜像** | `hcr.meta-guian02.guian.hw-a3.local/antsys/vllm:v0.23.0-a3-openeuler-20260818163431_aarch64` |
+| **模型** | `modelhub_41900013_qwen3.5-0.8b:112800048_20260304125902`（[ModelScope 模型页](https://www.modelscope.cn/models/Qwen/Qwen3.5-0.8B/files)；容器内路径 `/home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/`） |
+| **vllm** | 0.23.0，容器内 `/vllm-workspace/vllm` ＋ `/vllm-workspace/vllm-ascend` |
+| **修复补丁** | [vllm-ascend PR #15408](https://github.com/vllm-project/vllm-ascend/pull/15408) |
+| **容器工作区** | `/a3_inference/itask/workdir/gch02599191/kv_experiment/qwen35`（NFS 持久化） |
+| **本地工作区** | `vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/`（本文档所在） |
+| **工具链** | `scripts/patchs/01~08`（01~07 为 KVC 管理侧打点，08 为 hybrid 归档补丁，v1.4 达 601 行）<br>`scripts/analysis/{inspect_kv_tensors, inspect_prefix, compare_modes, overwrite_evidence, group_slots, seg_check}.py`<br>`tensors/view_pt.py` |
+| **产物包** | `qwen35_hybrid_bundle.tar.gz`（44,950,963 B，md5 `30356c79613352ce3a3d57d65a8f6e`，容器与本地校验一致） |
 
 ## 阅读指引
 
@@ -68,9 +68,9 @@
 
 > 口径提示：传了 `ignore_eos=true`，`finish_reason` 就应恒为 `length`；若某轮记录为 `stop`，说明该轮脚本漏传了它，需按实际脚本口径判读（§6.1 用到此条）。
 
-两条请求体分别对应 prefix off 与 prefix on 两组轮次：
+两个请求体仅前缀措辞不同，用途如下：
 
-**请求 1（prefix off 轮次：R1 / R2 / R3）**：
+**请求 1（所有轮次的第一个请求）**：
 
 ```bash
 curl -s http://127.0.0.1:8340/v1/chat/completions \
@@ -92,7 +92,7 @@ curl -s http://127.0.0.1:8340/v1/chat/completions \
   }'
 ```
 
-**请求 2（prefix on 轮次：R4 / R5）**——把 prompt 前缀改为「请你直接给出答案：…」，前缀哈希与请求 1 不同、不命中已缓存的块，用于验证第二次请求同样正常：
+**请求 2（仅作序列第二步：R4 / R8）**——把 prompt 前缀改为「请你直接给出答案：…」，使其前缀哈希与请求 1 不同、不命中已缓存的块；与「请求 1 → 请求 1」（第二次命中缓存）配对，构成命中与不命中的对照：
 
 ```bash
 curl -s http://127.0.0.1:8340/v1/chat/completions \
@@ -118,13 +118,30 @@ curl -s http://127.0.0.1:8340/v1/chat/completions \
 
 ### 2.2 验证实验矩阵
 
-| 轮次 | 条件 | 生效情况 | 预期响应 |
-|------|------|----------|----------|
-| **R1** | 不传 `--block-size`；prefix off | block_size **1024**；`mamba_cache_mode`=`none` | `1+14=15` |
-| **R2** | `--block-size 2048`；prefix off | block_size **2048**；`mamba_cache_mode`=`none` | `1!!!!!!!!!` |
-| **R3** | `--block-size 2048`；prefix off；＋PR 15408 | block_size **1024**；`mamba_cache_mode`=`none` | `1+14=15` |
-| **R4** | 不传 `--block-size`；prefix on | block_size 1024；`mamba_cache_mode`=`align` | `1+14=15` |
-| **R5** | `--block-size 2048`；prefix on | block_size 2048；`mamba_cache_mode`=`align` | `1!!!!!!!!!` |
+| 轮次 | 条件 | 生效情况 | curl 请求序列 | 预期响应序列 |
+|------|------|----------|---------------|--------------|
+| **R1** | 不传 `--block-size`；prefix off | block_size **1024**；mamba_block_size **max_model_len**；`mamba_cache_mode`=`none` | ① 请求 1 | ① `1+14=15` |
+| **R2** | `--block-size 2048`；prefix off | block_size **2048**；mamba_block_size **max_model_len**；`mamba_cache_mode`=`none` | ① 请求 1 | ① `1!!!!!!!!!` |
+| **R3** | `--block-size 2048`；prefix off | block_size **2048**；mamba_block_size **max_model_len**；`mamba_cache_mode`=`none` | ① 请求 1 → ② 请求 1 | ① `1!!!!!!!!!` → ② `1+14=15` |
+| **R4** | `--block-size 2048`；prefix off | block_size **2048**；mamba_block_size **max_model_len**；`mamba_cache_mode`=`none` | ① 请求 1 → ② 请求 2 | ① `1!!!!!!!!!` → ② `1+14=15` |
+| **R5** | 不传 `--block-size`；prefix on | block_size **1024**；mamba_block_size **1024**；`mamba_cache_mode`=`align` | ① 请求 1 | ① `1+14=15` |
+| **R6** | `--block-size 2048`；prefix on | block_size **2048**；mamba_block_size **2048**；`mamba_cache_mode`=`align` | ① 请求 1 | ① `1!!!!!!!!!` |
+| **R7** | `--block-size 2048`；prefix on | block_size **2048**；mamba_block_size **2048**；`mamba_cache_mode`=`align` | ① 请求 1 → ② 请求 1 | ① `1!!!!!!!!!` → ② `1+14=15` |
+| **R8** | `--block-size 2048`；prefix on | block_size **2048**；mamba_block_size **2048**；`mamba_cache_mode`=`align` | ① 请求 1 → ② 请求 2 | ① `1!!!!!!!!!` → ② `1+14=15` |
+| **R9** | `--block-size 2048`；prefix off；**＋PR 15408（解决方案）** | block_size **1024**；mamba_block_size **max_model_len**；`mamba_cache_mode`=`none` | ① 请求 1 | ① `1+14=15` |
+
+> **编号规则**：**每轮 = 一次独立的服务启动**，轮间必须重启，不沿用上一轮进程。原因是 block id 由共享 BlockPool 的 free list 顺序发号（首个请求固定拿到 attn=1、mamba A/B/C=2/3/4），若沿用同一进程，后续请求会拿到 5/6/7/8 等新号，归档中的 id 与地址就不再是同一套，跨轮无法对齐。
+>
+> 轮内的 `①` `②` 是**同一进程内先后发出的请求**——缓存复用正是发生在这里：`① → ②（请求 1）` 第二次命中 prefix cache，`① → ②（请求 2）` 换了前缀、第二次不命中，两者成对构成"命中 vs 不命中"对照。
+>
+> **读表约定**：
+> `mamba_block_size` 指 `cache_config.mamba_block_size`（单位为 token），**由 `mamba_cache_mode` 决定，与生效 block_size 无关**（`patch_mamba_config.py:143-146`）：
+> ① `align`（R5~R8）→ 取 `cache_config.block_size`，与 attn 组同值（1024 / 2048）；
+> ② `none` / `all`（R1~R4、R9）→ 取 `model_config.max_model_len`——此时「一个块 = 整条序列的状态」，每请求恒定只持有 `1 + num_spec` 块。
+> `max_model_len` 的具体数值以启动参数为准（4B 参考部署为 32768，见 `kvcache_docs/npu_hybrid/1_start_init.md` §2.1）。
+>
+> 另注意 `mamba_block_size` **不等于** SSM slot 的字节跨度：一个 slot 恒为 `conv 36 KiB + ssm 1 MiB`，与任何 block size 都无关——页宽只由 attn 的 block_size 决定。
+
 
 ## 3. 前置知识
 
@@ -176,7 +193,8 @@ ordering expected by graph parameter update logic in attention backends"
 
 ### 3.3 物理侧：6 张跨组共享 tensor（4 层/张）
 
-每张 `KVCacheTensor`（`9,513,443,328 B = 9072.73 MiB`）被 **4 层共享**（跨组配对：1 attn 层 + 3 个 mamba 组各 1 层）。NPU0 上共 **6 张 raw**（24 层 ÷ 4 层/张）。
+每个group的group size=6，有6张物理tensor，4个组的相同位置层（跨组配对：1 attn 层 + 3 个 mamba 组各 1 层）共享一张tensor，
+
 
 上游分配逻辑（`kv_cache_utils.py:1300-1326`，General case）：
 
