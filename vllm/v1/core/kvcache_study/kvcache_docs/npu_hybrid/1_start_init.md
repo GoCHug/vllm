@@ -898,11 +898,9 @@ _allocate_kv_cache_tensors(kv_cache_config)                             # model_
 
 **与纯 FA 的差别**：`use_mamba=False` 的张量会落到分支 C，为每个 attn 层单独申请 K、V 两张 int8 张量；混合模型则把"拆分"推迟到 4b 的 reshape——4a 只分配一张整张量，K/V 与状态的分界由 4b 的切片决定。
 
-#### 4b reshape：切头 → 对半切 K/V 双池 → view 4D 
+#### 4b reshape：切三段 → view 成 4D 张量
 
-`_reshape_kv_cache_tensors()`（:4353）只按 spec 类型分两支，**两支切的是同一张 `raw` 张量**；
-
-调用链如下：
+`_reshape_kv_cache_tensors()`（:4353）只按 spec 类型划分，而且**两支切的是同一张 `raw` 张量**。完整调用链如下：
 
 ```text
 _reshape_kv_cache_tensors(kv_cache_config, kv_cache_raw_tensors)          # model_runner_v1.py:4353
@@ -915,76 +913,42 @@ _reshape_kv_cache_tensors(kv_cache_config, kv_cache_raw_tensors)          # mode
 │      └─ (2) for layer_name in group.layer_names                           # :4374；本 worker 16 层（attn 4 + mamba 12）
 │             │  spec = layer_kv_cache_spec[layer_name]                     # :4378
 │             │
-│             ├─ A AttentionSpec：混合 full-attn（4 层）                    # :4436 → :4495-4582  ★
+│             ├─ A AttentionSpec：4 个 full-attn                  # :4436 → :4495-4582  ★
 │             │    条件：use_hybrid_blocks and hybrid_with_attn_and_mamba   # :4495-4500；且非 cache_only/hidden
 │             │    动作：raw_k_tensor = raw_v_tensor = kv_cache_raw_tensors[layer_name]   # :4503；同一张 raw！
 │             │          sum_page_size_bytes = raw.numel()                  # :4504
-│             │          num_blocks = sum_page_size_bytes // page_size_bytes = 6,003   # :4550
-│             │          assert num_blocks >= kv_cache_config.num_blocks    # :4559
-│             │    ├─ 取 kernel 细块 128                                    # :4561-4562
+│             │    ├─ get_supported_kernel_block_sizes() 得 attn_backend 支持的 kernel 细块大小 128    # :4561-4562
 │             │    │    block_size_chunk = 1,024 // 128 = 8                 # :4564
 │             │    │    kv_cache_shape = get_kv_cache_shape(6,003×8, 128, 2, 256)   # :4565-4570
 │             │    │        = (2, 48,024, 128, 2, 256)                      # dim0=2 是 K/V 二元组
 │             │    ├─ 切三段                                                # :4571-4579
-│             │    │    attn_tensor_page_size = prod(shape[1:]) × 2 = nb × 1 MiB   # :4573；K 总量
-│             │    │    conv_block_padding_size = raw.numel() − 2 × nb×1MiB = nb × 24 KB   # :4576
+│             │    │    attn_tensor_page_size = prod(kv_cache_shape[1:]) × 2 = nb × 1 MiB   # :4573；K 总量
+│             │    │    conv_block_padding_size = raw.numel() − 2 × attn_tensor_page_size   # :4576；段1 总量 = nb × 24 KB
 │             │    │    raw_kv_tensor = raw[conv_block_padding_size:]       # :4577；切掉段1
-│             │    │    raw_k_tensor = raw_kv_tensor[:nb×1MiB]              # :4578；段2 = K
-│             │    │    raw_v_tensor = raw_kv_tensor[nb×1MiB:]              # :4579；段3 = V
+│             │    │    raw_k_tensor = raw_kv_tensor[:nb×1MiB]              # :4578；段2 = K 总量 = nb × 1 MiB
+│             │    │    raw_v_tensor = raw_kv_tensor[nb×1MiB:]              # :4579；段3 = V 总量 = nb × 1 MiB
 │             │    └─ view 4D                                               # :4599-4644
-│             │          k_shape = shape[1:] = (48,024, 128, 2, 256)        # :4599-4600
-│             │          v_shape = k_shape                                   # :4601-4604；本模型无 head_size_v
+│             │          k_shape = v_shape = shape[1:] = (48,024, 128, 2, 256)   # :4599-4600
 │             │          k_cache = raw_k_tensor.view(bf16).view(k_shape)    # :4639
 │             │          v_cache = raw_v_tensor.view(bf16).view(v_shape)    # :4644
 │             │          kv_caches[layer_name] = (k_cache, v_cache)         # :4682
 │             │
 │             ├─ B MambaSpec：12 个 linear 层                               # :4683-4716  ★
 │             │    动作：raw_tensor = kv_cache_raw_tensors[layer_name]      # :4684
-│             │          num_blocks = raw.numel() // page_size_bytes = 6,003   # :4687
-│             │          assert num_blocks >= kv_cache_config.num_blocks    # :4688
-│             │          for shape, dtype in zip(spec.shapes, spec.dtypes)  # :4707；顺序固定：(conv, ssm)
-│             │              target_shape = (num_blocks, *shape)            # :4710
-│             │              target_idx += prod(target_shape) × dtype_size  # :4712
+│             │          for shape, dtype in zip(spec.shapes, spec.dtypes)  # :4707；顺序固定：shapes (conv(3, 4096), ssm(16, 128, 128)); dtypes (bf16, fp32)
+│             │              target_shape = (num_blocks, *shape)            # :4710；(nb, 3, 4,096) 或 (nb, 16, 128, 128)
+│             │              target_idx += prod(target_shape) × dtype_size  # :4712；段1 总量 = nb × 24 KB 或 段2 总量 = nb × 1 MiB
 │             │              tensor = raw[start_idx:target_idx].view(dtype).view(target_shape)   # :4713
-│             │              start_idx = target_idx · state_tensors.append(tensor)   # :4714-4715
+│             │              start_idx = target_idx
+│             │              state_tensors.append(tensor)   # :4714-4715
 │             │          kv_caches[layer_name] = state_tensors → [conv, ssm] # :4716
-│             │    shapes/dtypes 由 get_state_shape() 给出                   # qwen_gdn_linear_attn.py:421-432 → mamba_utils.py:213-234（TP2）
-│             │        conv： (conv_kernel−1, conv_dim/tp) = (3, 4,096) bf16 → 24 KB/块
-│             │        ssm ： (num_v_heads/tp, head_v_dim, head_k_dim) = (16, 128, 128) fp32 → 1 MiB/块
 │
-└─ (3) return kv_caches                                                     # :4720；16 个层条目
+└─ (3) return kv_caches                                                     # :4720；16 层各自 view 后的张量
 ```
 
-> `MambaSpec.page_size_bytes` 已被前置 patch 对齐成 2,072 KB（§2.1 · 0c），所以 `num_blocks` 与 attn 层算出同一个 6,003，三段视图按块号一一对齐。
+**展开 `for group` 里的 `group`**：它来自 `_kv_cache_spec_attn_group_iterator()`（gpu_model_runner.py:7034-7038），该生成器把 `self.attn_groups` 这个二维列表拍平成一维流——**外层下标 = KV cache group id**（与 `kv_cache_config.kv_cache_groups` 对齐），**内层 = 该组内再切出的 AttentionGroup**。
 
-**一张 raw 张量的三段分工**——两族各取所需（段内按块连续）：
-
-| 段（slab） | 每块宽度 | attn 层 | mamba 层 |
-|---|---|---|---|
-| 段1 `[0, 24 KB × nb)` | 24 KB | **跳过**（conv padding，:4576-4577） | conv state `(nb, 3, 4,096)` bf16 |
-| 段2 `[24 KB × nb, 24 KB × nb + 1 MiB × nb)` | 1 MiB | K `(nb×8, 128, 2, 256)` bf16（`1,024 tok × 2 头 × 256`） | ssm `(nb, 16, 128, 128)` fp32 |
-| 段3 尾部 `1 MiB × nb` | 1 MiB | V，形状同 K | **未用**（mamba padding） |
-
-- 段1 的 24 KB 不是浪费：attn 当 padding、mamba 当 conv state，**同一段内存两种解释**；段2 的 K 与 ssm、段3 的 V 与 mamba padding 同理——两族字段宽度一致，才能共享同一张 raw 张量。
-- 逻辑 `block_size=1024`、算子 `kernel_block_size=128` → attn 视图把物理 block_table **展开 8 份 128-token 细块**；mamba 组 `block_size=32768`，每请求 1 块，不展开。
-- 全程只有 `view`（int8 → bf16 / fp32 → 多维），**无 `permute`**。
-- 哪个块号归谁用由 4 组各自的 block_table 决定：同一块号只会分给其中一个组（3d 的 `shared_by` + 5c 的单 `BlockPool`）。
-
-
-**`for group` 里的 `group` 是什么**：`_kv_cache_spec_attn_group_iterator()`（gpu_model_runner.py:7034-7038）把 `self.attn_groups: list[list[AttentionGroup]]` 拍平成一维流（`kv_cache_config` 尚未就绪时直接产出空序列）——**外层下标 = KV cache group id**（与 `kv_cache_config.kv_cache_groups` 对齐），**内层 = 该组内再切出的 AttentionGroup**。内层切分键是 `(backend 类名, 每层 kv_cache_spec, num_heads_q)`（gpu_model_runner.py:6687-6703）：同组层可能因 backend 不同（滑动窗口 / chunked local attention / fast-prefill）、逐层 spec 不同（`UniformTypeKVCacheSpecs`）、Q 头数不同（draft 层）而分裂；Ascend 版 key 只保留前两项（model_runner_v1.py:4843）。每个 AttentionGroup 携带 `backend / layer_names / kv_cache_spec / kv_cache_group_id / metadata_builders`（utils.py:223-259），metadata builder 及其 scratch 按组各建一份。
-
-Qwen3.5 每个 worker 恰好 4 个 KV cache group（1 个 FullAttentionSpec + 3 个 MambaSpec），组内 backend 与 spec 都一致 → **每组只切出 1 个 AttentionGroup**，所以 4b 的 `for group` 循环 4 次、每次 `group.layer_names` 4 条：
-
-| worker | kv_group 0：attn（`self_attn`） | kv_group 1：mamba（`linear_attn`） | kv_group 2：mamba | kv_group 3：mamba |
-|---|---|---|---|---|
-| W0（PP0·TP0） | L3 / L7 / L11 / L15 | L0 / L4 / L8 / L12 | L1 / L5 / L9 / L13 | L2 / L6 / L10 / L14 |
-| W1（PP0·TP1） | L3 / L7 / L11 / L15 | L0 / L4 / L8 / L12 | L1 / L5 / L9 / L13 | L2 / L6 / L10 / L14 |
-| W2（PP1·TP0） | L19 / L23 / L27 / L31 | L16 / L20 / L24 / L28 | L17 / L21 / L25 / L29 | L18 / L22 / L26 / L30 |
-| W3（PP1·TP1） | L19 / L23 / L27 / L31 | L16 / L20 / L24 / L28 | L17 / L21 / L25 / L29 | L18 / L22 / L26 / L30 |
-
-> 每格 = 一个 AttentionGroup 的 `layer_names`。分组规律：层号 `i mod 4 = 3` 进 attn 组，`i mod 4 = 0/1/2` 依次进 3 个 mamba 组。attn 组 backend 为 Ascend attention backend、spec 为 `FullAttentionSpec`；3 个 mamba 组 backend 为 `AscendGDNAttentionBackend`（gdn.py:64）、spec 为 `MambaSpec(2072 KB)`。W0/W1（或 W2/W3）层名相同，但各进程独立建 backend/builder，所以每个 worker 的 `attn_groups` 都是 4 个内层列表、每个列表 1 个组。
-
-**真实对象（W0 = PP0·TP0）**——展开后就是下面这样（等价表示；`metadata_builders` 在 Ascend 上是建组时直接 new 出的实例，各 1 个）：
+本模型（W0 = PP0·TP0）的真实对象长这样：
 
 ```python
 attn_spec = FullAttentionSpec(
@@ -1008,7 +972,7 @@ self.attn_groups = [
                      "model.language_model.layers.15.self_attn"],
         kv_cache_spec=attn_spec,
         kv_cache_group_id=0,
-        metadata_builders=[AscendAttentionMetadataBuilder],   # 1 个实例
+        metadata_builders=[AscendAttentionMetadataBuilder],   # 实例，此处以类名示意
     )],
     [AttentionGroup(                                         # kv_group 1
         backend=AscendGDNAttentionBackend,                   # gdn_attn_builder.py:933
@@ -1043,27 +1007,169 @@ self.attn_groups = [
 ]
 ```
 
-> W1（PP0·TP1）与 W0 层名完全相同（TP 各卡独立构造 backend/builder）；W2/W3（PP1）层号整体 +16：attn 组 L19/L23/L27/L31，mamba 组 1/2/3 分别为 L16/L20/L24/L28、L17/L21/L25/L29、L18/L22/L26/L30。上游 vLLM 的切分键还含 `num_heads_q`（gpu_model_runner.py:6687-6703），Ascend 版去掉它（model_runner_v1.py:4843），所以这里不会因头数再分裂。
+W1（PP0·TP1）与 W0 的层名完全相同，只是每张卡各自构造自己的 backend 与 builder；W2/W3（PP1）的层号整体 +16。Qwen3.5-4B 在 pp2tp2 下，每个 worker 恰好有 4 个 KV cache group（1 个 FullAttentionSpec + 3 个 MambaSpec）；由于每组内 backend 与 spec 都一致，**每组只切出 1 个 AttentionGroup**。因此 4b 的 `for group` 循环 4 次，每次 `group.layer_names` 有 4 条：
 
-#### 4c 绑定：直接复用上游 `bind_kv_cache`
+| worker | kv_group 0：attn（`self_attn`） | kv_group 1：mamba（`linear_attn`） | kv_group 2：mamba | kv_group 3：mamba |
+|---|---|---|---|---|
+| W0（PP0·TP0） | L3 / L7 / L11 / L15 | L0 / L4 / L8 / L12 | L1 / L5 / L9 / L13 | L2 / L6 / L10 / L14 |
+| W1（PP0·TP1） | L3 / L7 / L11 / L15 | L0 / L4 / L8 / L12 | L1 / L5 / L9 / L13 | L2 / L6 / L10 / L14 |
+| W2（PP1·TP0） | L19 / L23 / L27 / L31 | L16 / L20 / L24 / L28 | L17 / L21 / L25 / L29 | L18 / L22 / L26 / L30 |
+| W3（PP1·TP1） | L19 / L23 / L27 / L31 | L16 / L20 / L24 / L28 | L17 / L21 / L25 / L29 | L18 / L22 / L26 / L30 |
 
-绑定发生在 `initialize_kv_cache_tensors()` 内部（:3950-3953），以同一上游函数把每层对象按层序填入 `self.kv_caches` 并绑进 `static_forward_context`。forward 时：
-- **full-attn 层**：`AscendAttentionBackendImpl.reshape_and_cache`（attention_v1.py:1430-1454）取 `kv_cache[0]/[1]` 分发给 NPU 双池算子（`DeviceOperator.reshape_and_cache(key, value, key_cache, value_cache, slot_mapping)`，:1444）+ `notify_kv_cache_written()`（:1453）；
-- **linear 层**：GDN 状态算子读状态视图、就地步进。
+**页对齐与块展开**：`MambaSpec.page_size_bytes` 已被前置 patch 对齐成 2,072 KB（§2.1 · 0c），因此 mamba 层与 attn 层算出同一个 `num_blocks = 6,003`，三段视图按块号一一对齐。另外，逻辑 `block_size=1024`、算子 `kernel_block_size=128`，所以 attn 视图会把物理 block_table 展开成 8 个 128-token 细块。
 
-同后端类还提供双池版 `swap_blocks`（:114-126）/`copy_blocks`（:128-140）——NPU 上块级 KV 搬移（P/D 传输、offload）的算子层入口。
+**切分方式**：4 张 raw 张量各被切成 3 段（段内按块连续），依次是 conv、K/ssm、V。两族各取所需——attn 层只用段2、段3 当 K/V，mamba 层只用段1、段2 当 conv 与 ssm；全程只有 `view`（int8 → bf16 / fp32 → 多维），**无 `permute`**，底层内存布局不变。一张 raw 张量的三段分工如下：
 
-#### 4d 编译与预热：NPUGraph `NPUWorker.compile_or_warm_up_model()`（worker.py:706）
+| 段（slab） | 每块宽度 | attn 层 | mamba 层 |
+|---|---|---|---|
+| 段1 `[0, 24 KB × nb)` | 24 KB | **跳过**（conv padding，:4576-4577） | conv state `(nb, 3, 4,096)` bf16 |
+| 段2 `[24 KB × nb, 24 KB × nb + 1 MiB × nb)` | 1 MiB | K `(nb×8, 128, 2, 256)` bf16（`1,024 tok × 2 头 × 256`） | ssm `(nb, 16, 128, 128)` fp32 |
+| 段3 `[24 KB × nb + 1 MiB × nb, 2,072 KB × nb)` | 1 MiB | V，形状同 K | **未用**（mamba padding） |
 
-逐 size `_dummy_run`（:728）触发编译 → `capture_model()`（:732）捕获 NPUGraph → **图内存事后记账**（:734-771）：把 `权重 + 峰值激活 + non-torch + NPUGraph + 150 MiB` 从 requested（或整机 free）里扣掉，打印两种 `--kv-cache-memory` 建议值 → ATB 首算预热（:775-776）→ 绑核（:779-783）→ 重置随机种子（:786）。
+#### 4c 绑定：一份内存，两处挂载
 
-**图内存的"三层归属"**（最容易混的一点）：
+绑定发生在 `initialize_kv_cache()`（model_runner_v1.py:3843）末尾：4a 分配出字节池、4b reshape 出各层视图后，由 `bind_kv_cache` 把同一份 `kv_caches` 同时挂到 **runner 的平铺列表** 与 **每个层模块**。Qwen3.5 走通用分支，调用链如下：
 
-- **量法**：`capture_model()` 靠**设备空闲差**度量 —— `start_free − end_free`（`gpu_model_runner.py:6547/6565/6583`），与 torch / non-torch 的分类无关；NPU 只是包了一层并透传返回值（`model_runner_v1.py:5101-5111`，内部 `torch.cuda.*` 经 `_torch_cuda_wrapper()` 桥接到 `torch.npu.*`）。
-- **物理归因 → torch 侧**：图池由 torch_npu 的 graph pool 承载（`current_platform.graph_pool_handle()`，`gpu_model_runner.py:6415/6561`），会体现在 `torch_memory = memory_reserved()`；而 `non_torch_memory = cuda_memory − torch_memory` **不含**它。
-- **账本归因 → 两个都不进，单独第四项**：不算 `torch_peak_increase`（S2 取的是**图捕获前**峰值，worker.py:567 注释），也不算 `non_torch_increase`（其时间窗早于本步的 capture），而是这里**单列**加到 non_kv（worker.py:743-748）。
+```text
+initialize_kv_cache_tensors(kv_cache_config)                              # model_runner_v1.py:3917
+│
+├─ (0) 前置：kv_cache_raw_tensors = _allocate_kv_cache_tensors(...)       # :3928（4a）
+│           kv_caches = _reshape_kv_cache_tensors(...)                    # :3930（4b）
+│           产出：16 个层名 → attn 层 (k_cache, v_cache)，mamba 层 [conv, ssm]
+│
+├─ (1) 跨层共享改写                                                     # :3933-3935
+│      for layer_name, target in self.shared_kv_cache_layers:
+│          kv_caches[layer_name] = kv_caches[target_layer_name]          # 只登记别名，不新分配
+│      本模型没有跨层 KV 复用配置 → 该映射为空，无动作
+│
+├─ (2) 按模型分两支                                                      # :3937
+│      ├─ A deepseek_v4：不用 bind_kv_cache，自带排序绑定                  # :3937-3948  ✗
+│      │     extract_dsv4_layer_index 排序 → self.kv_caches.append(...)   # 按层序平铺
+│      │     static_forward_context[name].kv_cache = [kv_cache]          # 包成单元素 list
+│      └─ B 其余模型（含 Qwen3.5）：bind_kv_cache(...)                    # :3949-3953  ★
+│            num_attn_module = 2 if model_type == "longcat_flash" else 1  # :3952；本模型取 1
+│            bind_kv_cache(kv_caches, static_forward_context, self.kv_caches, num_attn_module)
+│            │                                                          # → vllm/v1/worker/utils.py:462
+│            ├─ (B1) assert len(runner_kv_caches) == 0                    # :485；只允许绑一次
+│            ├─ (B2) 建 层号 → 层名 列表                                  # :488-490
+│            │      idx = extract_layer_index(layer_name, num_attn_module)   # models/utils.py:753
+│            ├─ (B3) for layer_index in sorted(index2name.keys())         # :492
+│            │      ├─ 同层号多个层名（同解码层多 attn，如 encoder-decoder）
+│            │      │    cuda-like / xpu / cpu → pass                    # :502-510
+│            │      │    其他平台（含 NPU）→ NotImplementedError           # :511-512；本模型不触发
+│            │      └─ runner_kv_caches.append(kv_caches[layer_name])     # :513-514；按层号平铺
+│            └─ (B4) for layer_name, kv_cache in kv_caches.items()        # :517-519
+│                   forward_context[layer_name].kv_cache = kv_cache       # 挂到该层模块（attn 或 GDN）
+│
+└─ (3) return kv_caches                                                   # :3966
+       ↳ 返回后在 initialize_kv_cache 内继续：
+          has_kv_transfer_group() → register_kv_caches(kv_caches)          # :3883-3884；P/D 连接器
+          enable_hamming_sparse → init_and_bind_hashk_cache(...)           # :3955-3964；附加 hashk 池
+```
 
-> 与 §3.2 分配图里"把它画在 `total − requested` 那块余量上"不矛盾：那里说的是**预算出处**（util 预留），这里说的是**归因口径**——它由 torch 申请，只是迟到于 S2 的记账窗口。
+**为什么绑两处**：
+
+- **`forward_context[layer].kv_cache`** 是前向真正用的那份。`Attention` 层构造时只放一个空占位张量（attention.py:412，注释即“by bind_kv_cache”），由这里替换；forward 时统一算子通过 `get_attention_context()` 从层对象上取 `kv_cache = attn_layer.kv_cache`（attention.py:648-688，取值在 :682），所以 eager 与图模式拿到的都是 4b 切好的视图。
+- **`self.kv_caches`（runner 平铺列表）** 是 runner 侧的登记表：按层号排序、每层一条，生命周期与清理走它——`_cleanup_profiling_kv_cache()` 逐项置 `None` 再 `clear()`（gpu_model_runner.py:6305-6318）。
+- **为什么按层号**：`extract_layer_index` 从层名里取整数（`…layers.3.self_attn` → 3、`…layers.0.linear_attn` → 0），规则见 models/utils.py:753-784；只有 `num_attn_module > 1`（仅 longcat_flash）才把 `…layers.0.attn.1` 这类双整数压成 `0*2+1`。Qwen3.5 每层只有一个 attn 模块，16 个层名 → 0..15（PP1 为 16..31），排序后列表就是模型层序。
+- **同层号重复是硬约束**：一个解码层挂两个 attn 模块（同层 cross-attn）时，NPU 不在白名单，直接 `NotImplementedError`（utils.py:502-512）——即 NPU 上不允许“一个层号登记两条 KV”。
+
+**forward 时谁往池里写**：
+
+- **full-attn 层**：`forward_impl` 内调 `reshape_and_cache`（attention_v1.py:1532 → :1430-1454）。`kv_cache` 是 `(k_cache, v_cache)` 二元组，首次调用把 `kv_cache[0]/[1]` 缓存为 `self.key_cache/self.value_cache`（:1439-1441），之后每步只按 `slot_mapping` 调 NPU 双池算子 `DeviceOperator.reshape_and_cache(key, value, key_cache, value_cache, slot_mapping)`（:1444-1452），末尾 `notify_kv_cache_written()`（:1453）。
+- **另一条入口**：`do_kv_cache_update`（:1408-1428）逻辑相同，供“KV 更新不包含在 forward 内”的 backend 走统一算子 `unified_kv_cache_update`（attention.py:489-527）；Ascend backend 默认 `forward_includes_kv_cache_update = True`（backend.py:66），所以实际走的是上面那条快路径。
+- **linear 层**：`kv_cache` 是 `[conv, ssm]` 列表（4b 的 `state_tensors`），GDN 层直接取 `self_kv_cache = self.kv_cache`，`conv_state = kv_cache[0]`（按布局可能 `transpose(-1,-2)`）、`ssm_state = kv_cache[1]`（qwen_gdn_linear_attn.py:1308-1316），再按 `state_indices` 就地递推，不走 reshape_and_cache。
+- `notify_kv_cache_written` 只是给 KV connector 一个“本步已写”信号（attention/utils.py:459-476）：没有 v1 KV transfer group 时直接 return；有连接器时由它记录事件，供 P/D 拷贝流等待。
+
+**块级搬移入口**：同一 backend 还提供双池版 `swap_blocks`（attention_v1.py:114-126）与 `copy_blocks`（:128-140），都是**Python 索引赋值**完成的整块搬移——`swap_blocks` 按 `src_to_dst[:, 0/1]` 取/存，并带一次 `.to(dst.device)`（可跨卡）；`copy_blocks` 对传入的每个 `(k,v)` 池做 `dst[...] = src[...]`。它们绕过 4a 的分配层，直接按 `block_id` 索引 4b 视图的第 0 维，是 P/D 传输、offload、prefix cache 复用的底层落点。
+
+**与 4a/4b 的边界**：4c 不解包、不校验 dtype/形状，`kv_caches` 里的值是什么样（attn 二元组、mamba 列表）就原样挂上去——`initialize_kv_cache_tensors` 的返回注解虽写 `dict[str, torch.Tensor]`，实际值是这两类容器，注解只是历史宽松写法。正因如此，4a 的“一张池”、4b 的“三段切片”才能对上层完全透明。
+
+#### 4d 编译与预热：compile 逐 size → capture NPUGraph → 内存对账
+
+这是 `ModelExecutor.initialize_from_config()`（abstract.py:118-137）发出的**第二个 RPC**——`collective_rpc("compile_or_warm_up_model")`。此时 4a–4c 已完成，`_dummy_run` 跑的是**真实 KV 池**；S2 已把权重 / 峰值激活 / non-torch 三类内存记在 worker 上（worker.py:577-578），4d 只需补“图内存”这一项。整条链如下：
+
+```text
+compile_or_warm_up_model()                                        # worker.py:706
+│
+├─ (0) 组待编译 size 列表                                            # :708-724
+│     warmup_sizes = (compile_sizes or []).copy()                  # :708
+│     if not enforce_eager:                                        # :709
+│         cg_capture_sizes = cudagraph_capture_sizes（None → []）   # :711-713
+│         warmup_sizes -= cg_capture_sizes                          # :714
+│         for r in get_compile_ranges():                           # :716-724
+│             区间内没有任何待编译 size → 追加 r.end                  # 保证每个区间都编译一次
+│
+├─ (1) for size in sorted(warmup_sizes, reverse=True):              # :726
+│         _dummy_run(size)                                         # :728
+│         └─ 按 size 造 dummy batch，跑完整 forward（用 4c 绑好的池）
+│            → 触发该 shape 的图编译 / kernel 预热
+│
+├─ (2) if not enforce_eager: npugraph_bytes = capture_model()       # :730-732
+│     ├─ NPUModelRunner.capture_model()                            # model_runner_v1.py:5101-5111  ★
+│     │    ├─ with _torch_cuda_wrapper()                            # torch.cuda.* → torch.npu.*
+│     │    └─ with _replace_gpu_model_runner_function_wrapper(...)
+│     │    └─ GPUModelRunner.capture_model()                        # gpu_model_runner.py:6525-6590
+│     │         graph_capture() → empty_cache() → start_free = mem_get_info()[0]   # :6543-6547
+│     │         for (mode, descs) in get_capture_descs():           # :6549-6556
+│     │             _capture_cudagraphs(...)                        # 先大后小，复用同一图池
+│     │         end_free = mem_get_info()[0]                        # :6565
+│     │         return start_free − end_free                        # :6583；实测差值
+│     └─ 没开图（enforce_eager / mode=NONE）→ 0                     # :6526-6531
+│
+├─ (3) 推荐 --kv-cache-memory                                       # :734-771
+│     gate: kv_cache_memory_bytes is None and hasattr(peak_activation_memory)   # :741
+│     non_kv = 权重 + 峰值激活 + non-torch + npugraph               # :743-748
+│     A = requested − non_kv − 150 MiB                             # :750
+│     B = init_snapshot.free − non_kv − 150 MiB                    # :751
+│     logger.info(msg)                                             # :752-771
+│
+├─ (4) 收尾                                                        # :773-786
+│     device != A5 → _warm_up_atb()                                  # :775-776；先跑一次 matmul+add
+│     enable_cpu_binding → bind_cpus(local_rank)                     # :779-783；失败只告警
+│     set_random_seed(model_config.seed)                             # :786
+│
+└─ (5) return CompilationTimes(language_model, encoder)              # :787-796
+       ↳ Executor 取各 worker 最大值回填主进程配置                     # abstract.py:131-137
+```
+
+**为什么 warmup 列表这样算**：
+
+- 起点只有用户显式给出的 `compile_sizes`；图捕获的 size 不算 warmup——`capture_model` 内部会为每个 desc 先跑 `num_warmups` 次再捕获（`_warmup_and_capture`，gpu_model_runner.py:6592-6620），重复列会白编译两遍。
+- 每个 `compile_range` 若一个待编译 size 都不含，就补上 `range.end`：分桶编译（如 1..256 一个桶）必须有“桶内最大 shape”才能触发该桶的编译。
+- **倒序**：先跑大 size，workspace / 图池按最大 shape 一次到位，小 size 直接复用，避免反复扩缩（capture 里也有同样注释，:6540-6542）。
+
+**capture_model 是实测，不是估算**：
+
+- 上游 `GPUModelRunner.capture_model` 用 `mem_get_info()` 前后差值作返回值（:6547/6565/6583）；Ascend 不改算法，只把 `torch.cuda.*` 桥成 `torch.npu.*`，把原值透传回来（model_runner_v1.py:5101-5111）。
+- 差别在预算侧：上游会在 `determine_available_memory` 里先 `profile_cudagraph_memory()` **估算**图内存并预扣进 KV 预算（gpu_worker.py:419-464），而 Ascend 不估算、不预扣——图内存实际落在 util 预留里，4d 再用**实测值**把建议值校正回来。这正是 §3.2 那句“画在 `total − requested` 余量上”的来源。
+
+**图内存的“三层归属”**（最容易混的一点）：
+
+- **量法**：`capture_model()` 靠**设备空闲差**度量——`start_free − end_free`（`gpu_model_runner.py:6547/6565/6583`），与 torch / non-torch 的分类无关；NPU 只是包一层并透传返回值（`model_runner_v1.py:5101-5111`，内部 `torch.cuda.*` 经 `_torch_cuda_wrapper()` 桥接到 `torch.npu.*`）。
+- **物理归因 → torch 侧**：图池走 `current_platform.graph_pool_handle()`；NPU 上 `Platform.__getattr__`（interface.py:887-899）把它转发给 `torch.npu.graph_pool_handle`，acl_graph 也直接用 `get_global_graph_pool()`（acl_graph.py:112）。它体现在 `torch_memory = memory_reserved()` 里，而 `non_torch_memory = cuda_memory − torch_memory` **不含**它。
+- **账本归因 → 两个都不进，单独第四项**：不算 `torch_peak_increase`（S2 取的是**图捕获前**峰值，worker.py:563-571 注释与覆写），也不算 `non_torch_increase`（其时间窗早于本步 capture），而是在这里**单列**加到 non_kv（worker.py:743-748）。
+
+> 与 §3.2 分配图里“把它画在 `total − requested` 那块余量上”不矛盾：那里说的是**预算出处**（util 预留），这里说的是**归因口径**——它由 torch 申请，只是迟到于 S2 的记账窗口。
+
+**建议值怎么来的**：
+
+- `non_kv` 把四类内存加齐（含实测 `npugraph_bytes`），而“当前 KV 量”仍用 S2 算出的 `available_kv_cache_memory_bytes`（worker.py:590）。
+- 两个建议值分别对应“只吃满 requested（util 预算）”与“吃满整机 free”；都留 150 MiB，是因为 ACL context / HCCL buffer / driver 这类 non-torch 分配会被 `memory_profiling` 轻微低估（注释 :737-740）。
+- 只在用户**没手工指定** `--kv-cache-memory`、且确实跑过完整 profile（有 `peak_activation_memory`）时才打印——手工指定时这四类值不完整，给建议会误导。
+
+**收尾三件事**：
+
+- `_warm_up_atb()`（非 A5）：先算一次 `torch_npu._npu_matmul_add_fp32`（:798-802）。注释说明若不做，**首次 ReshapeAndCache 会掉性能**——即先把 ATB 的 matmul/融合算子初始化好，避免首个 decode step 踩冷启动。
+- `bind_cpus()`：放在 warmup 之后，让热分配先在 worker 进程落地，再执行 `migratepages/taskset`（注释 :777-778）；绑核失败只告警，不阻断启动。
+- `set_random_seed()`：抹掉初始化/编译期对全局随机态的扰动，保证后续采样可复现（与上游同样放在最后，gpu_worker.py:730-732）。
+
+**与上游 GPUWorker 的差异**（同 RPC，不同实现）：
+
+- 编译条件：上游用 `CompilationMode.VLLM_COMPILE` 门控（gpu_worker.py:595），Ascend 只看 `not enforce_eager`（worker.py:709）。
+- 上游 `_dummy_run(size, skip_eplb=True, remove_lora=False)` 之后还做 `maybe_remove_all_loras` + `kernel_warmup`（:621-626）；Ascend 只传 size，改由 ATB 预热兜住算子冷启动。
+- 上游会打印“估算 vs 实测”的偏差（:632-643）；Ascend 无估算，只有实测 + 建议值。
+- 两者都保留 150 MiB 建议值与 seed 复位；Ascend 额外多了绑核。
 
 至此 NPU 物理侧就绪：每 worker **两种形态并存**——full-attn 4 层的 K/V 双池（各 `(nb×8,128,2,256)` bf16）+ linear 12 层的状态张量（每层 conv `(nb,3,4,096)` bf16 与 ssm `(nb,16,128,128)` fp32 两视图）。
 
