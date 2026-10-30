@@ -898,56 +898,152 @@ _allocate_kv_cache_tensors(kv_cache_config)                             # model_
 
 **与纯 FA 的差别**：`use_mamba=False` 的张量会落到分支 C，为每个 attn 层单独申请 K、V 两张 int8 张量；混合模型则把"拆分"推迟到 4b 的 reshape——4a 只分配一张整张量，K/V 与状态的分界由 4b 的切片决定。
 
-#### 4b reshape：切头 → 对半切 K/V 双池 → view 4D `_reshape_kv_cache_tensors()`（:4353）
+#### 4b reshape：切头 → 对半切 K/V 双池 → view 4D 
 
-同一函数按 spec 类型分两支，**两支切的是同一张 `raw` 张量**。
+`_reshape_kv_cache_tensors()`（:4353）只按 spec 类型分两支，**两支切的是同一张 `raw` 张量**；
 
-**full-attn 层**（混合专用格式，:4495-4579）：
+调用链如下：
 
-```python
-# model_runner_v1.py:4561-4579（节选，混合 full-attn）
-raw = ...                                        # 单张连续张量，2,072 KB × num_blocks
-attn = raw[24KB * nb:]                           # :4576-4577 切掉头部 conv padding
-k_pool = attn[:attn_page]                        # :4578 K 池
-v_pool = attn[attn_page:]                        # :4579 V 池
-k_cache = k_pool.view(bf16).view((nb*8, 128, 2, 256))   # :4561-4570 8 倍展开
-v_cache = v_pool.view(bf16).view((nb*8, 128, 2, 256))
-kv_caches[layer_name] = (k_cache, v_cache)       # 每层 = (K, V) 二元组
+```text
+_reshape_kv_cache_tensors(kv_cache_config, kv_cache_raw_tensors)          # model_runner_v1.py:4353
+│
+├─ (0) kv_caches = {} · layer_kv_cache_spec = _get_layer_kv_cache_specs(kv_cache_config)   # :4369-4370
+│
+├─ (1) for group in _kv_cache_spec_attn_group_iterator()                    # 本 worker 4 组：attn 1 + mamba 3
+│      │  attn_backend = group.backend · current_kv_cache_spec = group.kv_cache_spec
+│      │
+│      └─ (2) for layer_name in group.layer_names                           # :4374；本 worker 16 层（attn 4 + mamba 12）
+│             │  spec = layer_kv_cache_spec[layer_name]                     # :4378
+│             │
+│             ├─ A AttentionSpec：混合 full-attn（4 层）                    # :4436 → :4495-4582  ★
+│             │    条件：use_hybrid_blocks and hybrid_with_attn_and_mamba   # :4495-4500；且非 cache_only/hidden
+│             │    动作：raw_k_tensor = raw_v_tensor = kv_cache_raw_tensors[layer_name]   # :4503；同一张 raw！
+│             │          sum_page_size_bytes = raw.numel()                  # :4504
+│             │          num_blocks = sum_page_size_bytes // page_size_bytes = 6,003   # :4550
+│             │          assert num_blocks >= kv_cache_config.num_blocks    # :4559
+│             │    ├─ 取 kernel 细块 128                                    # :4561-4562
+│             │    │    block_size_chunk = 1,024 // 128 = 8                 # :4564
+│             │    │    kv_cache_shape = get_kv_cache_shape(6,003×8, 128, 2, 256)   # :4565-4570
+│             │    │        = (2, 48,024, 128, 2, 256)                      # dim0=2 是 K/V 二元组
+│             │    ├─ 切三段                                                # :4571-4579
+│             │    │    attn_tensor_page_size = prod(shape[1:]) × 2 = nb × 1 MiB   # :4573；K 总量
+│             │    │    conv_block_padding_size = raw.numel() − 2 × nb×1MiB = nb × 24 KB   # :4576
+│             │    │    raw_kv_tensor = raw[conv_block_padding_size:]       # :4577；切掉段1
+│             │    │    raw_k_tensor = raw_kv_tensor[:nb×1MiB]              # :4578；段2 = K
+│             │    │    raw_v_tensor = raw_kv_tensor[nb×1MiB:]              # :4579；段3 = V
+│             │    └─ view 4D                                               # :4599-4644
+│             │          k_shape = shape[1:] = (48,024, 128, 2, 256)        # :4599-4600
+│             │          v_shape = k_shape                                   # :4601-4604；本模型无 head_size_v
+│             │          k_cache = raw_k_tensor.view(bf16).view(k_shape)    # :4639
+│             │          v_cache = raw_v_tensor.view(bf16).view(v_shape)    # :4644
+│             │          kv_caches[layer_name] = (k_cache, v_cache)         # :4682
+│             │
+│             ├─ B MambaSpec：12 个 linear 层                               # :4683-4716  ★
+│             │    动作：raw_tensor = kv_cache_raw_tensors[layer_name]      # :4684
+│             │          num_blocks = raw.numel() // page_size_bytes = 6,003   # :4687
+│             │          assert num_blocks >= kv_cache_config.num_blocks    # :4688
+│             │          for shape, dtype in zip(spec.shapes, spec.dtypes)  # :4707；顺序固定：(conv, ssm)
+│             │              target_shape = (num_blocks, *shape)            # :4710
+│             │              target_idx += prod(target_shape) × dtype_size  # :4712
+│             │              tensor = raw[start_idx:target_idx].view(dtype).view(target_shape)   # :4713
+│             │              start_idx = target_idx · state_tensors.append(tensor)   # :4714-4715
+│             │          kv_caches[layer_name] = state_tensors → [conv, ssm] # :4716
+│             │    shapes/dtypes 由 get_state_shape() 给出                   # qwen_gdn_linear_attn.py:421-432 → mamba_utils.py:213-234（TP2）
+│             │        conv： (conv_kernel−1, conv_dim/tp) = (3, 4,096) bf16 → 24 KB/块
+│             │        ssm ： (num_v_heads/tp, head_v_dim, head_k_dim) = (16, 128, 128) fp32 → 1 MiB/块
+│
+└─ (3) return kv_caches                                                     # :4720；16 个层条目
 ```
 
-**mamba 层（12 个 linear 层）**（:4683-4716）：
+> `MambaSpec.page_size_bytes` 已被前置 patch 对齐成 2,072 KB（§2.1 · 0c），所以 `num_blocks` 与 attn 层算出同一个 6,003，三段视图按块号一一对齐。
 
-```python
-# model_runner_v1.py:4683-4716（节选，MambaSpec 分支）
-num_blocks = raw.numel() // spec.page_size_bytes         # 2,072 KB 整除 → 6,003
-for shape, dtype in zip(spec.shapes, spec.dtypes):       # 顺序固定：(conv, ssm)
-    target_shape = (num_blocks, *shape)
-    target_idx += math.prod(target_shape) * get_dtype_size(dtype)
-    tensor = raw[start_idx:target_idx].view(dtype).view(target_shape)
-    start_idx = target_idx
-    state_tensors.append(tensor)
-kv_caches[layer_name] = state_tensors                    # 每层 = [conv, ssm] 列表
-```
+**一张 raw 张量的三段分工**——两族各取所需（段内按块连续）：
 
-GDN 两段 shape 由 `get_state_shape()` 给出（qwen_gdn_linear_attn.py:421-432 → mamba_utils.py:213-234，本模型 TP2）：
-
-- **conv**：`(conv_kernel−1, conv_dim/tp) = (3, 4,096)`，记 bf16 → **24 KB/块**
-- **ssm（temporal）**：`(num_v_heads/tp, head_v_dim, head_k_dim) = (16, 128, 128)`，记 fp32 → **1 MiB/块**
-
-`MambaSpec.page_size_bytes` 已被前置 patch 对齐成 2,072 KB（§2.1 · 0c），所以 `num_blocks` 与 attn 层算出同一个 6,003，两块视图按块号一一对齐。
-
-**一页 2,072 KB 的字节分工**——两族各取所需：
-
-| 页内偏移 | 宽度 | attn 层 | mamba 层 |
+| 段（slab） | 每块宽度 | attn 层 | mamba 层 |
 |---|---|---|---|
-| `[0, 24 KB)` | 24 KB | **跳过**（conv padding，:4576-4577） | conv state `(3, 4,096)` bf16 |
-| `[24 KB, 24 KB + 1 MiB)` | 1 MiB | K：`1024 tok × 2 头 × 256 × bf16` | ssm `(16, 128, 128)` fp32 |
-| `[24 KB + 1 MiB, 2,072 KB)` | 1 MiB | V | **未用**（mamba padding） |
+| 段1 `[0, 24 KB × nb)` | 24 KB | **跳过**（conv padding，:4576-4577） | conv state `(nb, 3, 4,096)` bf16 |
+| 段2 `[24 KB × nb, 24 KB × nb + 1 MiB × nb)` | 1 MiB | K `(nb×8, 128, 2, 256)` bf16（`1,024 tok × 2 头 × 256`） | ssm `(nb, 16, 128, 128)` fp32 |
+| 段3 尾部 `1 MiB × nb` | 1 MiB | V，形状同 K | **未用**（mamba padding） |
 
-- 头部 24 KB 不是浪费，而是留给 mamba 的 conv state；attn 的 K 段与 mamba 的 ssm 段**同起点、同宽度**，两族才能共享同一物理页。
+- 段1 的 24 KB 不是浪费：attn 当 padding、mamba 当 conv state，**同一段内存两种解释**；段2 的 K 与 ssm、段3 的 V 与 mamba padding 同理——两族字段宽度一致，才能共享同一张 raw 张量。
 - 逻辑 `block_size=1024`、算子 `kernel_block_size=128` → attn 视图把物理 block_table **展开 8 份 128-token 细块**；mamba 组 `block_size=32768`，每请求 1 块，不展开。
 - 全程只有 `view`（int8 → bf16 / fp32 → 多维），**无 `permute`**。
-- 哪一页归谁用由 4 组各自的 block_table 决定：同一块号只会分给其中一个组（3d 的 `shared_by` + 5c 的单 `BlockPool`）。
+- 哪个块号归谁用由 4 组各自的 block_table 决定：同一块号只会分给其中一个组（3d 的 `shared_by` + 5c 的单 `BlockPool`）。
+
+
+**`for group` 里的 `group` 是什么**：`_kv_cache_spec_attn_group_iterator()`（gpu_model_runner.py:7034-7038）把 `self.attn_groups: list[list[AttentionGroup]]` 拍平成一维流（`kv_cache_config` 尚未就绪时直接产出空序列）——**外层下标 = KV cache group id**（与 `kv_cache_config.kv_cache_groups` 对齐），**内层 = 该组内再切出的 AttentionGroup**。内层切分键是 `(backend 类名, 每层 kv_cache_spec, num_heads_q)`（gpu_model_runner.py:6687-6703）：同组层可能因 backend 不同（滑动窗口 / chunked local attention / fast-prefill）、逐层 spec 不同（`UniformTypeKVCacheSpecs`）、Q 头数不同（draft 层）而分裂；Ascend 版 key 只保留前两项（model_runner_v1.py:4843）。每个 AttentionGroup 携带 `backend / layer_names / kv_cache_spec / kv_cache_group_id / metadata_builders`（utils.py:223-259），metadata builder 及其 scratch 按组各建一份。
+
+Qwen3.5 每个 worker 恰好 4 个 KV cache group（1 个 FullAttentionSpec + 3 个 MambaSpec），组内 backend 与 spec 都一致 → **每组只切出 1 个 AttentionGroup**，所以 4b 的 `for group` 循环 4 次、每次 `group.layer_names` 4 条：
+
+| worker | kv_group 0：attn（`self_attn`） | kv_group 1：mamba（`linear_attn`） | kv_group 2：mamba | kv_group 3：mamba |
+|---|---|---|---|---|
+| W0（PP0·TP0） | L3 / L7 / L11 / L15 | L0 / L4 / L8 / L12 | L1 / L5 / L9 / L13 | L2 / L6 / L10 / L14 |
+| W1（PP0·TP1） | L3 / L7 / L11 / L15 | L0 / L4 / L8 / L12 | L1 / L5 / L9 / L13 | L2 / L6 / L10 / L14 |
+| W2（PP1·TP0） | L19 / L23 / L27 / L31 | L16 / L20 / L24 / L28 | L17 / L21 / L25 / L29 | L18 / L22 / L26 / L30 |
+| W3（PP1·TP1） | L19 / L23 / L27 / L31 | L16 / L20 / L24 / L28 | L17 / L21 / L25 / L29 | L18 / L22 / L26 / L30 |
+
+> 每格 = 一个 AttentionGroup 的 `layer_names`。分组规律：层号 `i mod 4 = 3` 进 attn 组，`i mod 4 = 0/1/2` 依次进 3 个 mamba 组。attn 组 backend 为 Ascend attention backend、spec 为 `FullAttentionSpec`；3 个 mamba 组 backend 为 `AscendGDNAttentionBackend`（gdn.py:64）、spec 为 `MambaSpec(2072 KB)`。W0/W1（或 W2/W3）层名相同，但各进程独立建 backend/builder，所以每个 worker 的 `attn_groups` 都是 4 个内层列表、每个列表 1 个组。
+
+**真实对象（W0 = PP0·TP0）**——展开后就是下面这样（等价表示；`metadata_builders` 在 Ascend 上是建组时直接 new 出的实例，各 1 个）：
+
+```python
+attn_spec = FullAttentionSpec(
+    block_size=1024, num_kv_heads=2, head_size=256, head_size_v=256,
+    dtype=torch.bfloat16, page_size_padded=2_121_728,        # 2,072 KB；逻辑页 2 MiB，NPU 侧对齐到 mamba 页
+)
+mamba_spec = MambaSpec(
+    block_size=32768,                                        # mamba_block_size = max_model_len
+    shapes=((3, 4096), (16, 128, 128)),                      # (conv, ssm)，TP2
+    dtypes=(torch.bfloat16, torch.float32),
+    page_size_padded=2_121_728,                              # 2,072 KB
+    mamba_type=MambaAttentionBackendEnum.GDN_ATTN,           # gdn/base.py:50-51
+)
+
+self.attn_groups = [
+    [AttentionGroup(                                         # kv_group 0（1 个组）
+        backend=AscendAttentionBackend,                      # attention_v1.py:78
+        layer_names=["model.language_model.layers.3.self_attn",
+                     "model.language_model.layers.7.self_attn",
+                     "model.language_model.layers.11.self_attn",
+                     "model.language_model.layers.15.self_attn"],
+        kv_cache_spec=attn_spec,
+        kv_cache_group_id=0,
+        metadata_builders=[AscendAttentionMetadataBuilder],   # 1 个实例
+    )],
+    [AttentionGroup(                                         # kv_group 1
+        backend=AscendGDNAttentionBackend,                   # gdn_attn_builder.py:933
+        layer_names=["model.language_model.layers.0.linear_attn",
+                     "model.language_model.layers.4.linear_attn",
+                     "model.language_model.layers.8.linear_attn",
+                     "model.language_model.layers.12.linear_attn"],
+        kv_cache_spec=mamba_spec,
+        kv_cache_group_id=1,
+        metadata_builders=[AscendGDNAttentionMetadataBuilder],
+    )],
+    [AttentionGroup(                                         # kv_group 2
+        backend=AscendGDNAttentionBackend,
+        layer_names=["model.language_model.layers.1.linear_attn",
+                     "model.language_model.layers.5.linear_attn",
+                     "model.language_model.layers.9.linear_attn",
+                     "model.language_model.layers.13.linear_attn"],
+        kv_cache_spec=mamba_spec,
+        kv_cache_group_id=2,
+        metadata_builders=[AscendGDNAttentionMetadataBuilder],
+    )],
+    [AttentionGroup(                                         # kv_group 3
+        backend=AscendGDNAttentionBackend,
+        layer_names=["model.language_model.layers.2.linear_attn",
+                     "model.language_model.layers.6.linear_attn",
+                     "model.language_model.layers.10.linear_attn",
+                     "model.language_model.layers.14.linear_attn"],
+        kv_cache_spec=mamba_spec,
+        kv_cache_group_id=3,
+        metadata_builders=[AscendGDNAttentionMetadataBuilder],
+    )],
+]
+```
+
+> W1（PP0·TP1）与 W0 层名完全相同（TP 各卡独立构造 backend/builder）；W2/W3（PP1）层号整体 +16：attn 组 L19/L23/L27/L31，mamba 组 1/2/3 分别为 L16/L20/L24/L28、L17/L21/L25/L29、L18/L22/L26/L30。上游 vLLM 的切分键还含 `num_heads_q`（gpu_model_runner.py:6687-6703），Ascend 版去掉它（model_runner_v1.py:4843），所以这里不会因头数再分裂。
 
 #### 4c 绑定：直接复用上游 `bind_kv_cache`
 
