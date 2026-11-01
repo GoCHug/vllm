@@ -345,6 +345,17 @@ sequenceDiagram
 | 物理侧 linear 层 | 状态初始化 | 状态原地步进 |
 | 状态机 | `WAITING → RUNNING` | 保持 `RUNNING` 直到完成 |
 
+#### 4.2.2 写池入口与块级搬移
+
+**写入口按层类型分两条**（两条都作用在启动期 `bind_kv_cache` 挂上的那份 `kv_cache`，见启动篇 §3.4c）：
+
+- **full-attn 层**：`forward_impl` 内调 `reshape_and_cache`（attention_v1.py:1532 → :1430-1454）。`kv_cache` 是 `(k_cache, v_cache)` 二元组，首次调用把 `kv_cache[0]/[1]` 缓存为 `self.key_cache/self.value_cache`（:1439-1441），之后每步只按 `slot_mapping` 调 NPU 双池算子 `DeviceOperator.reshape_and_cache(key, value, key_cache, value_cache, slot_mapping)`（:1444-1452），末尾 `notify_kv_cache_written()`（:1453）。
+- **另一条入口**：`do_kv_cache_update`（:1408-1428）逻辑相同，供“KV 更新不包含在 forward 内”的 backend 走统一算子 `unified_kv_cache_update`（attention.py:489-527）；Ascend backend 默认 `forward_includes_kv_cache_update = True`（backend.py:66），所以实际走的是上面那条快路径。
+- **linear 层**：`kv_cache` 是 `[conv, ssm]` 列表（启动篇 4b 的 `state_tensors`），GDN 层直接取 `self_kv_cache = self.kv_cache`，`conv_state = kv_cache[0]`（按布局可能 `transpose(-1,-2)`）、`ssm_state = kv_cache[1]`（qwen_gdn_linear_attn.py:1308-1316），再按 `state_indices` 就地递推，不走 `reshape_and_cache`。
+- `notify_kv_cache_written` 只是给 KV connector 一个“本步已写”信号（attention/utils.py:459-476）：没有 v1 KV transfer group 时直接 return；有连接器时由它记录事件，供 P/D 拷贝流等待。
+
+**块级搬移入口**：同一 backend 还提供双池版 `swap_blocks`（attention_v1.py:114-126）与 `copy_blocks`（:128-140），都是**Python 索引赋值**完成的整块搬移——`swap_blocks` 按 `src_to_dst[:, 0/1]` 取/存，并带一次 `.to(dst.device)`（可跨卡）；`copy_blocks` 对传入的每个 `(k,v)` 池做 `dst[...] = src[...]`。它们绕过启动篇 4a 的分配层，直接按 `block_id` 索引 4b 视图的第 0 维，是 P/D 传输、offload、prefix cache 复用的底层落点。
+
 ### 4.3 对照：`align` 模式下 mamba 状态块的 prefill / decode 运行流程
 
 > 主线部署为 `none`（§1 配置表）；`align` 仅在接入 KV store 连接器（AscendStore 及其 MultiConnector）时被强制启用，三模式语义与“谁持有块”见启动篇 [`1_start_init.md`](./1_start_init.md) §2。`align` 复用逻辑侧同一套 `allocate_slots` 骨架（§4.1.2 的 S1~S4），差异集中在 mamba 组——状态块的分配、快照与回收随 prefill / decode 逐轮推进。为便于算术，下表设 `block_size = 64`、无投机解码（只说明机制）。
