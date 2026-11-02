@@ -1171,14 +1171,14 @@ self.kv_cache_manager = KVCacheManager(
 |---|---|---|---|---|
 | ① | `if _is_deepseek_v4_kv_cache_config(...)`（:470） | `AscendHybridKVCacheCoordinator` | 完全绕过上游工厂，DSA 专用（SWA + full-attn 组的特化处理） | ✗（非 DSA 模型） |
 | ② | `if len(kv_cache_config.kv_cache_groups) == 1 or not enable_caching`（:486） | **交回上游原工厂**：关缓存 → `KVCacheCoordinatorNoPrefixCache`（上游 :704）；1 组且开缓存 → `UnitaryKVCacheCoordinator`（上游 :717） | 直接用上游原类，**不做 Ascend 替换**；关缓存时支持任意组数 | ✅ **命中**（`enable_caching=False` → `NoPrefixCache`） |
-| ③ | 其余：多组 + 开缓存 + 非 DSA（:502） | `AscendHybridKVCacheCoordinator`（`HybridKVCacheCoordinator` 子类） | 语义等价、类型不同：重写了 `find_longest_cache_hit` 做组间求交 | → R5~R8 开缓存时落这支 |
+| ③ | 其余：多组 + 开缓存 + 非 DSA（:502） | `AscendHybridKVCacheCoordinator`（`HybridKVCacheCoordinator` 子类） | 语义等价、类型不同：重写了 `find_longest_cache_hit` 做组间求交 | → 开 prefix cache 时落这支 |
 
 **Qwen3.5-4B 的两种落点**（关缓存拿到上游原类、开缓存拿到 NPU 子类，二者不是"同一个类的两种状态"）：
 
 | 启动方式 | 实际协调器类 | 前缀查找行为 |
 |---|---|---|
-| 关 prefix cache（默认，R1~R4 / R9） | `KVCacheCoordinatorNoPrefixCache`（**上游原类**，NPU 不替换） | `get_computed_blocks` 恒返回 `empty_kv_cache_blocks` + 0 命中，整条前缀查找被短路 |
-| 开 prefix cache（R5~R8） | **`AscendHybridKVCacheCoordinator`**（Hybrid 的 Ascend 子类） | 组间 `find_longest_cache_hit` 求交：4 组各自查找后取公共命中长度 |
+| 关 prefix cache（默认启动） | `KVCacheCoordinatorNoPrefixCache`（**上游原类**，NPU 不替换） | `get_computed_blocks` 恒返回 `empty_kv_cache_blocks` + 0 命中，整条前缀查找被短路 |
+| 开 prefix cache（align） | **`AscendHybridKVCacheCoordinator`**（Hybrid 的 Ascend 子类） | 组间 `find_longest_cache_hit` 求交：4 组各自查找后取公共命中长度 |
 
 > 子类 docstring 写明能力边界："only supports the combination of two types of KV cache groups, and one of them must be full attention"。Qwen3.5-4B 恰好是 full-attention（8 层）+ Mamba（24 层）两类、共 4 组，符合前提；若换成三类组的模型，这一支的命中求交假设不再成立——这也是它需要 Ascend 独立实现、而不直接复用上游 `HybridKVCacheCoordinator` 的原因。
 
@@ -1320,17 +1320,14 @@ KVCacheCoordinator.__init__                        # kv_cache_coordinator.py:108
 └─ get_manager_for_kv_cache_spec(spec, ...)        # single_type_kv_cache_manager.py:1311
    ├─ KVCacheSpecRegistry.get_manager_class(spec)  # :1331
    │  └─ assert manager_class is not None          # :1332
-   ├─ （仅 SWA / Chunked）填 max_admission_blocks_per_request   # :1338
    └─ manager_class(spec, **kwargs)                # :1345
-      ├─ group 0：FullAttentionSpec → FullAttentionManager（无自定义 __init__）
+      ├─ group 0：FullAttentionSpec → FullAttentionManager
       │  └─ SingleTypeKVCacheManager.__init__      # :64
       └─ group 1–3：MambaSpec → MambaManager       # :956
          ├─ super().__init__(...)                  # :959
          │  └─ SingleTypeKVCacheManager.__init__   # :64
          └─ mode=="align" 才建 last_state_block_idx / _allocated_block_reqs  # :963-968
 ```
-
-三点读法：
 
 - **注册先于构造**：`register_all_kvcache_specs()` 在 S1 之前把 `spec 类型 → manager 类` 成对登记；此后每个 group 只做一次查表，查不到直接断言失败。
 - **一组一实例、共享同一池**：协调器循环 4 次（0=attn，1–3=mamba），把 5c 的同一个 `block_pool` 与 `kv_cache_group_id=i` 原样透传，编号空间因此统一。
@@ -1358,162 +1355,228 @@ self._null_block = block_pool.null_block           # 占位块快捷引用
 
 - **同一块池、两种块大小**：`block_pool` 是同一个对象，attn 组按 1024 token 切块、mamba 组按 32768 token 切块；两者共用同一编号空间——同一个 `block_id` 在物理侧 4 张池里各有对应行，所以 4 个 manager 必须从同一个池领块，编号才对得上。
 - **`req_to_blocks` / `num_cached_block` 各持一份**：这是运行期"一个请求 4 条 `block_table`"的直接来源（运行期篇 §4.1.2）。
-- **`_null_block` 只是快捷方式**：填充或跳过位置时写 0 号块，不必反复取 `block_pool.null_block`。
 - **本模型的行为退化**：`enable_caching=False`，协调器不会调 `find_longest_cache_hit`，`cache_blocks` 也不写哈希表；manager 在运行期只承担"按组算块数 → 从共享池取块 → 记入 `req_to_blocks` → 请求结束归还"。
 
-> 与前三节的关系：这 4 个实例是 5b 的产物；5c 的块池是它们共同的"钱包"；5a 传下来的 `scheduler_block_size` 在这里被记下，运行期做组内块数换算时用。
+### 4.2 逻辑调度粒度和哈希粒度
 
-### 4.2 逻辑调度粒度
+`resolve_kv_cache_block_sizes()` 返回**一对全局标量**——**所有组共用一份**，各自回答一个问题：
 
-`resolve_kv_cache_block_sizes()`
+- **`scheduler_block_size`**：多长的前缀才算一次命中？
+- **`hash_block_size`**：每多少个 token 算一个哈希条目？
 
-**它在逻辑侧干什么**：逻辑侧同时存在三套"块"——各组 manager 块（attn 1024 / mamba 32768）、调度块、哈希块。这个函数在装配前把"多组各自的块大小"折算成**调度器只用一份**的两个粒度，作为 `Scheduler(...)` 的入参；它不创建任何对象，只定口径。
+之所以是全局一份，是因为同一个值必须同时满足 4 个组各不相同的 `block_size`，所以只能用 **LCM / GCD** 把它"套"到所有组上。它与「每组自己的 `spec.block_size`」是**两套东西**：后者才是物理切块粒度（attn 1024 / mamba 32768），前者只是跨组的**对齐尺度**与**哈希步长**——**都只是"尺度"，不是块大小**。
 
-| 返回值 | 含义 | 本模型 | 谁消费 |
-|---|---|---|---|
-| `scheduler_block_size` | 跨组统一的 token 粒度 | **32768**（LCM） | Scheduler → `KVCacheManager` → 协调器整除断言（5b）、各 manager 的 `scheduler_block_size` |
-| `hash_block_size` | `Request.block_hashes` 的计算粒度 | **32768**（等于上一行，哈希实际不生效） | `get_request_block_hasher`（本模型不装配） |
+| 返回值 | 是什么 | **不是**什么 | 约束 | 谁在用 |
+|---|---|---|---|---|
+| `scheduler_block_size` | **命中/缓存的对齐尺度**：能命中、能进缓存的前缀长度，必须是它的整数倍 | 不是物理块大小 | 必须能被每组 `block_size` 整除 → 多组取 **LCM** | 协调器构造断言、`cache_blocks` 下取整、命中长度裁剪 |
+| `hash_block_size` | **哈希链的步长**：每多少个 token 算一个 `BlockHash` 条目 | 不是缓存/存储粒度——块永远按各自 `block_size` 整块存取 | 必须整除每组 `block_size` → 默认取 **GCD**，可被 `cache_config.hash_block_size` 覆盖得更细 | `get_request_block_hasher` 算 `Request.block_hashes`；比它大的组用 `BlockHashListWithBlockSize` 跨条目拼接 |
 
-五个出口（kv_cache_utils.py:616-656），本模型走第 3 个：
+三个算例，从默认形态到异构形态：
 
-| # | 条件 | 返回 | 本模型 |
-|---|---|---|---|
-| 1 | `len(groups) <= 1` | `(cache_block_size × dcp × pcp, 同)` | 4 组 → 跳过 |
-| 2 | 多组且 `dcp/pcp != 1` | `ValueError`（多块大小不支持上下文并行） | 均为 1 → 跳过 |
-| 3 | 多组、**既无前缀缓存也无 connector** | `(LCM, LCM)` | ✓ 命中（:633-634） |
-| 4 | 多组、有缓存但 mamba 块 ≠ `cache_config.block_size` | `(LCM, LCM)`（哈希退化） | 若开缓存仍命中（32768 ≠ 1024） |
-| 5 | 多组、有缓存且 mamba 块已对齐 | `(LCM, hash_block_size 或 GCD)` | ✗ |
+**例子 A：本模型默认（关 prefix cache）→ 32768 / 32768**
 
-本模型命中的就是这一段：
-
-```python
-# kv_cache_utils.py:626-634（节选）
-group_block_sizes = [g.kv_cache_spec.block_size for g in groups]   # [1024, 32768]
-scheduler_block_size = math.lcm(*group_block_sizes)               # 32768
-connector_enabled = vllm_config.kv_transfer_config is not None
-if not (cache_config.enable_prefix_caching or connector_enabled):
-    return scheduler_block_size, scheduler_block_size             # (32768, 32768)
+```text
+group_block_sizes     = [attn 1024, mamba 32768, mamba 32768, mamba 32768]
+                         └ attn 组   └ 3 个 mamba 组（mode=none → mamba_block_size = max_model_len = 32768）
+scheduler_block_size  = lcm(1024, 32768) = 32768     ← 对齐尺度：只能按整序列边界命中
+hash_block_size       = 32768                        ← 关缓存且无 connector → 直接等于 scheduler
 ```
 
-- **为什么取 LCM 而不是 GCD**：一份调度块要同时覆盖 1024 与 32768 两种组边界，取最小公倍数才能保证"任一组边界都落在调度块边界上"；取 GCD 会把 mamba 组切碎。
-- **32768 在本模型只做两件事**：传给 `KVCacheManager` 的 `scheduler_block_size`（再被协调器拿去断言 `32768 % 1024 == 0`），以及作为 `self.block_size` 的兜底参数——**按 token 切块用的仍是 `cache_config.block_size` = 1024**。其中 prefill 的块对齐切分由 `_mamba_block_aligned_split`（sched/scheduler.py:293-338）执行，且仅 `mamba_cache_mode == "align"` 时启用（:261-263）；本模型 `none` 模式下该分支不执行，prefill chunk 由 `max_num_batched_tokens` 决定，KV 分配再按 1024-token 块向上取整。
-- **哈希为什么也退成 32768**：本模型关前缀缓存且无 connector，直接返回 scheduler 值；即便开了缓存，`mamba_cache_mode != "align"` 时 mamba 组 32768 ≠ 1024 也会命中第 4 个出口退成同值——所以哈希粒度在本模型恒为 32768、且从不使用。
+关缓存时这两个量基本空转：**没有运行期消费者**——hasher 不装配（hash 恒不使用），协调器的 `cache_blocks`（写缓存前下取整）与 `find_longest_cache_hit`（命中长度裁剪）都不会被调用。`scheduler_block_size` 只剩一件事：启动期的可整除自检 `32768 % 1024 == 0`。
 
-至此两侧全部装配完成：物理侧两类张量就绪、逻辑侧 n 个块与 4 个 manager（1 attn + 3 linear）就绪、两侧靠 `block_id == 行号` 约定桥接，引擎进入接收请求的定态。
+**例子 B：本模型开 prefix cache（align）→ 1024 / 1024**
 
-## 5. 两侧对应关系：一份配置、一个编号约定
+align 把 mamba 组 `block_size` 拉齐到 `cache_config.block_size`：
 
-两侧之间**没有任何对象引用**，衔接只靠两样东西：**一份配置**（分组信息 + `num_blocks`）与**一套编号**（`block_id == 张量 dim0 行号`）。下面按"传了什么 → 怎么对上号 → `block_id` 的三层语义 → 运行期怎么读 → 落在哪张卡 → 本模型数字"六层递进。
+```text
+group_block_sizes     = [1024, 1024, 1024, 1024]
+scheduler_block_size  = lcm(...) = 1024              ← 从 32768 缩到 1024
+hash_block_size       = gcd(...) = 1024（未设 override 时）
+```
 
-### 5.1 交接清单：两侧之间传了什么
+四组同值后 LCM 自然从 32768 回落到 1024——**不是谁改了它，是 LCM 的输入变了**。此时 `block_size == hash_block_size == scheduler_block_size`，命中裁剪走"三者相等"的快路径，一个 block 都不用 pop。
 
-| 交付物 | 生产（侧 · 阶段） | 消费方 | 用途 |
-|--------|------------------|--------|------|
-| `kv_cache_configs`（list，每 worker 一份） | 物理侧 S3 | 物理侧 S4：各 NPUWorker | Worker 遍历 `kv_cache_tensors`，full-attn 层分 K/V 双池、linear 层按状态切片绑定 |
-| `num_blocks`（跨 worker 对齐） | 物理侧 S3 | 逻辑侧 S5 的 `BlockPool` | `BlockPool.__init__` 建出 `KVCacheBlock(0 .. num_blocks-1)`（块 0 开池即留作 `null_block` 占位，实际可分配 `num_blocks-1`） |
-| scheduler 版 `KVCacheConfig`（deepcopy 单份） | 物理侧 S3 收口（`_initialize_kv_caches` 返回值） | 逻辑侧 S5：Scheduler / KVCacheManager / Coordinator | 分组信息、`num_blocks`、`has_mamba_layers` / `needs_kv_cache_zeroing` 等运行标志 |
-| `cache_config.num_gpu_blocks` 回写 | 物理侧 S3 | EngineCore / Scheduler / KV connector | KV 容量对外可见，供准入与 connector 握手 |
-| `kv_caches[layer]` | 物理侧 S4 | Ascend attention 算子 + GDN 状态算子 + NPUModelRunner | **full-attn 层**：`(k_cache, v_cache)` 两张 `(nb×8,128,2,256)`——forward 时 `reshape_and_cache` 按 `slot_mapping` 写新 K/V 各自进池、注意力核按 `block_table` 沿第 0 维 gather 读历史；**linear 层**：状态张量，每步就地步进 |
-| `KVCacheManager` 全套（Coordinator + BlockPool + manager×4） | 逻辑侧 S5 | Scheduler 运行期 | `get_computed_blocks` / `allocate_slots` / `free` 统一 API，产出 4 组 `block_table` |
-| `scheduler_block_size` / `hash_block_size`（32768 / 32768） | 逻辑侧 S5 的 `resolve_kv_cache_block_sizes()` | Scheduler → KVCacheManager → 协调器 / 各 manager | 跨组 token 对齐不变量（协调器整除断言）；本模型关缓存且无 connector → 两者同值、哈希实际不使用 |
+**例子 C：异构两组（1024 + 2048）——两个量各管一层**
 
-> 一条隐含约束：`kv_cache_configs`（交 S4 各 worker）与 scheduler 版 `KVCacheConfig`（deepcopy 单份交 S5）都由 S3 收口产出，因此两侧看到的分组与 `num_blocks` 必然一致——见 §5.2 约定 1。
+这是分工最清楚的情形：`scheduler_block_size = LCM = 2048`，`hash_block_size = GCD = 1024`。
 
-### 5.2 三条约定：从配置到编号
+- **`hash_block_size = 1024` 管哈希链**：必须能被**最小组**的 `block_size` 整除，小组的块边界才表达得出来；更大的组用"拼接"跨多个条目表示自己的块。
+- **`scheduler_block_size = 2048` 管命中长度**：命中要求各组同时成立——组1 只能是 1024 的倍数、组2 只能是 2048 的倍数，交集即 2048 的倍数。
 
-1. **同一份配置定义容量**：S3 收口产出完整版 `list[KVCacheConfig]`（每 worker 一份、`num_blocks` 已 min 对齐）交给 S4；deepcopy 出的 scheduler 版单份交给 S5。`generate_scheduler_kv_cache_config` 的入口断言兜底保证两侧看到的 `num_blocks` 必然相等——物理侧各张量的 block 轴大小、逻辑侧 `BlockPool.blocks` 长度都由同一个数字推出。NPU 特有的一层保障：`NPUModelRunner.initialize_kv_cache` 还会 `deepcopy(config)`（model_runner_v1.py:3850），确保 worker 侧的任何配置增补不污染引擎进程共享的对象。
-2. **从 0 顺序编号的约定**：逻辑侧 `BlockPool.__init__` 一次性建出 `num_blocks` 个 `KVCacheBlock`，`block_id` 取序号 `0 … n-1`；物理侧 reshape 后每张张量的 block 轴大小恰为同一 `num_blocks`。两侧在 block 轴上"位置等同"——`block_id` 即张量行号，fancy index 直接取行，无查表、无拷贝。
-3. **NPU 的两种物理形态，同一套编号约定**：
-   - **full-attn 层**（K/V 双池）：K 池与 V 池**各有一套同序号的行空间**——同一个 `block_id` 同时命中两池各自的第 `block_id` 行；索引方式 `kv_caches[layer][0][block_ids]`（K）/ `[1][block_ids]`（V）；
-   - **linear 层**（单张量状态）：`block_id` 定位状态张量的对应块（conv + temporal 视图）；
-   - 逻辑侧对形态差异完全无感，`block_table` 按组各一份。
+| token 区间 | 0–1023 | 1024–2047 | 2048–3071 | 3072–4095 |
+|---|---|---|---|---|
+| 哈希条目（步长 1024） | A | B | C | D |
+| 组1（block 1024） | 块0 = A | 块1 = B | 块2 = C | 块3 = D |
+| 组2（block 2048） | 块0 = **A+B 拼接**（占 0–2047） | — | 块1 = **C+D 拼接**（占 2048–4095） | — |
 
-### 5.3 `block_id` 的三层语义
+> 组2 并没有"按 1024 缓存"：它的块 0 装的是 0–2047 全部 2048 个 token，1024 只体现在**身份键由两个哈希拼接**（`BlockHashListWithBlockSize` 的 `scale_factor = 2048/1024`）。物理块永远按各 manager 自己的 `block_size` 用 `cdiv(num_tokens, 自己的 block_size)` 计算——与这两个量都无关。
 
-“`block_id` 即行号”只解释第一层；块多大、怎么换算必须按组分看——三个层面依次是：
+
+### 4.3 两套形态对照：开关 prefix cache
+
+Qwen3.5-4B hybrid模型默认启动即关 prefix cache；显式开 `--enable-prefix-caching` 则 hybrid 不支持 `all` → 降级到 `align`。
+
+**先明确两侧对这个开关的感知边界**——这是理解下表的前提：
+
+| 侧 | 感知什么 | 不感知什么 |
+|---|---|---|
+| **逻辑侧**（引擎进程） | 开关的**全部语义**：协调器选型、`BlockPool` 是否建哈希表、hasher 是否装配、命中/缓存路径是否执行、`scheduler_block_size` 与块对齐切分 | — |
+| **物理侧**（worker 进程） | **只有两件**：① 区块表给 mamba 组预留几个槽位（1 vs 32）；② 是否每步做 mamba state 跨块拷贝 | **KV 张量分配**——页宽、`num_blocks`、三区段布局只由 attn 的 `config.block_size` 决定，两套形态逐字节相同 |
+
+下表逐项并列（**最后三行即物理侧的"两件感知 + 一行反证"**）：
+
+| 维度 | 关 prefix cache（默认启动） | 开 prefix cache（`--enable-prefix-caching`） | 源码出处 |
+|---|---|---|---|
+| **触发条件** | 不传该参数（默认 `None` → 判为不支持） | 显式传参 | arg_utils.py:505 / :2404-2410 |
+| **`enable_prefix_caching`** | `False`（hybrid 被判为不支持） | `True`（"不支持"仅对 pooling 告警，生成式无警告） | config/model.py:1852-1857 / arg_utils.py:2411-2420 |
+| **`mamba_cache_mode`** | `"none"` | `"align"`（hybrid 不支持 `all`，降级） | config/cache.py:133 / :139-141 |
+| **`mamba_block_size`**（`MambaSpec.block_size`） | `max_model_len` = **32768**（一块 = 整序列状态） | `cache_config.block_size` = **1024**（**与 attn 同值**，由 align 拉齐） | patch_mamba_config.py:145-146 / :143-144 |
+| **协调器选型** | `KVCacheCoordinatorNoPrefixCache`（patch ②支 → 上游①支） | `AscendHybridKVCacheCoordinator`（patch ③支，重写 `find_longest_cache_hit`） | patch:486 → 上游:704 / patch:502 |
+| **`BlockPool.enable_caching`** | `False`（不建哈希表，不走 cached 队列） | `True`（建 `cached_block_hash_to_block`，可共享复用） | 5c |
+| **`request_block_hasher`** | **不装配**（用不到） | **装配**（按 `hash_block_size` 算 `block_hashes`） | scheduler.py 前缀装配分支 |
+| **`scheduler_block_size`** | **32768**（LCM of `[1024, 32768×3]`） | **1024**（四组已拉齐，LCM = 1024） | kv_cache_utils.py:627 |
+| **`hash_block_size`** | 32768（填了但无 hasher → 不生效） | 1024（实际生效：`hash_block_size` override 或 GCD） | §4.2 例子 A / 例子 B |
+| **`need_mamba_block_aligned_split`** | `False`（`mode != "align"`） | `True`（`mode == "align"`） | scheduler.py:261-263 |
+| **prefill 块对齐切分** | 不启用；chunk 由 `max_num_batched_tokens` 决定 | **启用**；chunk 边界必须落在 1024 | scheduler.py:293-338 |
+| **`get_computed_blocks`**（每请求首次） | **恒返回空 + 0 命中**，前缀查找全程短路 | 4 组各自查哈希链 → 取**公共命中长度** `hit_length` | kv_cache_manager.py:212-213 |
+| **每请求 mamba 块数（逻辑）** | `1 + num_spec`，持有到请求结束（不可驱逐） | 命中块数 + 2 + `num_spec`；旧块**滞后一步**交还块池 | §2.1 mamba 三档 |
+| **区块表宽度（物理侧）** | mamba 组 **1**（+ num_spec） | mamba 组 **32** = `cdiv(32768, 1024)`（+ num_spec） | model_runner_v1.py:4778-4783 |
+| **mamba state 跨块拷贝（物理侧）** | 不执行 | 每步执行（`assert enable_prefix_caching` 守住入口） | mamba_utils.py:659 |
+| **KV 张量本身（页宽 / num_blocks / 布局）** | 两者**完全相同**——只由 attn 的 `block_size` 决定 | 同左 | kv_cache_utils.py 不读该开关 |
+
+> 逐行看下来：开缓存不是"多做个查找"，而是**整张口径换一套**——`mamba_block_size` 从整序列（32768）降为每块对齐（1024），协调器从上游 `NoPrefixCache` 换成 `AscendHybrid`，`scheduler_block_size` 同步缩值，并多出哈希器、哈希表、块对齐切分三件装备。其中 `mamba_block_size` 与 `scheduler_block_size` 的联动最关键：前者决定 mamba 状态快照节奏，后者只是与之取 LCM 的对齐不变量。
+
+## 5. 两侧关系：一份配置、一套编号
+
+装配完成后，物理侧两类张量与逻辑侧 `n` 个块 + 4 个 manager 都已就绪。两侧之间**不存在任何对象引用**，对上号只靠两样东西：**同一份配置**（分组 + `num_blocks`）与**同一套编号**（`block_id == 张量 dim0 行号`）。
+
+### 5.1 交接清单
+
+| 交付物 | 流向 | 作用 |
+|---|---|---|
+| `kv_cache_configs`（每 worker 一份） | 物理 S3 → 物理 S4 | worker 遍历 `kv_cache_tensors` 绑定张量：attn 层切 K/V 双池、linear 层按状态切片 |
+| scheduler 版 `KVCacheConfig`（同源 deepcopy 单份） | 物理 S3 → 逻辑 S5 | 分组、`num_blocks`、`has_mamba_layers` 等运行标志。**与上一行同源** ⇒ 两侧看到的容量必然一致 |
+| `num_blocks` | 物理 S3 → 逻辑 S5 `BlockPool` | 建 `KVCacheBlock(0 .. n-1)`；块 0 留作 `null_block`，实际可用 `n-1` |
+| `cache_config.num_gpu_blocks` 回写 | 物理 S3 → EngineCore / Scheduler | KV 容量对外可见（准入判断、connector 握手） |
+| `kv_caches[layer]` | 物理 S4 → 算子 | attn 层 `(K, V)` 双池 `(nb×8,128,2,256)`；linear 层状态张量 |
+| `KVCacheManager`（Coordinator + BlockPool + 4 managers） | 逻辑 S5 → Scheduler | 统一 API（`get_computed_blocks` / `allocate_slots` / `free`），产出 4 组 `block_table` |
+
+### 5.2 怎么对上号：`block_id` 的三层语义
+
+`block_id` 能直接当行号只解决第一层；块多大、怎么换算必须按组分看：
 
 | 层面 | 由谁决定 | 表现 |
 |---|---|---|
-| **编号空间** | 共享的 `BlockPool`（全局序号 `0 … n-1`） | 4 组、全部 32 层张量共用同一空间 → `block_id == dim0 行号`；**与 attn block size 无关** |
-| **序列位置 → block_id 的换算** | **各组自己的 `spec.block_size`**（`single_type_kv_cache_manager.py:66`，分配时 `cdiv(num_tokens, self.block_size)`） | attn 组按 1024 算、mamba 组按 32768 算 → 4 张 `block_table` 长度不同（序列 L：`cdiv(L,1024)` vs `cdiv(L,32768)`）；**同一个 `block_id=3` 在 attn 表里是第 3 个 1024-token 块，在 mamba 表里是第 3 个整序列状态块——同号不同义** |
-| **每格多少字节（容量刻度）** | **attn 的 block size**（mamba 页被垫到同值） | attn 页 = `block_size × 每 token 字节`；patch 用 `assert 每 token K 页 × attn_block_size == ssm 页`（patch :95）反推出 1024 再垫成统一页，故 `num_blocks = 预算 ÷ 统一页 ÷ 组内层数` 的"格"由 attn 定 |
+| **编号空间** | 共享的 `BlockPool`（全局 `0 … n-1`） | 4 组、32 层共用同一空间 → `block_id == dim0 行号`，**与 block size 无关** |
+| **位置 → `block_id`** | **各组自己的 `spec.block_size`**（分配时 `cdiv(num_tokens, block_size)`） | attn 按 1024 算、mamba 按 32768 算 → 4 张 `block_table` 长度不同；**同一个 `block_id=3`，在 attn 表是第 3 个 1024-token 块，在 mamba 表是第 3 个整序列状态块——同号不同义** |
+| **每格多少字节** | **attn 的 `block_size`**（mamba 页被垫到同值） | 统一页 2,072 KB；`num_blocks = 预算 ÷ 统一页 ÷ 组内层数` 的"格"由 attn 定 |
 
-> 一句话：**编号共享、映射各算、刻度由 attn 定**——`block_id` 本身不含"这个块多大"的信息，块的 token 跨度必须按组查各组的 `block_size`（§2.1 量总表）。`scheduler_block_size`（32768）只用于命中/缓存边界，也不参与编号。
+> 一句话：**编号共享、映射各算、刻度由 attn 定**。`block_id` 本身不含"块多大"的信息，token 跨度要按组查各自的 `block_size`。
 
-### 5.4 运行期怎么读：一次 forward 的取数路径
+两种物理形态共用同一套编号，逻辑侧对此完全无感：
 
-**双池形式下 block 轴恒为 dim0，无需哨兵值运行时探测**——这是 KV 传输注册约束（buffer dim0 = num_blocks、地址 2MiB 对齐）的直接副产物。
+- **full-attn 层**：K 池与 V 池**各有一套同序号行空间**——同一个 `block_id` 同时命中两池各自的第 `block_id` 行（`kv_caches[layer][0][block_ids]` / `[1][block_ids]`）；
+- **linear 层**：`block_id` 直切状态张量的对应块（conv + temporal 视图）；
+- 调度器只认 `block_id`，`block_table` 按组各一份。
 
-forward 伪代码（NPU，`block_ids` 即该请求**本组**的 `block_table`）：
+### 5.3 并行布局：一个 `block_id` 如何落到 4 张卡
 
-```python
-# full-attn 层（K/V 双池）：
-block_ids = fm_blocks(request_id)                 # attn 组 block_id 列表，来自 FullAttentionManager.req_to_blocks
-k = kv_caches[layer][0][block_ids]                # K 池：dim0 fancy indexing（每块 8 个 128 细块）
-v = kv_caches[layer][1][block_ids]                # V 池：dim0 fancy indexing（同一批行号）
-# 写路径入口：DeviceOperator.reshape_and_cache 按 slot_mapping scatter（attention_v1.py:1444）
-# slot_mapping = block_id * 128 + 细块内偏移（每 token 一个槽位，同一值同时定位两张池）
+一个请求的 KV 在 pp2tp2 下分散到 4 张卡，但**编号只有一份**。沿"发号 → 下发 → 取行"三步看：
 
-# linear 层（单张量状态）：
-state_blocks = gm_blocks(request_id)              # 3 个 linear 组各自 block_id 列表（每组每请求 1 块）
-state = state_cache[layer][state_blocks]          # 按状态视图读写，每步就地步进（无 block_table 读历史）
+```
+逻辑侧（引擎进程，唯一编号空间）
+  BlockPool: 0 … n-1
+  请求 R 一次分配 4 个 id（每组一个）：attn→[1]、mambaA→[2]、mambaB→[3]、mambaC→[4]
+        │ SchedulerOutput.block_ids = ([1], [2], [3], [4])    ← 按组打包
+        ├──────────► worker0 / worker1（PP stage0：层 0–15）
+        └──────────► worker2 / worker3（PP stage1：层 16–31）
+                        └ 每个 worker：写入自己的 block_table[gid]
+                          forward 第 l 层：查 group(l) 的表 → 按 id 取自己张量第 id 行
 ```
 
-> 4 组的 `req_to_blocks[request_id]` 分别来自 `FullAttentionManager` / `MambaManager`（S5 装配的产物，5d）。`null_block`（`block_id=0`）在 `BlockPool.__init__` 立即摘走作占位，实际可分配数为 `num_blocks-1`，物理 0 号行因此闲置。
+**① 发号：一个请求拿 4 个 id，不是一个**——`KVCacheBlocks.get_block_ids()` 返回 `tuple[list[int], ...]`，外层是组、内层是该组的 id 列表（kv_cache_manager.py:69-84）。本例即 `[1] / [2] / [3] / [4]`。
 
-### 5.5 并行布局：同一请求的 KV 落在哪
+**② 下发：同一份 4 元组广播给所有 worker**——`NewRequestData.block_ids` 就是这个按组打包的元组（output.py:37）。每个 PP stage 都含 4 个组的层（本例每 stage 16 层 = 4 attn + 12 linear，四组各有着落），所以每个 worker 都收到完整 4 组。
 
-4 张卡各存 16 层（12 linear 状态 + 4 full-attn K/V 双池）；同一 PP stage 的两个 TP rank 存**同层、不同 KV 头子集**（full attn 各 2 头）。同一请求的 KV 被切成多段：`block_table` 跨 PP 按阶段分段索引，跨 TP 各 rank 只读自己的头子集。调度器仍只认 `block_id`（**4 组各一份 block_table**），对 PP/TP 布局与两种物理形态完全透明；`BlockPool` 在引擎进程**只有一份**。
+**③ 取行：按组找表，按 id 找行**——worker 侧 `input_batch.block_table[kv_cache_gid]`（model_runner_v1.py:3119）按组取表；forward 到第 l 层就用它所属组的表，`表[block_id]` 即该层张量的第 `block_id` 行。**同一 id 在 4 张卡上都指向同一行号**，因为编号来自引擎进程那唯一一份 `BlockPool`。
 
-### 5.6 本模型实测量（收口）
+**④ PP / TP 只切内容，不切编号**：
 
-> §1–§4 的结论落到真实数字（Qwen3.5-4B，pp2tp2，attn block_size=1024）：
-
-| 量 | 计算式 | 实测值 |
+| 维度 | 切的是什么 | 编号是否变化 |
 |---|---|---|
-| 每卡 KV 可用显存 | `worker.py:593 info_once` 日志 | **51.90 GiB** |
-| attn 统一页（两族全等） | attn 页 2 MB + conv 页 24 KB | **2,072 KB**（padding 1.16%） |
-| attn 组 block_size | patch 页对齐 | **1024** |
-| mamba 组 block_size | `patch_mamba_config.py:146`（前缀缓存关闭） | **32768**（= max_model_len） |
-| `num_blocks` | `available // page(2,072 KB) // group_size(4)`，再跨 worker 取 min | **6003**（= 6,147,072 tokens ÷ 1024） |
-| scheduler / hash block_size | `resolve_kv_cache_block_sizes`（多组 LCM / 关缓存退回） | **32768 / 32768** |
-| 每 worker 张量 | S3 下发 **4 张**共享张量（每张 1 attn + 3 mamba 层）→ 4b 展开 | 分配 4 张（各 ≈11.9 GiB）、reshape 后 **16 个层条目 / 32 个张量视图**（8 K/V + 24 状态 = 12 层 × (conv, ssm)） |
-| full-attn 单张 shape | `view(num_blocks×8, 128, 2, 256)` bf16 | 逻辑块 1024-token、物理 8 细块 |
+| **PP**（2 stage） | 层：stage0 持 0–15 层，stage1 持 16–31 层 | 不变——同一 id 在两张卡上都是"第 id 行"，只是行里装的是各自层的 KV |
+| **TP**（2 rank/stage） | KV 头：full-attn 共 4 头，每 rank 存 2 头 | 不变——每个 rank 的张量 dim0 仍是 `num_blocks` |
+
+> 一句话：`block_id` 是**全局行号**——PP 决定"哪张卡有这层"，TP 决定"这张卡存这层的哪几个头"，两者都不动编号。所以调度器只要给出 4 张 `block_table`，4 张卡就能各自取到正确行。
+
+### 5.4 收口：四个决定容量的数字
+
+> Qwen3.5-4B，pp2tp2，attn block_size=1024。完整公式链见 §6。
+
+| 量 | 值 | 决定了什么 |
+|---|---|---|
+| 每卡 KV 可用 | **51.90 GiB** | 预算上限（`worker.py:593` 日志） |
+| 统一页 | **2,072 KB**（attn 2 MB + conv 24 KB，padding 1.16%） | 每块字节刻度，两族全等 |
+| `num_blocks` | **6003** | 逻辑块数 = 每张张量 dim0 行数（跨 worker 取 min） |
+| 组内 `block_size` | attn **1024** / mamba **32768** | 同一 `block_id` 在两族的 token 跨度 |
+
+由此派生（不展开）：
+
+- **每 worker 张量**：4 层共享一张 → 分配 **4 张 × ≈11.9 GiB**，reshape 后 **16 个层条目 / 32 个视图**（8 K/V + 24 状态）；
+- **调度/哈希粒度**：**32768 / 32768**——关缓存下前者只做装配断言、后者不生效（§4.2）。
+
+> 全章一句话：装配期定死**容量**（6003 块）、**刻度**（2,072 KB/块）、**编号**（`0..n-1` ↔ 张量行号）；运行期两侧只交换 `block_id`，不再交换任何对象（取数路径见运行期篇 §4.2.3）。
 
 ## 6. 关键公式汇总
 
-沿两侧管线顺序排列（Qwen3.5-4B pp2tp2 实测口径；单位 1024 进制）：
+按管线顺序分四组，只列会改变最终数字的算式（运行期的每步新块数见运行期篇 §4.1.3）。
 
-| 公式 | 所属阶段/侧 | 含义 | Qwen3.5-4B 实测 | 出处 |
-|------|------------|------|------------------|------|
-| `attn_block_size = kernel_block_size × cdiv(ssm_page, kernel_block_size × attn_k_page)` | 前置 patch | 按 mamba ssm 状态页反推 attn 块 token 数 | `128 × cdiv(1MB, 128×1KB) = 128×8 = 1024` | patch_mamba_config.py:94 |
-| `统一页 = attn 页 + conv 页` | 前置 patch | 两族 `page_size_bytes` 全等（多组共享 block 账本的前提） | `2 MB + 24 KB = 2,072 KB`（padding 1.16%） | patch_mamba_config.py:113-117 |
-| `mamba_block_size = max_model_len`（前缀缓存关闭） | 前置 patch | mamba 组每请求只占 1 个整序列状态块 | `32768` | patch_mamba_config.py:146 |
-| 每请求 mamba 状态块数：`none`→`1+num_spec`；`all`→`cdiv(num_tokens, bs)+num_spec`；`align`→`命中块数+2+num_spec`（峰值） | 前置 patch / S5 逻辑侧 | 三模式内存账的唯一权威来源 = `MambaSpec.max_memory_usage_bytes`（`all` 的块表宽度按 `max_model_len` 预留；`align` 的旧块滞后一步释放，故比稳态多算 1 块） | 本模型 `none`：恒 1 块 | kv_cache_interface.py:627-636、§2 |
-| `available = total × util − weights − activations` | S2 物理侧 | 单卡 KV 显存预算（profile_run 实测）；**NPU 无图项** | **51.90 GiB** | §3.2.1 |
-| `num_blocks = 多组统一 block 空间协调 → min 对齐` | S3 物理侧 | per-worker 容量：attn 大页与 mamba 状态页共享预算后取 min | ≈ **6003** | §3.3d（公式）、§3.3e（min 对齐） |
-| `KVCacheTensor.size = page_size_bytes × num_blocks` | S3 物理侧 | **每张**共享张量的字节数（每张由 1 attn + 3 mamba 层共用） | `2,072 KB × 6003 ≈ 11.9 GiB`（共 4 张） | §3.3d |
-| `scheduler_block_size = LCM(各组 block_size)` | S5 逻辑侧 | 跨组 token 对齐不变量（命中掩码/缓存边界/offload 粒度；**非**调度分片——分片用 `cache_config.block_size`） | `LCM(1024, 32768) = 32768` | kv_cache_utils.py:627、sched/scheduler.py:319 |
-| `hash_block_size = scheduler_block_size`（关缓存无 connector） | S5 逻辑侧 | 哈希粒度；关前缀缓存时退回 | `32768` | kv_cache_utils.py:633-634 |
-| `num_new(attn 组) = max(cdiv(num_tokens, 1024) − 已持块数, 0)` | S5 逻辑侧 | attn 组每步新块数 | prefill 1 / decode 0~1 | 5d、运行期篇 §4.1.3 |
-| `num_new(mamba 组) = max(cdiv(num_tokens, 32768) − 已持块数, 0)` | S5 逻辑侧 | mamba 组每步新块数 | 恒 0~1（3 组各 1 块） | 5d、运行期篇 §4.1.3 |
-| `non_kv_memory = weights + peak_activation + non_torch + npugraph + 150MiB` | 4d 物理侧 | 图内存事后记账：给出两种 `--kv-cache-memory` 建议值 | 启动日志建议行 | worker.py:741-771 |
-| `逻辑块数 == 每张张量行数 == num_blocks` | S5 ↔ S4 | 同一份配置保证两侧容量一致（断言兜底） | 6002 个可分配块（0 号为 null_block） | 5c/§5 |
+### 6.1 S0 页对齐（配置期 · vllm-ascend patch）
+
+| 公式 | 含义 | 本模型 | 出处 |
+|------|------|--------|------|
+| `attn_block_size = kernel_bs × cdiv(ssm_page, kernel_bs × attn_k_page)` | 由 mamba 的 ssm 状态页反推 attn 块该含多少 token | `128 × cdiv(1 MB, 128×1 KB) = 1024` | patch_mamba_config.py:94 |
+| `统一页 = attn 页 + conv 页` | 两族 `page_size_bytes` 全等，才可能共用一套 block 账本 | `2 MB + 24 KB = 2,072 KB`（padding 1.16%） | patch_mamba_config.py:113-117 |
+| `mamba_block_size`：`none`/`all` → `max_model_len`；`align` → `cache_config.block_size` | mamba 组的管理块粒度：整序列一块 vs 与 attn 对齐 | 本部署 `none` → **32768** | patch_mamba_config.py:143-146 |
+
+### 6.2 容量（S2 测预算 → S3 编排 · 物理侧）
+
+| 公式 | 含义 | 本模型 | 出处 |
+|------|------|--------|------|
+| `available = total × util − weights − activations` | 单卡 KV 预算（`profile_run` 实测；NPU 无图项） | **51.90 GiB** | §3.2 |
+| `num_blocks`：各 worker 按 `available ÷ 统一页 ÷ 组内层数` 估上界 → 跨 worker 取 min → 对齐 | 统一 block 空间下的 per-worker 容量 | **6003** | §3.3 |
+| `KVCacheTensor.size = 统一页 × num_blocks` | 每张共享张量字节数（1 attn + 3 mamba 层共用一张） | `2,072 KB × 6003 ≈ 11.9 GiB`，共 4 张 | §3.3 |
+
+### 6.3 两个全局尺度（S5 · 逻辑侧）
+
+| 公式 | 含义 | 本模型 | 出处 |
+|------|------|--------|------|
+| `scheduler_block_size = LCM(各组 block_size)` | 命中/缓存的**对齐尺度**（既不是切块大小，也不是 prefill 分片） | 关缓存 `LCM(1024, 32768) = 32768`；开缓存（align 后四组同值）**1024** | kv_cache_utils.py:627、§4.2 |
+| `hash_block_size`：关缓存/无 connector → 等于上一行；开缓存 → `hash_block_size` override 或 `GCD(各组)` | 哈希链**步长**（不是存储粒度） | 关缓存 **32768**（不生效）；开缓存 **1024** | kv_cache_utils.py:633-656、§4.2 |
+| `逻辑块数 = 每张张量 dim0 行数 = num_blocks` | 两侧容量一致（同一份配置 + 断言兜底） | **6003**，可分配 **6002**（0 号为 `null_block`） | §5.1 / §5.2 |
+
+### 6.4 图内存事后记账（S4 之后 · 4d）
+
+| 公式 | 含义 | 本模型 | 出处 |
+|------|------|--------|------|
+| `non_kv_memory = weights + peak_activation + non_torch + npugraph + 150 MiB` | 图内存发生在预算之后，事后给出 `--kv-cache-memory` 建议值 | 启动日志建议行 | worker.py:741-771 |
 
 ---
 
-## 7. 设计要点小结
+## 7. 总结
 
-1. **规格先行且平台透明**：所有显存计算源自 spec 的 `page_size_bytes`；NPU 的 Runner 重写负责两类 spec 分流与页对齐，S3 编排因此完全平台无关。
-2. **五阶段单向管线、每卡并行、物理先于逻辑**：`spec → profile → 编排 → 落张量 → 建逻辑层`，S1/S2/S4 经 collective RPC 执行；S4 编译预热完成后 S5 才装配逻辑层，随后 `freeze_gc_heap` 封门。
-3. **多 group 是 GDN 混合模型的核心特征**：两类 spec 无法 merge → 全模型 **4 个 KV group**（1 组 attn 8 层 + 3 组 linear 各 8 层；切分规则 `group_size = min(8,24) = 8`，见 §3.3b）；S5 因此走"每 group 一个 manager"路径（4 个 manager），且因前缀缓存关闭命中 **`KVCacheCoordinatorNoPrefixCache`**（支持多组但无缓存特性）。
-4. **两类层 block_size 不同**：attn `1024`（页对齐产物）、mamba `32768`（= max_model_len）→ `scheduler_block_size = LCM = 32768`，且这一数字决定调度对齐与 hash 粒度。mamba 组的取值由 `mamba_cache_mode` 决定：`align` → 1024（与 attn 组对齐、状态按块入哈希），`none` / `all` → 32768（本部署 `none`）——三模式语义、块账与命名由来见 §2。
-5. **容量是 per-worker、且跨组协调的**：`num_blocks` 在统一 block 空间下由 attn 大页与 mamba 状态页共享预算后取 min，再跨 worker `min` 对齐并等比缩 `KVCacheTensor.size`；收口断言保证下发两侧的配置必然相等。
-6. **两种物理形态并存**：full-attn 层单张连续张量 → 切头 padding → 对半切 K/V 双池 → `view(nb×8,128,2,256)`（逻辑 1024-token、物理 8×128 细块）；linear 层单张量 → 状态视图。**`block_id == dim0 行号` 契约在两种形态上同时成立**。
-7. **`block_id == 行号` 桥接、物理-逻辑分离**：调度决策零显存拷贝，对 PP/TP 布局与两种物理形态完全透明（§5）。
-8. **配置是唯一权威**：`num_blocks` 等容量事实全部由物理侧一次性推导，物理侧与逻辑侧只消费、不自行计算。
-9. **逻辑侧纯元数据、启动期一次装配、平台无关**：`BlockPool` 全量预建 n 个 `KVCacheBlock`、空闲队列是 O(1) 摘插的双向链表；装配完成后冻结启动堆。
-10. **注册表闭环扩展点（插件同权）**：物理侧起点 `register_all_kvcache_specs` 注册 spec↔manager 映射，逻辑侧 S5 `get_manager_for_kv_cache_spec` 查表实例化——新增 spec（含 NPU 自定义）只需两头登记（§1.3/5d）。
-11. **NPU 的两处"事后性"**：NPUGraph 内存不在 S2 预算公式内（capture 发生在其后的 4d），靠事后建议日志补偿——因此 NPU 生产上推荐直接指定 `--kv-cache-memory`。
+按"谁定什么"收成六条，每条都能回到对应章节：
+
+1. **管线：物理先于逻辑，单向五段**（§1、§3、§4）——`spec → profile → 编排 → 落张量 → 建逻辑层`。S1/S2/S4 经 collective RPC 落在 worker，S3 是平台无关的纯 Python 编排，S5 在引擎进程只装配元数据；S4 编译预热完成后才进 S5，末尾 `freeze_gc_heap` 封门。
+
+2. **容量只有一个来源**（§3.2、§3.3）——`available → 统一页 → num_blocks`，`num_blocks` 是"多组共享预算 + 跨 worker 取 min"的结果，再等比缩 `KVCacheTensor.size`。物理侧一次性推导，逻辑侧只消费（同源配置，§5.1）。
+
+3. **多组是本模型的骨架**（§3.1、§4.1）——attn 与 mamba 两类 spec 无法 merge → **4 个组**（1 attn + 3 mamba），S5 因此每组一个 manager。关前缀缓存时协调器是 `KVCacheCoordinatorNoPrefixCache`（NPU 上经 patch 工厂第②支回退上游，§4.1）。
+
+4. **三种 block 大小、两个全局尺度**（§4.2、§4.3）——组内 `block_size`（attn 1024 / mamba 32768）决定物理切块与编号换算；`scheduler_block_size`（LCM）只管命中对齐；`hash_block_size`（GCD）只管哈希链步长。开/关 prefix cache 是**两套形态**，`mamba_block_size` 随之在 32768 ↔ 1024 切换。
+
+5. **两种物理形态、一套编号**（§3.4、§5.2、§5.3）——attn 层单张连续张量切出 K/V 双池并 `view(nb×8,128,2,256)`，linear 层单张量状态视图；两者都满足 `block_id == dim0 行号`，所以调度器只发 4 张 `block_table`，**PP 切层、TP 切头都不改变编号**。
+
+6. **两个横向要点**（§1.3、§4.1、§3.4）——① **扩展靠注册表闭环**：`register_all_kvcache_specs` 与 `get_manager_for_kv_cache_spec` 两头登记即可新增 spec（含 NPU 自定义）；② **NPU 的图内存是"事后账"**：capture 发生在预算之后，故生产上建议直接指定 `--kv-cache-memory`。
 
 ---

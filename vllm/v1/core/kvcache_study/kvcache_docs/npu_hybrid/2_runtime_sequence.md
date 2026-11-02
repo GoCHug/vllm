@@ -356,6 +356,29 @@ sequenceDiagram
 
 **块级搬移入口**：同一 backend 还提供双池版 `swap_blocks`（attention_v1.py:114-126）与 `copy_blocks`（:128-140），都是**Python 索引赋值**完成的整块搬移——`swap_blocks` 按 `src_to_dst[:, 0/1]` 取/存，并带一次 `.to(dst.device)`（可跨卡）；`copy_blocks` 对传入的每个 `(k,v)` 池做 `dst[...] = src[...]`。它们绕过启动篇 4a 的分配层，直接按 `block_id` 索引 4b 视图的第 0 维，是 P/D 传输、offload、prefix cache 复用的底层落点。
 
+#### 4.2.3 取数路径：从 `block_id` 到张量行
+
+启动篇 `1_start_init.md` §5 已确立 `block_id == 张量 dim0 行号`；落到一次 forward 上，两类层只有"双池 fancy index"和"状态块直切"两种取数方式：
+
+```python
+# full-attn 层（K/V 双池）：
+block_ids = fm_blocks(request_id)       # attn 组 block_id 列表，来自 FullAttentionManager.req_to_blocks
+k = kv_caches[layer][0][block_ids]      # K 池：dim0 fancy indexing（每逻辑块 8 个 128 细块）
+v = kv_caches[layer][1][block_ids]      # V 池：同一批行号（两池行空间同序）
+# 写路径：DeviceOperator.reshape_and_cache 按 slot_mapping scatter（attention_v1.py:1444）
+# slot_mapping = block_id * 128 + 细块内偏移，同一 slot 值同时定位 K/V 两池的同一位置
+
+# linear 层（单张量状态）：
+state_blocks = gm_blocks(request_id)     # 3 个 linear 组各自的 block_id（每组每请求 1 块）
+state = state_cache[layer][state_blocks] # 按状态视图读写，每步就地步进（无 block_table 读历史）
+```
+
+三个要点：
+
+- **block 轴恒为 dim0，无需哨兵值在运行时探测**——这是 KV 传输注册约束（buffer dim0 = `num_blocks`、地址 2 MiB 对齐）的直接副产物；
+- 4 组的 `req_to_blocks[request_id]` 分别由启动篇 §4.1 装配的 `FullAttentionManager` / `MambaManager` 维护，**同号不同义**（attn 表的第 3 项是第 3 个 1024-token 块，mamba 表的是第 3 个整序列状态块）；
+- `null_block`（`block_id=0`）在启动期即被摘走作占位，物理 0 号行常驻闲置。
+
 ### 4.3 对照：`align` 模式下 mamba 状态块的 prefill / decode 运行流程
 
 > 主线部署为 `none`（§1 配置表）；`align` 仅在接入 KV store 连接器（AscendStore 及其 MultiConnector）时被强制启用，三模式语义与“谁持有块”见启动篇 [`1_start_init.md`](./1_start_init.md) §2。`align` 复用逻辑侧同一套 `allocate_slots` 骨架（§4.1.2 的 S1~S4），差异集中在 mamba 组——状态块的分配、快照与回收随 prefill / decode 逐轮推进。为便于算术，下表设 `block_size = 64`、无投机解码（只说明机制）。
