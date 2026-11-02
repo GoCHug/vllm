@@ -1152,28 +1152,18 @@ self.kv_cache_manager = KVCacheManager(
     hash_block_size=hash_block_size,                          # 32768
     ...                                                       # use_eagle / dcp / pcp / metrics，本模型均默认
 )
-# 块池要等 manager 建好才存在，因此这一句必须在其后
-if self.connector is not None:                                # :245-248
-    self.connector.bind_gpu_block_pool(self.kv_cache_manager.block_pool)
 ```
-
-- **(1) 两个粒度**：`scheduler_block_size` 与 `hash_block_size` 都是 32768（来自 §4.2 的 `resolve_kv_cache_block_sizes()`）；只有调用方不给 `hash_block_size` 时才兜底成 `block_size`。它们不进任何张量，只用于整除断言与哈希口径。
-- **(2) 一个句柄**：`KVCacheManager` 构造时**不建块池、不建 manager**，只存下配置并转手调 `get_kv_cache_coordinator()`（5b）；之后所有分配/释放都经这个句柄转发给协调器。
-- **(3) 绑连接器块池**：只有 P/D、offload 这类 KV connector 在场时才执行，把 manager 的 `block_pool` 交给连接器按块搬移；本模型无 connector，跳过。
-- **(4) 三个运行标志**（:259-263）：`has_mamba_layers`、`needs_kv_cache_zeroing`（实现就是 `has_mamba_layers`，kv_cache_interface.py:878-879）、`need_mamba_block_aligned_split`（还要求 `mamba_cache_mode == "align"`）。本模型分别是 `True / True / False`（`mamba_cache_mode=none`）。
 
 | 入参 / 标志 | 来源 | 本模型 | 去向 |
 |---|---|---|---|
 | `enable_caching` | `cache_config.enable_prefix_caching` | `False` | 协调器选型（5b） |
 | `scheduler_block_size` | `resolve_kv_cache_block_sizes()` | 32768 | 协调器整除断言、各 manager 字段（5b/5d） |
 | `hash_block_size` | 同上 | 32768 | `BlockPool` 字段（5c）；本模型哈希表恒空 |
-| `has_mamba_layers` / `needs_kv_cache_zeroing` | `KVCacheConfig` 派生属性 | `True` / `True` | 调度：mamba 块对齐、新块清零 |
-| `need_mamba_block_aligned_split` | 上两者 × `mamba_cache_mode` | `False` | 不启用块对齐切分 |
 
 
-> 别把 `hash_block_size` 与 `block_size` 混为一谈：前者只决定前缀哈希的粒度（本模型不生效）；真正按 token 切块用的是 `cache_config.block_size = 1024`（`_get_num_new_tokens`，sched/scheduler.py:319-334）。
+> 别把 `hash_block_size` 与 `block_size` 混为一谈：前者只决定前缀哈希的粒度（本模型不生效）；KV 块按 token 切分仍以 `cache_config.block_size = 1024` 为单位，prefill 的块对齐切分由 `_mamba_block_aligned_split` 完成（sched/scheduler.py:293-338），且仅 `mamba_cache_mode == "align"` 时启用（`need_mamba_block_aligned_split`，:261-263）。
 
-> **`enable_caching=False` 是默认值，不是人为关闭**：Qwen3.5 的 `attn_type="hybrid"`，`is_prefix_caching_supported` 对 hybrid 恒返回 False（config/model.py:1852-1857），于是 `EngineArgs` 在未显式传参时把 `enable_prefix_caching` 置为 False（engine/arg_utils.py:2373-2405）。开关关着，`MambaModelConfig` 就不会把 `mamba_cache_mode` 从 `none` 升级为 `all`/`align`（model_executor/models/config.py:350-370），所以 attn 层**也**没有前缀缓存——它没有独立开关。显式加 `--enable-prefix-caching` 才会翻转：模式升级为 `all` 或 `align`（`align` 还要求 chunked prefill），此时 mamba 块变 1024，§4.2 的 LCM 与哈希粒度会随之改变。
+> **`enable_caching=False` 是默认值**：Qwen3.5 的 `attn_type="hybrid"`，`is_prefix_caching_supported` 对 hybrid 恒返回 False（config/model.py:1852-1857），于是 `EngineArgs` 在未显式传参时把 `enable_prefix_caching` 置为 False（engine/arg_utils.py:2373-2405）。显式加 `--enable-prefix-caching` 才会翻转：模式升级为 `all` 或 `align`，此时 mamba 块变 1024。
 
 `enable_caching` 直接决定工厂走哪一支。工厂函数是 **`get_kv_cache_coordinator()`**——上游定义在 `vllm/v1/core/kv_cache_coordinator.py:691`；NPU 侧**同名覆盖**（`patch_kv_cache_coordinator.py:456`），并在 patch 顶部先存好上游别名 `_orig_get_kv_cache_coordinator = vllm.v1.core.kv_cache_coordinator.get_kv_cache_coordinator`（:37）以便回退。**判定顺序与上游不同**——先做 DeepSeek-V4 特判，再把"单组或关缓存"整体交回上游。以下按 **NPU 实际分支序**：
 
@@ -1194,27 +1184,40 @@ if self.connector is not None:                                # :245-248
 
 #### 5b 协调器：patch 版工厂与本模型落点（第 4 层）
 
-`KVCacheManager.__init__`（kv_cache_manager.py:111）经工厂拿协调器。**NPU 上调用的是被同名覆盖的 `get_kv_cache_coordinator()`**（`patch_kv_cache_coordinator.py:456`），本模型走它的第 ② 支——`len(groups) == 1 or not enable_caching` 成立后**交回上游原函数**（别名 `_orig_get_kv_cache_coordinator`）：
+本节调用链（✅ = 本模型实际路径，✗ = 不命中）：
 
-```python
-# patch_kv_cache_coordinator.py:486-500（本模型命中第 ② 支）
-if len(kv_cache_config.kv_cache_groups) == 1 or not enable_caching:
-    return _orig_get_kv_cache_coordinator(**orig_kwargs)   # 交回上游原函数
+```text
+Scheduler.__init__                                   # sched/scheduler.py:231
+└─ KVCacheManager.__init__                           # kv_cache_manager.py:111
+   └─ get_kv_cache_coordinator(...)                  # kv_cache_manager.py:142（from ... import ...）
+      └─ [patch] get_kv_cache_coordinator(...)       # patch_kv_cache_coordinator.py:456（同名覆盖 :518）
+         ├─ ① _is_deepseek_v4_kv_cache_config        # :470 → AscendHybridKVCacheCoordinator  ✗
+         ├─ ② len(groups)==1 or not enable_caching   # :486 → 交回上游原函数
+         │  └─ _orig_get_kv_cache_coordinator(**orig_kwargs)
+         │     └─ [upstream] get_kv_cache_coordinator        # kv_cache_coordinator.py:691
+         │        └─ not enable_caching 分支                 # :704 → KVCacheCoordinatorNoPrefixCache  ✅
+         │           └─ __init__                            # :339
+         │              └─ super().__init__ → KVCacheCoordinator.__init__   # :67
+         │                 ├─ 粒度断言                        # :86
+         │                 │  assert scheduler_block_size % hash_block_size == 0
+         │                 │   且 32768 % g.kv_cache_spec.block_size == 0
+         │                 ├─ BlockPool(num_blocks, hash_block_size=32768, ...)   # :92
+         │                 └─ get_manager_for_kv_cache_spec(...) × 4（按 group 序）  # :108
+         │                    └─ 函数实现                            # single_type_kv_cache_manager.py:1311
+         │                       ├─ KVCacheSpecRegistry.get_manager_class(spec)   # :1331
+         │                       └─ manager_class(...)                            # :1345
+         │                          ├─ group 0    FullAttentionSpec → FullAttentionManager
+         │                          └─ group 1–3  MambaSpec         → MambaManager
+         └─ ③ 多组 + 开缓存 + 非 DSA                 # :502 → AscendHybridKVCacheCoordinator  ✗
 ```
 
-上游原函数内，`not enable_caching` 命中第一支：
+**入口与覆盖。** `KVCacheManager.__init__`（kv_cache_manager.py:111）在构造时通过 `get_kv_cache_coordinator()`（:142）取协调器。该符号在 NPU 上已被同名函数替换（`patch_kv_cache_coordinator.py:456`，替换点 :518，并回写 `kv_cache_manager` 的旧绑定 :524-526），因此这里一定进入 patch 版，而非上游原实现。
 
-```python
-# vllm/v1/core/kv_cache_coordinator.py:704（上游原函数）
-if not enable_caching:
-    return KVCacheCoordinatorNoPrefixCache(...)   # 支持任意组数，无前缀缓存特性
-```
+**分支选择。** patch 工厂按三种情形分流：DSA（①）、单组或关闭前缀缓存（②）、多组且开启缓存且非 DSA（③）。本模型是 4 组 + `enable_caching=False`，命中第 ② 支——条件 `len(groups) == 1 or not enable_caching` 成立，随即交回上游原函数（别名 `_orig_get_kv_cache_coordinator`）。
 
-> **本模型最终落 `KVCacheCoordinatorNoPrefixCache`**（前缀缓存关闭——即使它是多组）。该类注释原文："supports arbitrary numbers of KV cache groups (including 0 groups). Does not implement any features related to prefix caching."，即**多组结构照常装配（4 组各一个 manager），但前缀查找恒空、不做任何缓存**（5d 与运行期篇 §4.1.2）。
+**最终落点。** 上游原函数同样按缓存开关分流，`not enable_caching` 命中第一支，返回 `KVCacheCoordinatorNoPrefixCache`（kv_cache_coordinator.py:704）。也就是说，"多组 + 无前缀缓存"这一组合由它承接，Qwen3.5-4B 正落在此处。
 
-三条分支的判定顺序、能力约束与本模型落点统一见 **5a 的选型表（NPU 视角）**；此处只补上本模型实际穿过的是**两跳**：patch 工厂第 ② 支 → 上游原函数第一支。
-
-三类协调器共用基类 `KVCacheCoordinator.__init__`（kv_cache_coordinator.py:67-129），装配顺序固定四步：
+**落点之后。** 三类协调器都共用基类 `KVCacheCoordinator.__init__`（:67-129），装配顺序固定为四步：
 
 ```python
 # kv_cache_coordinator.py:86-121（节选，省略参数）
@@ -1230,45 +1233,49 @@ self.single_type_managers = tuple(                            # (4) 再建 manag
 )
 ```
 
-- **(1) 粒度终检**：`scheduler_block_size` 必须同时整除 `hash_block_size` 与每组 `block_size`。本模型三条全过：`32768 % 32768 == 0`、`32768 % 1024 == 0`、`32768 % 32768 == 0`（按组序）。这正是 S3 编排"4 组 + 统一页"在逻辑侧的落点——LCM 若算错，会在这里直接断言失败。
-- **(2) 块池先行**：`BlockPool` 必须早于 manager，因为 `get_manager_for_kv_cache_spec` 的入参就要求 `block_pool`（5c、5d）。
-- **(3) EAGLE 组标记**：只有用投机解码才非空；本模型 `use_eagle=False`，集合为空。
-- **(4) 每组建一个 manager**：列表推导按 group 顺序（0=attn，1–3=mamba），并把 `kv_cache_group_id=i` 写进实例；4 个实例拿到的是**同一个** `self.block_pool`。
+- **(1) 粒度终检**：`scheduler_block_size` 必须同时整除 `hash_block_size` 与每组 `block_size`。本模型三条断言全部通过：`32768 % 32768 == 0`（hash）、`32768 % 1024 == 0`（attn 组）、`32768 % 32768 == 0`（mamba 组，3 组各一次）。这是 S3 编排"4 组 + 统一页"在逻辑侧的落点——LCM 一旦算错，会在这里直接断言失败。
+- **(2) 块池先行**：`BlockPool` 必须先于 manager 创建，因为 `get_manager_for_kv_cache_spec` 的入参就要求 `block_pool`。
+- **(3) EAGLE 组标记**：仅启用投机解码时非空；本模型 `use_eagle=False`，集合恒为空。
+- **(4) 每组建一个 manager**：列表推导按 group 顺序（0=attn，1–3=mamba）执行，并把 `kv_cache_group_id=i` 写入实例；4 个实例共享**同一个** `self.block_pool`。
 
-装配完成后，`KVCacheManager` 再补三件收尾：
-
-```python
-# kv_cache_manager.py:155-156、171-173（节选）
-self.num_kv_cache_groups = len(kv_cache_config.kv_cache_groups)   # 4
-self.block_pool = self.coordinator.block_pool                    # 提级别名，供 connector / 调度直接取
-...
-self.empty_kv_cache_blocks = KVCacheBlocks(tuple(() for _ in range(4)))   # 复用的空块容器
-```
-
-> 对外只有 manager 一个对象：协调器只在 manager 内部做分发（如 `self.coordinator.get_num_blocks_to_allocate`，kv_cache_manager.py:358）。所以"Scheduler 只持有 `KVCacheManager`"成立，协调器、块池、4 个 manager 都是它的内部结构。
+装配完成后，运行期再由协调器向下分发（如 `self.coordinator.get_num_blocks_to_allocate`，kv_cache_manager.py:358），把请求交给对应的 manager。
 
 #### 5c 逻辑块池：`BlockPool` 一次性造出全部块（第 2 层）
 
-`BlockPool.__init__`（block_pool.py:149-182）是逻辑侧唯一持有"块"的地方：它不分配张量，只造 `KVCacheBlock` 元数据，并在启动期把数量定死。
+`BlockPool.__init__`（block_pool.py:149-182）是逻辑侧唯一持有"块"的地方：只造 `KVCacheBlock` 元数据、不分配张量，并在构造期一次把数量定死。
 
-```python
-# block_pool.py:158-182（节选）
-self.num_gpu_blocks = num_gpu_blocks                       # 本模型 ≈6003
-self.enable_caching = enable_caching                       # False
-self.hash_block_size = hash_block_size                     # 32768
-self.blocks = [KVCacheBlock(idx) for idx in range(num_gpu_blocks)]   # (1) 全量预建
-self.free_block_queue = FreeKVCacheBlockQueue(self.blocks)           # (2) 串成双向链表
-self.cached_block_hash_to_block = BlockHashToBlockMap()               # (3) 前缀哈希表
-self.null_block = self.free_block_queue.popleft()                     # (4) 摘占位块
-self.null_block.is_null = True
-self.enable_kv_cache_events = enable_kv_cache_events                   # 本模型 False
-self.kv_event_queue = []                                                # 本模型不启用
+构造期调用链（一次成型，之后不再 new）：
+
+```text
+KVCacheCoordinator.__init__                       # kv_cache_coordinator.py:92
+└─ BlockPool.__init__(n, enable_caching=False, hash_block_size=32768)       # block_pool.py:149
+   ├─ assert isinstance(n, int) and n > 0         # :157
+   ├─ self.num_gpu_blocks = n                     # :158  ≈6003
+   ├─ self.blocks = [KVCacheBlock(idx) for idx in range(n)]   # :162
+   │  └─ KVCacheBlock（@dataclass(slots=True)）   # kv_cache_utils.py:116
+   │     ref_cnt=0, _block_hash=None, prev/next=None,
+   │     is_null=False
+   ├─ self.free_block_queue = FreeKVCacheBlockQueue(self.blocks)   # :168
+   │  └─ FreeKVCacheBlockQueue.__init__           # kv_cache_utils.py:187
+   │     ├─ num_free_blocks = n                   # :188
+   │     ├─ 逐块连链 0 → 1 → … → n-1（双向）      # :191
+   │     └─ 假头/假尾（block_id=-1）接上首尾      # :203
+   ├─ self.cached_block_hash_to_block = BlockHashToBlockMap()   # :171 空表
+   ├─ self.null_block = self.free_block_queue.popleft()         # :176
+   │  └─ FreeKVCacheBlockQueue.popleft            # kv_cache_utils.py:217
+   │     ├─ 假头.next 改指 1 号                   # :245
+   │     └─ 0 号 prev/next 置 None（脱钩）        # :249
+   ├─ self.null_block.is_null = True              # :177
+   └─ enable_kv_cache_events=False；kv_event_queue=[]；
+      metrics_collector=None                      # :179-182
 ```
 
-- **(1) 全量预建**：`block_id` 就是列表下标 0..n−1，每个 `KVCacheBlock` 只含 `block_id`、`ref_cnt=0` 与链表/哈希用字段；运行期**不再 new 新块**，分配与释放只改计数和指针。
-- **(2) 空闲链表**：初始按 `block_id` 升序串成双向链表（kv_cache_utils.py:174-181），带假头/假尾以减少分支（:203-210）；不用内置 `deque`，是为了 O(1) 摘中间块（驱逐时要用）。队首是最久未用（LRU），释放时按"链尾在前"回插。
-- **(3) 哈希表**：`enable_caching=False` 时它永远为空——运行期不会走 `get_cached_block` / `cache_full_blocks` 的读写路径。
-- **(4) 占位块**：队首 `block_id=0` 被摘出并标记 `is_null=True`，用于"没有父块 / 不需要读写"的位置；它不参与引用计数，也永不再分配。
+四个要点与树中四步一一对应：
+
+- **(1) 全量预建**：`block_id` 即列表下标 0..n−1；`@dataclass(slots=True)` 字段固定，运行期**不再 new**，分配/释放只改 `ref_cnt` 与链表指针。
+- **(2) 空闲链表**：初始按 `block_id` 升序串成双向链；假头/假尾（`block_id=-1`）吸收边界分支，保证每个真实块都有前驱后继；不用内置 `deque`，是为了 `touch` 命中时能 O(1) 摘中间块。队首为最久未用（LRU），释放块从尾部回插（`append_n`），需优先复用时从头部插入（`prepend_n`）。
+- **(3) 哈希表**：`enable_caching=False` 时恒空，运行期不会走 `get_cached_block` / `cache_full_blocks` 的读写路径。
+- **(4) 占位块**：`popleft()` 把 `block_id=0` 摘出并标记 `is_null=True`，仅用于"没有父块 / 不需要读写"的位置；不计 `ref_cnt`、永不分配，因此可分配块数为 n−1。
 
 | 属性 | 启动期 | 运行期角色 |
 |---|---|---|
@@ -1278,23 +1285,56 @@ self.kv_event_queue = []                                                # 本模
 | `null_block` | `block_id=0`，`is_null=True` | 占位，不维护 `ref_cnt`，永不分配 |
 | `kv_event_queue` | 空 | KV 事件队列（本模型不启用） |
 
-> 实际可分配 **n−1 ≈ 6002 块**（`block_id` 1..6002）。逻辑侧就这一份块编号：同一个 `block_id` 同时命名物理侧 4 张池里的 block 行，以及每个线性层的 conv / ssm 状态块——这正是 §5 的"一个编号、两份解读"。
+运行期只有四条路径会动这张链表 / 哈希表：
+
+```text
+BlockPool
+├─ 分配 get_new_blocks(n)             # block_pool.py:333
+│  └─ FreeKVCacheBlockQueue.popleft_n(n)          # kv_cache_utils.py:254
+│     └─ 每块 ref_cnt += 1                       # :357-362  → 出队即占用
+├─ 命中复用 touch(blocks)             # block_pool.py:402
+│  └─ ref_cnt==0 → free_block_queue.remove(block)  # kv_cache_utils.py:287
+│     （O(1) 摘中间，正是不用 deque 的原因）→ ref_cnt += 1
+├─ 释放 free_blocks(blocks)           # block_pool.py:419
+│  ├─ ref_cnt -= 1                               # :434
+│  └─ ref_cnt==0 → prepend_n / append_n          # :439 / :441  → 回插空闲链表
+└─ 驱逐 evict_blocks(ids)             # block_pool.py:443
+   └─ _maybe_evict_cached_block           # :365 → 哈希表 pop + reset_hash（不动链表）
+```
+
+> 本模型 `enable_caching=False`：`touch` / `evict_blocks` 的哈希分支不会触发，日常只剩"分配 / 释放"；实际可分配 **n−1 ≈ 6002** 块（`block_id` 1..6002）。逻辑侧只有这一份编号——同一个 `block_id` 同时命名物理侧 4 张池的 block 行与每个线性层的 conv / ssm 状态块，即 §5 的"一个编号、两份解读"。
 
 #### 5d 单类型 manager：按 `kv_cache_spec` 查注册表实例化（第 3 层）
 
-协调器对每个 group 调一次 `get_manager_for_kv_cache_spec()`（single_type_kv_cache_manager.py:1311-1346）。这个函数只做两件事：按 spec 类型查注册表、实例化对应类。
+协调器对每个 group 调一次 `get_manager_for_kv_cache_spec()`，分启动期注册与构造期实例化两段：
 
-```python
-# single_type_kv_cache_manager.py:1331-1345（节选）
-manager_class = KVCacheSpecRegistry.get_manager_class(kv_cache_spec)   # (1) 查表
-assert manager_class is not None, f"No manager registered for {type(kv_cache_spec)}"
-if isinstance(kv_cache_spec, (SlidingWindowSpec, ChunkedLocalAttentionSpec)):
-    kwargs["max_admission_blocks_per_request"] = ...                    # 仅 SWA 类需要
-manager = manager_class(kv_cache_spec, **kwargs)                        # (2) 实例化
+```text
+启动期（S1 之前，一次）
+EngineCore._initialize_kv_caches                   # engine/core.py:240
+└─ register_all_kvcache_specs(vllm_config)         # single_type_kv_cache_manager.py:1349
+   ├─ register(FullAttentionSpec, FullAttentionManager)   # :1351
+   └─ register(MambaSpec, MambaManager)                   # :1368
+
+构造期（每个 group 一次，共 4 次）
+KVCacheCoordinator.__init__                        # kv_cache_coordinator.py:108
+└─ get_manager_for_kv_cache_spec(spec, ...)        # single_type_kv_cache_manager.py:1311
+   ├─ KVCacheSpecRegistry.get_manager_class(spec)  # :1331
+   │  └─ assert manager_class is not None          # :1332
+   ├─ （仅 SWA / Chunked）填 max_admission_blocks_per_request   # :1338
+   └─ manager_class(spec, **kwargs)                # :1345
+      ├─ group 0：FullAttentionSpec → FullAttentionManager（无自定义 __init__）
+      │  └─ SingleTypeKVCacheManager.__init__      # :64
+      └─ group 1–3：MambaSpec → MambaManager       # :956
+         ├─ super().__init__(...)                  # :959
+         │  └─ SingleTypeKVCacheManager.__init__   # :64
+         └─ mode=="align" 才建 last_state_block_idx / _allocated_block_reqs  # :963-968
 ```
 
-- **(1) 注册表**：`register_all_kvcache_specs()` 在 `EngineCore._initialize_kv_caches` 的首行、S1 之前执行（engine/core.py:240），把 `FullAttentionSpec → FullAttentionManager`、`MambaSpec → MambaManager` 等成对登记（:1349-1370）。
-- **(2) 实例化**：本模型 4 个 group → 4 个实例。attn 组（`FullAttentionSpec`）→ `FullAttentionManager`（类定义 :521）；3 个 linear 组（`MambaSpec`）→ `MambaManager`（:955）。`block_pool`、`kv_cache_group_id=i`、`enable_caching` 等由协调器原样传入。
+三点读法：
+
+- **注册先于构造**：`register_all_kvcache_specs()` 在 S1 之前把 `spec 类型 → manager 类` 成对登记；此后每个 group 只做一次查表，查不到直接断言失败。
+- **一组一实例、共享同一池**：协调器循环 4 次（0=attn，1–3=mamba），把 5c 的同一个 `block_pool` 与 `kv_cache_group_id=i` 原样透传，编号空间因此统一。
+- **基类收口、子类补差**：公共字段全在 `SingleTypeKVCacheManager.__init__`；`MambaManager` 仅额外持有 `cached_blocks_this_step`、`mamba_cache_mode`、`num_speculative_blocks`，以及 `align` 模式下的两个簿记字段。
 
 | 实例 | `kv_cache_spec` | `block_size` | 层数（全模型 / 单卡） | 运行期产出 |
 |---|---|---|---|---|
@@ -1356,7 +1396,7 @@ if not (cache_config.enable_prefix_caching or connector_enabled):
 ```
 
 - **为什么取 LCM 而不是 GCD**：一份调度块要同时覆盖 1024 与 32768 两种组边界，取最小公倍数才能保证"任一组边界都落在调度块边界上"；取 GCD 会把 mamba 组切碎。
-- **32768 在本模型只做两件事**：传给 `KVCacheManager` 的 `scheduler_block_size`（再被协调器拿去断言 `32768 % 1024 == 0`），以及作为 `self.block_size` 的兜底参数——**真正按 token 切块用的仍是 `cache_config.block_size` = 1024**（`_get_num_new_tokens`，sched/scheduler.py:319-334）。
+- **32768 在本模型只做两件事**：传给 `KVCacheManager` 的 `scheduler_block_size`（再被协调器拿去断言 `32768 % 1024 == 0`），以及作为 `self.block_size` 的兜底参数——**按 token 切块用的仍是 `cache_config.block_size` = 1024**。其中 prefill 的块对齐切分由 `_mamba_block_aligned_split`（sched/scheduler.py:293-338）执行，且仅 `mamba_cache_mode == "align"` 时启用（:261-263）；本模型 `none` 模式下该分支不执行，prefill chunk 由 `max_num_batched_tokens` 决定，KV 分配再按 1024-token 块向上取整。
 - **哈希为什么也退成 32768**：本模型关前缀缓存且无 connector，直接返回 scheduler 值；即便开了缓存，`mamba_cache_mode != "align"` 时 mamba 组 32768 ≠ 1024 也会命中第 4 个出口退成同值——所以哈希粒度在本模型恒为 32768、且从不使用。
 
 至此两侧全部装配完成：物理侧两类张量就绪、逻辑侧 n 个块与 4 个 manager（1 attn + 3 linear）就绪、两侧靠 `block_id == 行号` 约定桥接，引擎进入接收请求的定态。
