@@ -1,0 +1,14 @@
+vllm/v1/core/kvcache_study/kvcache_docs/npu_hybrid/1_start_init.md
+  h_84ea86c168828b 148,219-220,1189,1220,1222-1235,1237,1239,1242-1250,1255,1257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e2a68b8f16305a6c59518d019bec97bace5e0a17",
+  "prompts": {},
+  "humans": {
+    "h_84ea86c168828b": {
+      "author": "123 <123>"
+    }
+  }
+}
