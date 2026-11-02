@@ -145,7 +145,7 @@ sequenceDiagram
     EngineCore->>EngineCore: resolve_kv_cache_block_sizes → (32768, 32768)
     EngineCore->>Scheduler: Scheduler(vllm_config, kv_cache_config,<br/>block_size=32768, hash_block_size=32768)
     Scheduler->>KVCacheManager: 5a 逻辑管理器 KVCacheManager(kv_cache_config, max_model_len, ...)
-    Note over KVCacheManager: 5b 协调器 get_kv_cache_coordinator → KVCacheCoordinatorNoPrefixCache<br/>（关前缀缓存，支持任意多组）
+    Note over KVCacheManager: 5b 协调器 调 patch 版 get_kv_cache_coordinator（:456）→ 第②支关缓存交回上游<br/>→ 上游第一支 KVCacheCoordinatorNoPrefixCache（支持任意多组）
     KVCacheManager->>KVCacheManager: 5c 块池 BlockPool(num_blocks)：KVCacheBlock(0..n-1)<br/>null_block 摘走块 0<br/>5d 每 group 1 个 manager（attn→FullAttentionManager、linear→MambaManager）
     KVCacheManager-->>Scheduler: block_pool / coordinator 就绪
     Scheduler-->>EngineCore: 逻辑层装配完成（freeze_gc_heap 冻结启动堆）
@@ -216,8 +216,8 @@ EngineCore.__init__（承上，:145 起）                    # engine/core.py:1
        ├─ resolve_kv_cache_block_sizes(kv_cache_config, vllm_config)  # core.py:145 → (32768, 32768)
        ├─ Scheduler(vllm_config, kv_cache_config, block_size=32768, hash_block_size=32768)  # core.py:149
        │     └─ 5a 逻辑管理器 KVCacheManager(kv_cache_config, max_model_len, ...)   # sched/scheduler.py:231
-       │           ├─ 5b 协调器 get_kv_cache_coordinator → KVCacheCoordinatorNoPrefixCache
-       │           │     （关前缀缓存：工厂第一分支，支持任意多组）
+       │           ├─ 5b 协调器 调 patch 版 get_kv_cache_coordinator（:456）→ 第②支关缓存交回上游
+       │           │     → 上游第一分支 KVCacheCoordinatorNoPrefixCache（支持任意多组）
        │           │     ├─ 5c 块池 BlockPool(num_blocks)：KVCacheBlock(0..n-1)，null_block 摘走块 0
        │           │     └─ 5d 每 group 1 个 manager（attn→FullAttentionManager、linear→MambaManager）
        │           └─ self.block_pool = coordinator.block_pool
@@ -1120,7 +1120,7 @@ S4 的 RPC 全部返回后，`EngineCore._initialize_kv_caches`（定义 core.py
 ```text
 Scheduler.__init__(vllm_config, kv_cache_config, block_size=32768, ...)   sched/scheduler.py:66
 └─ KVCacheManager.__init__(...)                                          kv_cache_manager.py:111     ← 5a 逻辑管理器
-   └─ get_kv_cache_coordinator(...)                                      kv_cache_coordinator.py:689 ← 5b 选型
+   └─ get_kv_cache_coordinator(...)   patch:456 同名覆盖 → patch:486 第②支 → 上游:704 ← 5b 选型
       └─ KVCacheCoordinator.__init__(...)                                kv_cache_coordinator.py:65
          ├─ BlockPool(num_gpu_blocks=6003, ...)                          block_pool.py:149           ← 5c 块池
          └─ get_manager_for_kv_cache_spec(...) × 4                       single_type_kv_cache_manager.py:1311 ← 5d 单类型 manager
@@ -1170,30 +1170,49 @@ if self.connector is not None:                                # :245-248
 | `has_mamba_layers` / `needs_kv_cache_zeroing` | `KVCacheConfig` 派生属性 | `True` / `True` | 调度：mamba 块对齐、新块清零 |
 | `need_mamba_block_aligned_split` | 上两者 × `mamba_cache_mode` | `False` | 不启用块对齐切分 |
 
+
 > 别把 `hash_block_size` 与 `block_size` 混为一谈：前者只决定前缀哈希的粒度（本模型不生效）；真正按 token 切块用的是 `cache_config.block_size = 1024`（`_get_num_new_tokens`，sched/scheduler.py:319-334）。
 
 > **`enable_caching=False` 是默认值，不是人为关闭**：Qwen3.5 的 `attn_type="hybrid"`，`is_prefix_caching_supported` 对 hybrid 恒返回 False（config/model.py:1852-1857），于是 `EngineArgs` 在未显式传参时把 `enable_prefix_caching` 置为 False（engine/arg_utils.py:2373-2405）。开关关着，`MambaModelConfig` 就不会把 `mamba_cache_mode` 从 `none` 升级为 `all`/`align`（model_executor/models/config.py:350-370），所以 attn 层**也**没有前缀缓存——它没有独立开关。显式加 `--enable-prefix-caching` 才会翻转：模式升级为 `all` 或 `align`（`align` 还要求 chunked prefill），此时 mamba 块变 1024，§4.2 的 LCM 与哈希粒度会随之改变。
 
-#### 5b 协调器：`get_kv_cache_coordinator()` 按"缓存开关 × 组数"选型（第 4 层）
+`enable_caching` 直接决定工厂走哪一支。工厂函数是 **`get_kv_cache_coordinator()`**——上游定义在 `vllm/v1/core/kv_cache_coordinator.py:691`；NPU 侧**同名覆盖**（`patch_kv_cache_coordinator.py:456`），并在 patch 顶部先存好上游别名 `_orig_get_kv_cache_coordinator = vllm.v1.core.kv_cache_coordinator.get_kv_cache_coordinator`（:37）以便回退。**判定顺序与上游不同**——先做 DeepSeek-V4 特判，再把"单组或关缓存"整体交回上游。以下按 **NPU 实际分支序**：
 
-`KVCacheManager.__init__` 里与协调器有关的只有一句：`self.coordinator = get_kv_cache_coordinator(...)`（kv_cache_manager.py:142-155）。工厂（kv_cache_coordinator.py:691-743）先看缓存开关，再看组数，三选一：
+| 判定序 | 命中条件（patch 原文） | 实际选出的协调器 | 与上游的关系 | 本模型（4 组） |
+|---|---|---|---|---|
+| ① | `if _is_deepseek_v4_kv_cache_config(...)`（:470） | `AscendHybridKVCacheCoordinator` | 完全绕过上游工厂，DSA 专用（SWA + full-attn 组的特化处理） | ✗（非 DSA 模型） |
+| ② | `if len(kv_cache_config.kv_cache_groups) == 1 or not enable_caching`（:486） | **交回上游原工厂**：关缓存 → `KVCacheCoordinatorNoPrefixCache`（上游 :704）；1 组且开缓存 → `UnitaryKVCacheCoordinator`（上游 :717） | 直接用上游原类，**不做 Ascend 替换**；关缓存时支持任意组数 | ✅ **命中**（`enable_caching=False` → `NoPrefixCache`） |
+| ③ | 其余：多组 + 开缓存 + 非 DSA（:502） | `AscendHybridKVCacheCoordinator`（`HybridKVCacheCoordinator` 子类） | 语义等价、类型不同：重写了 `find_longest_cache_hit` 做组间求交 | → R5~R8 开缓存时落这支 |
+
+**Qwen3.5-4B 的两种落点**（关缓存拿到上游原类、开缓存拿到 NPU 子类，二者不是"同一个类的两种状态"）：
+
+| 启动方式 | 实际协调器类 | 前缀查找行为 |
+|---|---|---|
+| 关 prefix cache（默认，R1~R4 / R9） | `KVCacheCoordinatorNoPrefixCache`（**上游原类**，NPU 不替换） | `get_computed_blocks` 恒返回 `empty_kv_cache_blocks` + 0 命中，整条前缀查找被短路 |
+| 开 prefix cache（R5~R8） | **`AscendHybridKVCacheCoordinator`**（Hybrid 的 Ascend 子类） | 组间 `find_longest_cache_hit` 求交：4 组各自查找后取公共命中长度 |
+
+> 子类 docstring 写明能力边界："only supports the combination of two types of KV cache groups, and one of them must be full attention"。Qwen3.5-4B 恰好是 full-attention（8 层）+ Mamba（24 层）两类、共 4 组，符合前提；若换成三类组的模型，这一支的命中求交假设不再成立——这也是它需要 Ascend 独立实现、而不直接复用上游 `HybridKVCacheCoordinator` 的原因。
+
+#### 5b 协调器：patch 版工厂与本模型落点（第 4 层）
+
+`KVCacheManager.__init__`（kv_cache_manager.py:111）经工厂拿协调器。**NPU 上调用的是被同名覆盖的 `get_kv_cache_coordinator()`**（`patch_kv_cache_coordinator.py:456`），本模型走它的第 ② 支——`len(groups) == 1 or not enable_caching` 成立后**交回上游原函数**（别名 `_orig_get_kv_cache_coordinator`）：
 
 ```python
-# kv_cache_coordinator.py:704-743（节选）
-if not enable_caching:
-    return KVCacheCoordinatorNoPrefixCache(...)      # 任意组数（含 0 组），无前缀特性
-if len(kv_cache_config.kv_cache_groups) == 1:
-    return UnitaryKVCacheCoordinator(...)            # 单组 + 前缀缓存
-return HybridKVCacheCoordinator(...)                 # 多组 + 前缀缓存（组间命中求交）
+# patch_kv_cache_coordinator.py:486-500（本模型命中第 ② 支）
+if len(kv_cache_config.kv_cache_groups) == 1 or not enable_caching:
+    return _orig_get_kv_cache_coordinator(**orig_kwargs)   # 交回上游原函数
 ```
 
-| 分支 | 条件 | 能力 | 本模型 |
-|---|---|---|---|
-| `KVCacheCoordinatorNoPrefixCache` | `not enable_caching` | 任意组数；前缀查找恒空 | **✓（4 组）** |
-| `UnitaryKVCacheCoordinator` | 1 组且开缓存 | 单组前缀缓存 | ✗ |
-| `HybridKVCacheCoordinator` | 多组且开缓存 | 组间命中求交 | ✗ |
+上游原函数内，`not enable_caching` 命中第一支：
 
-> 本模型组数是 4，但缓存开关关着，所以落在第一支：**多组结构照常装配**（4 组各建一个 manager），只是 `find_longest_cache_hit` 永远返回空、`cache_blocks` 不写索引——结构按混合模型建，行为退化成纯分配。
+```python
+# vllm/v1/core/kv_cache_coordinator.py:704（上游原函数）
+if not enable_caching:
+    return KVCacheCoordinatorNoPrefixCache(...)   # 支持任意组数，无前缀缓存特性
+```
+
+> **本模型最终落 `KVCacheCoordinatorNoPrefixCache`**（前缀缓存关闭——即使它是多组）。该类注释原文："supports arbitrary numbers of KV cache groups (including 0 groups). Does not implement any features related to prefix caching."，即**多组结构照常装配（4 组各一个 manager），但前缀查找恒空、不做任何缓存**（5d 与运行期篇 §4.1.2）。
+
+三条分支的判定顺序、能力约束与本模型落点统一见 **5a 的选型表（NPU 视角）**；此处只补上本模型实际穿过的是**两跳**：patch 工厂第 ② 支 → 上游原函数第一支。
 
 三类协调器共用基类 `KVCacheCoordinator.__init__`（kv_cache_coordinator.py:67-129），装配顺序固定四步：
 
