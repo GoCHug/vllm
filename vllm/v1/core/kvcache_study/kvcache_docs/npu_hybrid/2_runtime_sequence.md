@@ -327,7 +327,7 @@ sequenceDiagram
 
 #### 4.2.1 清零：`_zero_block_ids`
 
- `needs_kv_cache_zeroing`= `has_mamba_layers`是开启清零操作的开关，是否需要清零主要由块池里会不会出现跨 dtype 域的旧比特决定，has_mamba_layers即存在mamba层，一般mamba层的ssm存储dtype是fp32，与full-attn层的K/V池dtype是float16，所以需要清零K/V双池：
+ `needs_kv_cache_zeroing`= `has_mamba_layers`是开启清零操作的开关，是否需要清零主要由块池里会不会出现跨 dtype 域的旧比特决定，has_mamba_layers即存在mamba层，一般mamba层的ssm存储dtype是fp32，与full-attn层的K/V池dtype是bf16，所以需要清零K/V双池：
 
 - **纯 full-attn / 纯 MLA 为 `False`，从不清零**：两条不变量保证脏数据无害——①**读范围 ⊆ 已写范围**：新块的第一次访问必然是写（prefill 顺着槽位写），此后读取止于 `actual_seq_lengths_kv`、早已写过；②**即使洞被整页取数碰到，旧值也是有限数**：纯注意力池子里每块历史上只被同 dtype 的注意力层写过，旧值是上一个请求真实算出的 K/V，乘零 mask 的湮灭对有限数成立（越界位 `score → −inf → pᵢ = 0`，`out = Σ pᵢ·vᵢ` 照算，`0 × 有限数 = 0`）。脏数据在数学上变不成 NaN。
 - **Qwen3.5-4B 这类混合模型为 `True`，必须清**：mamba 层使块池**跨 dtype 域**——uniform page size 下第 i 个 `KVCacheTensor` 同时被"attn 组第 i 层 + 3 个 mamba 组各自的第 i 层"共用（`shared_by`，kv_cache_utils.py:1318-1326），同一块显存 attn 层按 bf16 解释、mamba 层按 fp32 写（`mamba_ssm_dtype=float32`）。mamba 用过的块释放回池、再被 attn 组弹出时，fp32 原始比特重解释成 bf16 即成 **Inf/NaN**（"leftover fp32 bit patterns can appear as NaN/Inf in the new dtype"）——不变量②失效：乘零 mask 挡不住 NaN（`0 × NaN = NaN`），NaN 进注意力输出 → 残差流 → 后续 GDN 层，被递归状态保留、逐轮放大（issue #35138 的现象即 GSM8K 精度随运行持续劣化）。清零就是在新块使用前重建不变量②（[PR #35219](https://github.com/vllm-project/vllm/pull/35219)，修 issue #35138，flash-attention [#1974](https://github.com/Dao-AILab/flash-attention/issues/1974) 的 workaround）。
@@ -336,7 +336,7 @@ sequenceDiagram
 
 | 序 | 环节 | 发生了什么 |
 |---|---|---|
-| 1 | 整页计算 | `block_table` 以 128-token 页为单位，核按页搬 K/V；`seq_len=1020` 时末页仍是 896–1023，洞随整页进入计算——不是核故意去读，而是取数粒度决定的 |
+| 1 | 只读到最后一块 | 算子按 `actual_seq_kvlen`（即 `actual_seq_lengths_kv`）只取 `ceil(seq_len/128)` 个块——**seq_len 之后的整块根本不搬**；但**最后一块是整块搬运**的，`seq_len=1020` 时该块覆盖 896–1023，洞里是 1020–1023 这 4 个位置，随这块一起上片 |
 | 2 | mask 的作用面 | mask 只改 score：越界位 `score → −inf` → 权重 `pᵢ = 0`；但 `out = Σ pᵢ·Vᵢ` 仍要做这项乘加，`0 × NaN = NaN`——mask 改的是权重，改不了数值 |
 | 3 | K 坏 | `score = Q·Kᵀ` 先得 `Inf/NaN`：加法掩码 `Inf + (−∞) = NaN` 直接报废；覆盖掩码（select 成 −inf）能挡住，但只管 score 这一路 |
 | 4 | V 坏 | 越界位 `p=0`，仍 `0 × NaN = NaN` → 整行 `out` 变 NaN，mask 无解 |
@@ -344,15 +344,36 @@ sequenceDiagram
 
 > 清零不是"替代覆盖"，而是"补洞"：把整块（8 个细块行 × K/V 两池）先抹 0，被顺带读到的位置就是 0；代价是每分配一个新块一次 kernel，频次很低。
 
+**一个常见误解：不是"把所有未满块读进来再 mask"**——体积上的"截断"与块内的"整块 + 掩码"是两层不同的事：
+
+| 层次 | 行为 | 由谁决定 |
+|---|---|---|
+| 块粒度（block_table 有效行） | **截断**：按 `actual_seq_lengths_kv` 只取 `ceil(seq_len / 128)` 个块，其后的**整块不搬** | 算子的 `actual_seq_kvlen` |
+| 块内（最后一块的尾部） | **整块搬运 + score 掩码**：尾部 `score → −inf`、`p = 0`，但 V 仍参与 `Σ pᵢ·Vᵢ` 的乘加 | 搬运粒度为页；mask 只改权重 |
+
+所以脏数据的暴露面只有**最后一个不满块的尾部**（单请求最多 127 个位置），而不是"所有历史未满块"。
+
+> **代码旁证**：`attention_v1.py:319-348` 处理 cudagraph / flashcomm 插入的 dummy padding request 时，给它补 `seq_lens = 1` 和一行 `block_table = 0`（指向 `null_block`），注释称"any valid positive KV length / zero block row is fine"。若算子不看 `seq_len` 而按块整读，这行零指向的块就会把整块拉进计算，"fine" 便不成立——反证 **seq_len 决定读几个块**。
+>
+> **待实证的一点**："最后一块整块参与 V 乘加"属算子内部行为，代码只能间接推断。最小验证实验：只把某请求最后一块尾部（如 1020–1023）写成 NaN、其余保持干净，看输出是否变 NaN。变 → 尾部确实参与乘加，清零必要性闭环；不变 → FIA 在 varlen 下连边界 tile 也裁掉了，清零动机需回到"块被跨 dtype 复用"（该条已由 issue #35138 证实）。
+
+**何时清、清几次**——三个容易误解的点：
+
+| 问题 | 答案 | 依据 |
+|---|---|---|
+| 只在"分配"时清吗？ | **是**。清单只在 `get_new_blocks()`（从空闲队列 pop）之后登记，共两处：本步新算 token 的块（:284-289）、给外部 KV 预留的空块（:246-257） | single_type_kv_cache_manager.py |
+| 命中的前缀块也清吗？ | **不清**。命中块走 `block_pool.touch()`（:231）保活，不进清单——清了反而毁掉刚命中的有效 KV | :229-244 |
+| 一个块一生只清一次？ | **不是**。`take_new_block_ids()` 是 drain 语义（docstring："allocated since the last call"，:292-296），所以**每分配一次清一次**：块释放回池、再被别的请求领走时会重新进一次清单 | :292-296 |
+
 **怎么清**——调度器收清单、worker 清显存，两道过滤保证只有 attn 组新块进清零：
 
 ```text
 调度器（引擎进程）
   scheduler.py:926-930   take_new_block_ids() 填 SchedulerOutput.new_block_ids_to_zero
                          （needs_kv_cache_zeroing=False 时恒 None）
-  single_type_kv_cache_manager.py:284-289
+  single_type_kv_cache_manager.py:284-289 / :246-257
                          只登记 FullAttentionSpec / TQFullAttentionSpec / MLAAttentionSpec
-                         的新块，mamba 组不登记 ←—— 过滤 ①
+                         的新块（本步新算 token + 外部 KV 预留块），mamba 组不登记 ←—— 过滤 ①
 worker（NPU 进程）
   worker.py:932-938 → model_runner_v1.py:5138-5144
                          启动期 _init_kv_zero_meta() 构造 AscendKVBlockZeroer
