@@ -1,0 +1,17 @@
+=================================================================
+                   >>>>>   MindStudio   <<<<<
+    THE END-TO-END TOOLCHAIN TO UNLEASH HUAWEI ASCEND COMPUTE
+=================================================================
+
+2026-11-03 10:35:51 (49890) [INFO] Please check whether the input data belongs to you. If not, there may be security risks.
+NPU API/Module Read Progress:   0%|                                 | 0/788 [00:00<?, ?api/module/s]NPU API/Module Read Progress:  78%|████████████████▍    | 616/788 [00:00<00:00, 6148.25api/module/s]NPU API/Module Read Progress: 100%|█████████████████████| 788/788 [00:00<00:00, 6108.52api/module/s]
+Bench API/Module Read Progress:   0%|                               | 0/788 [00:00<?, ?api/module/s]Bench API/Module Read Progress:  76%|██████████████▎    | 595/788 [00:00<00:00, 5947.24api/module/s]Bench API/Module Read Progress: 100%|███████████████████| 788/788 [00:00<00:00, 5776.05api/module/s]
+2026-11-03 10:35:51 (49890) [INFO] Matching APIs/Modules in progress...
+2026-11-03 10:35:52 (49890) [INFO] APIs/Modules match done.
+2026-11-03 10:35:52 (49890) [INFO] Calculating comparison indicators in progress...
+2026-11-03 10:35:52 (49890) [INFO] Comparison indicators calculation done.
+2026-11-03 10:35:52 (49890) [INFO] Saving result file in progress...
+2026-11-03 10:35:52 (49890) [INFO] The result file path is: /a3_inference/itask/workdir/gch02599191/qwen35/scripts/msprobe/output/compare_result_20261103103551.csv.
+2026-11-03 10:35:52 (49890) [INFO] ************************************************************************************
+2026-11-03 10:35:52 (49890) [INFO] *                        msprobe compare ends successfully.                        *
+2026-11-03 10:35:52 (49890) [INFO] ************************************************************************************

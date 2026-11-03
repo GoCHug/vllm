@@ -1,0 +1,222 @@
+INFO 11-03 09:56:38 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 11-03 09:56:38 [__init__.py:46] - ascend -> vllm_ascend:register
+INFO 11-03 09:56:38 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-03 09:56:38 [__init__.py:238] Platform plugin ascend is activated
+INFO 11-03 09:56:38 [platform.py:62] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+2026-11-03 09:56:45,261 - 30345 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.23.0+empty: default 1
+INFO 11-03 09:56:45 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `netloader`
+INFO 11-03 09:56:45 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+(APIServer pid=30345) INFO 11-03 09:56:45 [api_utils.py:339] 
+(APIServer pid=30345) INFO 11-03 09:56:45 [api_utils.py:339]        █     █     █▄   ▄█
+(APIServer pid=30345) INFO 11-03 09:56:45 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.23.0
+(APIServer pid=30345) INFO 11-03 09:56:45 [api_utils.py:339]   █▄█▀ █     █     █     █  model   /home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/
+(APIServer pid=30345) INFO 11-03 09:56:45 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=30345) INFO 11-03 09:56:45 [api_utils.py:339] 
+(APIServer pid=30345) INFO 11-03 09:56:45 [api_utils.py:273] non-default args: {'model_tag': '/home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/', 'port': 8340, 'model': '/home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/', 'max_model_len': 16384, 'enforce_eager': True, 'served_model_name': ['qwen3.5'], 'additional_config': {'dump_config': {'task': 'statistics', 'level': 'mix', 'step': ['0-1'], 'dump_path': './1024_dump', 'statistics': {'list': []}}}}
+(APIServer pid=30345) INFO 11-03 09:56:45 [model.py:611] Resolved architecture: Qwen3_5ForConditionalGeneration
+(APIServer pid=30345) INFO 11-03 09:56:45 [model.py:1745] Using max model len 16384
+(APIServer pid=30345) `Qwen2VLImageProcessorFast` is deprecated. The `Fast` suffix for image processors has been removed; use `Qwen2VLImageProcessor` instead.
+(APIServer pid=30345) INFO 11-03 09:56:46 [patch_mamba_config.py:104] Setting attention block size to 1024 tokens to ensure that attention page size is >= mamba page size.
+(APIServer pid=30345) INFO 11-03 09:56:46 [patch_mamba_config.py:119] Padding mamba page size by 1.73% to ensure that mamba page size and attention page size are exactly equal.
+(APIServer pid=30345) INFO 11-03 09:56:46 [vllm.py:999] Asynchronous scheduling is enabled.
+(APIServer pid=30345) WARNING 11-03 09:56:46 [vllm.py:1055] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+(APIServer pid=30345) WARNING 11-03 09:56:46 [vllm.py:1097] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(APIServer pid=30345) INFO 11-03 09:56:46 [kernel.py:270] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(APIServer pid=30345) INFO 11-03 09:56:46 [vllm.py:1273] Cudagraph is disabled under eager mode
+(APIServer pid=30345) INFO 11-03 09:56:46 [utils.py:174] No quantization signature detected from model files for "/home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/". The model will be loaded as float. To force a quantization method, pass "--quantization <method>" explicitly.
+(APIServer pid=30345) WARNING 11-03 09:56:46 [platform.py:1067] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True, action: resetting to False.
+(APIServer pid=30345) INFO 11-03 09:56:46 [platform.py:1277] The timeout interval of the HCCL operator is 1836s. Timeout in seconds for execute_model RPC calls in multiprocessing must be greater than 1836s, Set VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3000
+(APIServer pid=30345) INFO 11-03 09:56:46 [ascend_config.py:893] Dynamic EPLB is False
+(APIServer pid=30345) INFO 11-03 09:56:46 [ascend_config.py:894] The number of redundant experts is 0
+(APIServer pid=30345) INFO 11-03 09:56:46 [ascend_config.py:410] Materialized additional_config.dump_config to file: /a3_inference/itask/workdir/gch02599191/qwen35/scripts/msprobe/.vllm_ascend/msprobe/msprobe_dump_config.json
+(APIServer pid=30345) INFO 11-03 09:56:46 [platform.py:528] Compilation disabled, using eager mode by default
+(APIServer pid=30345) INFO 11-03 09:56:46 [platform.py:790] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(APIServer pid=30345) INFO 11-03 09:56:46 [compilation.py:321] Enabled custom fusions: norm_quant, act_quant
+(APIServer pid=30345) The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
+INFO 11-03 09:57:01 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 11-03 09:57:01 [__init__.py:46] - ascend -> vllm_ascend:register
+INFO 11-03 09:57:01 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 11-03 09:57:01 [__init__.py:238] Platform plugin ascend is activated
+INFO 11-03 09:57:01 [platform.py:62] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+(EngineCore pid=30533) 2026-11-03 09:57:08,910 - 30533 - ServiceProfiler - INFO - VLLM_USE_V1 not set, auto-detected via vLLM 0.23.0+empty: default 1
+(EngineCore pid=30533) INFO 11-03 09:57:08 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `netloader`
+(EngineCore pid=30533) INFO 11-03 09:57:08 [__init__.py:115] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+(EngineCore pid=30533) INFO 11-03 09:57:08 [core.py:113] Initializing a V1 LLM engine (v0.23.0) with config: model='/home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/', speculative_config=None, tokenizer='/home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=16384, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=True, quantization=None, quantization_config=None, enforce_eager=True, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=npu, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False), seed=0, served_model_name=qwen3.5, enable_prefix_caching=False, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'vllm_ascend.compilation.compiler_interface.AscendCompiler', 'custom_ops': ['all'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [2048], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'size_asserts': False, 'alignment_asserts': False, 'scalar_asserts': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.NONE: 0>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False}, 'max_cudagraph_capture_size': 0, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': True, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native']), enable_flashinfer_autotune=True, moe_backend='auto', linear_backend='auto')
+(EngineCore pid=30533) `Qwen2VLImageProcessorFast` is deprecated. The `Fast` suffix for image processors has been removed; use `Qwen2VLImageProcessor` instead.
+(EngineCore pid=30533) INFO 11-03 09:57:11 [ascend_config.py:893] Dynamic EPLB is False
+(EngineCore pid=30533) INFO 11-03 09:57:11 [ascend_config.py:894] The number of redundant experts is 0
+(EngineCore pid=30533) INFO 11-03 09:57:11 [ascend_config.py:410] Materialized additional_config.dump_config to file: /a3_inference/itask/workdir/gch02599191/qwen35/scripts/msprobe/.vllm_ascend/msprobe/msprobe_dump_config.json
+(EngineCore pid=30533) INFO 11-03 09:57:13 [parallel_state.py:1568] world_size=1 rank=0 local_rank=0 distributed_init_method=tcp://172.16.47.231:57143 backend=hccl
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+(EngineCore pid=30533) INFO 11-03 09:57:13 [parallel_state.py:1903] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A, EPLB rank N/A
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[rank0]:[W1103 09:57:13.283851798 NPUCachingAllocator.cpp:202] Warning: The current CANN and HDK(driver) versions require processing for 32 padding size, with memory allocation. (function operator())
+(EngineCore pid=30533) The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
+(EngineCore pid=30533) 2026-11-03 09:57:19 (30533) [rank 0] [INFO] No megatron find.
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] The api statistics hook function is successfully mounted to the model.
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [INFO] [msprobe] Triton detected, version=3.2.0
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [INFO] [msprobe] Patched triton.runtime.jit.JITFunction.run successfully.
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [INFO] [msprobe] Patched triton.runtime.autotuner.Autotuner.run successfully.
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [INFO] [msprobe] Triton patch summary, patched=['triton.runtime.jit.JITFunction.run', 'triton.runtime.autotuner.Autotuner.run'], skipped=[]
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.batch_matmul_transpose
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.bgmv_expand
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.bgmv_shrink
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.chunk_fwd_o
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.chunk_gated_delta_rule_fwd_h
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.compressor
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.compressor_metadata
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.compressor_metadata_out
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.device_print
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.device_print_tensor
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.dispatch_ffn_combine
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.dispatch_gmm_combine_decode
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.get_masked_input_and_mask
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.get_npu_storage_shape
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.grouped_matmul_swiglu_quant
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.grouped_matmul_swiglu_quant_v2
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.grouped_matmul_swiglu_quant_weight_nz
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.grouped_matmul_swiglu_quant_weight_nz_tensor_list
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.indexer_compress_epilog
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.indexer_compress_epilog_v2
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.inplace_partial_rotary_mul
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.kv_compress_epilog
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.matmul_allreduce_add_rmsnorm
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.mla_preprocess
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.moe_gating_top_k
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.moe_gating_top_k_hash
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.moe_grouped_matmul
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_add_rms_norm_bias
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_causal_conv1d_custom
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_copy_and_expand_eagle_inputs
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_dequant_swiglu_quant
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_fused_gdn_gating
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_gemma_rms_norm
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_hamming_dist_top_k
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_hc_post
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_hc_pre
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_hc_pre_inv_rms
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_hc_pre_sinkhorn
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_hc_pre_v2
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_kv_quant_sparse_attn_sharedkv
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_kv_quant_sparse_attn_sharedkv_metadata
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_kv_quant_sparse_flash_attention
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_lightning_indexer
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_lightning_indexer_quant
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_load_index_kv_cache
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_moe_init_routing_custom
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_ngram_spec_decode
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_recurrent_gated_delta_rule
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_reshape_and_cache_bnsd
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_rms_norm_dynamic_quant
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_scatter_nd_update_v2
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_sign_bits_pack
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_sparse_attn_sharedkv
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_sparse_attn_sharedkv_metadata
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_sparse_flash_attention
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_swiglu_group_quant
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_vllm_quant_lightning_indexer
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.npu_vllm_quant_lightning_indexer_metadata
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.sgmv_expand
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.sgmv_shrink
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.store_kv_block
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.store_kv_block_metadata
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.swap_blocks
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.swap_blocks_batch
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api registered: torch.ops._C_ascend.transpose_kv_cache_by_block
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Auto registered 65 custom ops for dump.
+(EngineCore pid=30533) 2026-11-03 09:57:20 (30533) [rank 0] [INFO] Custom api yaml is empty: /usr/local/python3.12.13/lib/python3.12/site-packages/msprobe/pytorch/dump/api_dump/custom_wrap_ops.yaml, yaml-based custom op registration is disabled.
+(EngineCore pid=30533) INFO 11-03 09:57:20 [model_runner_v1.py:3718] Starting to load model /home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/...
+(EngineCore pid=30533) INFO 11-03 09:57:20 [interface.py:301] Using default backend AttentionBackendEnum.TORCH_SDPA for vit attention
+(EngineCore pid=30533) INFO 11-03 09:57:20 [mm_encoder_attention.py:372] Using AttentionBackendEnum.TORCH_SDPA for MMEncoderAttention.
+(EngineCore pid=30533) INFO 11-03 09:57:20 [qwen_gdn_linear_attn.py:228] Using Triton/FLA GDN prefill kernel (requested=auto, head_k_dim=128).
+(EngineCore pid=30533) INFO 11-03 09:57:20 [weight_utils.py:922] Filesystem type for checkpoints: EXT4. Checkpoint size: 1.63 GiB. Available RAM: 2264.77 GiB.
+(EngineCore pid=30533) INFO 11-03 09:57:20 [weight_utils.py:945] Auto-prefetch is disabled because the filesystem (EXT4) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+(EngineCore pid=30533) Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+(EngineCore pid=30533) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  6.50it/s]
+(EngineCore pid=30533) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  6.49it/s]
+(EngineCore pid=30533) 
+(EngineCore pid=30533) INFO 11-03 09:57:21 [default_loader.py:397] Loading weights took 0.16 seconds
+(EngineCore pid=30533) INFO 11-03 09:57:21 [model_runner_v1.py:3794] Loading model weights took 1.7155 GB
+(EngineCore pid=30533) INFO 11-03 09:57:21 [model_runner_v1.py:3821] Model runner load_model total time: 1.74 seconds
+(EngineCore pid=30533) INFO 11-03 09:57:22 [gpu_model_runner.py:6200] Encoder cache will be initialized with a budget of 16384 tokens, and profiled with 1 image items of the maximum feature size.
+(EngineCore pid=30533) INFO 11-03 09:57:35 [worker.py:593] Available KV cache memory: 53.17 GiB
+(EngineCore pid=30533) INFO 11-03 09:57:35 [kv_cache_utils.py:1744] GPU KV cache size: 3,844,203 tokens
+(EngineCore pid=30533) INFO 11-03 09:57:35 [kv_cache_utils.py:1745] Maximum concurrency for 16,384 tokens per request: 234.63x
+(EngineCore pid=30533) INFO 11-03 09:57:38 [worker.py:771] Free memory on device (60.86/61.27 GiB) on startup. Desired GPU memory utilization is (0.92, 56.37 GiB). Actual usage: 1.72 GiB for weights, 1.41 GiB for peak activation, 0.08 GiB for non-torch memory, 0.0 GiB for NPU graph memory. Replace gpu_memory_utilization with `--kv-cache-memory=56931487948` (53.02 GiB) to fit into requested memory, or `--kv-cache-memory=61752329216` (57.51 GiB) to fully utilize NPU free memory. Current KV cache memory: 53.17 GiB.
+(EngineCore pid=30533) INFO 11-03 09:57:39 [cpu_binding.py:542] [cpu_bind_mode] mode=global_slice rank=0 visible_npus=[0]
+(EngineCore pid=30533) INFO 11-03 09:57:39 [cpu_binding.py:626] The CPU allocation plan is as follows:
+(EngineCore pid=30533) INFO 11-03 09:57:39 [cpu_binding.py:641] NPU0: main=[2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77]  acl=[78]  release=[[79]]
+(EngineCore pid=30533) INFO 11-03 09:57:39 [cpu_binding.py:667] [migrate] NPU:0 -> NUMA [0]
+(EngineCore pid=30533) INFO 11-03 09:57:40 [core.py:313] init engine (profile, create kv cache, warmup model) took 18.46 s
+(EngineCore pid=30533) INFO 11-03 09:57:40 [vllm.py:999] Asynchronous scheduling is enabled.
+(EngineCore pid=30533) WARNING 11-03 09:57:40 [vllm.py:1055] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+(EngineCore pid=30533) WARNING 11-03 09:57:40 [vllm.py:1097] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(EngineCore pid=30533) INFO 11-03 09:57:40 [kernel.py:270] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(EngineCore pid=30533) INFO 11-03 09:57:40 [vllm.py:1273] Cudagraph is disabled under eager mode
+(EngineCore pid=30533) INFO 11-03 09:57:40 [utils.py:174] No quantization signature detected from model files for "/home/admin/model-csi/models/modelhub_41900013_qwen3-5-0-8b-112800048_20260304125902/model/". The model will be loaded as float. To force a quantization method, pass "--quantization <method>" explicitly.
+(EngineCore pid=30533) INFO 11-03 09:57:40 [platform.py:1277] The timeout interval of the HCCL operator is 1836s. Timeout in seconds for execute_model RPC calls in multiprocessing must be greater than 1836s, Set VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3000
+(EngineCore pid=30533) INFO 11-03 09:57:40 [platform.py:528] Compilation disabled, using eager mode by default
+(EngineCore pid=30533) INFO 11-03 09:57:40 [platform.py:790] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(EngineCore pid=30533) INFO 11-03 09:57:40 [compilation.py:321] Enabled custom fusions: norm_quant, act_quant
+(APIServer pid=30345) INFO 11-03 09:57:40 [api_server.py:579] Supported tasks: ['generate']
+(APIServer pid=30345) INFO 11-03 09:57:43 [hf.py:548] Detected the chat template content format to be 'openai'. You can set `--chat-template-content-format` to override this.
+(APIServer pid=30345) INFO 11-03 09:57:59 [base.py:227] Multi-modal warmup completed in 16.637s
+(APIServer pid=30345) INFO 11-03 09:58:00 [base.py:227] Readonly multi-modal warmup completed in 0.973s
+(APIServer pid=30345) INFO 11-03 09:58:00 [api_server.py:583] Starting vLLM server on http://0.0.0.0:8340
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:37] Available routes are:
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /openapi.json, Methods: GET, HEAD
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /docs, Methods: GET, HEAD
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: GET, HEAD
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /redoc, Methods: GET, HEAD
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /load, Methods: GET
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /version, Methods: GET
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /health, Methods: GET
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /metrics, Methods: GET
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /tokenize, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /detokenize, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/models, Methods: GET
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /ping, Methods: GET
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /ping, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /invocations, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/chat/completions/batch, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/responses, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/completions, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/messages, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/messages/count_tokens, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /generative_scoring, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
+(APIServer pid=30345) INFO 11-03 09:58:00 [launcher.py:46] Route: /v1/completions/render, Methods: POST
+(APIServer pid=30345) INFO:     Started server process [30345]
+(APIServer pid=30345) INFO:     Waiting for application startup.
+(APIServer pid=30345) INFO:     Application startup complete.
+(APIServer pid=30345) INFO:     127.0.0.1:60208 - "GET /v1/models HTTP/1.1" 200 OK
+(EngineCore pid=30533) 2026-11-03 09:58:35 (30533) [rank 0] [INFO] The module statistics hook function is successfully mounted to the model.
+(EngineCore pid=30533) 2026-11-03 09:58:35 (30533) [rank 0] [INFO] msprobe: debugger.start() is set successfully
+(EngineCore pid=30533) 2026-11-03 09:58:35 (30533) [rank 0] [INFO] Dump switch is turned on at step 0. 
+(EngineCore pid=30533) 2026-11-03 09:58:35 (30533) [rank 0] [INFO] Dump data will be saved in ./1024_dump/step0.
+(EngineCore pid=30533) 2026-11-03 09:58:59 (30533) [INFO] dump.json is at ./1024_dump/step0. 
+(EngineCore pid=30533) 2026-11-03 09:58:59 (30533) [INFO] dump.json is at ./1024_dump/step0. 
+(EngineCore pid=30533) 2026-11-03 09:59:00 (30533) [rank 0] [INFO] msprobe: debugger.stop() is set successfully. Please set debugger.start() to turn on the dump switch again. 
+(EngineCore pid=30533) 2026-11-03 09:59:00 (30533) [INFO] dump.json is at ./1024_dump/step0. 
+(EngineCore pid=30533) 2026-11-03 09:59:00 (30533) [rank 0] [INFO] msprobe: debugger.start() is set successfully
+(EngineCore pid=30533) 2026-11-03 09:59:00 (30533) [rank 0] [INFO] Dump switch is turned on at step 1. 
+(EngineCore pid=30533) 2026-11-03 09:59:00 (30533) [rank 0] [INFO] Dump data will be saved in ./1024_dump/step1.
+(EngineCore pid=30533) 2026-11-03 09:59:06 (30533) [rank 0] [INFO] msprobe: debugger.stop() is set successfully. Please set debugger.start() to turn on the dump switch again. 
+(EngineCore pid=30533) 2026-11-03 09:59:06 (30533) [INFO] dump.json is at ./1024_dump/step1. 
+(EngineCore pid=30533) 2026-11-03 09:59:06 (30533) [INFO] ****************************************************************************
+(EngineCore pid=30533) 2026-11-03 09:59:06 (30533) [INFO] *                        msprobe ends successfully.                        *
+(EngineCore pid=30533) 2026-11-03 09:59:06 (30533) [INFO] ****************************************************************************
+(APIServer pid=30345) INFO:     127.0.0.1:44040 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=30345) INFO 11-03 09:59:11 [loggers.py:271] Engine 000: Avg prompt throughput: 12.1 tokens/s, Avg generation throughput: 1.0 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%
+(APIServer pid=30345) INFO 11-03 09:59:21 [loggers.py:271] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%
