@@ -1,0 +1,27 @@
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/tensor/start_tensor_2048.sh
+  s_44f3a05c63c3a1::t_85f2795f01ddc6 8-9,15,18,26
+  s_44f3a05c63c3a1::t_e56dbb9b6f05b8 4-6,10-14,16-17,31,36-38
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/tensor/start_tensor_1024.sh
+  s_44f3a05c63c3a1::t_02c6a2f7d01410 6,10,12-16,18-19,32,37-39
+  s_44f3a05c63c3a1::t_8d106a0a570a81 7-9,17,20,27
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/tensor/analysis/inspect_pt.py
+  s_44f3a05c63c3a1::t_25b207dbd830be 1,3-4,8-19,23-25,29,47-49,57-58,60-61,63,66-71,75-80,86-88,92-93,98-99,103-104,108-117
+  s_44f3a05c63c3a1::t_5d0bcc2f1e2489 2,5-7,20-22,26-28,30-46,50-56,59,62,64-65,72-74,81-85,89-91,94-97,100-102,105-107
+  s_44f3a05c63c3a1::t_9b43daae4e36c5 118-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ebc316d8e0ef20b29f7ed52c85b3b1c175d98359",
+  "prompts": {},
+  "sessions": {
+    "s_44f3a05c63c3a1": {
+      "agent_id": {
+        "tool": "codefuse",
+        "id": "session-ab081488-5ca9-488f-be45-14cacae0bf1e",
+        "model": "codefuse_official_channel/DeepSeek-V4.1-Flash-1017"
+      },
+      "human_author": "123 <123>"
+    }
+  }
+}
