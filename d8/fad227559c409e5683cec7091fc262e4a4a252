@@ -1,0 +1,82 @@
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/logs/curl_1024.log
+  s_44f3a05c63c3a1::t_95bb9e2d00071e 1
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/2048_dump/step0/rank0/construct.json
+  s_44f3a05c63c3a1::t_ba873ba6d5ceeb 1-2210
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/logs/compare.out
+  s_44f3a05c63c3a1::t_51ed51f528b57d 1-17
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/patchs/debug/apply_patches.sh
+  s_44f3a05c63c3a1::t_6f874be5628653 2-16,18-20,22-33,35-45
+  s_44f3a05c63c3a1::t_5c413d6f92030e 34
+  s_44f3a05c63c3a1::t_3c93574431b521 17,21
+  s_44f3a05c63c3a1::t_edc6bd1404937a 1
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/1024_dump/step1/rank0/construct.json
+  s_44f3a05c63c3a1::t_95bb9e2d00071e 1-1434
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/logs/qwen35_1024_dump.log
+  s_44f3a05c63c3a1::t_95bb9e2d00071e 1-222
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/1024_dump/step0/rank0/construct.json
+  s_44f3a05c63c3a1::t_95bb9e2d00071e 1-2210
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/1024_dump/step1/rank0/stack.json
+  s_44f3a05c63c3a1::t_95bb9e2d00071e 1-3620
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/2048_dump/step1/rank0/stack.json
+  s_44f3a05c63c3a1::t_ba873ba6d5ceeb 1-3620
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/2048_dump/step1/rank0/construct.json
+  s_44f3a05c63c3a1::t_ba873ba6d5ceeb 1-1434
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/logs/qwen35_2048_dump.log
+  s_44f3a05c63c3a1::t_ba873ba6d5ceeb 1-221
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/start_1024.sh
+  s_44f3a05c63c3a1::t_2361fbeb90113b 8
+  s_44f3a05c63c3a1::t_5738b3f8285723 7
+  s_44f3a05c63c3a1::t_4baaf5a95763be 9-11
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/patchs/fix/pr_15408.patch
+  s_44f3a05c63c3a1::t_4d739f7ab08b35 1-110
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/logs/curl_2048.log
+  s_44f3a05c63c3a1::t_ba873ba6d5ceeb 1
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/start_2048.sh
+  s_44f3a05c63c3a1::t_c22fd01eca9ea3 9
+  s_44f3a05c63c3a1::t_d72826c4b9e9fb 8
+  s_44f3a05c63c3a1::t_33cca9d637ac9f 10-12
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/qwen35_attn_kvcache_callchain.md
+  s_44f3a05c63c3a1::t_874653747869eb 1-203
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/2048_dump/step1/rank0/dump.json
+  s_44f3a05c63c3a1::t_ba873ba6d5ceeb 1-50954
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/1024_dump/step0/rank0/stack.json
+  s_44f3a05c63c3a1::t_95bb9e2d00071e 1-4931
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/patchs/debug/revert_patches.sh
+  s_44f3a05c63c3a1::t_fabb5e6b1bae7c 35
+  s_44f3a05c63c3a1::t_4a729bae95aa28 18,22
+  s_44f3a05c63c3a1::t_f2c85ddd71ff98 2-17,19-21,23-34,36-46
+  s_44f3a05c63c3a1::t_4e776cfaccb483 1
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/README.md
+  s_44f3a05c63c3a1::t_fce79b58129aa2 51-56
+  s_44f3a05c63c3a1::t_2f7b62f379fd91 9
+  s_44f3a05c63c3a1::t_a21029913e0c71 7,12-13,20-47,50,57
+  s_44f3a05c63c3a1::t_bffb707a5d7222 19
+  s_44f3a05c63c3a1::t_dbd4db09e96d3e 48-49
+  s_44f3a05c63c3a1::t_3c05b7f8ddbfef 58-59
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/2048_dump/step0/rank0/dump.json
+  s_44f3a05c63c3a1::t_ba873ba6d5ceeb 1-72364
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/kill.sh
+  s_44f3a05c63c3a1::t_4d739f7ab08b35 1-4
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/1024_dump/step0/rank0/dump.json
+  s_44f3a05c63c3a1::t_95bb9e2d00071e 1-72364
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/1024_dump/step1/rank0/dump.json
+  s_44f3a05c63c3a1::t_95bb9e2d00071e 1-50954
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/2048_dump/step0/rank0/stack.json
+  s_44f3a05c63c3a1::t_ba873ba6d5ceeb 1-4931
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d8fad227559c409e5683cec7091fc262e4a4a252",
+  "prompts": {},
+  "sessions": {
+    "s_44f3a05c63c3a1": {
+      "agent_id": {
+        "tool": "codefuse",
+        "id": "session-ab081488-5ca9-488f-be45-14cacae0bf1e",
+        "model": "codefuse_official_channel/DeepSeek-V4.1-Flash-1017"
+      },
+      "human_author": "123 <123>"
+    }
+  }
+}
