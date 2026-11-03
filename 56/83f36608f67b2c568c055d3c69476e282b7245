@@ -1,0 +1,69 @@
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/1024_dump/step0/rank0/construct.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-2210
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/start_1024.sh
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-19
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/logs/qwen35_1024_dump.log
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-222
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/logs/compare.out
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-17
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/tensor/start_tensor_1024.sh
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-31
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/1024_dump/step1/rank0/dump.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-50954
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/1024_dump/step1/rank0/construct.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-1434
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/2048_dump/step1/rank0/stack.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-3620
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/compare.sh
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-5
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/tensor/curl_tensor_1024.sh
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-20
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/curl_1024.sh
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-19
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/curl_2048.sh
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-19
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/2048_dump/step1/rank0/dump.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-50954
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/2048_dump/step0/rank0/construct.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-2210
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/2048_dump/step1/rank0/construct.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-1434
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/logs/curl_2048.log
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/2048_dump/step0/rank0/dump.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-72364
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/1024_dump/step0/rank0/dump.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-72364
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/logs/curl_1024.log
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/tensor/curl_tensor_2048.sh
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-20
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/1024_dump/step1/rank0/stack.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-3620
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/tensor/start_tensor_2048.sh
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-29
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/start_2048.sh
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-20
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/logs/qwen35_2048_dump.log
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-221
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/1024_dump/step0/rank0/stack.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-4931
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/2048_dump/step0/rank0/stack.json
+  s_44f3a05c63c3a1::t_0342f58f37e96c 1-4931
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5683f36608f67b2c568c055d3c69476e282b7245",
+  "prompts": {},
+  "sessions": {
+    "s_44f3a05c63c3a1": {
+      "agent_id": {
+        "tool": "codefuse",
+        "id": "session-ab081488-5ca9-488f-be45-14cacae0bf1e",
+        "model": "codefuse_official_channel/DeepSeek-V4.1-Flash-1017"
+      },
+      "human_author": "123 <123>"
+    }
+  }
+}
