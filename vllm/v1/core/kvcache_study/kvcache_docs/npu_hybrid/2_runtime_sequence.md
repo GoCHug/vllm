@@ -327,7 +327,7 @@ sequenceDiagram
 
 #### 4.2.1 清零：`_zero_block_ids`
 
-**为什么清**——开关是配置级的 `needs_kv_cache_zeroing`（= `has_mamba_layers`，调度器在 scheduler.py:260 读入、worker 在 worker.py:931 读入，kv_cache_interface.py:873-879），标记"整个配置"而非某一组。分界线不是"有没有洞"（两种配置的新块都有洞），而是**块池里会不会出现跨 dtype 域的旧比特**：
+ `needs_kv_cache_zeroing`= `has_mamba_layers`是开启清零操作的开关，是否需要清零主要由块池里会不会出现跨 dtype 域的旧比特决定，has_mamba_layers即存在mamba层，一般mamba层的ssm存储dtype是fp32，与full-attn层的K/V池dtype是float16，所以需要清零K/V双池：
 
 - **纯 full-attn / 纯 MLA 为 `False`，从不清零**：两条不变量保证脏数据无害——①**读范围 ⊆ 已写范围**：新块的第一次访问必然是写（prefill 顺着槽位写），此后读取止于 `actual_seq_lengths_kv`、早已写过；②**即使洞被整页取数碰到，旧值也是有限数**：纯注意力池子里每块历史上只被同 dtype 的注意力层写过，旧值是上一个请求真实算出的 K/V，乘零 mask 的湮灭对有限数成立（越界位 `score → −inf → pᵢ = 0`，`out = Σ pᵢ·vᵢ` 照算，`0 × 有限数 = 0`）。脏数据在数学上变不成 NaN。
 - **Qwen3.5-4B 这类混合模型为 `True`，必须清**：mamba 层使块池**跨 dtype 域**——uniform page size 下第 i 个 `KVCacheTensor` 同时被"attn 组第 i 层 + 3 个 mamba 组各自的第 i 层"共用（`shared_by`，kv_cache_utils.py:1318-1326），同一块显存 attn 层按 bf16 解释、mamba 层按 fp32 写（`mamba_ssm_dtype=float32`）。mamba 用过的块释放回池、再被 attn 组弹出时，fp32 原始比特重解释成 bf16 即成 **Inf/NaN**（"leftover fp32 bit patterns can appear as NaN/Inf in the new dtype"）——不变量②失效：乘零 mask 挡不住 NaN（`0 × NaN = NaN`），NaN 进注意力输出 → 残差流 → 后续 GDN 层，被递归状态保留、逐轮放大（issue #35138 的现象即 GSM8K 精度随运行持续劣化）。清零就是在新块使用前重建不变量②（[PR #35219](https://github.com/vllm-project/vllm/pull/35219)，修 issue #35138，flash-attention [#1974](https://github.com/Dao-AILab/flash-attention/issues/1974) 的 workaround）。
