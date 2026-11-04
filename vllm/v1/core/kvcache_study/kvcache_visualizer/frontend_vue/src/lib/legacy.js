@@ -6,6 +6,7 @@
  * 纯函数层(sbCompute / sbParseLogs / STAGEMAP / heatRange 等)由 node --test 覆盖。
  */
 import { renderQwen35 } from "./qwen35.js";
+import { renderKvms } from "./kvms.js";
 
 "use strict";
 /* ================= 基础 ================= */
@@ -57,6 +58,7 @@ const TABS=[
   {id:"p1d",name:"PD 分离 1P1D · P→D 传输"},
   {id:"matrix",name:"Prefix 四象限矩阵"},
   {id:"qwen35",name:"Hybrid 混合 · qwen35"},
+  {id:"kvms",name:"物理页视图 · msprobe"},
   {id:"browser",name:"张量浏览器"},
 ];
 function buildTabs(){
@@ -68,6 +70,7 @@ function switchTab(id){
   $$("#navTabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===id));
   $$("section.view").forEach(s=>s.classList.toggle("on",s.id==="view-"+id));
   if(id==="browser")ensureBrowser();
+  if(id==="kvms")ensureKvms();
   window.scrollTo(0,0);
 }
 
@@ -445,6 +448,14 @@ function fileOptions(){
     opts.push({group:`p1d · req${p.seq} · ${s.toUpperCase()}(${s==="p"?"producer":"consumer"})`,label:`${p[s].nLayers}层 · ${(p[s].size/1048576).toFixed(1)}MiB`,url:p[s].href});
   return opts;
 }
+let kvmsReady=false;
+function ensureKvms(){
+  if(kvmsReady)return;
+  kvmsReady=true;
+  const host=$("#view-kvms");
+  if(host)renderKvms(host).catch(e=>{host.innerHTML=`<div class="card"><p style="color:var(--fail)">${esc(String(e))}</p></div>`;});
+}
+
 function ensureBrowser(){
   if(!BR.url){
     const o=fileOptions();

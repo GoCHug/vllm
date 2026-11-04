@@ -19,6 +19,17 @@ DATA_ROOT = HERE.parent / "kv_datasets_root"      # DATA_ROOT: 导出数据, 后
 HEAT_N = 32          # 热图边长: 块张量头0通道 128×128 做 4×4 平均池化 -> 32×32
 POOLS = ("K", "V")   # KV 两池
 
+# ---- msprobe tensor dump 数据源（物理页视图 / kvms 场景）----
+# 扫描该目录下形如 *_dump_tensor/step{N}/rank0/dump_tensor_data 的数据源
+KVMS_ROOT = ROOT / "qwen35" / "scripts" / "msprobe" / "tensor"
+PHYS_BLOCK = 128     # attn cache 的物理块宽（token），对应 FIA 的 block_size
+# 混合模型一张共享张量内按页切成的三段池（字节）；实现里优先从数据形状反推
+POOL_PAGE_BYTES = {
+    "conv": 3 * 6144 * 2,        # conv_state: 3 × 6144 bf16 = 36 KiB
+    "k_ssm": 16 * 128 * 128 * 4,  # SSM 段: 16 × 128 × 128 fp32 = 1 MiB（K 段与其共享）
+    "v": 1 << 20,
+}
+
 # 场景 key -> 实验源子目录名(2026-10 目录改名: kvc->kvcache_mix 等)
 SRC = {
     "kvc": "kvcache_mix",

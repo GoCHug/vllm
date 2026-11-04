@@ -437,3 +437,88 @@ canvas.mainheat{border:1px solid var(--line);border-radius:6px;image-rendering:p
 .q35-bar i{display:block;height:100%}
 .q35-bar i.nan{width:100%!important;background:repeating-linear-gradient(45deg,#7f1d1d,#7f1d1d 3px,#ef4444 3px,#ef4444 6px)}
 .q35-hl{outline:2px solid var(--acc);transition:outline .2s}
+
+/* ---- kvms 物理页视图 ---- */
+.kvms-sel{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-family:var(--mono);font-size:12px}
+.kvms-rowk{font-family:var(--mono);font-size:11.5px;color:var(--gold);min-width:74px;text-align:right}
+.kvms-row{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;overflow-x:auto;margin:5px 0}
+.kvms-touched{box-shadow:inset 0 0 0 1px var(--gold)}
+.kvms-cell{flex:0 0 27px;display:inline-flex;align-items:center;justify-content:center;width:27px;height:22px;border:1px solid var(--line);border-radius:4px;font-family:var(--mono);font-size:10.5px;color:var(--dim);cursor:pointer;background:rgba(130,150,171,.06)}
+.kvms-cell:hover{outline:1px solid var(--acc)}
+.kvms-cell.cell-ok{background:rgba(52,211,153,.30);color:var(--ok)}
+.kvms-cell.cell-fail{background:rgba(248,113,113,.55);color:#fff}
+.kvms-cell.cell-na{background:rgba(130,150,171,.10);color:var(--faint)}
+.kvms-cell.kvms-touched{box-shadow:inset 0 0 0 2px var(--gold)}
+.kvms-sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-2px;margin-right:4px}
+.kvms-viewsw{display:flex;align-items:center;gap:8px;margin:6px 0}
+.kvms-planes{max-width:100%}
+.kvms-planes.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:5px}
+.kvms-planes.grid canvas,.kvms-planes.single canvas{width:100%;height:auto;image-rendering:pixelated;border:1px solid var(--line);border-radius:3px;background:#0b0f14;display:block}
+.kvms-planes.single canvas{max-width:640px}
+.kvms-plane.on{outline:2px solid var(--gold);outline-offset:1px}
+.kvms-planes.iso{position:relative;height:300px;overflow:hidden;border:1px solid var(--line);border-radius:6px;background:rgba(130,150,171,.04)}
+.kvms-planes.iso canvas{position:absolute;width:150px;height:auto;image-rendering:pixelated;border:1px solid rgba(130,150,171,.45);border-radius:2px;background:#0b0f14;box-shadow:0 2px 6px rgba(0,0,0,.45)}
+.kvms-cvwrap{overflow-x:auto;max-width:100%;padding-bottom:2px}
+.kvms-ax{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:4px}
+.kvms-blk{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:22px;padding:0 3px;box-sizing:border-box;border:1px solid var(--line);border-radius:4px;font-family:var(--mono);font-size:10.5px;color:var(--dim);cursor:pointer;flex:0 0 auto;white-space:nowrap;overflow:hidden}
+.kvms-blk:hover{outline:1px solid var(--acc)}
+/* 当前小步正在写的块 / 层：只在这一次小步高亮 */
+.kvms-blk.kvms-cur{outline:2px solid var(--gold);outline-offset:1px;position:relative;z-index:2}
+.kvms-gcell.kvms-g-cur{border:2px solid var(--gold);color:#fff;box-shadow:0 0 0 2px rgba(245,194,107,.22)}
+.kvms-blk.on{outline:2px solid var(--gold);color:#fff}
+.kvms-mtx{display:grid;gap:1px;overflow-x:auto;margin-top:6px}
+.kvms-mcell{width:6px;height:13px;border-radius:1px;display:block;cursor:crosshair}
+.kvms-mcell:hover{outline:1px solid #fff}
+/* 数值矩阵：每行一个 [..]，整体呈 [[...],[...]]，行内横向滑动 */
+.kvms-mtxnum{margin-top:4px;overflow-x:auto;padding-bottom:2px}
+.kvms-numline{font-family:var(--mono);font-size:10.5px;color:var(--dim);white-space:nowrap;line-height:1.75}
+.kvms-bars{display:flex;flex-direction:column;gap:1px;margin-top:6px}
+.kvms-bar{height:5px;border-radius:1px;min-width:1px}
+.kvms-nums{font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.7;margin-top:6px;max-height:220px;overflow:auto;white-space:normal;word-break:break-all}
+.kvms-legend-slot{color:#2dd4bf;font-weight:600}
+.kvms-legend-mean{color:#f5c26b;font-weight:600}
+.kvms-pools{padding:10px 12px 6px;overflow-x:auto}
+.kvms-pools-hd{font-size:11.5px;color:var(--faint);margin-bottom:2px}
+/* 6 个 pool 在同一张卡片里各占一行，行间虚线分隔；左侧色条表示该 pool 的填充进度 */
+.kvms-phead,.kvms-pool{display:grid;gap:8px;
+  grid-template-columns:minmax(360px,1fr) repeat(4,104px)}
+.kvms-phead{font-size:10px;color:var(--faint);padding:0 0 5px;
+  border-bottom:1px solid rgba(130,150,171,.2);margin-bottom:2px}
+.kvms-phl{font-family:var(--mono);color:var(--faint)}
+.kvms-gh{font-family:var(--mono);text-align:center;color:var(--acc);font-size:10px}
+.kvms-gh i{display:block;font-style:normal;font-size:9px;color:var(--faint)}
+.kvms-pmain{display:flex;align-items:center;gap:8px;min-width:0}
+/* 右侧每格 = 该 pool 的一个层，纵向看即一个 group 的 6 个层 */
+.kvms-gcell{display:flex;align-items:center;justify-content:center;height:22px;font-family:var(--mono);font-size:9.5px;padding:0 4px;border-radius:4px;
+  border:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  align-self:center;justify-self:stretch;text-align:center}
+.kvms-g-attn{color:#7dd3fc;border-color:rgba(56,189,248,.38);background:rgba(56,189,248,.09)}
+.kvms-g-mamba{color:#c4b5fd;border-color:rgba(167,139,250,.32);background:rgba(167,139,250,.08)}
+.kvms-g-off{color:var(--faint);border-style:dashed}
+/* 该层已写完：提亮并描金边；刚写完的那一层：脉冲闪一下，与左侧块池同步 */
+}
+.kvms-pool{border-left:3px solid transparent;padding:8px 0 9px 10px;
+  border-bottom:1px dashed rgba(130,150,171,.16);transition:opacity .2s,border-color .2s}
+.kvms-pool:last-child{border-bottom:0}
+.kvms-ph{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+.kvms-pn{flex:0 0 46px;font-size:13px;font-weight:600;font-family:var(--mono);color:var(--txt)}
+.kvms-pstat{font-size:11px;color:var(--dim);line-height:1.75;margin-bottom:7px}
+/* 一个 pool = 一块 int8 张量切出的三段，画在同一行；段间虚线即切点 */
+/* 三行子池纵向堆叠，行高与右侧层格一致 */
+.kvms-onerow{display:flex;flex-direction:column;gap:3px;overflow-x:auto;padding:5px 9px;border:1px solid rgba(130,150,171,.30);border-radius:8px;background:rgba(130,150,171,.045)}
+.kvms-subrow{display:flex;align-items:center;gap:3px;flex:0 0 auto;height:22px}
+.kvms-sublabel{display:flex;align-items:baseline;justify-content:flex-end;gap:4px;width:84px;flex:0 0 84px;font-family:var(--mono);font-size:9.5px;color:var(--gold);white-space:nowrap}
+.kvms-sublabel i{font-style:normal;font-size:8.5px;color:var(--faint)}
+.kvms-sublabel.kvms-diff{color:var(--warn)}
+.kvms-mem{display:flex;align-items:center;gap:2px;margin:4px 0 8px;height:16px;font-family:var(--mono);font-size:9.5px}
+.kvms-memseg{flex-basis:0;min-width:74px;height:14px;line-height:14px;text-align:center;border-radius:3px;color:#0b0f14;white-space:nowrap;overflow:hidden;font-weight:600}
+.kvms-mem .mem-conv{background:linear-gradient(180deg,#f5c26b,#c99a45)}
+.kvms-mem .mem-k{background:linear-gradient(180deg,#38bdf8,#1f7fa8)}
+.kvms-mem .mem-v{background:linear-gradient(180deg,#2dd4bf,#1a8a7d)}
+.kvms-memtot{color:var(--faint);margin-left:8px;white-space:nowrap;font-size:10px}
+.kvms-waste{background:repeating-linear-gradient(45deg,rgba(248,113,113,.09),rgba(248,113,113,.09) 3px,rgba(248,113,113,.26) 3px,rgba(248,113,113,.26) 6px);color:#cf9090;border-color:rgba(248,113,113,.30)}
+.kvms-blk.kvms-waste{min-width:19px;padding:0 2px}
+.kvms-fold{display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;color:var(--faint);font-family:var(--mono);font-size:13px;cursor:help;letter-spacing:1px}
+.kvms-pool.idle{border-left-color:rgba(130,150,171,.22);opacity:.62}
+.kvms-pool.active{border-left-color:var(--gold);background:linear-gradient(90deg,rgba(245,194,107,.08),transparent 45%)}
+.kvms-pool.done{border-left-color:rgba(52,211,153,.55)}

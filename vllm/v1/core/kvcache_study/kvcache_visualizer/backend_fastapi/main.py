@@ -57,6 +57,60 @@ def create_app(root, data, page_dir, auto=True):
     def verify_route():
         return api_verify(root, data)
 
+    # ---- kvms: msprobe tensor dump 物理页视图（必须注册在 /api/{rel:path} 兜底之前）----
+    kvms_root = Path(root) / "qwen35" / "scripts" / "msprobe" / "tensor"
+
+    @app.get("/api/kvms/sources")
+    def kvms_sources():
+        from lib import kvms_source
+        return {"root": str(kvms_root), "sources": kvms_source.list_sources(kvms_root)}
+
+    @app.get("/api/kvms/{source}/inventory")
+    def kvms_inventory_route(source: str, step: int | None = None):
+        from lib import exporter, kvms_source
+        try:
+            dump_dir = kvms_source.resolve(source, kvms_root)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(404, str(exc))
+        return exporter.kvms_inventory(dump_dir, step)
+
+    @app.get("/api/kvms/{source}/{step}/layers")
+    def kvms_layers_route(source: str, step: int):
+        from lib import exporter, kvms_source
+        try:
+            dump_dir = kvms_source.resolve(source, kvms_root)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(404, str(exc))
+        return exporter.build_kvms_layers(dump_dir, step)
+
+    @app.get("/api/kvms/{source}/{step}/value")
+    def kvms_value_route(source: str, step: int, pool: int, sub: str,
+                         block: int, slot: int = 0, plane: int | None = None):
+        from lib import exporter, kvms_source
+        try:
+            dump_dir = kvms_source.resolve(source, kvms_root)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(404, str(exc))
+        return exporter.kvms_value(dump_dir, step, pool, sub, block, slot, plane)
+
+    @app.get("/api/kvms/{source}/{step}/slots")
+    def kvms_slots_route(source: str, step: int):
+        from lib import exporter, kvms_source
+        try:
+            dump_dir = kvms_source.resolve(source, kvms_root)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(404, str(exc))
+        return exporter.build_kvms_slots(dump_dir, step)
+
+    @app.get("/api/kvms/{source}/{step}")
+    def kvms_step_route(source: str, step: int):
+        from lib import exporter, kvms_source
+        try:
+            dump_dir = kvms_source.resolve(source, kvms_root)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(404, str(exc))
+        return exporter.kvms_step(dump_dir, step)
+
     @app.get("/api/{rel:path}")
     def api_json(rel: str):
         rel = safe_api_rel(rel)

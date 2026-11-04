@@ -1164,3 +1164,587 @@ def _q35_self_check(rounds, evidence):
         {"name": "B 轮输出损坏(1!!!!!!!!!)", "pass": by["B"]["verdict"] == "fail"},
         {"name": "C 轮输出恢复(1+14=15)", "pass": by["C"]["verdict"] == "ok"},
     ]
+
+
+# ================================================================ kvms 物理页视图
+def _kvms_load(path):
+    """装载 msprobe tensor dump 的 .pt（文件缺失返回 None，不抛错）。"""
+    try:
+        return torch.load(str(path), map_location="cpu", mmap=True)
+    except (FileNotFoundError, RuntimeError, OSError):
+        return None
+
+
+def _kvms_stats_kv(t, num_blocks, chunks):
+    """K/V 视图 [nb*chunks, 128, heads, dim] -> 每逻辑页（nan/absmax/已写 token 数）。"""
+    rows_per_page = t.shape[1] * chunks
+    x = t.reshape(num_blocks, rows_per_page, -1).float()
+    nan = torch.isnan(x).sum(dim=(1, 2))
+    safe = torch.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+    absmax = safe.abs().amax(dim=(1, 2))
+    tokens = (x != 0).any(dim=2).sum(dim=1)
+    return [{"nan": int(n), "absmax": float(a), "tokens": int(k)}
+            for n, a, k in zip(nan, absmax, tokens)]
+
+
+def _kvms_stats_flat(t, num_blocks):
+    """整页一份状态的池（ssm / conv）-> 每页（nan/absmax/是否已写）。"""
+    x = t.reshape(num_blocks, -1).float()
+    nan = torch.isnan(x).sum(dim=1)
+    safe = torch.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+    absmax = safe.abs().amax(dim=1)
+    written = (x != 0).any(dim=1)
+    return [{"nan": int(n), "absmax": float(a), "written": bool(w)}
+            for n, a, w in zip(nan, absmax, written)]
+
+
+def build_kvms(dump_dir, steps=None):
+    """msprobe tensor dump -> 物理页视图（6 pool × conv|k≡ssm|v × N 页 × 每 step）。
+
+    页状态取「写前」快照（reshape_and_cache 的 key_cache/value_cache）：
+    第 t 步的写前 == 第 t-1 步的写后，因此逐步播放即 cache 的累积填充过程。
+    本步落点由 slot_indices 换算：page = (slot // PHYS_BLOCK) // chunks。
+    """
+    from lib import kvms_source as ks
+    from lib import pool_map as pmod
+
+    dump_dir = Path(dump_dir)
+    pools = pmod.build()
+    meta = ks.probe(dump_dir)
+    nb = meta.get("num_blocks") or 0
+    chunks = meta.get("chunks_per_page") or 1
+    steps = list(steps) if steps is not None else ks.steps_of(dump_dir)
+
+    # 页内字节布局 + 越界判定（K 段一页字节 > SSM 段一页字节 => 跨页覆写）
+    # 注意：prefill(step0) 不走 gated_delta_rule（ssm 由 Tensor.__setitem__ 写回），
+    #       因此 ssm 视图要在所有 step 里找，找不到时用 config 的池布局兜底。
+    page_bytes = {"conv": None, "k": None, "ssm": None, "v": None}
+    if nb and steps:
+        def _any(tpl, idx=0):
+            for s in steps:
+                f = ks.data_dir(dump_dir, s) / tpl.format(i=idx)
+                if f.is_file():
+                    return _kvms_load(f)
+            return None
+
+        for name, tpl in (("k", ks.ATTN_KEY), ("v", ks.ATTN_VAL),
+                          ("ssm", ks.GDN_SSM), ("conv", ks.GDN_CONV)):
+            t = _any(tpl)
+            if t is not None:
+                page_bytes[name] = t.numel() * t.element_size() // nb
+
+    eff_bytes = {
+        "conv": page_bytes["conv"] or config.POOL_PAGE_BYTES["conv"],
+        "k": page_bytes["k"],
+        "ssm": page_bytes["ssm"] or config.POOL_PAGE_BYTES["k_ssm"],
+        "v": page_bytes["v"],
+    }
+    overflow = bool(eff_bytes["k"] and eff_bytes["k"] > eff_bytes["ssm"])
+
+    data = {
+        "source": meta,
+        "pools": pools,
+        "block_tokens": meta.get("block_tokens"),
+        "num_blocks": nb,
+        "chunks_per_page": chunks,
+        "page_bytes": page_bytes,
+        "page_bytes_effective": eff_bytes,
+        "ssm_measured": page_bytes["ssm"] is not None,
+        "overflow": overflow,
+        "steps": [],
+    }
+
+    for step in steps:
+        base = ks.data_dir(dump_dir, step)
+        srec = {"step": step, "phase": "prefill" if step == 0 else "decode", "pools": []}
+        for p in pools:
+            i = p["attn_call"]
+            g = (p["gdn_calls"] or [None])[0]
+            kc = _kvms_load(base / ks.ATTN_KEY.format(i=i))
+            vc = _kvms_load(base / ks.ATTN_VAL.format(i=i))
+            slot = _kvms_load(base / ks.ATTN_SLOT.format(i=i))
+            ssm = _kvms_load(base / ks.GDN_SSM.format(i=g)) if g is not None else None
+            conv = _kvms_load(base / ks.GDN_CONV.format(i=g)) if g is not None else None
+
+            writes = []
+            if slot is not None:
+                for s in slot.tolist():
+                    blk = (int(s) // config.PHYS_BLOCK) // chunks
+                    writes.append({"slot": int(s), "page": blk,
+                                   "offset": int(s) % (config.PHYS_BLOCK * chunks)})
+
+            k_stats = _kvms_stats_kv(kc, nb, chunks) if kc is not None and nb else None
+            v_stats = _kvms_stats_kv(vc, nb, chunks) if vc is not None and nb else None
+            s_stats = _kvms_stats_flat(ssm, nb) if ssm is not None and nb else None
+            c_stats = _kvms_stats_flat(conv, nb) if conv is not None and nb else None
+
+            pages = []
+            for b in range(nb):
+                pages.append({
+                    "blk": b,
+                    "k": k_stats[b] if k_stats else None,
+                    "v": v_stats[b] if v_stats else None,
+                    "ssm": s_stats[b] if s_stats else None,
+                    "conv": c_stats[b] if c_stats else None,
+                })
+            srec["pools"].append({
+                "pool": p["pool"],
+                "layers": p["layers"],
+                "attn_call": i,
+                "gdn_calls": p["gdn_calls"],
+                "writes": writes,
+                "pages": pages,
+            })
+        data["steps"].append(srec)
+
+    return data
+
+
+def kvms_step(dump_dir, step):
+    """单步懒加载（API 用）。"""
+    return build_kvms(dump_dir, steps=[int(step)])
+
+
+# ================================================================ kvms slot 级热图
+SLOT_NAN = 255    # 有效 slot 含 NaN
+SLOT_ALLOC = 1    # 已分配、但该 step 写前还为空
+
+
+def _slot_pack(avg, nan, valid):
+    """[nb, bt] -> (base64(uint8), 色阶上限)。
+
+    分层语义（关键）：空闲块里的数据物理上属于 ssm，不能当污染标红。
+        0       空闲（不属于本请求）
+        1       已分配、写前为空
+        2..254  平均绝对值，按色阶上限线性映射
+        255     有效 slot 含 NaN
+    色阶上限取「有效且有限正值」的 P99，避免空闲块残留的 bf16 位型垃圾压死色阶。
+    """
+    import base64
+
+    usable = valid & torch.isfinite(avg) & (avg > 0)
+    vals = avg[usable]
+    hi = float(vals.quantile(0.99)) if vals.numel() else 0.0
+    if not hi or hi <= 0:
+        hi = 1.0
+
+    q = torch.nan_to_num(avg, nan=0.0, posinf=0.0, neginf=0.0)
+    q = q.mul(254.0 / hi).clamp(2, 254).to(torch.uint8)
+    q[valid & (avg == 0)] = SLOT_ALLOC
+    q[~valid] = 0
+    q[valid & nan] = SLOT_NAN
+    return base64.b64encode(q.contiguous().numpy().tobytes()).decode(), hi
+
+
+def _valid_slots(dump_dir, upto_step, attn_call, nb, bt):
+    """累积 0..step 的 slot_indices 并集：token 级索引即网格索引（bt == 128*chunks）。"""
+    from lib import kvms_source as ks
+
+    valid = torch.zeros(nb * bt, dtype=torch.bool)
+    for s in range(int(upto_step) + 1):
+        t = _kvms_load(ks.data_dir(dump_dir, s) / ks.ATTN_SLOT.format(i=attn_call))
+        if t is not None and t.numel():
+            idx = t.flatten().long()
+            valid[idx[idx < nb * bt]] = True
+    return valid.view(nb, bt)
+
+
+def build_kvms_slots(dump_dir, step):
+    """slot 级热图（写后对齐版）。
+
+    写后状态：取 step+1 的「写前」快照（step t 的写后 == step t+1 的写前）。
+    写入位置：仍用 step t 自己的 indices：
+        K/V  -> slot_indices（token 级，// block_size 得 block）
+        conv -> cache_indices_opt（block 级）
+        ssm  -> ssm_state_indices；该 step 缺失时回退同层 conv 的 cache_indices_opt
+                （已验证两者逐层等价：[2,3,4] 循环）
+    最后一步没有 t+1 → post_available=false，前端不展示。
+    """
+    from lib import kvms_source as ks
+    from lib import pool_map as pmod
+
+    dump_dir = Path(dump_dir)
+    meta = ks.probe(dump_dir)
+    nb = meta.get("num_blocks") or 0
+    bt = meta.get("block_tokens") or 0
+    step = int(step)
+    steps = ks.steps_of(dump_dir)
+    nxt = step + 1 if (step + 1) in steps else None
+
+    out = {"source": meta, "num_blocks": nb, "block_size": bt, "step": step,
+           "post_from": nxt, "post_available": nxt is not None,
+           "post_note": ("写后状态取自 step%d 的写前快照；前提是相邻两步之间该 block 未被其他写入"
+                         "（单请求连续 decode 成立）" % nxt) if nxt is not None else
+                        "最后一步没有下一步可借写前快照，写后不可得",
+           "sublayers": ["conv", "k", "v"], "pools": []}
+
+    # 页内字节布局 + overflow 判定（与 build_kvms 同口径，任一 step 有该张量即可）
+    def _any(tpl, idx=0):
+        for sc in ([step, nxt] if nxt is not None else [step]):
+            f = ks.data_dir(dump_dir, sc) / tpl.format(i=idx)
+            if f.is_file():
+                return _kvms_load(f)
+        return None
+
+    pb = {"conv": None, "k": None, "ssm": None, "v": None}
+    if nb:
+        for name, tpl in (("k", ks.ATTN_KEY), ("v", ks.ATTN_VAL),
+                          ("ssm", ks.GDN_SSM), ("conv", ks.GDN_CONV)):
+            t = _any(tpl)
+            if t is not None:
+                pb[name] = t.numel() * t.element_size() // nb
+    eff = {"conv": pb["conv"] or config.POOL_PAGE_BYTES["conv"],
+           "k": pb["k"],
+           "ssm": pb["ssm"] or config.POOL_PAGE_BYTES["k_ssm"],
+           "v": pb["v"]}
+    out["page_bytes"] = pb
+    out["page_bytes_effective"] = eff
+    out["overflow"] = bool(eff["k"] and eff["k"] > eff["ssm"])
+
+    if nxt is None:
+        return {"steps": [out]}
+
+    base_now = ks.data_dir(dump_dir, step)      # 只读 indices
+    base_post = ks.data_dir(dump_dir, nxt)      # 读写后状态
+
+    for p in pmod.build():
+        i = p["attn_call"]
+        g = (p["gdn_calls"] or [None])[0]
+        rec = {"pool": p["pool"], "layers": p["layers"],
+               "attn_call": i, "gdn_calls": p["gdn_calls"]}
+        valid_kv = _valid_slots(dump_dir, step, i, nb, bt) if (nb and bt) else None
+
+        # ---- K / V：写后来自 nxt 的 key_cache/value_cache ----
+        for name, tpl in (("k", ks.ATTN_KEY), ("v", ks.ATTN_VAL)):
+            t = _kvms_load(base_post / tpl.format(i=i))
+            if t is None or valid_kv is None:
+                continue
+            x = t.reshape(nb, bt, -1).float()
+            avg = x.abs().mean(dim=2)
+            nan = torch.isnan(x).any(dim=2)
+            b64, hi = _slot_pack(avg, nan, valid_kv)
+            rec[name] = {
+                "mode": "per_token", "scale_hi": hi, "values": b64,
+                "valid_slots": int(valid_kv.sum()),
+                "written_slots": int(((avg > 0) & valid_kv).sum()),
+                "nan_slots": int((nan & valid_kv).sum()),
+            }
+
+        # ---- conv / ssm：状态来自 nxt；位置用本步 indices（ssm 缺失回退 conv）----
+        if g is not None:
+            cidx = _kvms_load(base_now / ks.GDN_CIDX.format(i=g))
+            sidx = _kvms_load(base_now / ks.GDN_SIDX.format(i=g))
+            ssm_idx_fallback = False
+            if sidx is None or not sidx.numel():
+                sidx = cidx
+                ssm_idx_fallback = cidx is not None
+            for name, tpl, idx_t in (("conv", ks.GDN_CONV, cidx), ("ssm", ks.GDN_SSM, sidx)):
+                t = _kvms_load(base_post / tpl.format(i=g))
+                if t is None or not nb:
+                    continue
+                vb = torch.zeros(nb, dtype=torch.bool)
+                if idx_t is not None and idx_t.numel():
+                    vb[idx_t.flatten().long().clamp(0, nb - 1)] = True
+                width = bt or 1
+                valid = vb.unsqueeze(1).expand(nb, width).contiguous()
+                x = t.reshape(nb, -1).float()
+                per = x.abs().mean(dim=1)
+                nanb = torch.isnan(x).any(dim=1)
+                avg = per.unsqueeze(1).expand(nb, width).contiguous()
+                nan = nanb.unsqueeze(1).expand(nb, width).contiguous()
+                b64, hi = _slot_pack(avg, nan, valid)
+                rec[name] = {
+                    "mode": "per_block", "scale_hi": hi, "values": b64,
+                    "per_block": [round(float(v), 5) for v in per.tolist()],
+                    "valid_blocks": int(vb.sum()),
+                    "nan_blocks": int((nanb & vb).sum()),
+                    "idx_fallback": bool(name == "ssm" and ssm_idx_fallback),
+                }
+
+        out["pools"].append(rec)
+
+    return {"steps": [out]}
+
+
+def kvms_value(dump_dir, step, pool, sub, block, slot=0, plane=None):
+    """第三级下钻：取单个 slot（K/V）或整 block（conv/ssm）的原始数值。
+
+    - K/V：slot 是页内 token 偏移，取该 token 的 [2,256] 向量
+    - conv/ssm：整页一份状态，无 slot 语义，返回降采样曲线（<=1024 点）+ 全量统计
+    """
+    from lib import kvms_source as ks
+    from lib import pool_map as pmod
+
+    pools = {p["pool"]: p for p in pmod.build()}
+    if pool not in pools:
+        raise KeyError(f"pool 越界: {pool}")
+    p = pools[pool]
+    base = ks.data_dir(dump_dir, step)
+    meta = ks.probe(Path(dump_dir))
+    bt = meta.get("block_tokens") or 0
+
+    import math
+
+    def _finite(v):
+        """JSON 不支持 inf/nan：统一转 None（空位型垃圾常见）。"""
+        f = float(v)
+        return round(f, 6) if math.isfinite(f) else None
+
+    def _stats(t):
+        # fp64：空闲块里 bf16 位型可达 3.4e38，fp32 下 mean/pow(2) 会溢出成 inf
+        f = t.float()
+        fin = f[torch.isfinite(f)].double()
+        n = fin.numel()
+        return {"numel": int(f.numel()),
+                "nan": int(torch.isnan(f).sum()),
+                # absmean 与 L1 块上的口径一致（量化网格无符号，存的是 |x| 均值）；
+                # mean 是有符号均值，正负会抵消，仅供参照
+                "absmean": _finite(fin.abs().mean()) if n else None,
+                "mean": _finite(fin.mean()) if n else None,
+                "rms": _finite(fin.pow(2).mean().sqrt()) if n else None,
+                "absmax": _finite(fin.abs().max()) if n else None}
+
+    if sub in ("k", "v"):
+        if not bt:
+            return {"error": "缺少 block_tokens，无法定位 slot"}
+        # 与 L1/L2 同源：写后状态 = 下一步（nxt）的写前快照，即 nxt 的 key_cache/value_cache；
+        # 位置用本步 slot_indices 的语义：全局 slot = block*block_tokens + 页内 offset，
+        # 而 key_cache 展平后第 0 维恰好就是全局 slot，reshape(-1, 2, 256) 后直接索引即可
+        idx = int(block) * bt + int(slot)
+        tpl = ks.ATTN_KEY if sub == "k" else ks.ATTN_VAL
+        steps_all = ks.steps_of(Path(dump_dir))
+        src_step = step + 1 if (step + 1) in steps_all else step
+        t = _kvms_load(ks.data_dir(dump_dir, src_step) / tpl.format(i=p["attn_call"]))
+        if t is None:
+            return {"error": f"step{src_step} 无 {tpl.format(i=p['attn_call'])}"}
+        x = t.reshape(-1, *t.shape[2:])
+        if idx >= x.shape[0]:
+            return {"error": f"slot 越界: block={block} slot={slot}（共 {x.shape[0]} 个 slot）"}
+        vec = x[idx].float()
+        return {"kind": sub, "block": int(block), "slot": int(slot),
+                "src": tpl.format(i=p["attn_call"]), "src_step": src_step,
+                "dtype": str(t.dtype).replace("torch.", ""),
+                "shape": list(vec.shape), "sampled": False,
+                "values": [_finite(v) for v in vec.flatten().tolist()],
+                "stats": _stats(vec)}
+
+    tpl = ks.GDN_CONV if sub == "conv" else ks.GDN_SSM
+    g = (p["gdn_calls"] or [None])[0]
+    # conv/ssm 是整页状态：本 step 的「写后」= 下一步的「写前」。
+    # prefill(step0) 自己不跑 GDN、没有 dump，所以统一往后借一步；
+    # 最后一个 step 没有下一步，回退读自己（该 step 本来也不在 view_steps 里）
+    steps_all = ks.steps_of(Path(dump_dir))
+    src_step = step + 1 if (step + 1) in steps_all else step
+    t = _kvms_load(ks.data_dir(dump_dir, src_step) / tpl.format(i=g)) if g is not None else None
+    if t is None:
+        return {"error": f"step{src_step} 无此张量（conv/ssm 需 decode step 的 dump）"}
+    page = t[int(block)].float()
+    flat = page.flatten()
+    n = min(1024, flat.numel())
+    seg = max(1, flat.numel() // n)
+    sample = flat[: n * seg].view(n, seg).mean(dim=1)
+    # 整页状态按「首维 × 128 列」压成矩阵示意（列方向取均值），
+    # 例：conv [3,6144] -> 3×128，ssm [16,128,128] -> 16×128
+    rows = int(page.shape[0]) if page.dim() > 1 else 1
+    per_row = flat.numel() // max(1, rows)
+    COLS = 128
+    m = flat[: rows * per_row].view(rows, per_row)
+    if per_row >= COLS:
+        cseg = max(1, per_row // COLS)
+        m = m[:, : COLS * cseg].view(rows, COLS, cseg).mean(dim=2)
+    matrix = [[_finite(v) for v in r] for r in m.tolist()]
+
+    # 方案 A：按张量真实维度切平面，供前端画 small multiples / 3D 堆叠。
+    # ssm [16,128,128] -> 16 个 128x128 平面；conv [3,6144] -> 1 个 3x6144 平面。
+    # 每面降到 <=64 边长，绝对值量化成 uint8（与 L1 同口径），NaN 用 255 哨兵。
+    import base64 as _b64
+    import math as _math
+    PMAX = 256
+    nd = page.dim()
+    if nd >= 3:
+        pv = page if nd == 3 else page.reshape(page.shape[0], page.shape[1], -1)
+    else:
+        # conv [3, 6144]：6144 通道按 128 一组重排成 48×128，切成 3 个平面，
+        # 这样既保留通道结构，又和 ssm 的「平面」交互统一
+        _R, _C = int(page.shape[0]), int(page.shape[1])
+        if _C > 128 and _C % 128 == 0:
+            pv = page.reshape(_R, _C // 128, 128)
+        else:
+            pv = page.reshape(1, _R, _C)
+    pn, h0, w0 = int(pv.shape[0]), int(pv.shape[1]), int(pv.shape[2])
+    pv_raw = pv          # 降采样前的全分辨率，L3 要用它
+
+    def _fit(n):
+        if n <= PMAX:
+            return n, 1
+        f = _math.ceil(n / PMAX)
+        return max(1, n // f), f
+
+    ph_, fh = _fit(h0)
+    pw_, fw = _fit(w0)
+    if fh > 1:
+        pv = pv.reshape(pn, ph_, fh, w0).mean(dim=2)
+    if fw > 1:
+        pv = pv.reshape(pn, ph_, pw_, fw).mean(dim=3)
+    pa = pv.abs()
+    pfl = pa.flatten()
+    phi = float(pfl.quantile(0.99)) if pfl.numel() else 0.0
+    if not phi or phi <= 0:
+        phi = 1.0
+    pq = pa.mul(254.0 / phi).clamp(1, 254).to(torch.uint8)
+    pq[torch.isnan(pv)] = 255
+    planes = [_b64.b64encode(pq[i].contiguous().numpy().tobytes()).decode() for i in range(pn)]
+
+    # L3：点某个平面要看它全分辨率的 128×128（或 48×128）矩阵与逐元素数值
+    if plane is not None:
+        pi = int(plane) % pn
+        full = pv_raw[pi].float()
+        fh, fw = int(full.shape[0]), int(full.shape[1])
+        return {"kind": sub, "plane": pi, "block": int(block), "slot": None,
+                "src_step": src_step,
+                "dtype": str(t.dtype).replace("torch.", ""),
+                "shape": [fh, fw], "sampled": False, "plane_total": pn,
+                "matrix": [[_finite(v) for v in r] for r in full.tolist()],
+                "stats": _stats(full)}
+    return {"kind": sub, "block": int(block), "slot": None,
+            "dtype": str(t.dtype).replace("torch.", ""),
+            "shape": list(page.shape), "sampled": True, "sample_points": n,
+            "matrix": matrix, "rows": rows, "cols": int(m.shape[1]),
+            "planes": planes, "plane_h": ph_, "plane_w": pw_, "plane_hi": phi,
+            "src_step": src_step,
+            "values": [_finite(v) for v in sample.tolist()],
+            "stats": _stats(page)}
+
+
+def _natural(name):
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", name)]
+
+
+def kvms_inventory(dump_dir, step=None):
+    """张量清单：列出每个 .pt 的 shape / dtype / 体积（等价 analysis/inspect_pt.py）。
+
+    step=None 时扫描全部可用 step。
+    """
+    from math import prod
+
+    from lib import kvms_source as ks
+
+    dump_dir = Path(dump_dir)
+    steps = [int(step)] if step is not None else ks.steps_of(dump_dir)
+    out = {"source": ks.probe(dump_dir), "steps": []}
+
+    for s in steps:
+        base = ks.data_dir(dump_dir, s)
+        rows = []
+        for p in sorted(base.glob("*.pt"), key=lambda x: _natural(x.name)):
+            try:
+                info = ks.tinfo(p)
+                shape = info["shape"]
+                rows.append({
+                    "name": p.name,
+                    "shape": shape,
+                    "dtype": info["dtype"],
+                    "bytes": info["bytes"],
+                    "numel": int(prod(shape)) if shape else 1,
+                })
+            except Exception as exc:
+                rows.append({"name": p.name, "error": type(exc).__name__})
+        out["steps"].append({
+            "step": s,
+            "count": len(rows),
+            "bytes": sum(r.get("bytes", 0) for r in rows),
+            "files": rows,
+        })
+    return out
+
+
+LAYERS = 24
+
+
+def build_kvms_layers(dump_dir, step):
+    """按模型层拆分的快照（24 层），每层取该层自己的张量。
+
+    层 → 文件（Qwen3.5：24 层 = 6 × [L,L,L,A]）：
+        layer % 4 == 3 (attn: 3/7/11/15/19/23) -> reshape_and_cache.{layer//4}，子池 k/v
+        其余 (gdn: 0,1,2 / 4,5,6 / …)          -> causal_conv1d_custom.{3*(layer//4)+layer%4}，子池 conv/ssm
+    写后仍走对齐规则：取 step+1 的同名文件（仅限 gdn 层；attn 走下一 step 的 key_cache）。
+    """
+    from lib import kvms_source as ks
+
+    dump_dir = Path(dump_dir)
+    meta = ks.probe(dump_dir)
+    nb = meta.get("num_blocks") or 0
+    bt = meta.get("block_tokens") or 0
+    step = int(step)
+    steps = ks.steps_of(dump_dir)
+    nxt = step + 1 if (step + 1) in steps else None
+
+    out = {"source": meta, "num_blocks": nb, "block_size": bt, "step": step,
+           "post_from": nxt, "post_available": nxt is not None, "layers": []}
+    if nxt is None or not nb or not bt:
+        return {"steps": [out]}
+
+    base_now = ks.data_dir(dump_dir, step)
+    base_post = ks.data_dir(dump_dir, nxt)
+    valid_cache = {}
+    pool_map = {p["pool"]: p for p in __import__("lib.pool_map", fromlist=["build"]).build()}
+
+    for layer in range(LAYERS):
+        pool = layer // 4
+        j = layer % 4
+        rec = {"layer": layer, "pool": pool, "subs": {}}
+
+        if j == 3:      # attn 层
+            call = pool
+            if call not in valid_cache:
+                valid_cache[call] = _valid_slots(dump_dir, step, call, nb, bt)
+            valid_kv = valid_cache[call]
+            for name, tpl in (("k", ks.ATTN_KEY), ("v", ks.ATTN_VAL)):
+                t = _kvms_load(base_post / tpl.format(i=call))
+                if t is None:
+                    continue
+                x = t.reshape(nb, bt, -1).float()
+                avg = x.abs().mean(dim=2)
+                nan = torch.isnan(x).any(dim=2)
+                b64, hi = _slot_pack(avg, nan, valid_kv)
+                rec["subs"][name] = {
+                    "mode": "per_token", "scale_hi": hi, "values": b64,
+                    "valid_slots": int(valid_kv.sum()),
+                    "written_slots": int(((avg > 0) & valid_kv).sum()),
+                    "nan_slots": int((nan & valid_kv).sum()),
+                }
+        else:           # gdn 层
+            call = 3 * pool + j
+            cidx = _kvms_load(base_now / ks.GDN_CIDX.format(i=call))
+            sidx = _kvms_load(base_now / ks.GDN_SIDX.format(i=call))
+            fb = False
+            if sidx is None or not sidx.numel():
+                sidx, fb = cidx, cidx is not None
+            for name, tpl, idx_t in (("conv", ks.GDN_CONV, cidx), ("ssm", ks.GDN_SSM, sidx)):
+                t = _kvms_load(base_post / tpl.format(i=call))
+                if t is None:
+                    continue
+                vb = torch.zeros(nb, dtype=torch.bool)
+                if idx_t is not None and idx_t.numel():
+                    vb[idx_t.flatten().long().clamp(0, nb - 1)] = True
+                width = bt or 1
+                valid = vb.unsqueeze(1).expand(nb, width).contiguous()
+                x = t.reshape(nb, -1).float()
+                per = x.abs().mean(dim=1)
+                nanb = torch.isnan(x).any(dim=1)
+                avg = per.unsqueeze(1).expand(nb, width).contiguous()
+                nan = nanb.unsqueeze(1).expand(nb, width).contiguous()
+                b64, hi = _slot_pack(avg, nan, valid)
+                rec["subs"][name] = {
+                    "mode": "per_block", "scale_hi": hi, "values": b64,
+                    "per_block": [round(float(v), 5) for v in per.tolist()],
+                    "valid_blocks": int(vb.sum()),
+                    "nan_blocks": int((nanb & vb).sum()),
+                    "idx_fallback": bool(name == "ssm" and fb),
+                }
+
+        rec["call"] = call
+        rec["kind"] = "attn" if j == 3 else "gdn"
+        out["layers"].append(rec)
+
+    return {"steps": [out]}
