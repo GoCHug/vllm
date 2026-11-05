@@ -1,0 +1,127 @@
+diff --git a/vllm/model_executor/models/qwen3_next.py b/vllm/model_executor/models/qwen3_next.py
+--- a/vllm/model_executor/models/qwen3_next.py
++++ b/vllm/model_executor/models/qwen3_next.py
+@@ -460,8 +460,104 @@
+         return hidden_states, residual
+ 
+ 
++# --- kvcache_study/qwen35: per-layer KV cache dump (experimental) ----------
++# Eager only: under ACL Graph replay Python is not executed (no-op).
++#   export VLLM_QWEN35_KV_DUMP_DIR=/path/to/out
++#   export VLLM_QWEN35_KV_DUMP_STEPS=2     # 0 = unlimited
++_KV_DUMP_STEP = 0
++
++
++def _kv_dump_begin():
++    """Return (step_dir, {id(module): layer_name}), or None when disabled."""
++    import os
++
++    global _KV_DUMP_STEP
++    out_dir = os.getenv("VLLM_QWEN35_KV_DUMP_DIR")
++    if not out_dir:
++        return None
++    max_steps = int(os.getenv("VLLM_QWEN35_KV_DUMP_STEPS", "0"))
++    if max_steps and _KV_DUMP_STEP >= max_steps:
++        return None
++
++    from vllm.forward_context import get_forward_context
++
++    ctx = get_forward_context()
++    if ctx.attn_metadata is None:
++        return None  # profile / warmup run
++    step = _KV_DUMP_STEP
++    _KV_DUMP_STEP += 1
++    step_dir = os.path.join(out_dir, f"step{step}")
++    os.makedirs(step_dir, exist_ok=True)
++    return step_dir, {id(m): n for n, m in ctx.no_compile_layers.items()}
++
++
++def _kv_dump_tag(layer_name: str) -> str:
++    """model.layers.3.self_attn.attn -> layer03_attn; *.linear_attn -> layer03_gdn."""
++    parts = layer_name.split(".")
++    for i, part in enumerate(parts):
++        if part == "layers" and i + 1 < len(parts):
++            idx = int(parts[i + 1])
++            kind = "gdn" if "linear_attn" in layer_name else "attn"
++            return f"layer{idx:02d}_{kind}"
++    return layer_name.replace(".", "_")
++
++
++@torch.no_grad()
++def _dump_layer_kv(layer, dump_ctx) -> None:
++    import os
++
++    from vllm.forward_context import get_forward_context
++    from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadata
++
++    step_dir, name_by_id = dump_ctx
++    ctx = get_forward_context()
++    slot_map = ctx.slot_mapping if isinstance(ctx.slot_mapping, dict) else {}
++    md_map = ctx.attn_metadata if isinstance(ctx.attn_metadata, dict) else {}
++
++    if getattr(layer, "self_attn", None) is not None:
++        attn = layer.self_attn.attn
++        name = name_by_id.get(id(attn))
++        slots = slot_map.get(name)
++        if slots is None:
++            return
++        slots = slots[slots >= 0]  # -1: graph padding / 非本 rank 的 CP 分片
++        k_cache, v_cache = attn.kv_cache
++        # k_cache 是 (num_blocks, block_size, H, D)，slots 是扁平槽号 → flatten(0, 1)
++        k = k_cache.flatten(0, 1).index_select(0, slots)
++        v = v_cache.flatten(0, 1).index_select(0, slots)
++        payload = {
++            "kind": "attn",
++            "layer": name,
++            "slots": slots.clone(),
++            "k_cache": k,
++            "v_cache": v,
++        }
++    else:
++        gdn = layer.linear_attn
++        name = name_by_id.get(id(gdn))
++        md = md_map.get(name)
++        if not isinstance(md, GDNAttentionMetadata):
++            return
++        ids = md.spec_state_indices_tensor
++        if ids is None:
++            ids = md.non_spec_state_indices_tensor
++        ids = ids.flatten()  # 每请求一个块号；投机解码时为 [num_reqs, num_spec]
++        conv_state, ssm_state = gdn.kv_cache
++        payload = {
++            "kind": "gdn",
++            "layer": name,
++            "state_indices": ids.clone(),
++            "conv_state": conv_state.index_select(0, ids),
++            "ssm_state": ssm_state.index_select(0, ids),
++        }
++
++    torch.save(payload, os.path.join(step_dir, f"{_kv_dump_tag(name)}.pt"))
++
++# --- kvcache_study/qwen35: end of patch -------------------------------------
++
++
+ @support_torch_compile
+ class Qwen3NextModel(nn.Module, EagleModelMixin):
+     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
+         super().__init__()
+ 
+@@ -523,15 +619,18 @@
+         aux_hidden_states = self._maybe_add_hidden_state([], 0, hidden_states, residual)
++        dump_ctx = _kv_dump_begin()
+         for layer_idx, layer in enumerate(
+             islice(self.layers, self.start_layer, self.end_layer),
+             start=self.start_layer,
+         ):
+             hidden_states, residual = layer(
+                 positions=positions,
+                 hidden_states=hidden_states,
+                 residual=residual,
+             )
++            if dump_ctx is not None:
++                _dump_layer_kv(layer, dump_ctx)
+             self._maybe_add_hidden_state(
+                 aux_hidden_states, layer_idx + 1, hidden_states, residual
+             )
+ 
+         if not get_pp_group().is_last_rank:

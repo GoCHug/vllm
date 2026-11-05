@@ -49,10 +49,12 @@ Qwen3_5DecoderLayer.__init__                                 vllm/model_executor
 │     └── 内部：qkv_proj = QKVParallelLinear（:242）、o_proj = RowParallelLinear（:252）、
 │           rotary_emb = get_rope（M-RoPE，:260）、attn = Attention（:267，impl=AscendAttentionBackendImpl）、
 │           q_norm / k_norm = Qwen3NextRMSNorm（:283-284）
-├── self.linear_attn  = QwenGatedDeltaNetAttention(...)      qwen3_next.py:342
+├── self.linear_attn  = QwenGatedDeltaNetAttention(...)      qwen3_5.py:138（类定义 qwen_gdn_linear_attn.py:207）
 │     │  forward / _forward_core / _warmup_prefill_kernels 被 patch 成 AscendGatedDeltaNetAttention 版本
-│     │  （patch_qwen3_5.py:207 / :208 / :209；310P：_forward_core = AscendGatedDeltaNetAttention310，:204）
-│     └── 另 patch _split_ba_for_tp / get_state_shape / get_attn_backend（:197-199）
+│     │  （patch_qwen3_5.py:207 / :208 / :209；310P：只换 _forward_core = AscendGatedDeltaNetAttention310，:204）
+│     │  ※ 类属性覆盖式猴补丁：QwenGatedDeltaNetAttention.forward 直接指向 Ascend 实现
+│     │    另 patch _split_ba_for_tp / get_state_shape / get_attn_backend（:197-199）
+│     └── 前缀 prefix = "{layer_prefix}.linear_attn"（qwen3_5.py:141），用于自定义算子回查实例
 ├── self.mlp                 = Qwen3NextSparseMoeBlock / Qwen3NextMLP        qwen3_next.py:366-371
 ├── self.input_layernorm     = Qwen3NextRMSNorm              qwen3_next.py:379
 ├── self.post_attention_layernorm = Qwen3NextRMSNorm         qwen3_next.py:382
@@ -91,7 +93,7 @@ Qwen3_5DecoderLayer(Qwen3NextDecoderLayer)                     vllm/model_execut
         │       │                     │       └── notify_kv_cache_written()  :1453
         │       │                     ├──【读 KVCache】forward_impl(q, k, v, kv_cache, meta, out)  :1456
         │       │                     │   ├── 条件：DecodeOnly && sliding_window is None && using_paged_attention
-        │       │                     │   │   （本配置 enforce-eager 下不成立 → PA 不触发，见 §0）
+        │       │                     │   │   （本配置 enforce-eager 下不成立 → PA 不触发）
         │       │                     │   │   └── forward_paged_attention  :1363  ★ 不走
         │       │                     │   │       └── torch_npu._npu_paged_attention(query, key_cache, value_cache,
         │       │                     │   │               block_table=block_tables, context_lens=seq_lens, out=output)  ★ 读算子(PA)
@@ -113,16 +115,40 @@ Qwen3_5DecoderLayer(Qwen3NextDecoderLayer)                     vllm/model_execut
         │       └── output[:], _ = self.o_proj(attn_output)                                 :87
         │
         └── self.layer_type == "linear_attention"（18/24 层）：self.linear_attn(hidden_states, output)  :114-118
-            └── QwenGatedDeltaNetAttention.forward(hidden_states, output)  qwen3_next.py:342
-                └── self._forward_method → _forward_core  qwen_gdn_linear_attn.py:844 / :849 / :1260
-                    └── AscendGatedDeltaNetAttention._forward_core(...)  vllm-ascend/vllm_ascend/ops/gdn.py:147
-                        ├──【1. 取状态】conv_state / ssm_state = self.kv_cache[0] / [1]  :172 / :1308
-                        ├──【2. conv 卷积】torch.ops._C_ascend.npu_causal_conv1d_custom  ★ 读写 conv_state（原地）
-                        ├──【3. 门控】DeviceOperator.fused_gdn_gating(A_log, a, b, dt_bias) → g, beta  :313
-                        ├──【4. q/k 归一】l2norm_fwd(query/key)  :339 / :367 / :423
-                        ├──【5. decode 递归】torch.ops._C_ascend.npu_recurrent_gated_delta_rule  ★ 读写 ssm_state（原地）
-                        └──【6. prefill 递归】chunk_gated_delta_rule（分块并行）  :402
+            │  ※ self.linear_attn 是 QwenGatedDeltaNetAttention 实例（qwen3_5.py:138，类定义 qwen_gdn_linear_attn.py:207）
+            │    该类的 forward / _forward_core 被 vllm-ascend 猴补丁整体替换（patch_qwen3_5.py:207-208）
+            └── AscendGatedDeltaNetAttention.forward(hidden_states, output)   # patch_qwen3_5.py:207 → gdn.py:67
+                ├── ① 输入投影：in_proj_qkvz / in_proj_ba → mixed_qkv, z, b, a   gdn.py:88-112
+                │     ※ Qwen3.5 传 gqa_interleaved_layout=False（qwen3_5.py:142）→ 走 split 分支 gdn.py:88-99
+                ├── ② 核心计算（自定义算子）：torch.ops.vllm.qwen_gdn_attention_core(mixed_qkv, b, a, core_attn_out, self.prefix, False)   gdn.py:125-132
+                │   └── 算子本体注册在 vllm 侧：direct_register_custom_op(op_name="qwen_gdn_attention_core")   qwen_gdn_linear_attn.py:1751-1756
+                │       └── qwen_gdn_attention_core(...)  qwen_gdn_linear_attn.py:1699-1736
+                │           ├── layer_name = _resolve_layer_name(layer_name)   :1720
+                │           ├── self = forward_context.no_compile_layers[layer_name]   :1722
+                │           │   ← GDN 层 __init__ 时自注册：static_forward_context[prefix] = self   qwen_gdn_linear_attn.py:562-564
+                │           │   ← prefix = "{layer_prefix}.linear_attn"（qwen3_5.py:141）
+                │           └── self._forward_core(mixed_qkv=..., b=..., a=..., core_attn_out=...)   :1731
+                │               └── AscendGatedDeltaNetAttention._forward_core(...)   gdn.py:147
+                │                   ← 由 patch_qwen3_5.py:208 把 _GDN_PATCH_TARGET._forward_core 换成本实现
+                │                   ├──【1. 取状态】self_kv_cache = self.kv_cache；conv_state = self_kv_cache[0]，ssm_state = self_kv_cache[1]   :172-173
+                │                   ├──【2. conv 卷积】torch.ops._C_ascend.npu_causal_conv1d_custom  ★ 读写 conv_state（原地）  :200 / :247 / :270 / :291
+                │                   ├──【3. 门控】DeviceOperator.fused_gdn_gating(A_log, a, b, dt_bias) → g, beta  :313
+                │                   ├──【4. q/k 归一】l2norm_fwd(query/key)  :339 / :367 / :423
+                │                   ├──【5. decode 递归】torch.ops._C_ascend.npu_recurrent_gated_delta_rule  ★ 读写 ssm_state（原地）  :345 / :369 / :427
+                │                   └──【6. prefill 递归】chunk_gated_delta_rule（分块并行）  :402
+                └── ③ 输出投影：self.norm(core_attn_out, z) + self.out_proj  gdn.py:137-145
 ```
+
+> **GDN 分支到 Ascend 的分派是两段间接**（与 attn 分支的 `impl.forward` 直调不同）：
+> 1. **猴补丁换方法**：`patch_qwen3_5.py:207-208` 把 `QwenGatedDeltaNetAttention.forward` /
+>    `_forward_core` 直接赋成 `AscendGatedDeltaNetAttention` 的实现（类属性覆盖，不是继承重写）；
+> 2. **自定义算子回查实例**：`torch.ops.vllm.qwen_gdn_attention_core` 是 vllm 侧注册的 torch 自定义算子，
+>    其实现只拿到 `layer_name`，靠 `forward_context.no_compile_layers[layer_name]` 反查回模块实例，
+>    再调 `self._forward_core` —— 此时这个 `self._forward_core` 已经是 Ascend 版本。
+>
+> 副作用：**上游 `QwenGatedDeltaNetAttention.forward` → `self._forward_method` → `forward_cuda`
+> 在 A2/A3 上根本不会执行**（`forward` 整个被换掉），`forward_cuda` 只在 310P 分支才被保留
+> （patch_qwen3_5.py:204 只换 `_forward_core` / `get_state_dtype`，不换 `forward`）。
 
 ---
 
@@ -163,6 +189,24 @@ Qwen3_5DecoderLayer(Qwen3NextDecoderLayer)                     vllm/model_execut
 ---
 
 ## 3. GDN 层：conv_state / ssm_state 读写
+
+### 3.0 到 Ascend 实现的分派
+
+GDN 层不像 attn 层那样通过 `impl.forward` 直接调后端，而是绕了两层间接才落到 NPU 算子：
+
+| 环节 | 位置 | 作用 |
+|---|---|---|
+| ① 猴补丁换方法 | `patch_qwen3_5.py:207-208` | 把 `QwenGatedDeltaNetAttention.forward` / `._forward_core` 赋成 `AscendGatedDeltaNetAttention` 的实现（类属性覆盖） |
+| ② 自定义算子回查 | `qwen_gdn_linear_attn.py:1751-1756` → `:1699-1736` | 算子实现只拿到 `layer_name`，用 `forward_context.no_compile_layers[layer_name]` 反查模块实例，再调 `self._forward_core` |
+
+实例反查能成立的前提是 GDN 层 `__init__` 里把自己注册进了 `static_forward_context`
+（[qwen_gdn_linear_attn.py:562-564](file:///c:/Users/89517/Desktop/github/vllm-npu/vllm/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py#L562-L564)），
+key 就是 `prefix`（`...linear_attn`），与 `no_compile_layers` 的 key 一致。
+
+因此上游 `QwenGatedDeltaNetAttention.forward`（`qwen_gdn_linear_attn.py:844`）→
+`self._forward_method` → `forward_cuda`（:908）在 A2/A3 上**不会执行**：
+`forward` 整个被换掉了。只有 310P 分支保留上游 `forward`，
+只把 `_forward_core` 换成 `AscendGatedDeltaNetAttention310._forward_core`（`patch_qwen3_5.py:204`）。
 
 ### 3.1 写路径
 
