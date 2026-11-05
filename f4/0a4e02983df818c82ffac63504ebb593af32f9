@@ -1,0 +1,39 @@
+vllm/v1/core/kvcache_study/kvcache_visualizer/backend_fastapi/main.py
+  s_44f3a05c63c3a1::t_e20547dd843cb8 33-47,99
+vllm/v1/core/kvcache_study/kvcache_visualizer/frontend_vue/src/style.css
+  s_44f3a05c63c3a1::t_ec0009a5a33e6d 522-523
+  s_44f3a05c63c3a1::t_c3de07f6d48005 521,527-529
+  s_44f3a05c63c3a1::t_29ad4c5763802a 525-526
+  s_44f3a05c63c3a1::t_ffb3d498aa2924 524
+vllm/v1/core/kvcache_study/kvcache_visualizer/frontend_vue/src/lib/kvms.js
+  s_44f3a05c63c3a1::t_ffb3d498aa2924 223-227
+  s_44f3a05c63c3a1::t_c3de07f6d48005 255-261,308-309,322-332,335
+  s_44f3a05c63c3a1::t_0e6a9baaeac46a 262-264,268,271,273,277-278
+  s_44f3a05c63c3a1::t_7acee78c9ba76b 272,560
+  s_44f3a05c63c3a1::t_cb1ea2c5f66f66 562
+  s_44f3a05c63c3a1::t_d19c2c13380dbe 569-573,582-590
+  s_44f3a05c63c3a1::t_ec0009a5a33e6d 281,292,310
+  s_44f3a05c63c3a1::t_1edef1f2db582c 526-540
+  s_44f3a05c63c3a1::t_2442865433bf7a 314-321
+  s_44f3a05c63c3a1::t_2f2872940956b2 29-30,214-217,794-795,901-902
+  s_44f3a05c63c3a1::t_29ad4c5763802a 301-303,305,311-313,334,338-340
+vllm/v1/core/kvcache_study/kvcache_visualizer/README.md
+  s_44f3a05c63c3a1::t_a7373fe2a30ac0 13-57
+  s_44f3a05c63c3a1::t_e2ceff77352f46 70-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f40a4e02983df818c82ffac63504ebb593af32f9",
+  "prompts": {},
+  "sessions": {
+    "s_44f3a05c63c3a1": {
+      "agent_id": {
+        "tool": "codefuse",
+        "id": "session-ab081488-5ca9-488f-be45-14cacae0bf1e",
+        "model": "codefuse_official_channel/DeepSeek-V4.1-Flash-1017"
+      },
+      "human_author": "123 <123>"
+    }
+  }
+}
