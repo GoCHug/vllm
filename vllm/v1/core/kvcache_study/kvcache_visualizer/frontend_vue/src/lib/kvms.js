@@ -222,7 +222,11 @@ function drawOverview() {
     const curInPool = curLy >= 0 ? curLy % PER_POOL : -1;
     // 自动视角：当前层是 mamba（写 ssm）就按 ssm 的 block 编号看，是 attn（写 K）就按 K 的看。
     // 数据仍按块归属显示，切视角只改「编号/刻度」的读法，已写入的内容不会消失。
-    const autoSsm = curLy >= 0 && (curLy % PER_POOL) < PER_POOL - 1;
+    // 视角要按「本 pool 自己」的进度算：只有当前层正落在这个 pool 且是 mamba 层时才用 ssm 视角。
+    // 否则（已完成 / 未开始 / 落在别的 pool）一律 K 视角，避免推进到下一个 pool 时，
+    // 上面已经写完的 pool 跟着切成 ssm 视角而"跳变"。
+    const inThisPool = curLy >= p.pool * PER_POOL && curLy < (p.pool + 1) * PER_POOL;
+    const autoSsm = inThisPool && (curLy - p.pool * PER_POOL) < PER_POOL - 1;
     const kView = !autoSsm;
 
     const curRec = (curLy >= 0 && state.layers && state.layers.layers)
@@ -268,8 +272,10 @@ function drawOverview() {
         ? (kView ? "K视角 2MiB" : "ssm视角 1MiB")
         : bsz;
       const cells = perBlk.map(r => {
+        // 1024：K 与 ssm 就是同一段（1 MiB == 1 MiB），必须合并显示，否则 mamba 写的看不到；
+        // 2048：两者粒度不同（2 MiB vs 1 MiB），按当前视角各看各的那份
         const a = sub === "conv" ? r.aConv
-          : sub === "k" ? (ssmView ? r.aSsm : r.aK)   // 各视角只看自己那份，不再 merge
+          : sub === "k" ? (kDiff ? (ssmView ? r.aSsm : r.aK) : r.kUsed)
           : r.aV;
         const used = hit(a);
         // attn 只吃 K/V、mamba 只吃 conv/ssm：id 被对方占走时本段空置
@@ -277,8 +283,10 @@ function drawOverview() {
                                 (sub === "v" && r.owner === "gdn") ||
                                 (ssmView && r.owner === "attn"));
         const on = state.sel.pool === p.pool && state.sel.sub === sub && state.sel.block === r.blk;
+        // 只有 2048 的 ssm 视角才固定按 gdn 着色；1024 与 K 视角都按「K 是否写过」判定
+        const kAttnKind = (!kDiff || kView) && !!(r.aK && r.aK.written);
         const kind = sub === "conv" ? "gdn"
-          : sub === "k" ? ((kView && r.aK && r.aK.written) ? "attn" : "gdn")
+          : sub === "k" ? (kAttnKind ? "attn" : "gdn")
           : "attn";
         const hi = (a && a.hi) || 0;
         const rawMean = used ? (a.mean / 254) * hi : 0;
@@ -289,7 +297,7 @@ function drawOverview() {
         // 块内数字的指标：K/V 看「已写 slot 数」（追加写，计数最能体现变化），
         // conv/ssm 看「该块 tensor 平均值」（整页重算，只能靠数值体现）。
         // K/ssm 池一段两用，按块的归属（attn / mamba）决定用哪种。
-        const slotMetric = sub === "v" || (sub === "k" && kView && r.owner === "attn");
+        const slotMetric = sub === "v" || (sub === "k" && r.owner === "attn");
         const meanTxt = !a ? "0"
           : a.nan && !a.written ? "NaN"
           : rawMean >= 1e5 ? rawMean.toExponential(0)   // NaN 污染时 hi 可达 1e35
