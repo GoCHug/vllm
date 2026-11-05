@@ -1,3 +1,5 @@
 # KV cache 实验研究区：其下所有子树的实验产物（含日志）一律入库
 # （覆盖仓库根 .gitignore 第 86 行的 *.log 全局忽略；__pycache__ 字节码缓存仍保持忽略）
 !*.log
+# （覆盖仓库根 .gitignore "Results" 段的 *.csv 全局忽略；msprobe statistics 对比结果允许入库）
+!kvcache_experiment/qwen35/scripts/msprobe/statistics/output/*.csv
