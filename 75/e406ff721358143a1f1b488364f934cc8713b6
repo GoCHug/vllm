@@ -1,0 +1,24 @@
+vllm/v1/core/kvcache_study/kvcache_visualizer/docs/design-2026-11-05-msprobe-kvcache-visualize.md
+  s_9b84f3e2aa2a92::t_ee9aa9caa2a834 1-234,236-273
+  s_9b84f3e2aa2a92::t_d13c96c051624b 235
+vllm/v1/core/kvcache_study/kvcache_visualizer/frontend_vue/src/style.css
+  s_9b84f3e2aa2a92::t_6f21c736d82bad 10
+  s_9b84f3e2aa2a92::t_6cecd81e5fc63c 104
+  s_9b84f3e2aa2a92::t_c886a483b67ab2 457
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "75e406ff721358143a1f1b488364f934cc8713b6",
+  "prompts": {},
+  "sessions": {
+    "s_9b84f3e2aa2a92": {
+      "agent_id": {
+        "tool": "codefuse",
+        "id": "session-2dc56b7e-9737-4121-8ae0-df657420c8fb",
+        "model": "codefuse_official_channel/GLM-5.3-Flash"
+      },
+      "human_author": "123 <123>"
+    }
+  }
+}
