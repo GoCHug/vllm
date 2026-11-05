@@ -7,7 +7,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--txt);font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding:0 0 60px}
-.wrap{max-width:1280px;margin:0 auto;padding:0 20px}
+.wrap{max-width:max(1280px, min(96vw, 2000px));margin:0 auto;padding:0 20px}
 header{background:linear-gradient(180deg,#0d1420,#0b0f14);border-bottom:1px solid var(--line);padding:18px 0 14px}
 header h1{font-size:20px;font-weight:600;letter-spacing:.5px}
 header .sub{color:var(--dim);font-size:12.5px;margin-top:4px;display:flex;gap:18px;flex-wrap:wrap}
@@ -101,7 +101,7 @@ select:focus{outline:1px solid var(--acc)}
 .sect{margin-top:14px}
 .sect>h3{font-size:13px;color:var(--dim);margin-bottom:8px;border-left:3px solid var(--acc);padding-left:8px;font-weight:500}
 #errbox{display:none;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.4);color:var(--fail);border-radius:8px;padding:10px 14px;margin:16px 0}
-canvas.mainheat{border:1px solid var(--line);border-radius:6px;image-rendering:pixelated;cursor:crosshair}
+canvas.mainheat{border:1px solid var(--line);border-radius:6px;image-rendering:pixelated;cursor:crosshair;width:min(100%,840px);height:auto}
 .zeroMark{font-size:11px;color:var(--warn);font-family:var(--mono)}
 @media(max-width:720px){.blk{min-width:120px}}
 
@@ -454,7 +454,7 @@ canvas.mainheat{border:1px solid var(--line);border-radius:6px;image-rendering:p
 .kvms-planes{max-width:100%}
 .kvms-planes.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:5px}
 .kvms-planes.grid canvas,.kvms-planes.single canvas{width:100%;height:auto;image-rendering:pixelated;border:1px solid var(--line);border-radius:3px;background:#0b0f14;display:block}
-.kvms-planes.single canvas{max-width:640px}
+.kvms-planes.single canvas{max-width:100%}
 .kvms-plane.on{outline:2px solid var(--gold);outline-offset:1px}
 .kvms-planes.iso{position:relative;height:300px;overflow:hidden;border:1px solid var(--line);border-radius:6px;background:rgba(130,150,171,.04)}
 .kvms-planes.iso canvas{position:absolute;width:150px;height:auto;image-rendering:pixelated;border:1px solid rgba(130,150,171,.45);border-radius:2px;background:#0b0f14;box-shadow:0 2px 6px rgba(0,0,0,.45)}
