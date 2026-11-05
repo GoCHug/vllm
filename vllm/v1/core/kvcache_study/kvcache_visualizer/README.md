@@ -10,6 +10,51 @@
 > └── README.md             # 本文件
 > ```
 
+## 环境搭建
+
+| 依赖 | 版本要求 | 说明 |
+|---|---|---|
+| Python | **3.10+** | 后端用到 `int \| None` 联合类型语法，3.9 及以下会直接语法报错 |
+| Node.js | **20.19+ / 22.12+** | Vite 7 的最低要求；低于此版本 `npm run build` 会失败 |
+| fastapi、uvicorn | 可选 | 没装时后端自动回退到纯标准库实现，命令与端口行为一致，只是并发/性能弱一些 |
+
+先确认版本（不满足就先升级，别急着往下走）：
+
+```bash
+python3 --version     # 需要 >= 3.10
+node --version        # 需要 >= 20.19
+npm --version
+```
+
+**① 后端依赖**（可选，建议装）
+
+```bash
+pip install fastapi uvicorn
+# Windows: python -m pip install fastapi uvicorn
+# 国内网络慢可加：-i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+**② 前端依赖**
+
+```bash
+cd frontend_vue && npm install
+```
+
+> `node_modules/` 和 `dist/` 都是生成物，不入库；换机器或清理工作区后需重新 `npm install`。
+
+**③ 数据源准备**
+
+- 实验产物放在 `ROOT`（默认 `../../kvcache_experiment`，**只读**，不由本工具写入）；
+- 导出数据放在 `DATA_ROOT`（默认 `../kv_datasets_root`，后端首次运行会自动创建）；
+- 两者都可用命令行参数覆盖：`--root` / `--out`，详见下文「四个子命令」。
+
+**④ 自检**（确认链路通）
+
+```bash
+cd backend_fastapi && python3 main.py verify
+# 逐项核对 A~D 共 60 项，约 1 秒
+```
+
 ## 快速开始（两步）
 
 ```bash
@@ -21,6 +66,40 @@ cd backend_fastapi
 python3 main.py serve
 # 浏览器打开 http://localhost:8000/ （Ctrl+C 停止）
 ```
+
+### Windows
+
+两处差异：`python3` 换成 `python`（或 `py -3`）；PowerShell 5.x 不支持 `&&`，需要分行或用 `;` 串联。
+
+**PowerShell**
+```powershell
+# ① 构建前端
+cd frontend_vue; npm install; npm run build; cd ..
+
+# ② 启动后端
+cd backend_fastapi
+python main.py serve
+# 浏览器打开 http://localhost:8000/ （Ctrl+C 停止）
+```
+
+**cmd（命令提示符）**
+```bat
+:: ① 构建前端
+cd frontend_vue
+npm install
+npm run build
+cd ..
+
+:: ② 启动后端
+cd backend_fastapi
+python main.py serve
+```
+
+常见问题：
+
+- 提示 `'npm' 不是内部或外部命令` → 先装 Node.js（18+），装完**重开终端**让 PATH 生效。
+- 提示 `'python' 不是内部或外部命令` → 试 `py -3 main.py serve`，或安装 Python 3.10+ 并勾选 “Add to PATH”。
+- 端口被占用：`netstat -ano | findstr :8000` 找到 PID，再 `taskkill /PID <pid> /F`，或换端口 `python main.py serve --port 8001`。
 
 > 只想看页面、不想起后端：`python3 main.py pack` 生成单文件 `viz_standalone.html`，双击即开（数据内嵌）。
 > 页面自带数据源探测：`standalone(数据内嵌)` / `后端 /api(自动重导)` / `静态目录`，顶栏徽章显示当前来源。

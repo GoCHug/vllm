@@ -26,7 +26,8 @@ const state = {
   layers: null, layerCache: new Map(),
   sel: { pool: null, sub: null, block: null, slot: null, plane: null },
   layer: 0,        // 当前 step 内已完成的层数（0..24）：24 层 = 24 小步
-  persist: new Map(), // pool|sub|block → 最后一次有值的快照；块写过就一直亮，不随 step 清灰
+  snap: new Map(),    // 当前 step 内 pool|sub|block → 写入快照（随层内小步累积）
+  carry: new Map(),   // 上一 step 结束时的快照：只在切 step 的第一帧兜底，保证块不灭
   timer: null, host: null,
 };
 
@@ -210,13 +211,20 @@ function drawOverview() {
                               sum: a.sum, mean: a.mean, bt: a.bt, hi: a.hi });
     const keep = (sub, blk, a) => {
       const key = `${p.pool}|${sub}|${blk}`;
-      if (hit(a)) { const v = slim(a); state.persist.set(key, v); return v; }
-      return state.persist.get(key) || a;
+      if (hit(a)) { const v = slim(a); state.snap.set(key, v); return v; }
+      // 只有刚切到新 step（layer=0）才沿用上一步快照；
+      // 同一 step 内层内小步回退时必须回到真实状态，否则内容退不回去
+      return (state.layer || 0) === 0 ? (state.carry.get(key) || a) : a;
     };
     // 当前小步（刚写完的那一层）写到哪些块：只在这一步高亮，不累积
     const curLy = (state.layer || 0) - 1;
     const curPool = curLy >= 0 ? Math.floor(curLy / PER_POOL) : -1;
     const curInPool = curLy >= 0 ? curLy % PER_POOL : -1;
+    // 自动视角：当前层是 mamba（写 ssm）就按 ssm 的 block 编号看，是 attn（写 K）就按 K 的看。
+    // 数据仍按块归属显示，切视角只改「编号/刻度」的读法，已写入的内容不会消失。
+    const autoSsm = curLy >= 0 && (curLy % PER_POOL) < PER_POOL - 1;
+    const kView = !autoSsm;
+
     const curRec = (curLy >= 0 && state.layers && state.layers.layers)
       ? state.layers.layers[curLy] : null;
     // 该层落在哪个子池：pool 内前 3 层是 mamba(conv/ssm)，第 4 层是 attn(k/v)
@@ -244,21 +252,33 @@ function drawOverview() {
         const a = blockAgg(curT, blk, bt);
         return !!(a && (a.written || a.nan));
       };
-      const wpx = pxOf(sub);
+      // 2048 场景：一个 K 块(2 MiB)横跨两个 ssm 块(各 1 MiB)，需要单独判断当前层写了哪个 ssm 块
+      const curSsmT = (p.pool === curPool && curRec && curRec.subs) ? curRec.subs.ssm : null;
+      const writingSsm = blk => {
+        if (!curSsmT) return false;
+        const a = blockAgg(curSsmT, blk, bt);
+        return !!(a && (a.written || a.nan));
+      };
+      // 同一段内存按不同视角切分：K 一格 2 MiB，ssm 一格 1 MiB（正好是 K 格的一半宽）
+      const ssmView = sub === "k" && kDiff && !kView;
+      const wpx = ssmView ? Math.max(16, Math.round(pxOf(sub) / 2)) : pxOf(sub);
       const bsz = hbytes(segB[sub]);
       // K/ssm 两视角不同时把两个值都列出来，避免误以为一段只有一个大小
       const subNum = sub === "k" && kDiff
-        ? `${(kAttn / 1048576).toFixed(1)}/${(kSsm / 1048576).toFixed(1)} MiB`
+        ? (kView ? "K视角 2MiB" : "ssm视角 1MiB")
         : bsz;
       const cells = perBlk.map(r => {
-        const a = sub === "conv" ? r.aConv : sub === "k" ? r.kUsed : r.aV;
+        const a = sub === "conv" ? r.aConv
+          : sub === "k" ? (ssmView ? r.aSsm : r.aK)   // 各视角只看自己那份，不再 merge
+          : r.aV;
         const used = hit(a);
         // attn 只吃 K/V、mamba 只吃 conv/ssm：id 被对方占走时本段空置
         const waste = !used && ((sub === "conv" && r.owner === "attn") ||
-                                (sub === "v" && r.owner === "gdn"));
+                                (sub === "v" && r.owner === "gdn") ||
+                                (ssmView && r.owner === "attn"));
         const on = state.sel.pool === p.pool && state.sel.sub === sub && state.sel.block === r.blk;
         const kind = sub === "conv" ? "gdn"
-          : sub === "k" ? ((r.aK && r.aK.written) ? "attn" : "gdn")
+          : sub === "k" ? ((kView && r.aK && r.aK.written) ? "attn" : "gdn")
           : "attn";
         const hi = (a && a.hi) || 0;
         const rawMean = used ? (a.mean / 254) * hi : 0;
@@ -269,7 +289,7 @@ function drawOverview() {
         // 块内数字的指标：K/V 看「已写 slot 数」（追加写，计数最能体现变化），
         // conv/ssm 看「该块 tensor 平均值」（整页重算，只能靠数值体现）。
         // K/ssm 池一段两用，按块的归属（attn / mamba）决定用哪种。
-        const slotMetric = sub === "v" || (sub === "k" && r.owner === "attn");
+        const slotMetric = sub === "v" || (sub === "k" && kView && r.owner === "attn");
         const meanTxt = !a ? "0"
           : a.nan && !a.written ? "NaN"
           : rawMean >= 1e5 ? rawMean.toExponential(0)   // NaN 污染时 hi 可达 1e35
@@ -278,17 +298,46 @@ function drawOverview() {
           : rawMean >= 0.01 ? rawMean.toFixed(2)
           : rawMean > 0 ? rawMean.toExponential(1)
           : "0";
+        // K/V 视角的「已写 slot 数」= 写进去的总数（有效 + 已分配 + NaN），
+        // 因为 NaN 也是真写入了，只是值坏了
+        const slotTotal = a ? (a.written + a.alloc + a.nan) : 0;
         const label = used
-          ? (slotMetric ? String(a.written) : meanTxt)
+          ? (slotMetric ? String(slotTotal) : meanTxt)
           : waste ? "×" : r.blk;
         const fg = used && !waste ? "color:#0b0f14;font-weight:600;" : "";
-        const bg = waste ? "" : `background:${cellColor(a, kind)};`;
+        // 2048：K 块 2 MiB 覆盖 ssm 的 2i、2i+1 两块（各 1 MiB），
+        // 块内左右两半分别按这两个 ssm 块的状态着色，覆盖关系从几何上直接可见
+        const split = sub === "k" && kDiff && kView;
+        // 重叠覆盖：K 块(2 MiB) 覆盖 ssm 的 2i/2i+1，若这两段都被 mamba 写过，
+        // 这块内存就被两个视角同时用过（NaN/脏数据的根源）→ 红框标出
+        const sHas = x => !!(x && x.aSsm && (x.aSsm.written || x.aSsm.nan));
+        const kHasAt = idx => !!(perBlk[idx] && perBlk[idx].aK
+          && (perBlk[idx].aK.written || perBlk[idx].aK.nan));
+        // 重叠是内存层面的客观事实，与当前视角无关：
+        //  K 视角：本 K 块写过，且它覆盖的 ssm 2i/2i+1 也写过
+        //  ssm 视角：本 ssm 块写过，且它所属的 K 块 floor(j/2) 也写过
+        const overlapped = sub === "k" && kDiff && (kView
+          ? (kHasAt(r.blk) && (sHas(perBlk[r.blk * 2]) || sHas(perBlk[r.blk * 2 + 1])))
+          : (sHas(r) && kHasAt(Math.floor(r.blk / 2))));
+        const sm = idx => (perBlk[idx] ? perBlk[idx].aSsm : null);
+        const bg = split
+          ? `background:linear-gradient(90deg,${cellColor(sm(r.blk * 2), "gdn")} 0 50%,${cellColor(sm(r.blk * 2 + 1), "gdn")} 50% 100%);`
+          : waste ? "" : `background:${cellColor(a, kind)};`;
+        const cov = split
+          ? (writingSsm(r.blk * 2) ? '<em class="kvms-cov kvms-cov-l"></em>' : "")
+            + (writingSsm(r.blk * 2 + 1) ? '<em class="kvms-cov kvms-cov-r"></em>' : "")
+          : "";
+        const covTip = split
+          ? ` · 2048 覆盖：本 K 块(2 MiB) = ssm block ${r.blk * 2}~${r.blk * 2 + 1}（各 1 MiB）`
+          : "";
         return { blk: r.blk, used: used || waste, on,   // 空置也算有效信息，不参与折叠
-          html: `<span class="kvms-blk ${on ? "on" : ""} ${waste ? "kvms-waste" : ""}${writing(r.blk) ? " kvms-cur" : ""}" data-pool="${p.pool}" data-sub="${sub}" data-block="${r.blk}"
-                 style="width:${wpx}px;min-width:${wpx}px;${bg}${fg}"
+          html: `<span class="kvms-blk ${on ? "on" : ""} ${waste ? "kvms-waste" : ""}${writing(r.blk) ? " kvms-cur" : ""}${overlapped ? " kvms-ovl" : ""}" data-pool="${p.pool}" data-sub="${sub}" data-block="${r.blk}"
+                 style="width:${wpx}px;min-width:${wpx}px;position:relative;${bg}${fg}"
                  title="${esc(`pool${p.pool} ${SUB_LABEL[sub]} block ${r.blk}${tag} · 本段每块 ${bsz}`
                    + (used && slotMetric ? ` · 块内数字 = 已写 slot 数（${a.written}/${bt}）`
-                      : used ? ` · 块内数字 = 该块 tensor 平均值（≈${rawMean.toPrecision(3)}）` : ""))}">${esc(label)}</span>` };
+                      : used ? ` · 块内数字 = 该块 tensor 平均值（≈${rawMean.toPrecision(3)}）` : "")
+                   + (overlapped ? " · 红框：这段内存被 K 与 ssm 双视角重叠使用（p0 的 2 MiB 覆盖 ssm 的 1 MiB ×2）" : "")
+                   + covTip)}">${esc(label)}${cov}</span>` };
       });
       return `<div class="kvms-subrow"><span class="kvms-sublabel${sub === "k" && kDiff ? " kvms-diff" : ""}"`
         + ` title="${esc(`pool${p.pool} · ${SUB_NAME[sub]} · 每块 ${subNum}`)}">${SUB_NAME[sub]}<i>${subNum}</i></span>`
@@ -474,6 +523,21 @@ function drawBlockPanel() {
 
   const bt = s.block_size;
   const agg = blockAgg(layer, block, bt);
+  // 2048：一个 K 块(2 MiB)横跨两个 ssm 块(各 1 MiB)，前半字节属 ssm 2i、后半属 2i+1。
+  // K 只写了自己那 121 个 slot，其余 slot 的物理内存仍是 ssm 的数据（残留污染）——
+  // 未写 slot 只要落在被 ssm 占过的那一半，就标成暗红，而不是当作干净的空闲。
+  const pb2 = (state.meta && state.meta.page_bytes) || {};
+  const kSplit = !!(pb2.attn_k && pb2.ssm && pb2.attn_k !== pb2.ssm);
+  const half = Math.floor(bt / 2);
+  const ssmLayer2 = (sub === "k" && kSplit) ? (p.ssm || null) : null;
+  const dirtyOf = idx => {
+    if (!ssmLayer2 || idx >= (s.num_blocks || 0)) return false;
+    const a = blockAgg(ssmLayer2, idx, bt);
+    return !!(a && (a.written || a.nan));
+  };
+  const dirtyL = dirtyOf(block * 2);
+  const dirtyR = dirtyOf(block * 2 + 1);
+  let dirtyCnt = 0;
   const on = state.sel.slot;
   // K/ssm 池一段两用：该块有 K 写入走 per-token；否则这个 id 是 mamba 占的，
   // 整页只承载 1 个 token 的 ssm 状态，没有 per-token 维度
@@ -493,15 +557,20 @@ function drawBlockPanel() {
     <h2>pool${pool} · ${SUB_NAME[sub]} · block ${block}
       ${badge(modeTxt, "b-dim")}
       ${badge(slotTxt, "b-acc")}
-      ${agg ? badge(`写 ${agg.written} / 分配 ${agg.alloc} / NaN ${agg.nan}`, agg.nan ? "b-fail" : "b-gold") : ""}
+      ${agg ? badge(`已写 ${agg.written + agg.alloc + agg.nan}（有效 ${agg.written} / 已分配未写 ${agg.alloc} / NaN ${agg.nan}）`, agg.nan ? "b-fail" : "b-gold") : ""}
       ${on != null ? badge(`已选 slot ${on}`, "b-purp") : ""}
+      ${(sub === "k" && kSplit) ? badge(`未覆盖 ${bt - (agg ? agg.written + agg.alloc + agg.nan : 0)} slot 为 ssm 残留`, "b-warn") : ""}
     </h2>
     <div class="kvms-cvwrap">
       <canvas id="kvmsBlockCv" width="${BW * CELL}" height="${BH * CELL}"
               style="border:1px solid var(--line);border-radius:6px;background:#0b0f14;cursor:crosshair;display:block;margin-bottom:3px"></canvas>
       <div class="kvms-ax" style="width:${BW * CELL}px"><span>slot 0</span><span>${BH} 行 × 128 / 行 → slot ${bt - 1}</span></div>
     </div>
-    <p style="color:var(--faint);font-size:11.5px;margin-top:4px">点击像素查看该 slot 的原始数值</p>
+    <p style="color:var(--faint);font-size:11.5px;margin-top:4px">
+      点击像素查看该 slot 的原始数值${(sub === "k" && kSplit)
+        ? "　·　暗红格 = 未被 K 覆盖的 slot，其物理内存仍是 ssm block "
+          + `${block * 2}/${block * 2 + 1} 的残留数据（同一块内存被两个视角复用）` : ""}
+    </p>
   </div>`;
 
   const cv = host.querySelector("#kvmsBlockCv");
@@ -510,7 +579,15 @@ function drawBlockPanel() {
   const base = block * bt;
   ctx.clearRect(0, 0, cv.width, cv.height);
   for (let sl = 0; sl < bt; sl++) {
-    const [r, g, b] = slotColor(vals[base + sl]);
+    const v = vals[base + sl];
+    let r, g, b;
+    if (v > 1 || v === 255) {
+      [r, g, b] = slotColor(v);                 // 本视角写过（或 NaN）
+    } else {
+      const dirty = (sl < half) ? dirtyL : dirtyR;
+      if (dirty) { r = 104; g = 48; b = 48; dirtyCnt++; }   // ssm 残留：未被 K 覆盖
+      else [r, g, b] = slotColor(v);
+    }
     const px = sl % BW, py = Math.floor(sl / BW);
     ctx.fillStyle = `rgb(${r},${g},${b})`;
     ctx.fillRect(px * CELL, py * CELL, CELL - 1, CELL - 1);
@@ -714,6 +791,8 @@ function selectSlot(slot) {
 
 /* ---------------- step 切换 ---------------- */
 async function showStep(n) {
+  if (n !== state.step && state.snap.size) state.carry = state.snap;  // 上一 step 的最终快照
+  state.snap = new Map();
   state.step = n;
   state.layer = 0;
   drawTimeline();
@@ -819,7 +898,8 @@ async function loadSource(id) {
   state.src = id;
   state.meta = state.sources.find(s => s.id === id) || null;
   state.steps = (state.meta && (state.meta.view_steps || state.meta.steps)) || [];
-  state.persist.clear();   // 换数据源，历史写入快照作废
+  state.snap = new Map();    // 换数据源，快照作废
+  state.carry = new Map();
   state.slotsCache.clear();
   state.layerCache.clear();
   state.layers = null;

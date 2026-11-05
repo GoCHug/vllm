@@ -518,6 +518,15 @@ canvas.mainheat{border:1px solid var(--line);border-radius:6px;image-rendering:p
 .kvms-memtot{color:var(--faint);margin-left:8px;white-space:nowrap;font-size:10px}
 .kvms-waste{background:repeating-linear-gradient(45deg,rgba(248,113,113,.09),rgba(248,113,113,.09) 3px,rgba(248,113,113,.26) 3px,rgba(248,113,113,.26) 6px);color:#cf9090;border-color:rgba(248,113,113,.30)}
 .kvms-blk.kvms-waste{min-width:19px;padding:0 2px}
+/* 2048 覆盖标记：K 块内左右两半分别对应 ssm 的 2i / 2i+1，正在写的那半描金边 */
+.kvms-kbtn{font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:3px;cursor:pointer;border:1px solid rgba(245,194,107,.55);background:rgba(245,194,107,.14);color:var(--gold);flex:0 0 auto;margin-right:4px}
+.kvms-kbtn:hover{background:rgba(245,194,107,.3);color:#fff}
+.kvms-ktag{font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid rgba(245,194,107,.35);background:rgba(245,194,107,.10);color:var(--gold);flex:0 0 auto;margin-right:4px}
+/* 重叠覆盖：同一段内存被 K 与 ssm 两个视角都写过，红框标出 */
+.kvms-blk.kvms-ovl{box-shadow:inset 0 0 0 2px #f87171}
+.kvms-cov{position:absolute;top:0;height:100%;pointer-events:none;border:2px solid var(--gold);z-index:3}
+.kvms-cov-l{left:0;width:50%;border-right:0;border-radius:4px 0 0 4px}
+.kvms-cov-r{right:0;width:50%;border-left:0;border-radius:0 4px 4px 0}
 .kvms-fold{display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;color:var(--faint);font-family:var(--mono);font-size:13px;cursor:help;letter-spacing:1px}
 .kvms-pool.idle{border-left-color:rgba(130,150,171,.22);opacity:.62}
 .kvms-pool.active{border-left-color:var(--gold);background:linear-gradient(90deg,rgba(245,194,107,.08),transparent 45%)}

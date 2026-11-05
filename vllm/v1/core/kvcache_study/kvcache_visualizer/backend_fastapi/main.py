@@ -30,6 +30,21 @@ DATA_ROOT = config.DATA_ROOT
 
 
 # ================================================================ FastAPI 接口
+def _finite_json(o):
+    """JSON 不支持 nan/inf：递归把它们换成 None。
+
+    2048 的数据里 bf16 位型垃圾会产生 NaN，直接 json.dumps 会 500
+    （ValueError: Out of range float values are not JSON compliant）。
+    """
+    import math
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: _finite_json(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_finite_json(v) for v in o]
+    return o
+
 def create_app(root, data, page_dir, auto=True):
     """装配 FastAPI 应用(所有 GET 路由)."""
     from fastapi import FastAPI, HTTPException
@@ -81,7 +96,7 @@ def create_app(root, data, page_dir, auto=True):
             dump_dir = kvms_source.resolve(source, kvms_root)
         except (ValueError, FileNotFoundError) as exc:
             raise HTTPException(404, str(exc))
-        return exporter.build_kvms_layers(dump_dir, step)
+        return _finite_json(exporter.build_kvms_layers(dump_dir, step))
 
     @app.get("/api/kvms/{source}/{step}/value")
     def kvms_value_route(source: str, step: int, pool: int, sub: str,
