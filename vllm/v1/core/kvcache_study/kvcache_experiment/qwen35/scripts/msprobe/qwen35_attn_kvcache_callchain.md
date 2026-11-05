@@ -17,6 +17,26 @@ KVCache 的写入与读取分别发生在哪个函数、哪个算子：
 
 ---
 
+## 0. 本文对应的启动配置（tensor/start_tensor_1024.sh:22-27）
+
+```bash
+vllm serve <model> --served-model-name qwen3.5 --port 8340 \
+    --max-model-len 16384 --enforce-eager --num-gpu-blocks-override 20
+```
+
+对调用链的影响：
+
+- **`--enforce-eager` → cudagraph_mode = NONE**：
+  1. 无批长 padding，`num_input_tokens == num_actual_tokens`，`reshape_and_cache` 里
+     `key/value/slots[:num_actual_tokens]` 截断退化为 no-op view（见 §2.1）；
+  2. `using_paged_attention` 要求 `cudagraph_mode == FULL_DECODE_ONLY`（utils.py:116-118），
+     本配置恒为 False → **读路径 PA 分支永不触发，prefill/decode 一律走 FIA**（见 §2.2）。
+- `--num-gpu-blocks-override 20`：块池按逻辑页计（1 页 = 1024 token = 8 个 128-token 物理块），
+  只影响池容量，不改变页宽几何（`K 段宽 ≡ SSM 段宽` 不变量不受影响）。
+- 其余环节（DecoderLayer/attn/GDN patch、GDN `_C_ascend` 定制算子、KVCache 清零）不受 eager 影响。
+
+---
+
 ## 1. 总调用树
 
 ### 1.1 init：模块构建
@@ -51,7 +71,15 @@ Qwen3_5DecoderLayer(Qwen3NextDecoderLayer)                     vllm/model_execut
         │       ├── q, k, v, gate = torch.ops.vllm.triton_split_qkv_rmsnorm_mrope(qkv, self.heads, self.head_size)  :44
         │       ├── self.attn(q, k, v)                    # vllm/model_executor/layers/attention/attention.py:437
         │       │   └── torch.ops.vllm.unified_attention_with_output(query, key, value, output,...)  :521-528 → 注册的 Python 实现 :734
-        │       │             ├── attn_metadata, self, kv_cache, _ = get_attention_context(layer_name)   :749
+        │       │             ├── attn_metadata, self, kv_cache, _ = get_attention_context(layer_name)   :749  (定义 :648-688，从 ForwardContext 取)
+        │       │             │   │   ForwardContext 由每步 set_forward_context 刷入：gpu_model_runner.py:4264-4274 → forward_context.py:211-224
+        │       │             │   ├── attn_metadata = forward_context.attn_metadata[layer_name]        :669-676
+        │       │             │   │     ← 每步 _prepare_inputs 构建（full-attn / mamba 组各自一份；dict 按层名取，list 形态是 spec decode 取 [0]）
+        │       │             │   ├── attn_layer    = forward_context.no_compile_layers[layer_name]    :677
+        │       │             │   │     ← 每个 Attention 层 __init__ 时自注册的 {layer_name: layer}
+        │       │             │   ├── kv_cache      = attn_layer.kv_cache                              :678
+        │       │             │   │     ← 启动期 initialize_kv_cache 绑定的整段 cache 张量（持久，每步不变）
+        │       │             │   └── layer_slot_mapping = forward_context.slot_mapping[layer_name]     :681-687  ← 每步构建
         │       │             └── self.impl.forward(self, q, k, v, kv_cache, attn_metadata, output)   :751
         │       │                 └── AscendAttentionBackendImpl.forward(...)  # vllm_ascend/attention/attention_v1.py:1479
         │       │                     ├── self.key_cache, self.value_cache = kv_cache[0], kv_cache[1]  :1527
@@ -63,14 +91,22 @@ Qwen3_5DecoderLayer(Qwen3NextDecoderLayer)                     vllm/model_execut
         │       │                     │       └── notify_kv_cache_written()  :1453
         │       │                     ├──【读 KVCache】forward_impl(q, k, v, kv_cache, meta, out)  :1456
         │       │                     │   ├── 条件：DecodeOnly && sliding_window is None && using_paged_attention
-        │       │                     │   │   └── forward_paged_attention  :1363
+        │       │                     │   │   （本配置 enforce-eager 下不成立 → PA 不触发，见 §0）
+        │       │                     │   │   └── forward_paged_attention  :1363  ★ 不走
         │       │                     │   │       └── torch_npu._npu_paged_attention(query, key_cache, value_cache,
         │       │                     │   │               block_table=block_tables, context_lens=seq_lens, out=output)  ★ 读算子(PA)
         │       │                     │   └── 否则 forward_fused_infer_attention  :1234
-        │       │                     │       ├── _get_fia_params(key, value, meta, kv_cache)  :1174
-        │       │                     │       │     PrefillNoCache : block_table=None, key/value = 当前 token
-        │       │                     │       │     PrefillCacheHit: key = self.key_cache.view(num_block, block_size, -1)  :1204
-        │       │                     │       │     DecodeOnly    : key = self.key_cache.view(num_block, block_size, -1)  :1213
+        │       │                     │       ├── _get_fia_params(key, value, meta, kv_cache)  :1174  (按 attn_state 决定 FIA 的 key/value 来源与寻址)
+        │       │                     │       │   ├──【取 cache】attn_state != PrefillNoCache 时：self.key_cache 为 None 则从 kv_cache 绑定
+        │       │                     │       │   │     self.key_cache, self.value_cache = kv_cache[0], kv_cache[1]  :1182  （本步写后的整段 cache）
+        │       │                     │       │   ├── PrefillNoCache : key/value = 当前 token，block_table=None，
+        │       │                     │       │   │     actual_seq_lengths_kv = actual_seq_lengths_q        :1194-1198（不读 cache）
+        │       │                     │       │   ├── PrefillCacheHit: key/value = key_cache.view(num_block, block_size, -1)  :1204/:1207，
+        │       │                     │       │   │     block_table = block_tables[:batch_size], actual_seq_lengths_kv = seq_lens_list  :1200-1208
+        │       │                     │       │   ├── DecodeOnly    : key/value = key_cache.view(num_block, block_size, -1)  :1213/:1216，
+        │       │                     │       │   │     block_table = block_tables, actual_seq_lengths_kv = seq_lens_list      :1211-1219
+        │       │                     │       │   └── else（chunked prefill）: 同 DecodeOnly 的 cache view + block_table + seq_lens_list  :1221-1229
+        │       │                     │       │   返回 (key, value, block_size, block_table, actual_seq_lengths_kv)  :1231
         │       │                     │       └── DeviceOperator.npu_fused_infer_attention_score(...)  # device_op.py:55
         │       │                     │           └── torch_npu.npu_fused_infer_attention_score(query, key, value, ...)  :92  ★ 读算子(FIA)
         │       │                     └── output[:num_tokens] = attn_output[:num_tokens]; return output  :1546-1547
@@ -103,6 +139,10 @@ Qwen3_5DecoderLayer(Qwen3NextDecoderLayer)                     vllm/model_execut
 | 底层算子 | A2/A3：`torch_npu._npu_reshape_and_cache`；A5：`torch_npu.npu_scatter_pa_kv_cache`（`cache_mode="Norm"`） |
 | 特性 | **原地写**（in-place），Python 层拿不到"写后副本"，只能看到同一块张量被改写 |
 
+> `key/value/slots[:num_actual_tokens]`（attention_v1.py:1445-1451）的作用是剔掉图模式批长 padding，
+> 保持 K/V 与 slot_mapping 逐位对应。本配置 `--enforce-eager` 下无 padding
+> （`num_input_tokens == num_actual_tokens`），截断是 no-op view（见 §0）。
+
 ### 2.2 读路径
 
 | 项 | FIA（`forward_fused_infer_attention`） | PA（`forward_paged_attention`） |
@@ -112,6 +152,12 @@ Qwen3_5DecoderLayer(Qwen3NextDecoderLayer)                     vllm/model_execut
 | cache 形态 | CacheHit/Decode 时 `self.key_cache.view(num_block, block_size, -1)` | 原样整张 cache |
 | 寻址 | `block_table` + `actual_seq_lengths_kv` | `block_table=attn_metadata.block_tables` + `context_lens=attn_metadata.seq_lens` |
 | 底层算子 | `torch_npu.npu_fused_infer_attention_score` | `torch_npu._npu_paged_attention` |
+
+> **本启动配置下读路径只有 FIA**：PA 触发要求 `cudagraph_mode == FULL_DECODE_ONLY`
+> （[utils.py:116-118](file:///c:/Users/89517/Desktop/github/vllm-npu/vllm-ascend/vllm_ascend/attention/utils.py#L116-L118)），
+> `--enforce-eager` 下为 NONE → 条件恒不成立，prefill 与 decode 一律走 FIA，PA 列仅在
+> 去掉 enforce-eager 且 decode 启用 FULL_DECODE_ONLY 图时有效。
+> 两种方式都**不做 KV 拼接**：整张 cache 交给算子，按 block_table 索引，有效长度由 seq_lens 决定。
 
 
 ---
