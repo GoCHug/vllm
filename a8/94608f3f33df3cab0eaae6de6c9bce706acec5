@@ -1,0 +1,30 @@
+vllm/v1/core/kvcache_study/.gitignore
+  s_9b84f3e2aa2a92::t_de6ecfc102eaf2 5
+  s_9b84f3e2aa2a92::t_37e6571df22f37 4
+vllm/v1/core/kvcache_study/kvcache_experiment/qwen35/scripts/msprobe/statistics/output/compare_result_20261103103551.csv
+  s_44f3a05c63c3a1::t_d914cf1fb62518 1-4878
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a894608f3f33df3cab0eaae6de6c9bce706acec5",
+  "prompts": {},
+  "sessions": {
+    "s_44f3a05c63c3a1": {
+      "agent_id": {
+        "tool": "codefuse",
+        "id": "session-ab081488-5ca9-488f-be45-14cacae0bf1e",
+        "model": "codefuse_official_channel/DeepSeek-V4.1-Flash-1017"
+      },
+      "human_author": "123 <123>"
+    },
+    "s_9b84f3e2aa2a92": {
+      "agent_id": {
+        "tool": "codefuse",
+        "id": "session-2dc56b7e-9737-4121-8ae0-df657420c8fb",
+        "model": "codefuse_official_channel/GLM-5.3-Flash"
+      },
+      "human_author": "123 <123>"
+    }
+  }
+}
