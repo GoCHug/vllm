@@ -1,0 +1,21 @@
+vllm/v1/core/kvcache_study/kvcache_visualizer/frontend_vue/src/lib/kvms.js
+  s_44f3a05c63c3a1::t_b3a399da28c287 275-276,278
+  s_44f3a05c63c3a1::t_aa732807dcbba8 225-229
+  s_44f3a05c63c3a1::t_6f243d72c693e9 286-287,289,300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "77fdcff2b73197d4f572e266551bb291d068d64b",
+  "prompts": {},
+  "sessions": {
+    "s_44f3a05c63c3a1": {
+      "agent_id": {
+        "tool": "codefuse",
+        "id": "session-ab081488-5ca9-488f-be45-14cacae0bf1e",
+        "model": "codefuse_official_channel/DeepSeek-V4.1-Flash-1017"
+      },
+      "human_author": "123 <123>"
+    }
+  }
+}
